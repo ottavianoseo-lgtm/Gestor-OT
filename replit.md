@@ -39,9 +39,21 @@ cd GestorOT/GestorOT && ASPNETCORE_ENVIRONMENT=Development dotnet run --urls "ht
 - Surface Dark: #1E1E2E
 - Surface Light: #FFFFFF
 
+## API Endpoints
+- `GET /api/fields` - Lista todos los campos
+- `GET /api/lots` - Lista todos los lotes
+- `GET /api/lots/geojson` - Lotes en formato GeoJSON para mapas
+- `GET /api/workorders` - Lista órdenes de trabajo
+- `GET /api/dashboard/stats` - Estadísticas del dashboard
+- `GET /api/dashboard/recent-orders` - Órdenes de trabajo recientes
+
 ## Recent Changes
 - 2026-02-05: Inicialización del proyecto con arquitectura Hosted Blazor
 - 2026-02-05: Configuración de Npgsql 10 con NetTopologySuite
 - 2026-02-05: Implementación de layout AntDesign con Design System Agrivant
 - 2026-02-05: Creación de ApplicationDbContext con PostGIS y entidades
 - 2026-02-05: Configuración de AppJsonSerializerContext para Source Generation
+- 2026-02-05: Conexión exitosa a Supabase PostgreSQL con PostGIS habilitado
+- 2026-02-05: Creación de API Controllers (Fields, Lots, WorkOrders, Dashboard)
+- 2026-02-05: Dashboard conectado con datos reales desde Supabase
+- 2026-02-05: Configuración de JSON source generation en cliente y servidor
