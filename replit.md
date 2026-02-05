@@ -47,6 +47,12 @@ cd GestorOT/GestorOT && ASPNETCORE_ENVIRONMENT=Development dotnet run --urls "ht
 - `GET /api/dashboard/stats` - Estadísticas del dashboard
 - `GET /api/dashboard/recent-orders` - Órdenes de trabajo recientes
 
+## Client-Side Patterns
+- Data loading in `OnAfterRenderAsync` with firstRender guard
+- Source-generated JSON via `AppJsonSerializerContext.Default`
+- Error display using AntDesign Alert components
+- CancellationToken with 15s timeout for HTTP requests
+
 ## Recent Changes
 - 2026-02-05: Inicialización del proyecto con arquitectura Hosted Blazor
 - 2026-02-05: Configuración de Npgsql 10 con NetTopologySuite
@@ -57,3 +63,6 @@ cd GestorOT/GestorOT && ASPNETCORE_ENVIRONMENT=Development dotnet run --urls "ht
 - 2026-02-05: Creación de API Controllers (Fields, Lots, WorkOrders, Dashboard)
 - 2026-02-05: Dashboard conectado con datos reales desde Supabase
 - 2026-02-05: Configuración de JSON source generation en cliente y servidor
+- 2026-02-05: Refactored pages to use OnAfterRenderAsync for data loading
+- 2026-02-05: Implemented error handling with visible Alert components
+- 2026-02-05: AsNoTracking() applied to all read-only controller queries
