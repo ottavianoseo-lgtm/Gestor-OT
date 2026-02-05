@@ -1,23 +1,85 @@
-﻿@inherits LayoutComponentBase
+@inherits LayoutComponentBase
 
-<div class="page">
-    <div class="sidebar">
-        <NavMenu />
-    </div>
-
-    <main>
-        <div class="top-row px-4">
-            <a href="https://learn.microsoft.com/aspnet/core/" target="_blank">About</a>
+<Layout Style="min-height: 100vh;">
+    <Sider 
+        Theme="SiderTheme.Light"
+        Collapsible 
+        @bind-Collapsed="@_collapsed"
+        Style="background: #FFFFFF;">
+        
+        <div class="logo" style="height: 64px; display: flex; align-items: center; justify-content: center; padding: 16px;">
+            <img src="favicon.png" alt="Logo" style="height: 32px; margin-right: 8px;" />
+            @if (!_collapsed)
+            {
+                <span style="font-weight: bold; font-size: 18px; color: #E74C3C;">GestorOT</span>
+            }
         </div>
-
-        <article class="content px-4">
+        
+        <Menu Theme="MenuTheme.Light" Mode="MenuMode.Inline" DefaultSelectedKeys="@(new[] { "1" })">
+            <MenuItem Key="1" RouterLink="/">
+                <Icon Type="dashboard" Theme="IconThemeType.Outline" />
+                <span>Dashboard</span>
+            </MenuItem>
+            <MenuItem Key="2" RouterLink="/fields">
+                <Icon Type="environment" Theme="IconThemeType.Outline" />
+                <span>Campos</span>
+            </MenuItem>
+            <MenuItem Key="3" RouterLink="/lots">
+                <Icon Type="block" Theme="IconThemeType.Outline" />
+                <span>Lotes</span>
+            </MenuItem>
+            <MenuItem Key="4" RouterLink="/workorders">
+                <Icon Type="file-text" Theme="IconThemeType.Outline" />
+                <span>Órdenes de Trabajo</span>
+            </MenuItem>
+            <MenuItem Key="5" RouterLink="/map">
+                <Icon Type="compass" Theme="IconThemeType.Outline" />
+                <span>Mapa GIS</span>
+            </MenuItem>
+        </Menu>
+    </Sider>
+    
+    <Layout>
+        <Header Style="background: #FFFFFF; padding: 0 24px; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 1px 4px rgba(0,0,0,0.08);">
+            <span style="font-size: 20px; font-weight: 600;">Sistema de Gestión de Órdenes de Trabajo</span>
+            <Space>
+                <SpaceItem>
+                    <Badge Count="3">
+                        <Icon Type="bell" Theme="IconThemeType.Outline" Style="font-size: 20px; cursor: pointer;" />
+                    </Badge>
+                </SpaceItem>
+                <SpaceItem>
+                    <Avatar Icon="user" Style="background-color: #E74C3C;" />
+                </SpaceItem>
+            </Space>
+        </Header>
+        
+        <Content Style="margin: 24px; padding: 24px; background: #FFFFFF; border-radius: 8px; min-height: 280px;">
             @Body
-        </article>
-    </main>
-</div>
+        </Content>
+        
+        <Footer Style="text-align: center; background: transparent;">
+            GestorOT ©2026 - Agrivant
+        </Footer>
+    </Layout>
+</Layout>
 
-<div id="blazor-error-ui" data-nosnippet>
-    An unhandled error has occurred.
-    <a href="." class="reload">Reload</a>
-    <span class="dismiss">🗙</span>
-</div>
+<style>
+    .ant-menu-item-selected {
+        background-color: #FCE8E6 !important;
+        border-left: 3px solid #E74C3C !important;
+    }
+    
+    .ant-menu-item-selected .anticon,
+    .ant-menu-item-selected span {
+        color: #E74C3C !important;
+    }
+    
+    .ant-menu-item:hover {
+        color: #E74C3C !important;
+    }
+</style>
+
+@code {
+    private bool _collapsed = false;
+}
