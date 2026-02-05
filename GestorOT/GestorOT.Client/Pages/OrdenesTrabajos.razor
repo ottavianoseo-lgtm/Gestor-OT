@@ -1,0 +1,113 @@
+@page "/workorders"
+@using GestorOT.Shared.Dtos
+@using GestorOT.Shared
+@using System.Text.Json
+@inject HttpClient Http
+
+<PageTitle>Órdenes de Trabajo - GestorOT</PageTitle>
+
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+    <h2 style="margin: 0;">Órdenes de Trabajo</h2>
+</div>
+
+@if (!string.IsNullOrEmpty(_errorMessage))
+{
+    <Alert Type="@AlertType.Error" Message="@_errorMessage" ShowIcon="true" Style="margin-bottom: 16px;" />
+}
+
+@if (_loading)
+{
+    <div style="display: flex; justify-content: center; padding: 48px;">
+        <Spin Size="@SpinSize.Large" Tip="Cargando órdenes..." />
+    </div>
+}
+else
+{
+    <Table TItem="WorkOrderDto" DataSource="_workOrders" Loading="_loading" Size="@TableSize.Middle">
+        <PropertyColumn Property="c => c.Description" Title="Descripción" />
+        <PropertyColumn Property="c => c.LotName" Title="Lote" Sortable />
+        <PropertyColumn Property="c => c.Status" Title="Estado">
+            @{
+                var statusColor = context.Status switch
+                {
+                    "Pending" => "orange",
+                    "InProgress" => "blue",
+                    "Completed" => "green",
+                    _ => "default"
+                };
+                var statusText = context.Status switch
+                {
+                    "Pending" => "Pendiente",
+                    "InProgress" => "En Progreso",
+                    "Completed" => "Completada",
+                    _ => context.Status
+                };
+            }
+            <Tag Color="@statusColor">@statusText</Tag>
+        </PropertyColumn>
+        <PropertyColumn Property="c => c.AssignedTo" Title="Asignado a" />
+        <PropertyColumn Property="c => c.DueDate" Title="Fecha Límite" Sortable>
+            @context.DueDate.ToString("dd/MM/yyyy")
+        </PropertyColumn>
+    </Table>
+}
+
+@code {
+    private List<WorkOrderDto> _workOrders = new();
+    private bool _loading = true;
+    private bool _hasLoaded = false;
+    private string? _errorMessage;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && !_hasLoaded)
+        {
+            _hasLoaded = true;
+            await LoadWorkOrdersAsync();
+            StateHasChanged();
+        }
+    }
+
+    private async Task LoadWorkOrdersAsync()
+    {
+        try
+        {
+            Console.WriteLine("[WorkOrders] Iniciando carga de órdenes de trabajo...");
+            
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+            var response = await Http.GetAsync("api/workorders", cts.Token);
+            
+            Console.WriteLine($"[WorkOrders] Response status: {response.StatusCode}");
+            
+            if (response.IsSuccessStatusCode)
+            {
+                var content = await response.Content.ReadAsStringAsync(cts.Token);
+                Console.WriteLine($"[WorkOrders] Response content length: {content.Length}");
+                
+                var workOrders = JsonSerializer.Deserialize(content, AppJsonSerializerContext.Default.ListWorkOrderDto);
+                
+                if (workOrders != null)
+                {
+                    _workOrders = workOrders;
+                    Console.WriteLine($"[WorkOrders] Cargadas {_workOrders.Count} órdenes");
+                }
+            }
+            else
+            {
+                var errorContent = await response.Content.ReadAsStringAsync(cts.Token);
+                Console.WriteLine($"[WorkOrders] Error response: {errorContent}");
+                _errorMessage = $"Error al cargar órdenes: {response.StatusCode}";
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[WorkOrders] Exception: {ex.GetType().Name} - {ex.Message}");
+            Console.WriteLine($"[WorkOrders] Stack: {ex.StackTrace}");
+            _errorMessage = $"Error: {ex.Message}";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+}

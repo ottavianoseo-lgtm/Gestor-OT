@@ -1,0 +1,103 @@
+@page "/lots"
+@using GestorOT.Shared.Dtos
+@using GestorOT.Shared
+@using System.Text.Json
+@inject HttpClient Http
+
+<PageTitle>Lotes - GestorOT</PageTitle>
+
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+    <h2 style="margin: 0;">Gestión de Lotes</h2>
+</div>
+
+@if (!string.IsNullOrEmpty(_errorMessage))
+{
+    <Alert Type="@AlertType.Error" Message="@_errorMessage" ShowIcon="true" Style="margin-bottom: 16px;" />
+}
+
+@if (_loading)
+{
+    <div style="display: flex; justify-content: center; padding: 48px;">
+        <Spin Size="@SpinSize.Large" Tip="Cargando lotes..." />
+    </div>
+}
+else
+{
+    <Table TItem="LotDto" DataSource="_lots" Loading="_loading" Size="@TableSize.Middle">
+        <PropertyColumn Property="c => c.Name" Title="Nombre" Sortable />
+        <PropertyColumn Property="c => c.FieldName" Title="Campo" Sortable />
+        <PropertyColumn Property="c => c.Status" Title="Estado">
+            <Tag Color="@(context.Status == "Active" ? "green" : "red")">
+                @(context.Status == "Active" ? "Activo" : "Inactivo")
+            </Tag>
+        </PropertyColumn>
+        <ActionColumn Title="Geometría">
+            @{
+                var hasGeometry = !string.IsNullOrEmpty(context.GeoJson);
+            }
+            <Tag Color="@(hasGeometry ? "blue" : "default")">
+                @(hasGeometry ? "Con geometría" : "Sin geometría")
+            </Tag>
+        </ActionColumn>
+    </Table>
+}
+
+@code {
+    private List<LotDto> _lots = new();
+    private bool _loading = true;
+    private bool _hasLoaded = false;
+    private string? _errorMessage;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && !_hasLoaded)
+        {
+            _hasLoaded = true;
+            await LoadLotsAsync();
+            StateHasChanged();
+        }
+    }
+
+    private async Task LoadLotsAsync()
+    {
+        try
+        {
+            Console.WriteLine("[Lotes] Iniciando carga de lotes...");
+            
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+            var response = await Http.GetAsync("api/lots", cts.Token);
+            
+            Console.WriteLine($"[Lotes] Response status: {response.StatusCode}");
+            
+            if (response.IsSuccessStatusCode)
+            {
+                var content = await response.Content.ReadAsStringAsync(cts.Token);
+                Console.WriteLine($"[Lotes] Response content length: {content.Length}");
+                
+                var lots = JsonSerializer.Deserialize(content, AppJsonSerializerContext.Default.ListLotDto);
+                
+                if (lots != null)
+                {
+                    _lots = lots;
+                    Console.WriteLine($"[Lotes] Cargados {_lots.Count} lotes");
+                }
+            }
+            else
+            {
+                var errorContent = await response.Content.ReadAsStringAsync(cts.Token);
+                Console.WriteLine($"[Lotes] Error response: {errorContent}");
+                _errorMessage = $"Error al cargar lotes: {response.StatusCode}";
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Lotes] Exception: {ex.GetType().Name} - {ex.Message}");
+            Console.WriteLine($"[Lotes] Stack: {ex.StackTrace}");
+            _errorMessage = $"Error: {ex.Message}";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+}
