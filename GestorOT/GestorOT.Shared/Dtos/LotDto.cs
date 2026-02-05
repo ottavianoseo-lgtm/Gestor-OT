@@ -48,3 +48,11 @@ public class GeoJsonFeatureCollection
     public string Type { get; set; } = "FeatureCollection";
     public List<GeoJsonFeature> Features { get; set; } = new();
 }
+
+public class DashboardStatsDto
+{
+    public int FieldsCount { get; set; }
+    public int LotsCount { get; set; }
+    public int PendingWorkOrders { get; set; }
+    public int CompletedWorkOrders { get; set; }
+}
