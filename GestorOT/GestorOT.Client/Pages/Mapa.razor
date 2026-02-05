@@ -1,0 +1,169 @@
+@page "/mapa"
+@using GestorOT.Shared.Dtos
+@using GestorOT.Shared
+@using System.Text.Json
+@inject HttpClient Http
+@inject IJSRuntime JS
+
+<PageTitle>Explorador de Lotes - GestorOT</PageTitle>
+
+<div class="map-container">
+    <div id="map" class="map-view"></div>
+    
+    @if (_loading)
+    {
+        <div class="map-overlay">
+            <Spin Size="@SpinSize.Large" Tip="Cargando lotes..." />
+        </div>
+    }
+    
+    @if (!string.IsNullOrEmpty(_errorMessage))
+    {
+        <div class="map-error">
+            <Alert Type="@AlertType.Error" Message="@_errorMessage" ShowIcon="true" />
+        </div>
+    }
+    
+    <div class="map-controls">
+        <Card Style="width: 200px;">
+            <div style="font-weight: bold; margin-bottom: 8px;">Leyenda</div>
+            <div style="display: flex; align-items: center; margin-bottom: 4px;">
+                <div style="width: 16px; height: 16px; background: #2ECC71; border-radius: 3px; margin-right: 8px;"></div>
+                <span>Lote Activo</span>
+            </div>
+            <div style="display: flex; align-items: center;">
+                <div style="width: 16px; height: 16px; background: #E74C3C; border-radius: 3px; margin-right: 8px;"></div>
+                <span>Lote Inactivo</span>
+            </div>
+            <Divider Style="margin: 12px 0;" />
+            <div style="font-size: 12px; color: #888;">
+                Lotes: @_lotsCount
+            </div>
+        </Card>
+    </div>
+</div>
+
+<style>
+    .map-container {
+        position: relative;
+        width: 100%;
+        height: calc(100vh - 64px);
+    }
+    
+    .map-view {
+        width: 100%;
+        height: 100%;
+    }
+    
+    .map-overlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(255, 255, 255, 0.8);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+    }
+    
+    .map-error {
+        position: absolute;
+        top: 16px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 1001;
+        max-width: 400px;
+    }
+    
+    .map-controls {
+        position: absolute;
+        top: 16px;
+        right: 16px;
+        z-index: 999;
+    }
+</style>
+
+@code {
+    private int _lotsCount = 0;
+    private bool _loading = true;
+    private bool _hasLoaded = false;
+    private string? _errorMessage;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && !_hasLoaded)
+        {
+            _hasLoaded = true;
+            await InitializeMapAsync();
+            StateHasChanged();
+        }
+    }
+
+    private async Task InitializeMapAsync()
+    {
+        try
+        {
+            await JS.InvokeAsync<bool>("mapInterop.initMap", "map", -34.6, -58.5, 10);
+            
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+            var response = await Http.GetAsync("api/lots/geojson", cts.Token);
+            
+            if (response.IsSuccessStatusCode)
+            {
+                var content = await response.Content.ReadAsStringAsync(cts.Token);
+                var featureCollection = JsonSerializer.Deserialize(content, AppJsonSerializerContext.Default.GeoJsonFeatureCollection);
+                
+                if (featureCollection?.Features != null)
+                {
+                    _lotsCount = featureCollection.Features.Count;
+                    
+                    foreach (var feature in featureCollection.Features)
+                    {
+                        if (feature.Geometry?.Coordinates != null && feature.Properties != null)
+                        {
+                            var lotId = feature.Properties.TryGetValue("id", out var id) ? id?.ToString() ?? "" : "";
+                            var lotName = feature.Properties.TryGetValue("name", out var name) ? name?.ToString() ?? "" : "";
+                            var status = feature.Properties.TryGetValue("status", out var s) ? s?.ToString() ?? "Active" : "Active";
+                            
+                            var leafletCoords = ConvertToLeafletCoords(feature.Geometry.Coordinates);
+                            var coordsJson = JsonSerializer.Serialize(leafletCoords);
+                            
+                            await JS.InvokeAsync<bool>("mapInterop.addLotPolygon", 
+                                lotId, 
+                                lotName, 
+                                status, 
+                                50.0,
+                                coordsJson);
+                        }
+                    }
+                    
+                    if (_lotsCount > 0)
+                    {
+                        await JS.InvokeAsync<bool>("mapInterop.fitAllLots");
+                    }
+                }
+            }
+            else
+            {
+                _errorMessage = "Error al cargar los lotes del servidor";
+            }
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Error: {ex.Message}";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private static double[][][] ConvertToLeafletCoords(double[][][] geoJsonCoords)
+    {
+        return geoJsonCoords.Select(ring => 
+            ring.Select(coord => new double[] { coord[1], coord[0] }).ToArray()
+        ).ToArray();
+    }
+}

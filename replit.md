@@ -53,6 +53,19 @@ cd GestorOT/GestorOT && ASPNETCORE_ENVIRONMENT=Development dotnet run --urls "ht
 - Error display using AntDesign Alert components
 - CancellationToken with 15s timeout for HTTP requests
 
+## Map Features
+- Leaflet map with Esri satellite tiles and reference layer
+- Lot polygons colored by status (Green=#2ECC71 Active, Red=#E74C3C Inactive)
+- GeoJSON coordinate conversion (lon/lat to lat/lon for Leaflet)
+- preferCanvas: true for performance
+- Legend with lot count
+- Auto-fit to show all lots
+
+## JS Interop Pattern
+- Uses global window.mapInterop object (not ES modules)
+- Script loaded in App.razor after Leaflet
+- Called via IJSRuntime.InvokeAsync("mapInterop.methodName", args)
+
 ## Recent Changes
 - 2026-02-05: Inicialización del proyecto con arquitectura Hosted Blazor
 - 2026-02-05: Configuración de Npgsql 10 con NetTopologySuite
@@ -66,3 +79,5 @@ cd GestorOT/GestorOT && ASPNETCORE_ENVIRONMENT=Development dotnet run --urls "ht
 - 2026-02-05: Refactored pages to use OnAfterRenderAsync for data loading
 - 2026-02-05: Implemented error handling with visible Alert components
 - 2026-02-05: AsNoTracking() applied to all read-only controller queries
+- 2026-02-05: Map page (Mapa.razor) with Leaflet and lot polygons working
+- 2026-02-05: JS interop using global object instead of ES modules (Blazor fingerprinting issue)
