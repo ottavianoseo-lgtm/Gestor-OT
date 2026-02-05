@@ -1,0 +1,89 @@
+@page "/fields"
+@using GestorOT.Shared.Dtos
+@using GestorOT.Shared
+@using System.Net.Http.Json
+@using System.Text.Json
+@inject HttpClient Http
+@inject IMessageService Message
+
+<PageTitle>Campos - GestorOT</PageTitle>
+
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+    <h2 style="margin: 0;">Gestión de Campos</h2>
+    <Button Type="@ButtonType.Primary" Icon="@IconType.Outline.Plus">
+        Nuevo Campo
+    </Button>
+</div>
+
+@if (!string.IsNullOrEmpty(_debugInfo))
+{
+    <Alert Type="@AlertType.Info" Message="@_debugInfo" Style="margin-bottom: 16px;" />
+}
+
+<Card Bordered="false" Style="box-shadow: 0 2px 8px rgba(0,0,0,0.09);">
+    <Table TItem="FieldDto" 
+           DataSource="@_fields" 
+           Loading="@_loading"
+           Size="TableSize.Middle"
+           Bordered>
+        <PropertyColumn Property="c => c.Name" Title="Nombre del Campo" Sortable />
+        <PropertyColumn Property="c => c.TotalArea" Title="Área Total (has)">
+            @context.TotalArea.ToString("N2")
+        </PropertyColumn>
+        <Column TData="int" Title="Lotes">
+            <Tag Color="@("blue")">@context.Lots.Count lotes</Tag>
+        </Column>
+        <PropertyColumn Property="c => c.CreatedAt" Title="Creado">
+            @context.CreatedAt.ToString("dd/MM/yyyy")
+        </PropertyColumn>
+        <ActionColumn Title="Acciones">
+            <Space>
+                <SpaceItem>
+                    <Button Type="@ButtonType.Link" Icon="@IconType.Outline.Edit" Size="@ButtonSize.Small">
+                        Editar
+                    </Button>
+                </SpaceItem>
+                <SpaceItem>
+                    <Button Type="@ButtonType.Link" Danger Icon="@IconType.Outline.Delete" Size="@ButtonSize.Small">
+                        Eliminar
+                    </Button>
+                </SpaceItem>
+            </Space>
+        </ActionColumn>
+    </Table>
+</Card>
+
+@code {
+    private List<FieldDto> _fields = new();
+    private bool _loading = true;
+    private string _debugInfo = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var response = await Http.GetAsync("api/fields");
+            var content = await response.Content.ReadAsStringAsync();
+            _debugInfo = $"Status: {response.StatusCode}, Length: {content.Length}";
+            
+            if (response.IsSuccessStatusCode && !string.IsNullOrEmpty(content))
+            {
+                var options = new JsonSerializerOptions
+                {
+                    PropertyNameCaseInsensitive = true
+                };
+                _fields = JsonSerializer.Deserialize<List<FieldDto>>(content, options) ?? new();
+                _debugInfo += $", Campos: {_fields.Count}";
+            }
+        }
+        catch (Exception ex)
+        {
+            _debugInfo = $"Error: {ex.GetType().Name}: {ex.Message}";
+            Message.Error($"Error al cargar datos: {ex.Message}");
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+}

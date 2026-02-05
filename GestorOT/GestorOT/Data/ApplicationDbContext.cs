@@ -23,7 +23,7 @@ public class ApplicationDbContext : DbContext
 
         modelBuilder.Entity<Field>(entity =>
         {
-            entity.ToTable("Fields");
+            entity.ToTable("Fields", "public");
             entity.HasKey(e => e.Id);
             entity.Property(e => e.Name).IsRequired().HasMaxLength(200);
             entity.Property(e => e.TotalArea).HasPrecision(18, 4);
@@ -32,7 +32,7 @@ public class ApplicationDbContext : DbContext
 
         modelBuilder.Entity<Lot>(entity =>
         {
-            entity.ToTable("Lots");
+            entity.ToTable("Lots", "public");
             entity.HasKey(e => e.Id);
             entity.Property(e => e.Name).IsRequired().HasMaxLength(200);
             entity.Property(e => e.Status).HasMaxLength(50);
@@ -47,7 +47,7 @@ public class ApplicationDbContext : DbContext
 
         modelBuilder.Entity<WorkOrder>(entity =>
         {
-            entity.ToTable("WorkOrders");
+            entity.ToTable("WorkOrders", "public");
             entity.HasKey(e => e.Id);
             entity.Property(e => e.Description).HasMaxLength(1000);
             entity.Property(e => e.Status).HasMaxLength(50);
@@ -61,7 +61,7 @@ public class ApplicationDbContext : DbContext
 
         modelBuilder.Entity<Inventory>(entity =>
         {
-            entity.ToTable("Inventories");
+            entity.ToTable("Inventories", "public");
             entity.HasKey(e => e.Id);
             entity.Property(e => e.Category).HasMaxLength(100);
             entity.Property(e => e.ItemName).IsRequired().HasMaxLength(200);
@@ -86,7 +86,7 @@ public class Lot
     public Guid FieldId { get; set; }
     public string Name { get; set; } = string.Empty;
     public string Status { get; set; } = "Active";
-    public Polygon? Geometry { get; set; }
+    public Geometry? Geometry { get; set; }
     public Field? Field { get; set; }
     public ICollection<WorkOrder> WorkOrders { get; set; } = new List<WorkOrder>();
 }

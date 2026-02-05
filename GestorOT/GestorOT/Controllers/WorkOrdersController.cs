@@ -20,42 +20,42 @@ public class WorkOrdersController : ControllerBase
     public async Task<ActionResult<List<WorkOrderDto>>> GetWorkOrders()
     {
         var workOrders = await _context.WorkOrders
+            .AsNoTracking()
             .Include(w => w.Lot)
             .OrderByDescending(w => w.DueDate)
             .ToListAsync();
 
-        return workOrders.Select(w => new WorkOrderDto
-        {
-            Id = w.Id,
-            LotId = w.LotId,
-            Description = w.Description,
-            Status = w.Status,
-            AssignedTo = w.AssignedTo,
-            DueDate = w.DueDate,
-            LotName = w.Lot?.Name
-        }).ToList();
+        return workOrders.Select(w => new WorkOrderDto(
+            w.Id,
+            w.LotId,
+            w.Description,
+            w.Status,
+            w.AssignedTo,
+            w.DueDate,
+            w.Lot?.Name
+        )).ToList();
     }
 
     [HttpGet("{id:guid}")]
     public async Task<ActionResult<WorkOrderDto>> GetWorkOrder(Guid id)
     {
         var workOrder = await _context.WorkOrders
+            .AsNoTracking()
             .Include(w => w.Lot)
             .FirstOrDefaultAsync(w => w.Id == id);
 
         if (workOrder == null)
             return NotFound();
 
-        return new WorkOrderDto
-        {
-            Id = workOrder.Id,
-            LotId = workOrder.LotId,
-            Description = workOrder.Description,
-            Status = workOrder.Status,
-            AssignedTo = workOrder.AssignedTo,
-            DueDate = workOrder.DueDate,
-            LotName = workOrder.Lot?.Name
-        };
+        return new WorkOrderDto(
+            workOrder.Id,
+            workOrder.LotId,
+            workOrder.Description,
+            workOrder.Status,
+            workOrder.AssignedTo,
+            workOrder.DueDate,
+            workOrder.Lot?.Name
+        );
     }
 
     [HttpPost]
@@ -74,8 +74,17 @@ public class WorkOrdersController : ControllerBase
         _context.WorkOrders.Add(workOrder);
         await _context.SaveChangesAsync();
 
-        dto.Id = workOrder.Id;
-        return CreatedAtAction(nameof(GetWorkOrder), new { id = workOrder.Id }, dto);
+        var result = new WorkOrderDto(
+            workOrder.Id,
+            workOrder.LotId,
+            workOrder.Description,
+            workOrder.Status,
+            workOrder.AssignedTo,
+            workOrder.DueDate,
+            null
+        );
+
+        return CreatedAtAction(nameof(GetWorkOrder), new { id = workOrder.Id }, result);
     }
 
     [HttpPut("{id:guid}")]

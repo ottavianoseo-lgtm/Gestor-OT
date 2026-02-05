@@ -22,64 +22,64 @@ public class LotsController : ControllerBase
     public async Task<ActionResult<List<LotDto>>> GetLots()
     {
         var lots = await _context.Lots
+            .AsNoTracking()
             .Include(l => l.Field)
             .OrderBy(l => l.Name)
             .ToListAsync();
 
-        return lots.Select(l => new LotDto
-        {
-            Id = l.Id,
-            FieldId = l.FieldId,
-            Name = l.Name,
-            Status = l.Status,
-            FieldName = l.Field?.Name,
-            GeoJson = l.Geometry != null ? GeometryToGeoJson(l.Geometry) : null
-        }).ToList();
+        return lots.Select(l => new LotDto(
+            l.Id,
+            l.FieldId,
+            l.Name,
+            l.Status,
+            l.Geometry != null ? GeometryToGeoJson(l.Geometry) : null,
+            l.Field?.Name
+        )).ToList();
     }
 
     [HttpGet("{id:guid}")]
     public async Task<ActionResult<LotDto>> GetLot(Guid id)
     {
         var lot = await _context.Lots
+            .AsNoTracking()
             .Include(l => l.Field)
             .FirstOrDefaultAsync(l => l.Id == id);
 
         if (lot == null)
             return NotFound();
 
-        return new LotDto
-        {
-            Id = lot.Id,
-            FieldId = lot.FieldId,
-            Name = lot.Name,
-            Status = lot.Status,
-            FieldName = lot.Field?.Name,
-            GeoJson = lot.Geometry != null ? GeometryToGeoJson(lot.Geometry) : null
-        };
+        return new LotDto(
+            lot.Id,
+            lot.FieldId,
+            lot.Name,
+            lot.Status,
+            lot.Geometry != null ? GeometryToGeoJson(lot.Geometry) : null,
+            lot.Field?.Name
+        );
     }
 
     [HttpGet("geojson")]
     public async Task<ActionResult<GeoJsonFeatureCollection>> GetLotsGeoJson()
     {
         var lots = await _context.Lots
+            .AsNoTracking()
             .Include(l => l.Field)
             .Where(l => l.Geometry != null)
             .ToListAsync();
 
-        var features = lots.Select(l => new GeoJsonFeature
-        {
-            Type = "Feature",
-            Properties = new Dictionary<string, object>
+        var features = lots.Select(l => new GeoJsonFeature(
+            "Feature",
+            new Dictionary<string, object>
             {
                 ["id"] = l.Id.ToString(),
                 ["name"] = l.Name,
                 ["status"] = l.Status,
                 ["fieldName"] = l.Field?.Name ?? ""
             },
-            Geometry = l.Geometry != null ? ParseGeometry(l.Geometry) : null
-        }).ToList();
+            l.Geometry != null ? ParseGeometry((Polygon)l.Geometry) : null
+        )).ToList();
 
-        return new GeoJsonFeatureCollection { Features = features };
+        return new GeoJsonFeatureCollection("FeatureCollection", features);
     }
 
     [HttpPost]
@@ -97,8 +97,16 @@ public class LotsController : ControllerBase
         _context.Lots.Add(lot);
         await _context.SaveChangesAsync();
 
-        dto.Id = lot.Id;
-        return CreatedAtAction(nameof(GetLot), new { id = lot.Id }, dto);
+        var result = new LotDto(
+            lot.Id,
+            lot.FieldId,
+            lot.Name,
+            lot.Status,
+            dto.GeoJson,
+            null
+        );
+
+        return CreatedAtAction(nameof(GetLot), new { id = lot.Id }, result);
     }
 
     [HttpPut("{id:guid}")]
@@ -142,15 +150,11 @@ public class LotsController : ControllerBase
         return reader.Read<Polygon>(geoJson);
     }
 
-    private static GeoJsonGeometry? ParseGeometry(Polygon polygon)
+    private static GeoJsonGeometry ParseGeometry(Polygon polygon)
     {
         var coords = polygon.Coordinates;
-        var ring = coords.Select(c => new[] { c.X, c.Y }).ToArray();
+        var ring = coords.Select(c => new double[] { c.X, c.Y }).ToArray();
         
-        return new GeoJsonGeometry
-        {
-            Type = "Polygon",
-            Coordinates = new[] { ring }
-        };
+        return new GeoJsonGeometry("Polygon", new double[][][] { ring });
     }
 }

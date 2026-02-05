@@ -20,50 +20,49 @@ public class FieldsController : ControllerBase
     public async Task<ActionResult<List<FieldDto>>> GetFields()
     {
         var fields = await _context.Fields
+            .AsNoTracking()
             .Include(f => f.Lots)
             .OrderBy(f => f.Name)
+            .Select(f => new FieldDto(
+                f.Id,
+                f.Name,
+                f.TotalArea,
+                f.CreatedAt,
+                f.Lots.Select(l => new LotSummaryDto(
+                    l.Id,
+                    l.Name,
+                    l.Status
+                )).ToList()
+            ))
             .ToListAsync();
 
-        return fields.Select(f => new FieldDto
-        {
-            Id = f.Id,
-            Name = f.Name,
-            TotalArea = f.TotalArea,
-            CreatedAt = f.CreatedAt,
-            Lots = f.Lots.Select(l => new LotDto
-            {
-                Id = l.Id,
-                FieldId = l.FieldId,
-                Name = l.Name,
-                Status = l.Status
-            }).ToList()
-        }).ToList();
+        return fields;
     }
 
     [HttpGet("{id:guid}")]
     public async Task<ActionResult<FieldDto>> GetField(Guid id)
     {
         var field = await _context.Fields
+            .AsNoTracking()
             .Include(f => f.Lots)
-            .FirstOrDefaultAsync(f => f.Id == id);
+            .Where(f => f.Id == id)
+            .Select(f => new FieldDto(
+                f.Id,
+                f.Name,
+                f.TotalArea,
+                f.CreatedAt,
+                f.Lots.Select(l => new LotSummaryDto(
+                    l.Id,
+                    l.Name,
+                    l.Status
+                )).ToList()
+            ))
+            .FirstOrDefaultAsync();
 
         if (field == null)
             return NotFound();
 
-        return new FieldDto
-        {
-            Id = field.Id,
-            Name = field.Name,
-            TotalArea = field.TotalArea,
-            CreatedAt = field.CreatedAt,
-            Lots = field.Lots.Select(l => new LotDto
-            {
-                Id = l.Id,
-                FieldId = l.FieldId,
-                Name = l.Name,
-                Status = l.Status
-            }).ToList()
-        };
+        return field;
     }
 
     [HttpPost]
@@ -80,10 +79,15 @@ public class FieldsController : ControllerBase
         _context.Fields.Add(field);
         await _context.SaveChangesAsync();
 
-        dto.Id = field.Id;
-        dto.CreatedAt = field.CreatedAt;
+        var result = new FieldDto(
+            field.Id,
+            field.Name,
+            field.TotalArea,
+            field.CreatedAt,
+            new List<LotSummaryDto>()
+        );
 
-        return CreatedAtAction(nameof(GetField), new { id = field.Id }, dto);
+        return CreatedAtAction(nameof(GetField), new { id = field.Id }, result);
     }
 
     [HttpPut("{id:guid}")]

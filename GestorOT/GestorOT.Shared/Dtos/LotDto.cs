@@ -1,58 +1,61 @@
 namespace GestorOT.Shared.Dtos;
 
-public class LotDto
+public record LotDto(
+    Guid Id,
+    Guid FieldId,
+    string Name,
+    string Status,
+    string? GeoJson = null,
+    string? FieldName = null
+)
 {
-    public Guid Id { get; set; }
-    public Guid FieldId { get; set; }
-    public string Name { get; set; } = string.Empty;
-    public string Status { get; set; } = "Active";
-    public string? GeoJson { get; set; }
-    public string? FieldName { get; set; }
+    public LotDto() : this(Guid.Empty, Guid.Empty, string.Empty, "Active", null, null) { }
 }
 
-public class FieldDto
+public record WorkOrderDto(
+    Guid Id,
+    Guid LotId,
+    string Description,
+    string Status,
+    string AssignedTo,
+    DateTime DueDate,
+    string? LotName = null
+)
 {
-    public Guid Id { get; set; }
-    public string Name { get; set; } = string.Empty;
-    public double TotalArea { get; set; }
-    public DateTime CreatedAt { get; set; }
-    public List<LotDto> Lots { get; set; } = new();
+    public WorkOrderDto() : this(Guid.Empty, Guid.Empty, string.Empty, "Pending", string.Empty, DateTime.MinValue, null) { }
 }
 
-public class WorkOrderDto
+public record GeoJsonFeature(
+    string Type,
+    Dictionary<string, object>? Properties,
+    GeoJsonGeometry? Geometry
+)
 {
-    public Guid Id { get; set; }
-    public Guid LotId { get; set; }
-    public string Description { get; set; } = string.Empty;
-    public string Status { get; set; } = "Pending";
-    public string AssignedTo { get; set; } = string.Empty;
-    public DateTime DueDate { get; set; }
-    public string? LotName { get; set; }
+    public GeoJsonFeature() : this("Feature", null, null) { }
 }
 
-public class GeoJsonFeature
+public record GeoJsonGeometry(
+    string Type,
+    double[][][]? Coordinates
+)
 {
-    public string Type { get; set; } = "Feature";
-    public Dictionary<string, object>? Properties { get; set; }
-    public GeoJsonGeometry? Geometry { get; set; }
+    public GeoJsonGeometry() : this("Polygon", null) { }
 }
 
-public class GeoJsonGeometry
+public record GeoJsonFeatureCollection(
+    string Type,
+    List<GeoJsonFeature> Features
+)
 {
-    public string Type { get; set; } = "Polygon";
-    public double[][][]? Coordinates { get; set; }
+    public GeoJsonFeatureCollection() : this("FeatureCollection", new List<GeoJsonFeature>()) { }
 }
 
-public class GeoJsonFeatureCollection
+public record DashboardStatsDto(
+    int FieldsCount,
+    int LotsCount,
+    int PendingWorkOrders,
+    int CompletedWorkOrders
+)
 {
-    public string Type { get; set; } = "FeatureCollection";
-    public List<GeoJsonFeature> Features { get; set; } = new();
-}
-
-public class DashboardStatsDto
-{
-    public int FieldsCount { get; set; }
-    public int LotsCount { get; set; }
-    public int PendingWorkOrders { get; set; }
-    public int CompletedWorkOrders { get; set; }
+    public DashboardStatsDto() : this(0, 0, 0, 0) { }
 }

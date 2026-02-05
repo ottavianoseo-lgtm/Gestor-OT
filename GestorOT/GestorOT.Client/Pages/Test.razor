@@ -1,0 +1,27 @@
+@page "/test"
+@inject HttpClient Http
+
+<h3>Test API</h3>
+
+<p>Status: @_status</p>
+<p>Data: @_data</p>
+
+@code {
+    private string _status = "Loading...";
+    private string _data = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _status = "Fetching...";
+            var response = await Http.GetStringAsync("api/dashboard/stats");
+            _data = response;
+            _status = "Done!";
+        }
+        catch (Exception ex)
+        {
+            _status = $"Error: {ex.Message}";
+        }
+    }
+}
