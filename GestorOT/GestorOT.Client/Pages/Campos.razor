@@ -4,7 +4,6 @@
 @using System.Net.Http.Json
 @using System.Text.Json
 @inject HttpClient Http
-@inject IMessageService Message
 
 <PageTitle>Campos - GestorOT</PageTitle>
 
@@ -15,9 +14,9 @@
     </Button>
 </div>
 
-@if (!string.IsNullOrEmpty(_debugInfo))
+@if (!string.IsNullOrEmpty(_errorMessage))
 {
-    <Alert Type="@AlertType.Info" Message="@_debugInfo" Style="margin-bottom: 16px;" />
+    <Alert Type="@AlertType.Error" Message="@_errorMessage" ShowIcon="true" Closable="true" Style="margin-bottom: 16px;" />
 }
 
 <Card Bordered="false" Style="box-shadow: 0 2px 8px rgba(0,0,0,0.09);">
@@ -56,30 +55,43 @@
 @code {
     private List<FieldDto> _fields = new();
     private bool _loading = true;
-    private string _debugInfo = "";
+    private bool _hasLoaded = false;
+    private string? _errorMessage;
 
-    protected override async Task OnInitializedAsync()
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && !_hasLoaded)
+        {
+            _hasLoaded = true;
+            await LoadDataAsync();
+            StateHasChanged();
+        }
+    }
+
+    private async Task LoadDataAsync()
     {
         try
         {
-            var response = await Http.GetAsync("api/fields");
-            var content = await response.Content.ReadAsStringAsync();
-            _debugInfo = $"Status: {response.StatusCode}, Length: {content.Length}";
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+            var response = await Http.GetAsync("api/fields", cts.Token);
             
-            if (response.IsSuccessStatusCode && !string.IsNullOrEmpty(content))
+            if (response.IsSuccessStatusCode)
             {
-                var options = new JsonSerializerOptions
-                {
-                    PropertyNameCaseInsensitive = true
-                };
-                _fields = JsonSerializer.Deserialize<List<FieldDto>>(content, options) ?? new();
-                _debugInfo += $", Campos: {_fields.Count}";
+                var content = await response.Content.ReadAsStringAsync(cts.Token);
+                _fields = JsonSerializer.Deserialize(content, AppJsonSerializerContext.Default.ListFieldDto) ?? new();
             }
+            else
+            {
+                _errorMessage = $"Error al cargar campos: {response.StatusCode}";
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            _errorMessage = "La solicitud tardó demasiado tiempo. Intente recargar la página.";
         }
         catch (Exception ex)
         {
-            _debugInfo = $"Error: {ex.GetType().Name}: {ex.Message}";
-            Message.Error($"Error al cargar datos: {ex.Message}");
+            _errorMessage = $"Error de conexión: {ex.Message}";
         }
         finally
         {

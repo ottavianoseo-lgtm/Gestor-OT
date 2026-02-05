@@ -1,12 +1,16 @@
 @page "/"
 @using GestorOT.Shared.Dtos
+@using GestorOT.Shared
 @using System.Net.Http.Json
 @using System.Text.Json
 @inject HttpClient Http
 
 <PageTitle>Dashboard - GestorOT</PageTitle>
 
-<Alert Type="@AlertType.Info" Message="@(_loading ? "Cargando..." : _debugInfo)" Style="margin-bottom: 16px;" />
+@if (!string.IsNullOrEmpty(_errorMessage))
+{
+    <Alert Type="@AlertType.Error" Message="@_errorMessage" ShowIcon="true" Closable="true" Style="margin-bottom: 16px;" />
+}
 
 <Row Gutter="(16, 16)">
     <Col Span="6">
@@ -79,7 +83,7 @@
             <div style="padding: 16px 0;">
                 <div style="display: flex; justify-content: space-between; margin-bottom: 16px;">
                     <span>Conexión a Supabase</span>
-                    <Tag Color="@(_isConnected ? "green" : "red")">@(_isConnected ? "Activo" : "Desconectado")</Tag>
+                    <Tag Color="@(_isConnected ? "green" : "orange")">@(_isConnected ? "Activo" : "Conectando...")</Tag>
                 </div>
                 <div style="display: flex; justify-content: space-between; margin-bottom: 16px;">
                     <span>PostGIS</span>
@@ -99,55 +103,57 @@
     private List<WorkOrderDto> _recentOrders = new();
     private bool _loading = true;
     private bool _isConnected = false;
+    private bool _hasLoaded = false;
     private string _lastSync = "Cargando...";
-    private string _debugInfo = "";
+    private string? _errorMessage;
 
-    private static readonly JsonSerializerOptions _jsonOptions = new()
+    protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        PropertyNameCaseInsensitive = true
-    };
+        if (firstRender && !_hasLoaded)
+        {
+            _hasLoaded = true;
+            await LoadDataAsync();
+            StateHasChanged();
+        }
+    }
 
-    protected override async Task OnInitializedAsync()
+    private async Task LoadDataAsync()
     {
-        _debugInfo = "Iniciando...";
-        StateHasChanged();
-        
         try
         {
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-            
-            _debugInfo = "Llamando API stats...";
-            StateHasChanged();
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
             
             var statsResponse = await Http.GetAsync("api/dashboard/stats", cts.Token);
-            var statsContent = await statsResponse.Content.ReadAsStringAsync(cts.Token);
-            
-            _debugInfo = $"Stats: {statsResponse.StatusCode} ({statsContent.Length} bytes)";
-            StateHasChanged();
-            
-            if (statsResponse.IsSuccessStatusCode && !string.IsNullOrEmpty(statsContent))
+            if (statsResponse.IsSuccessStatusCode)
             {
-                _stats = JsonSerializer.Deserialize<DashboardStatsDto>(statsContent, _jsonOptions) ?? new();
-                _debugInfo = $"Stats OK: Fields={_stats.FieldsCount}, Lots={_stats.LotsCount}";
+                var statsContent = await statsResponse.Content.ReadAsStringAsync(cts.Token);
+                _stats = JsonSerializer.Deserialize(statsContent, AppJsonSerializerContext.Default.DashboardStatsDto) ?? new();
+            }
+            else
+            {
+                _errorMessage = $"Error al obtener estadísticas: {statsResponse.StatusCode}";
             }
             
             var ordersResponse = await Http.GetAsync("api/dashboard/recent-orders", cts.Token);
-            var ordersContent = await ordersResponse.Content.ReadAsStringAsync(cts.Token);
-            
-            if (ordersResponse.IsSuccessStatusCode && !string.IsNullOrEmpty(ordersContent))
+            if (ordersResponse.IsSuccessStatusCode)
             {
-                _recentOrders = JsonSerializer.Deserialize<List<WorkOrderDto>>(ordersContent, _jsonOptions) ?? new();
+                var ordersContent = await ordersResponse.Content.ReadAsStringAsync(cts.Token);
+                _recentOrders = JsonSerializer.Deserialize(ordersContent, AppJsonSerializerContext.Default.ListWorkOrderDto) ?? new();
             }
             
             _isConnected = true;
-            _lastSync = "Ahora";
-            _debugInfo = $"Conectado: {_stats.FieldsCount} campos, {_stats.LotsCount} lotes, {_recentOrders.Count} ordenes";
+            _lastSync = DateTime.Now.ToString("HH:mm:ss");
+        }
+        catch (OperationCanceledException)
+        {
+            _errorMessage = "La solicitud tardó demasiado tiempo. Intente recargar la página.";
+            _isConnected = false;
         }
         catch (Exception ex)
         {
-            _debugInfo = $"Error: {ex.GetType().Name}: {ex.Message}";
+            _errorMessage = $"Error de conexión: {ex.Message}";
             _isConnected = false;
-            _lastSync = "Error de conexión";
+            _lastSync = "Error";
         }
         finally
         {
