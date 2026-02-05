@@ -1,11 +1,14 @@
 @page "/"
+@using GestorOT.Shared.Dtos
+@using System.Net.Http.Json
+@inject HttpClient Http
 
 <PageTitle>Dashboard - GestorOT</PageTitle>
 
 <Row Gutter="(16, 16)">
     <Col Span="6">
         <Card Bordered="false" Style="box-shadow: 0 2px 8px rgba(0,0,0,0.09);">
-            <Statistic Title="Campos Activos" Value="12">
+            <Statistic Title="Campos Activos" Value="@_stats.FieldsCount">
                 <PrefixTemplate>
                     <Icon Type="environment" Theme="IconThemeType.Outline" Style="color: #E74C3C;" />
                 </PrefixTemplate>
@@ -14,7 +17,7 @@
     </Col>
     <Col Span="6">
         <Card Bordered="false" Style="box-shadow: 0 2px 8px rgba(0,0,0,0.09);">
-            <Statistic Title="Lotes Registrados" Value="48">
+            <Statistic Title="Lotes Registrados" Value="@_stats.LotsCount">
                 <PrefixTemplate>
                     <Icon Type="block" Theme="IconThemeType.Outline" Style="color: #E74C3C;" />
                 </PrefixTemplate>
@@ -23,7 +26,7 @@
     </Col>
     <Col Span="6">
         <Card Bordered="false" Style="box-shadow: 0 2px 8px rgba(0,0,0,0.09);">
-            <Statistic Title="OT Pendientes" Value="7" ValueStyle="color: #F1C40F;">
+            <Statistic Title="OT Pendientes" Value="@_stats.PendingWorkOrders" ValueStyle="color: #F1C40F;">
                 <PrefixTemplate>
                     <Icon Type="clock-circle" Theme="IconThemeType.Outline" Style="color: #F1C40F;" />
                 </PrefixTemplate>
@@ -32,7 +35,7 @@
     </Col>
     <Col Span="6">
         <Card Bordered="false" Style="box-shadow: 0 2px 8px rgba(0,0,0,0.09);">
-            <Statistic Title="OT Completadas" Value="156" ValueStyle="color: #2ECC71;">
+            <Statistic Title="OT Completadas" Value="@_stats.CompletedWorkOrders" ValueStyle="color: #2ECC71;">
                 <PrefixTemplate>
                     <Icon Type="check-circle" Theme="IconThemeType.Outline" Style="color: #2ECC71;" />
                 </PrefixTemplate>
@@ -44,19 +47,25 @@
 <Row Gutter="(16, 16)" Style="margin-top: 24px;">
     <Col Span="16">
         <Card Title="Órdenes de Trabajo Recientes" Bordered="false" Style="box-shadow: 0 2px 8px rgba(0,0,0,0.09);">
-            <Table TItem="RecentWorkOrder" DataSource="@_recentOrders" Size="TableSize.Small">
+            <Table TItem="WorkOrderDto" DataSource="@_recentOrders" Size="TableSize.Small" Loading="@_loading">
                 <PropertyColumn Property="c => c.Description" Title="Descripción" />
                 <PropertyColumn Property="c => c.LotName" Title="Lote" />
                 <Column TData="string" Title="Estado">
                     @{
                         var color = context.Status switch
                         {
-                            "Completada" => "green",
-                            "En Progreso" => "gold",
+                            "Completed" => "green",
+                            "InProgress" => "gold",
                             _ => "red"
                         };
+                        var label = context.Status switch
+                        {
+                            "Completed" => "Completada",
+                            "InProgress" => "En Progreso",
+                            _ => "Pendiente"
+                        };
                     }
-                    <Tag Color="@color">@context.Status</Tag>
+                    <Tag Color="@color">@label</Tag>
                 </Column>
                 <PropertyColumn Property="c => c.AssignedTo" Title="Asignado" />
             </Table>
@@ -67,7 +76,7 @@
             <div style="padding: 16px 0;">
                 <div style="display: flex; justify-content: space-between; margin-bottom: 16px;">
                     <span>Conexión a Supabase</span>
-                    <Tag Color="@("green")">Activo</Tag>
+                    <Tag Color="@(_isConnected ? "green" : "red")">@(_isConnected ? "Activo" : "Desconectado")</Tag>
                 </div>
                 <div style="display: flex; justify-content: space-between; margin-bottom: 16px;">
                     <span>PostGIS</span>
@@ -75,7 +84,7 @@
                 </div>
                 <div style="display: flex; justify-content: space-between;">
                     <span>Última sincronización</span>
-                    <span style="color: #888;">Hace 5 min</span>
+                    <span style="color: #888;">@_lastSync</span>
                 </div>
             </div>
         </Card>
@@ -83,19 +92,35 @@
 </Row>
 
 @code {
-    private List<RecentWorkOrder> _recentOrders = new()
+    private DashboardStatsDto _stats = new();
+    private List<WorkOrderDto> _recentOrders = new();
+    private bool _loading = true;
+    private bool _isConnected = false;
+    private string _lastSync = "Cargando...";
+
+    protected override async Task OnInitializedAsync()
     {
-        new() { Description = "Fumigación parcela norte", LotName = "Lote A-1", Status = "Completada", AssignedTo = "Juan P." },
-        new() { Description = "Riego sistema goteo", LotName = "Lote B-3", Status = "En Progreso", AssignedTo = "María G." },
-        new() { Description = "Cosecha temprana", LotName = "Lote C-2", Status = "Pendiente", AssignedTo = "Carlos R." },
-        new() { Description = "Mantenimiento cercas", LotName = "Lote A-4", Status = "En Progreso", AssignedTo = "Ana L." },
-    };
-    
-    private class RecentWorkOrder
-    {
-        public string Description { get; set; } = "";
-        public string LotName { get; set; } = "";
-        public string Status { get; set; } = "";
-        public string AssignedTo { get; set; } = "";
+        try
+        {
+            var statsTask = Http.GetFromJsonAsync<DashboardStatsDto>("api/dashboard/stats");
+            var ordersTask = Http.GetFromJsonAsync<List<WorkOrderDto>>("api/dashboard/recent-orders");
+
+            await Task.WhenAll(statsTask, ordersTask);
+
+            _stats = statsTask.Result ?? new DashboardStatsDto();
+            _recentOrders = ordersTask.Result ?? new List<WorkOrderDto>();
+            _isConnected = true;
+            _lastSync = "Ahora";
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading dashboard: {ex.Message}");
+            _isConnected = false;
+            _lastSync = "Error de conexión";
+        }
+        finally
+        {
+            _loading = false;
+        }
     }
 }
