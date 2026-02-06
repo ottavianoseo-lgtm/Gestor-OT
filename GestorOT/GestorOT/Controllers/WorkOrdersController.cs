@@ -37,24 +37,54 @@ public class WorkOrdersController : ControllerBase
     }
 
     [HttpGet("{id:guid}")]
-    public async Task<ActionResult<WorkOrderDto>> GetWorkOrder(Guid id)
+    public async Task<ActionResult<WorkOrderDetailDto>> GetWorkOrder(Guid id)
     {
         var workOrder = await _context.WorkOrders
             .AsNoTracking()
             .Include(w => w.Lot)
+                .ThenInclude(l => l!.Field)
+            .Include(w => w.Labors)
+                .ThenInclude(l => l.Lot)
+            .Include(w => w.Labors)
+                .ThenInclude(l => l.Supplies)
+                    .ThenInclude(s => s.Supply)
             .FirstOrDefaultAsync(w => w.Id == id);
 
         if (workOrder == null)
             return NotFound();
 
-        return new WorkOrderDto(
+        return new WorkOrderDetailDto(
             workOrder.Id,
             workOrder.LotId,
             workOrder.Description,
             workOrder.Status,
             workOrder.AssignedTo,
             workOrder.DueDate,
-            workOrder.Lot?.Name
+            workOrder.Lot?.Name,
+            workOrder.Lot?.Field?.Name,
+            workOrder.Labors.OrderBy(l => l.CreatedAt).Select(l => new LaborDto(
+                l.Id,
+                l.WorkOrderId,
+                l.LotId,
+                l.LaborType,
+                l.Status,
+                l.ExecutionDate,
+                l.Hectares,
+                l.CreatedAt,
+                l.Lot?.Name,
+                l.Supplies.Select(s => new LaborSupplyDto(
+                    s.Id,
+                    s.LaborId,
+                    s.SupplyId,
+                    s.PlannedDose,
+                    s.RealDose,
+                    s.PlannedTotal,
+                    s.RealTotal,
+                    s.DoseUnit,
+                    s.Supply?.ItemName,
+                    s.Supply?.UnitB
+                )).ToList()
+            )).ToList()
         );
     }
 

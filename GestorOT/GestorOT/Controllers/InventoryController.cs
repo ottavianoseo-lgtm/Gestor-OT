@@ -25,7 +25,7 @@ public class InventoryController : ControllerBase
             .ThenBy(i => i.ItemName)
             .Select(i => new InventoryDto(
                 i.Id, i.Category, i.ItemName, i.CurrentStock, i.ReorderLevel,
-                i.UnitA, i.UnitB, i.ConversionFactor
+                i.UnitA ?? "", i.UnitB ?? "", i.ConversionFactor
             ))
             .ToListAsync();
 
@@ -40,7 +40,7 @@ public class InventoryController : ControllerBase
             .Where(i => i.Id == id)
             .Select(i => new InventoryDto(
                 i.Id, i.Category, i.ItemName, i.CurrentStock, i.ReorderLevel,
-                i.UnitA, i.UnitB, i.ConversionFactor
+                i.UnitA ?? "", i.UnitB ?? "", i.ConversionFactor
             ))
             .FirstOrDefaultAsync();
 

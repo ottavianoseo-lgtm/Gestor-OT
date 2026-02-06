@@ -137,6 +137,11 @@ cd GestorOT/GestorOT && ASPNETCORE_ENVIRONMENT=Development dotnet run --urls "ht
 - `/mapa` - Explorador GIS con editor de polígonos
 - `/inventory` - Inventario con unidad dual
 
+## Database Migration
+- Startup migration in Program.cs ensures schema consistency via raw SQL (ALTER TABLE ADD COLUMN IF NOT EXISTS, CREATE TABLE IF NOT EXISTS)
+- The execute_sql_tool and app connection go to the SAME Supabase database (via pooler)
+- Inventory entity has nullable UnitA/UnitB properties with `?? ""` coalescing in LINQ projections
+
 ## Recent Changes
 - 2026-02-05: Inicialización del proyecto con arquitectura Hosted Blazor
 - 2026-02-05: Configuración completa de base de datos, API, y frontend
@@ -152,3 +157,9 @@ cd GestorOT/GestorOT && ASPNETCORE_ENVIRONMENT=Development dotnet run --urls "ht
 - 2026-02-06: Comparación de superficies fiscal vs dibujada con delta
 - 2026-02-06: Estilos dark theme para modales, formularios, inputs, selects
 - 2026-02-06: Menú lateral con sección Logística (Inventario)
+- 2026-02-06: Labor y LaborSupply entities con tablas Labors/LaborSupplies
+- 2026-02-06: LaborsController API con CRUD, /realize, /replicate endpoints
+- 2026-02-06: OrdenesTrabajos master-detail con labor cards y supply editing
+- 2026-02-06: Startup DB migration para asegurar columnas y tablas en Supabase
+- 2026-02-06: Fix Row/Col Razor syntax (fully qualified AntDesign.Row/Col)
+- 2026-02-06: Fix Inventory nullable UnitA/UnitB handling

@@ -16,8 +16,8 @@
     <Alert Type="@AlertType.Error" Message="@_errorMessage" ShowIcon="true" Closable="true" Style="margin-bottom: 16px;" />
 }
 
-<Row Gutter="(16, 16)">
-    <Col Xs="24" Sm="12" Lg="6">
+<AntDesign.Row Gutter="@((16, 16))">
+    <AntDesign.Col Xs="24" Sm="12" Lg="6">
         <div class="kpi-card">
             <div class="kpi-icon" style="background: linear-gradient(135deg, #E74C3C, #C0392B);">
                 <Icon Type="environment" Theme="IconThemeType.Fill" Style="font-size: 22px; color: #fff;" />
@@ -27,8 +27,8 @@
                 <span class="kpi-label">Campos Activos</span>
             </div>
         </div>
-    </Col>
-    <Col Xs="24" Sm="12" Lg="6">
+    </AntDesign.Col>
+    <AntDesign.Col Xs="24" Sm="12" Lg="6">
         <div class="kpi-card">
             <div class="kpi-icon" style="background: linear-gradient(135deg, #2ECC71, #27AE60);">
                 <Icon Type="appstore" Theme="IconThemeType.Fill" Style="font-size: 22px; color: #fff;" />
@@ -38,8 +38,8 @@
                 <span class="kpi-label">Lotes Activos</span>
             </div>
         </div>
-    </Col>
-    <Col Xs="24" Sm="12" Lg="6">
+    </AntDesign.Col>
+    <AntDesign.Col Xs="24" Sm="12" Lg="6">
         <div class="kpi-card">
             <div class="kpi-icon" style="background: linear-gradient(135deg, #F1C40F, #E67E22);">
                 <Icon Type="clock-circle" Theme="IconThemeType.Fill" Style="font-size: 22px; color: #fff;" />
@@ -49,8 +49,8 @@
                 <span class="kpi-label">OT Pendientes</span>
             </div>
         </div>
-    </Col>
-    <Col Xs="24" Sm="12" Lg="6">
+    </AntDesign.Col>
+    <AntDesign.Col Xs="24" Sm="12" Lg="6">
         <div class="kpi-card">
             <div class="kpi-icon" style="background: linear-gradient(135deg, #3498DB, #2980B9);">
                 <Icon Type="check-circle" Theme="IconThemeType.Fill" Style="font-size: 22px; color: #fff;" />
@@ -60,11 +60,11 @@
                 <span class="kpi-label">OT Completadas</span>
             </div>
         </div>
-    </Col>
-</Row>
+    </AntDesign.Col>
+</AntDesign.Row>
 
-<Row Gutter="(16, 16)" Style="margin-top: 20px;">
-    <Col Xs="24" Lg="16">
+<AntDesign.Row Gutter="@((16, 16))" Style="margin-top: 20px;">
+    <AntDesign.Col Xs="24" Lg="16">
         <div class="glass-card">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
                 <span style="font-size: 15px; font-weight: 600; color: #fff;">Órdenes Recientes</span>
@@ -91,14 +91,17 @@
                 <PropertyColumn Property="c => c.AssignedTo" Title="Asignado" />
             </Table>
         </div>
-    </Col>
-    <Col Xs="24" Lg="8">
+    </AntDesign.Col>
+    <AntDesign.Col Xs="24" Lg="8">
         <div class="glass-card" style="height: 100%;">
             <span style="font-size: 15px; font-weight: 600; color: #fff; display: block; margin-bottom: 20px;">Estado del Sistema</span>
 
             <div class="status-row">
                 <span class="status-label">Supabase</span>
-                <Tag Style="@($"background: {(_isConnected ? "#2ECC7120" : "#E74C3C20")}; color: {(_isConnected ? "#2ECC71" : "#E74C3C")}; border: 1px solid {(_isConnected ? "#2ECC7140" : "#E74C3C40")}; border-radius: 12px; font-size: 11px;")">
+                @{ var connStyle = _isConnected
+                    ? "background: #2ECC7120; color: #2ECC71; border: 1px solid #2ECC7140; border-radius: 12px; font-size: 11px;"
+                    : "background: #E74C3C20; color: #E74C3C; border: 1px solid #E74C3C40; border-radius: 12px; font-size: 11px;"; }
+                <Tag Style="@connStyle">
                     @(_isConnected ? "Conectado" : "Desconectado")
                 </Tag>
             </div>
@@ -115,8 +118,8 @@
                 <span style="color: rgba(255,255,255,0.5); font-size: 12px;">@_lastSync</span>
             </div>
         </div>
-    </Col>
-</Row>
+    </AntDesign.Col>
+</AntDesign.Row>
 
 <style>
     .kpi-card {

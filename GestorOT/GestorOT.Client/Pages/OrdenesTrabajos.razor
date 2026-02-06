@@ -7,110 +7,272 @@
 
 <PageTitle>Órdenes de Trabajo - GestorOT</PageTitle>
 
-<div class="page-header">
-    <div>
-        <h2 class="page-title">Órdenes de Trabajo</h2>
-        <span class="page-subtitle">@_workOrders.Count órdenes registradas</span>
-    </div>
-    <Button Type="@ButtonType.Primary" OnClick="OpenCreateModal"
-            Style="background: #E74C3C; border-color: #E74C3C; border-radius: 8px; font-weight: 600;">
-        <Icon Type="plus" Theme="IconThemeType.Outline" /> Nueva Orden
-    </Button>
-</div>
-
-@if (!string.IsNullOrEmpty(_errorMessage))
+@if (_selectedOrder == null)
 {
-    <Alert Type="@AlertType.Error" Message="@_errorMessage" ShowIcon="true" Style="margin-bottom: 16px;" />
+    <div class="page-header">
+        <div>
+            <h2 class="page-title">Órdenes de Trabajo</h2>
+            <span class="page-subtitle">@_workOrders.Count órdenes registradas</span>
+        </div>
+        <Button Type="@ButtonType.Primary" OnClick="OpenCreateModal"
+                Style="background: #E74C3C; border-color: #E74C3C; border-radius: 8px; font-weight: 600;">
+            <Icon Type="plus" Theme="IconThemeType.Outline" /> Nueva Orden
+        </Button>
+    </div>
+
+    @if (!string.IsNullOrEmpty(_errorMessage))
+    {
+        <Alert Type="@AlertType.Error" Message="@_errorMessage" ShowIcon="true" Style="margin-bottom: 16px;" />
+    }
+
+    <AntDesign.Row Gutter="@((16, 16))" Style="margin-bottom: 16px;">
+        <AntDesign.Col Xs="24" Sm="8">
+            <div class="kpi-card-sm" style="border-left: 3px solid #E74C3C;">
+                <span class="kpi-sm-value">@_workOrders.Count(w => w.Status == "Pending")</span>
+                <span class="kpi-sm-label">Pendientes</span>
+            </div>
+        </AntDesign.Col>
+        <AntDesign.Col Xs="24" Sm="8">
+            <div class="kpi-card-sm" style="border-left: 3px solid #F1C40F;">
+                <span class="kpi-sm-value">@_workOrders.Count(w => w.Status == "InProgress")</span>
+                <span class="kpi-sm-label">En Progreso</span>
+            </div>
+        </AntDesign.Col>
+        <AntDesign.Col Xs="24" Sm="8">
+            <div class="kpi-card-sm" style="border-left: 3px solid #2ECC71;">
+                <span class="kpi-sm-value">@_workOrders.Count(w => w.Status == "Completed")</span>
+                <span class="kpi-sm-label">Completadas</span>
+            </div>
+        </AntDesign.Col>
+    </AntDesign.Row>
+
+    <div class="glass-card">
+        <Table TItem="WorkOrderDto" DataSource="_workOrders" Loading="_loading" Size="@TableSize.Small"
+               ScrollX="1100">
+            <PropertyColumn Property="c => c.Description" Title="Descripción">
+                <span style="font-weight: 600;">@context.Description</span>
+            </PropertyColumn>
+            <PropertyColumn Property="c => c.LotName" Title="Lote" Sortable />
+            <Column TData="string" Title="Estado">
+                @{
+                    var (color, label) = context.Status switch
+                    {
+                        "Completed" => ("#2ECC71", "Completada"),
+                        "InProgress" => ("#F1C40F", "En Progreso"),
+                        _ => ("#E74C3C", "Pendiente")
+                    };
+                }
+                <Tag Style="@($"background: {color}20; color: {color}; border: 1px solid {color}40; border-radius: 12px; font-size: 11px; font-weight: 600; padding: 2px 10px;")">
+                    @label
+                </Tag>
+            </Column>
+            <PropertyColumn Property="c => c.AssignedTo" Title="Asignado a" Sortable />
+            <PropertyColumn Property="c => c.DueDate" Title="Fecha Límite" Sortable>
+                @context.DueDate.ToString("dd/MM/yyyy")
+            </PropertyColumn>
+            <ActionColumn Title="Acciones" Width="220">
+                <Space>
+                    <SpaceItem>
+                        <Button Size="@ButtonSize.Small" OnClick="() => OpenDetail(context.Id)"
+                                Style="border-radius: 6px; background: #3498DB20; border-color: #3498DB40; color: #3498DB; font-size: 11px;">
+                            <Icon Type="eye" Theme="IconThemeType.Outline" /> Ver / Labores
+                        </Button>
+                    </SpaceItem>
+                    <SpaceItem>
+                        <Button Size="@ButtonSize.Small" OnClick="() => OpenEditModal(context)"
+                                Style="border-radius: 6px; border-color: rgba(255,255,255,0.15); color: rgba(255,255,255,0.7);">
+                            <Icon Type="edit" Theme="IconThemeType.Outline" />
+                        </Button>
+                    </SpaceItem>
+                    <SpaceItem>
+                        <Popconfirm Title="¿Eliminar esta orden de trabajo?"
+                                    OnConfirm="() => DeleteWorkOrder(context.Id)"
+                                    OkText="@("Eliminar")" CancelText="@("Cancelar")">
+                            <Button Danger Size="@ButtonSize.Small" Style="border-radius: 6px;">
+                                <Icon Type="delete" Theme="IconThemeType.Outline" />
+                            </Button>
+                        </Popconfirm>
+                    </SpaceItem>
+                </Space>
+            </ActionColumn>
+        </Table>
+    </div>
 }
-
-<Row Gutter="(16, 16)" Style="margin-bottom: 16px;">
-    <Col Xs="24" Sm="8">
-        <div class="kpi-card-sm" style="border-left: 3px solid #E74C3C;">
-            <span class="kpi-sm-value">@_workOrders.Count(w => w.Status == "Pending")</span>
-            <span class="kpi-sm-label">Pendientes</span>
+else
+{
+    <div class="page-header">
+        <div style="display: flex; align-items: center; gap: 12px;">
+            <Button OnClick="BackToList" Style="border-radius: 6px; border-color: rgba(255,255,255,0.15); color: rgba(255,255,255,0.7);">
+                <Icon Type="arrow-left" Theme="IconThemeType.Outline" />
+            </Button>
+            <div>
+                <h2 class="page-title">@_selectedOrder.Description</h2>
+                <span class="page-subtitle">@_selectedOrder.FieldName — @_selectedOrder.LotName</span>
+            </div>
         </div>
-    </Col>
-    <Col Xs="24" Sm="8">
-        <div class="kpi-card-sm" style="border-left: 3px solid #F1C40F;">
-            <span class="kpi-sm-value">@_workOrders.Count(w => w.Status == "InProgress")</span>
-            <span class="kpi-sm-label">En Progreso</span>
-        </div>
-    </Col>
-    <Col Xs="24" Sm="8">
-        <div class="kpi-card-sm" style="border-left: 3px solid #2ECC71;">
-            <span class="kpi-sm-value">@_workOrders.Count(w => w.Status == "Completed")</span>
-            <span class="kpi-sm-label">Completadas</span>
-        </div>
-    </Col>
-</Row>
-
-<div class="glass-card">
-    <Table TItem="WorkOrderDto" DataSource="_workOrders" Loading="_loading" Size="@TableSize.Small"
-           ScrollX="1100">
-        <PropertyColumn Property="c => c.Description" Title="Descripción">
-            <span style="font-weight: 600;">@context.Description</span>
-        </PropertyColumn>
-        <PropertyColumn Property="c => c.LotName" Title="Lote" Sortable />
-        <Column TData="string" Title="Estado">
+        <div style="display: flex; gap: 8px; align-items: center;">
             @{
-                var (color, label) = context.Status switch
+                var (stColor, stLabel) = _selectedOrder.Status switch
                 {
                     "Completed" => ("#2ECC71", "Completada"),
                     "InProgress" => ("#F1C40F", "En Progreso"),
                     _ => ("#E74C3C", "Pendiente")
                 };
             }
-            <Tag Style="@($"background: {color}20; color: {color}; border: 1px solid {color}40; border-radius: 12px; font-size: 11px; font-weight: 600; padding: 2px 10px;")">
-                @label
+            <Tag Style="@($"background: {stColor}20; color: {stColor}; border: 1px solid {stColor}40; border-radius: 12px; font-size: 12px; font-weight: 600; padding: 4px 14px;")">
+                @stLabel
             </Tag>
-        </Column>
-        <PropertyColumn Property="c => c.AssignedTo" Title="Asignado a" Sortable />
-        <PropertyColumn Property="c => c.DueDate" Title="Fecha Límite" Sortable>
-            @context.DueDate.ToString("dd/MM/yyyy")
-        </PropertyColumn>
-        <ActionColumn Title="Flujo" Width="180">
-            @if (context.Status == "Pending")
-            {
-                <Button Size="@ButtonSize.Small" OnClick="@(() => ChangeStatus(context, "InProgress"))"
-                        Style="border-radius: 6px; background: #F1C40F20; border-color: #F1C40F40; color: #F1C40F; font-size: 11px;">
-                    <Icon Type="play-circle" Theme="IconThemeType.Outline" /> Iniciar
-                </Button>
-            }
-            else if (context.Status == "InProgress")
-            {
-                <Button Size="@ButtonSize.Small" OnClick="@(() => ChangeStatus(context, "Completed"))"
-                        Style="border-radius: 6px; background: #2ECC7120; border-color: #2ECC7140; color: #2ECC71; font-size: 11px;">
-                    <Icon Type="check-circle" Theme="IconThemeType.Outline" /> Completar
-                </Button>
-            }
-            else
-            {
-                <Tag Style="background: #2ECC7110; color: #2ECC71; border: 1px solid #2ECC7130; border-radius: 12px; font-size: 11px; padding: 2px 10px;">
-                    Finalizada
-                </Tag>
-            }
-        </ActionColumn>
-        <ActionColumn Title="Acciones" Width="160">
-            <Space>
-                <SpaceItem>
-                    <Button Size="@ButtonSize.Small" OnClick="() => OpenEditModal(context)"
+            <span style="color: rgba(255,255,255,0.5); font-size: 12px;">
+                Responsable: <strong style="color: #fff;">@_selectedOrder.AssignedTo</strong>
+            </span>
+            <span style="color: rgba(255,255,255,0.5); font-size: 12px;">
+                Vence: <strong style="color: #fff;">@_selectedOrder.DueDate.ToString("dd/MM/yyyy")</strong>
+            </span>
+        </div>
+    </div>
+
+    @if (!string.IsNullOrEmpty(_errorMessage))
+    {
+        <Alert Type="@AlertType.Error" Message="@_errorMessage" ShowIcon="true" Style="margin-bottom: 16px;" />
+    }
+
+    <AntDesign.Row Gutter="@((16, 16))" Style="margin-bottom: 16px;">
+        <AntDesign.Col Xs="24" Sm="8">
+            <div class="kpi-card-sm" style="border-left: 3px solid #3498DB;">
+                <span class="kpi-sm-value">@_selectedOrder.Labors.Count</span>
+                <span class="kpi-sm-label">Total Labores</span>
+            </div>
+        </AntDesign.Col>
+        <AntDesign.Col Xs="24" Sm="8">
+            <div class="kpi-card-sm" style="border-left: 3px solid #F1C40F;">
+                <span class="kpi-sm-value">@_selectedOrder.Labors.Count(l => l.Status == "Planned")</span>
+                <span class="kpi-sm-label">Planificadas</span>
+            </div>
+        </AntDesign.Col>
+        <AntDesign.Col Xs="24" Sm="8">
+            <div class="kpi-card-sm" style="border-left: 3px solid #2ECC71;">
+                <span class="kpi-sm-value">@_selectedOrder.Labors.Count(l => l.Status == "Realized")</span>
+                <span class="kpi-sm-label">Realizadas</span>
+            </div>
+        </AntDesign.Col>
+    </AntDesign.Row>
+
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+        <h3 style="color: #fff; margin: 0; font-size: 16px;">Labores</h3>
+        <Button Type="@ButtonType.Primary" OnClick="OpenLaborModal"
+                Style="background: #E74C3C; border-color: #E74C3C; border-radius: 8px; font-weight: 600;">
+            <Icon Type="plus" Theme="IconThemeType.Outline" /> Nueva Labor
+        </Button>
+    </div>
+
+    @if (_selectedOrder.Labors.Count == 0)
+    {
+        <div class="glass-card" style="text-align: center; padding: 40px;">
+            <Icon Type="inbox" Theme="IconThemeType.Outline" Style="font-size: 40px; color: rgba(255,255,255,0.2); margin-bottom: 12px;" />
+            <p style="color: rgba(255,255,255,0.4); margin: 0;">No hay labores cargadas. Agregá una labor para comenzar.</p>
+        </div>
+    }
+
+    @foreach (var labor in _selectedOrder.Labors)
+    {
+        <div class="glass-card labor-card" style="margin-bottom: 12px;">
+            <div class="labor-header">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <Tag Style="@((labor.Status == "Realized" ? "background: #2ECC7120; color: #2ECC71; border: 1px solid #2ECC7140; " : "background: #F1C40F20; color: #F1C40F; border: 1px solid #F1C40F40; ") + "border-radius: 12px; font-size: 11px; font-weight: 600; padding: 2px 10px;")">
+                        @(labor.Status == "Realized" ? "Realizada" : "Planificada")
+                    </Tag>
+                    <span style="font-weight: 700; color: #fff; font-size: 14px;">@labor.LaborType</span>
+                    <span style="color: rgba(255,255,255,0.5); font-size: 12px;">
+                        en <strong style="color: rgba(255,255,255,0.7);">@labor.LotName</strong> — @labor.Hectares.ToString("N2") ha
+                    </span>
+                    @if (labor.ExecutionDate.HasValue)
+                    {
+                        <span style="color: rgba(255,255,255,0.4); font-size: 11px;">
+                            Fecha: @labor.ExecutionDate.Value.ToString("dd/MM/yyyy")
+                        </span>
+                    }
+                </div>
+                <div style="display: flex; gap: 6px;">
+                    @if (labor.Status == "Planned")
+                    {
+                        <Button Size="@ButtonSize.Small" OnClick="() => OpenRealizeModal(labor)"
+                                Style="border-radius: 6px; background: #2ECC7120; border-color: #2ECC7140; color: #2ECC71; font-size: 11px;">
+                            <Icon Type="check-circle" Theme="IconThemeType.Outline" /> Confirmar Realizado
+                        </Button>
+                        <Button Size="@ButtonSize.Small" OnClick="() => ReplicateLabor(labor.Id)"
+                                Style="border-radius: 6px; background: #3498DB20; border-color: #3498DB40; color: #3498DB; font-size: 11px;">
+                            <Icon Type="copy" Theme="IconThemeType.Outline" /> Replicar
+                        </Button>
+                    }
+                    <Button Size="@ButtonSize.Small" OnClick="() => OpenEditLaborModal(labor)"
                             Style="border-radius: 6px; border-color: rgba(255,255,255,0.15); color: rgba(255,255,255,0.7);">
                         <Icon Type="edit" Theme="IconThemeType.Outline" />
                     </Button>
-                </SpaceItem>
-                <SpaceItem>
-                    <Popconfirm Title="¿Eliminar esta orden de trabajo?"
-                                OnConfirm="() => DeleteWorkOrder(context.Id)"
-                                OkText="Eliminar" CancelText="Cancelar">
+                    <Popconfirm Title="¿Eliminar esta labor?" OnConfirm="() => DeleteLabor(labor.Id)"
+                                OkText="@("Eliminar")" CancelText="@("Cancelar")">
                         <Button Danger Size="@ButtonSize.Small" Style="border-radius: 6px;">
                             <Icon Type="delete" Theme="IconThemeType.Outline" />
                         </Button>
                     </Popconfirm>
-                </SpaceItem>
-            </Space>
-        </ActionColumn>
-    </Table>
-</div>
+                </div>
+            </div>
+
+            @if (labor.Supplies != null && labor.Supplies.Count > 0)
+            {
+                <div class="supply-table-wrapper">
+                    <table class="supply-table">
+                        <thead>
+                            <tr>
+                                <th>Insumo</th>
+                                <th>Dosis Plan.</th>
+                                <th>Total Plan.</th>
+                                @if (labor.Status == "Realized")
+                                {
+                                    <th>Dosis Real</th>
+                                    <th>Total Real</th>
+                                    <th>Delta</th>
+                                }
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var supply in labor.Supplies)
+                            {
+                                <tr>
+                                    <td style="font-weight: 600; color: #fff;">@supply.SupplyName</td>
+                                    <td>@supply.PlannedDose.ToString("N2") @supply.DoseUnit</td>
+                                    <td>@supply.PlannedTotal.ToString("N2") @supply.SupplyUnit</td>
+                                    @if (labor.Status == "Realized")
+                                    {
+                                        <td>@(supply.RealDose?.ToString("N2") ?? "-") @supply.DoseUnit</td>
+                                        <td>@(supply.RealTotal?.ToString("N2") ?? "-") @supply.SupplyUnit</td>
+                                        <td>
+                                            @if (supply.RealDose.HasValue && supply.PlannedDose > 0)
+                                            {
+                                                var delta = ((supply.RealDose.Value - supply.PlannedDose) / supply.PlannedDose) * 100;
+                                                var deltaColor = delta > 0 ? "#E74C3C" : delta < 0 ? "#2ECC71" : "#F1C40F";
+                                                <span style="color: @deltaColor; font-weight: 600;">
+                                                    @(delta > 0 ? "+" : "")@delta.ToString("N1")%
+                                                </span>
+                                            }
+                                            else
+                                            {
+                                                <span>-</span>
+                                            }
+                                        </td>
+                                    }
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+            else
+            {
+                <p style="color: rgba(255,255,255,0.3); font-size: 12px; margin: 8px 0 0 0;">Sin insumos asignados</p>
+            }
+        </div>
+    }
+}
 
 <Modal Title="@(_isEditing ? "Editar Orden de Trabajo" : "Nueva Orden de Trabajo")"
        Visible="_modalVisible"
@@ -121,7 +283,7 @@
        Width="560">
     <Form @ref="_form" Model="_formModel" Layout="@FormLayout.Vertical">
         <FormItem Label="Descripción">
-            <TextArea @bind-Value="_formModel.Description" Placeholder="Descripción de la labor"
+            <TextArea @bind-Value="_formModel.Description" Placeholder="Descripción de la orden"
                       Rows="3" />
         </FormItem>
         <FormItem Label="Lote">
@@ -135,19 +297,19 @@
                     Style="width: 100%;"
                     EnableSearch />
         </FormItem>
-        <Row Gutter="16">
-            <Col Span="12">
+        <AntDesign.Row Gutter="16">
+            <AntDesign.Col Span="12">
                 <FormItem Label="Asignado a">
                     <Input @bind-Value="_formModel.AssignedTo" Placeholder="Nombre del responsable" />
                 </FormItem>
-            </Col>
-            <Col Span="12">
+            </AntDesign.Col>
+            <AntDesign.Col Span="12">
                 <FormItem Label="Fecha Límite">
                     <DatePicker @bind-Value="_formModel.DueDate" Style="width: 100%;"
                                 Format="dd/MM/yyyy" />
                 </FormItem>
-            </Col>
-        </Row>
+            </AntDesign.Col>
+        </AntDesign.Row>
         <FormItem Label="Estado">
             <RadioGroup @bind-Value="_formModel.Status">
                 <Radio Value="@("Pending")">Pendiente</Radio>
@@ -156,6 +318,148 @@
             </RadioGroup>
         </FormItem>
     </Form>
+</Modal>
+
+<Modal Title="@(_isEditingLabor ? "Editar Labor" : "Nueva Labor")"
+       Visible="_laborModalVisible"
+       OnCancel="CloseLaborModal"
+       OnOk="SaveLabor"
+       OkText="@(_isEditingLabor ? "Guardar" : "Crear Labor")"
+       ConfirmLoading="_savingLabor"
+       Width="720">
+    <Form Model="_laborForm" Layout="@FormLayout.Vertical">
+        <AntDesign.Row Gutter="16">
+            <AntDesign.Col Span="8">
+                <FormItem Label="Tipo de Labor">
+                    <Select TItem="string"
+                            TItemValue="string"
+                            DataSource="@_laborTypes"
+                            @bind-Value="_laborForm.LaborType"
+                            Placeholder="Seleccionar tipo"
+                            Style="width: 100%;" />
+                </FormItem>
+            </AntDesign.Col>
+            <AntDesign.Col Span="8">
+                <FormItem Label="Lote">
+                    <Select TItem="LotDto"
+                            TItemValue="Guid"
+                            DataSource="_availableLots"
+                            @bind-Value="_laborForm.LotId"
+                            LabelName="@nameof(LotDto.Name)"
+                            ValueName="@nameof(LotDto.Id)"
+                            Placeholder="Seleccionar lote"
+                            Style="width: 100%;"
+                            EnableSearch />
+                </FormItem>
+            </AntDesign.Col>
+            <AntDesign.Col Span="8">
+                <FormItem Label="Hectáreas">
+                    <AntDesign.InputNumber TValue="decimal" @bind-Value="_laborForm.Hectares" Min="0m" Step="0.5m"
+                                Style="width: 100%;" />
+                </FormItem>
+            </AntDesign.Col>
+        </AntDesign.Row>
+
+        <Divider Style="border-color: rgba(255,255,255,0.1); margin: 12px 0;">Insumos</Divider>
+
+        @for (int i = 0; i < _laborForm.Supplies.Count; i++)
+        {
+            var idx = i;
+            var supply = _laborForm.Supplies[idx];
+            <div class="supply-row">
+                <AntDesign.Row Gutter="8">
+                    <AntDesign.Col Span="7">
+                        <Select TItem="InventoryDto"
+                                TItemValue="Guid"
+                                DataSource="_availableSupplies"
+                                Value="supply.SupplyId"
+                                ValueChanged="v => OnSupplySelected(idx, v)"
+                                LabelName="@nameof(InventoryDto.ItemName)"
+                                ValueName="@nameof(InventoryDto.Id)"
+                                Placeholder="Insumo"
+                                Style="width: 100%;"
+                                EnableSearch />
+                    </AntDesign.Col>
+                    <AntDesign.Col Span="4">
+                        <AntDesign.InputNumber TValue="decimal" Value="supply.PlannedDose"
+                                    ValueChanged="(decimal v) => OnDoseChanged(idx, v)"
+                                    Min="0m" Step="0.01m"
+                                    Style="width: 100%;" />
+                    </AntDesign.Col>
+                    <AntDesign.Col Span="4">
+                        <Input @bind-Value="supply.DoseUnit"
+                               Placeholder="Unidad dosis" />
+                    </AntDesign.Col>
+                    <AntDesign.Col Span="5">
+                        <div class="calc-total">
+                            <span style="color: rgba(255,255,255,0.4); font-size: 11px;">Total a retirar:</span>
+                            <strong style="color: #2ECC71; font-size: 14px;">
+                                @((supply.PlannedDose * _laborForm.Hectares).ToString("N2"))
+                            </strong>
+                            <span style="color: rgba(255,255,255,0.4); font-size: 11px;">@supply.SupplyUnit</span>
+                        </div>
+                    </AntDesign.Col>
+                    <AntDesign.Col Span="2">
+                        <Button Danger Size="@ButtonSize.Small" OnClick="() => RemoveSupply(idx)"
+                                Style="border-radius: 6px;">
+                            <Icon Type="delete" Theme="IconThemeType.Outline" />
+                        </Button>
+                    </AntDesign.Col>
+                </AntDesign.Row>
+            </div>
+        }
+
+        <Button Type="@ButtonType.Dashed" OnClick="AddSupply" Block
+                Style="border-color: rgba(255,255,255,0.15); color: rgba(255,255,255,0.5); margin-top: 8px;">
+            <Icon Type="plus" Theme="IconThemeType.Outline" /> Agregar Insumo
+        </Button>
+    </Form>
+</Modal>
+
+<Modal Title="Confirmar Realización"
+       Visible="_realizeModalVisible"
+       OnCancel="CloseRealizeModal"
+       OnOk="ConfirmRealize"
+       OkText="@("Confirmar Realizado")"
+       ConfirmLoading="_savingRealize"
+       Width="680">
+    @if (_realizingLabor != null)
+    {
+        <p style="color: rgba(255,255,255,0.6); margin-bottom: 16px;">
+            Confirmá la <strong style="color: #fff;">dosis real</strong> utilizada en cada insumo.
+            Si no hubo cambios, se usará la dosis planificada.
+        </p>
+        <table class="supply-table" style="width: 100%;">
+            <thead>
+                <tr>
+                    <th>Insumo</th>
+                    <th>Dosis Planificada</th>
+                    <th>Dosis Real</th>
+                    <th>Total Real</th>
+                </tr>
+            </thead>
+            <tbody>
+                @for (int i = 0; i < _realizeSupplies.Count; i++)
+                {
+                    var idx = i;
+                    var rs = _realizeSupplies[idx];
+                    <tr>
+                        <td style="font-weight: 600; color: #fff;">@rs.SupplyName</td>
+                        <td>@rs.PlannedDose.ToString("N2") @rs.DoseUnit</td>
+                        <td>
+                            <AntDesign.InputNumber TValue="decimal" @bind-Value="rs.RealDoseInput" Min="0m" Step="0.01m"
+                                        Style="width: 120px;" />
+                        </td>
+                        <td>
+                            <strong style="color: #2ECC71;">
+                                @((rs.RealDoseInput * _realizingLabor.Hectares).ToString("N2"))
+                            </strong>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
 </Modal>
 
 <style>
@@ -177,19 +481,84 @@
         font-size: 12px;
         color: rgba(255,255,255,0.5);
     }
+    .labor-card {
+        padding: 16px !important;
+    }
+    .labor-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-bottom: 10px;
+    }
+    .supply-table-wrapper {
+        overflow-x: auto;
+        margin-top: 8px;
+    }
+    .supply-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 12px;
+    }
+    .supply-table th {
+        text-align: left;
+        color: rgba(255,255,255,0.4);
+        font-weight: 600;
+        padding: 6px 10px;
+        border-bottom: 1px solid rgba(255,255,255,0.08);
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    .supply-table td {
+        padding: 8px 10px;
+        color: rgba(255,255,255,0.7);
+        border-bottom: 1px solid rgba(255,255,255,0.04);
+    }
+    .supply-row {
+        background: rgba(255,255,255,0.02);
+        border: 1px solid rgba(255,255,255,0.06);
+        border-radius: 8px;
+        padding: 10px;
+        margin-bottom: 8px;
+    }
+    .calc-total {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 2px;
+    }
 </style>
 
 @code {
     private List<WorkOrderDto> _workOrders = new();
     private List<LotDto> _availableLots = new();
+    private List<InventoryDto> _availableSupplies = new();
     private bool _loading = true;
     private string? _errorMessage;
+
+    private WorkOrderDetailDto? _selectedOrder;
+
     private bool _modalVisible;
     private bool _isEditing;
     private bool _saving;
     private Guid _editingId;
     private WoFormModel _formModel = new();
     private Form<WoFormModel>? _form;
+
+    private bool _laborModalVisible;
+    private bool _isEditingLabor;
+    private bool _savingLabor;
+    private Guid _editingLaborId;
+    private LaborFormModel _laborForm = new();
+
+    private bool _realizeModalVisible;
+    private bool _savingRealize;
+    private LaborDto? _realizingLabor;
+    private List<RealizeSupplyModel> _realizeSupplies = new();
+
+    private readonly string[] _laborTypes = { "Siembra", "Pulverización", "Cosecha", "Fertilización", "Laboreo", "Riego", "Otro" };
 
     public class WoFormModel
     {
@@ -198,6 +567,33 @@
         public string AssignedTo { get; set; } = string.Empty;
         public DateTime DueDate { get; set; } = DateTime.Today.AddDays(7);
         public string Status { get; set; } = "Pending";
+    }
+
+    public class LaborFormModel
+    {
+        public string LaborType { get; set; } = string.Empty;
+        public Guid LotId { get; set; }
+        public decimal Hectares { get; set; }
+        public List<SupplyFormModel> Supplies { get; set; } = new();
+    }
+
+    public class SupplyFormModel
+    {
+        public Guid Id { get; set; }
+        public Guid SupplyId { get; set; }
+        public decimal PlannedDose { get; set; }
+        public string DoseUnit { get; set; } = string.Empty;
+        public string SupplyUnit { get; set; } = string.Empty;
+    }
+
+    public class RealizeSupplyModel
+    {
+        public Guid Id { get; set; }
+        public Guid SupplyId { get; set; }
+        public string SupplyName { get; set; } = string.Empty;
+        public decimal PlannedDose { get; set; }
+        public string DoseUnit { get; set; } = string.Empty;
+        public decimal RealDoseInput { get; set; }
     }
 
     protected override async Task OnInitializedAsync()
@@ -215,9 +611,12 @@
                 AppJsonSerializerContext.Default.ListWorkOrderDto, cts.Token);
             var lotsTask = Http.GetFromJsonAsync("api/lots",
                 AppJsonSerializerContext.Default.ListLotDto, cts.Token);
+            var suppliesTask = Http.GetFromJsonAsync("api/inventory",
+                AppJsonSerializerContext.Default.ListInventoryDto, cts.Token);
 
             _workOrders = await ordersTask ?? new();
             _availableLots = await lotsTask ?? new();
+            _availableSupplies = await suppliesTask ?? new();
             _errorMessage = null;
         }
         catch (Exception ex)
@@ -229,6 +628,40 @@
             _loading = false;
             StateHasChanged();
         }
+    }
+
+    private async Task OpenDetail(Guid workOrderId)
+    {
+        try
+        {
+            _loading = true;
+            StateHasChanged();
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+            _selectedOrder = await Http.GetFromJsonAsync($"api/workorders/{workOrderId}",
+                AppJsonSerializerContext.Default.WorkOrderDetailDto, cts.Token);
+            _errorMessage = null;
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Error al cargar detalle: {ex.Message}";
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private void BackToList()
+    {
+        _selectedOrder = null;
+        StateHasChanged();
+    }
+
+    private async Task RefreshDetail()
+    {
+        if (_selectedOrder != null)
+            await OpenDetail(_selectedOrder.Id);
     }
 
     private void OpenCreateModal()
@@ -318,33 +751,6 @@
         }
     }
 
-    private async Task ChangeStatus(WorkOrderDto wo, string newStatus)
-    {
-        try
-        {
-            var dto = new WorkOrderDto(
-                wo.Id, wo.LotId, wo.Description, newStatus, wo.AssignedTo, wo.DueDate, wo.LotName
-            );
-            var response = await Http.PutAsJsonAsync($"api/workorders/{wo.Id}",
-                dto, AppJsonSerializerContext.Default.WorkOrderDto);
-
-            if (response.IsSuccessStatusCode)
-            {
-                var label = newStatus == "InProgress" ? "en progreso" : "completada";
-                Message.Success($"Orden marcada como {label}.");
-                await LoadData();
-            }
-            else
-            {
-                Message.Error($"Error: {response.StatusCode}");
-            }
-        }
-        catch (Exception ex)
-        {
-            Message.Error($"Error: {ex.Message}");
-        }
-    }
-
     private async Task DeleteWorkOrder(Guid id)
     {
         try
@@ -358,6 +764,257 @@
             else
             {
                 Message.Error($"Error al eliminar: {response.StatusCode}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Message.Error($"Error: {ex.Message}");
+        }
+    }
+
+    private void OpenLaborModal()
+    {
+        _isEditingLabor = false;
+        _laborForm = new LaborFormModel();
+        if (_selectedOrder != null)
+            _laborForm.LotId = _selectedOrder.LotId;
+        _laborModalVisible = true;
+    }
+
+    private void OpenEditLaborModal(LaborDto labor)
+    {
+        _isEditingLabor = true;
+        _editingLaborId = labor.Id;
+        _laborForm = new LaborFormModel
+        {
+            LaborType = labor.LaborType,
+            LotId = labor.LotId,
+            Hectares = labor.Hectares,
+            Supplies = labor.Supplies?.Select(s => new SupplyFormModel
+            {
+                Id = s.Id,
+                SupplyId = s.SupplyId,
+                PlannedDose = s.PlannedDose,
+                DoseUnit = s.DoseUnit,
+                SupplyUnit = s.SupplyUnit ?? ""
+            }).ToList() ?? new()
+        };
+        _laborModalVisible = true;
+    }
+
+    private void CloseLaborModal()
+    {
+        _laborModalVisible = false;
+    }
+
+    private void AddSupply()
+    {
+        _laborForm.Supplies.Add(new SupplyFormModel());
+    }
+
+    private void RemoveSupply(int index)
+    {
+        if (index >= 0 && index < _laborForm.Supplies.Count)
+            _laborForm.Supplies.RemoveAt(index);
+    }
+
+    private void OnSupplySelected(int index, Guid supplyId)
+    {
+        var supply = _laborForm.Supplies[index];
+        supply.SupplyId = supplyId;
+        var inv = _availableSupplies.FirstOrDefault(s => s.Id == supplyId);
+        if (inv != null)
+        {
+            supply.DoseUnit = $"{inv.UnitB}/ha";
+            supply.SupplyUnit = inv.UnitB;
+        }
+    }
+
+    private void OnDoseChanged(int index, decimal value)
+    {
+        _laborForm.Supplies[index].PlannedDose = value;
+    }
+
+    private async Task SaveLabor()
+    {
+        if (string.IsNullOrWhiteSpace(_laborForm.LaborType))
+        {
+            Message.Warning("Debe seleccionar un tipo de labor.");
+            return;
+        }
+        if (_laborForm.LotId == Guid.Empty)
+        {
+            Message.Warning("Debe seleccionar un lote.");
+            return;
+        }
+        if (_laborForm.Hectares <= 0)
+        {
+            Message.Warning("Las hectáreas deben ser mayores a 0.");
+            return;
+        }
+
+        _savingLabor = true;
+        try
+        {
+            var dto = new LaborDto(
+                _isEditingLabor ? _editingLaborId : Guid.Empty,
+                _selectedOrder?.Id,
+                _laborForm.LotId,
+                _laborForm.LaborType,
+                "Planned",
+                null,
+                _laborForm.Hectares,
+                DateTime.MinValue,
+                null,
+                _laborForm.Supplies.Select(s => new LaborSupplyDto(
+                    s.Id,
+                    Guid.Empty,
+                    s.SupplyId,
+                    s.PlannedDose,
+                    null,
+                    s.PlannedDose * _laborForm.Hectares,
+                    null,
+                    s.DoseUnit,
+                    null,
+                    s.SupplyUnit
+                )).ToList()
+            );
+
+            HttpResponseMessage response;
+            if (_isEditingLabor)
+            {
+                response = await Http.PutAsJsonAsync($"api/labors/{_editingLaborId}",
+                    dto, AppJsonSerializerContext.Default.LaborDto);
+            }
+            else
+            {
+                response = await Http.PostAsJsonAsync("api/labors",
+                    dto, AppJsonSerializerContext.Default.LaborDto);
+            }
+
+            if (response.IsSuccessStatusCode)
+            {
+                Message.Success(_isEditingLabor ? "Labor actualizada." : "Labor creada correctamente.");
+                _laborModalVisible = false;
+                await RefreshDetail();
+            }
+            else
+            {
+                Message.Error($"Error al guardar labor: {response.StatusCode}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Message.Error($"Error: {ex.Message}");
+        }
+        finally
+        {
+            _savingLabor = false;
+        }
+    }
+
+    private async Task DeleteLabor(Guid laborId)
+    {
+        try
+        {
+            var response = await Http.DeleteAsync($"api/labors/{laborId}");
+            if (response.IsSuccessStatusCode)
+            {
+                Message.Success("Labor eliminada.");
+                await RefreshDetail();
+            }
+            else
+            {
+                Message.Error($"Error al eliminar: {response.StatusCode}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Message.Error($"Error: {ex.Message}");
+        }
+    }
+
+    private void OpenRealizeModal(LaborDto labor)
+    {
+        _realizingLabor = labor;
+        _realizeSupplies = labor.Supplies?.Select(s => new RealizeSupplyModel
+        {
+            Id = s.Id,
+            SupplyId = s.SupplyId,
+            SupplyName = s.SupplyName ?? "Insumo",
+            PlannedDose = s.PlannedDose,
+            DoseUnit = s.DoseUnit,
+            RealDoseInput = s.PlannedDose
+        }).ToList() ?? new();
+        _realizeModalVisible = true;
+    }
+
+    private void CloseRealizeModal()
+    {
+        _realizeModalVisible = false;
+        _realizingLabor = null;
+    }
+
+    private async Task ConfirmRealize()
+    {
+        if (_realizingLabor == null) return;
+
+        _savingRealize = true;
+        try
+        {
+            var realSupplies = _realizeSupplies.Select(rs => new LaborSupplyDto(
+                rs.Id,
+                _realizingLabor.Id,
+                rs.SupplyId,
+                rs.PlannedDose,
+                rs.RealDoseInput,
+                rs.PlannedDose * _realizingLabor.Hectares,
+                rs.RealDoseInput * _realizingLabor.Hectares,
+                rs.DoseUnit,
+                rs.SupplyName,
+                null
+            )).ToList();
+
+            var response = await Http.PostAsJsonAsync(
+                $"api/labors/{_realizingLabor.Id}/realize",
+                realSupplies,
+                AppJsonSerializerContext.Default.ListLaborSupplyDto);
+
+            if (response.IsSuccessStatusCode)
+            {
+                Message.Success("Labor confirmada como realizada.");
+                _realizeModalVisible = false;
+                _realizingLabor = null;
+                await RefreshDetail();
+            }
+            else
+            {
+                Message.Error($"Error: {response.StatusCode}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Message.Error($"Error: {ex.Message}");
+        }
+        finally
+        {
+            _savingRealize = false;
+        }
+    }
+
+    private async Task ReplicateLabor(Guid laborId)
+    {
+        try
+        {
+            var response = await Http.PostAsync($"api/labors/{laborId}/replicate", null);
+            if (response.IsSuccessStatusCode)
+            {
+                Message.Success("Labor replicada como 'Realizada'.");
+                await RefreshDetail();
+            }
+            else
+            {
+                Message.Error($"Error al replicar: {response.StatusCode}");
             }
         }
         catch (Exception ex)

@@ -20,6 +20,12 @@ namespace GestorOT.Shared;
 [JsonSerializable(typeof(DashboardStatsDto))]
 [JsonSerializable(typeof(InventoryDto))]
 [JsonSerializable(typeof(List<InventoryDto>))]
+[JsonSerializable(typeof(LaborDto))]
+[JsonSerializable(typeof(List<LaborDto>))]
+[JsonSerializable(typeof(LaborSupplyDto))]
+[JsonSerializable(typeof(List<LaborSupplyDto>))]
+[JsonSerializable(typeof(WorkOrderDetailDto))]
+[JsonSerializable(typeof(List<WorkOrderDetailDto>))]
 [JsonSerializable(typeof(Dictionary<string, object>))]
 [JsonSourceGenerationOptions(
     PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,

@@ -14,6 +14,8 @@ public class ApplicationDbContext : DbContext
     public DbSet<Lot> Lots => Set<Lot>();
     public DbSet<WorkOrder> WorkOrders => Set<WorkOrder>();
     public DbSet<Inventory> Inventories => Set<Inventory>();
+    public DbSet<Labor> Labors => Set<Labor>();
+    public DbSet<LaborSupply> LaborSupplies => Set<LaborSupply>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -71,6 +73,47 @@ public class ApplicationDbContext : DbContext
             entity.Property(e => e.UnitB).HasMaxLength(50);
             entity.Property(e => e.ConversionFactor).HasPrecision(18, 6).HasDefaultValue(1);
         });
+
+        modelBuilder.Entity<Labor>(entity =>
+        {
+            entity.ToTable("Labors", "public");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.LaborType).IsRequired().HasMaxLength(100);
+            entity.Property(e => e.Status).IsRequired().HasMaxLength(50).HasDefaultValue("Planned");
+            entity.Property(e => e.Hectares).HasPrecision(18, 4);
+            entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+            entity.HasOne(e => e.WorkOrder)
+                .WithMany(w => w.Labors)
+                .HasForeignKey(e => e.WorkOrderId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(e => e.Lot)
+                .WithMany()
+                .HasForeignKey(e => e.LotId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<LaborSupply>(entity =>
+        {
+            entity.ToTable("LaborSupplies", "public");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.PlannedDose).HasPrecision(18, 6);
+            entity.Property(e => e.RealDose).HasPrecision(18, 6);
+            entity.Property(e => e.PlannedTotal).HasPrecision(18, 4);
+            entity.Property(e => e.RealTotal).HasPrecision(18, 4);
+            entity.Property(e => e.DoseUnit).HasMaxLength(100);
+
+            entity.HasOne(e => e.Labor)
+                .WithMany(l => l.Supplies)
+                .HasForeignKey(e => e.LaborId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(e => e.Supply)
+                .WithMany()
+                .HasForeignKey(e => e.SupplyId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
     }
 }
 
@@ -103,6 +146,7 @@ public class WorkOrder
     public string AssignedTo { get; set; } = string.Empty;
     public DateTime DueDate { get; set; }
     public Lot? Lot { get; set; }
+    public ICollection<Labor> Labors { get; set; } = new List<Labor>();
 }
 
 public class Inventory
@@ -112,7 +156,36 @@ public class Inventory
     public string ItemName { get; set; } = string.Empty;
     public double CurrentStock { get; set; }
     public double ReorderLevel { get; set; }
-    public string UnitA { get; set; } = string.Empty;
-    public string UnitB { get; set; } = string.Empty;
+    public string? UnitA { get; set; }
+    public string? UnitB { get; set; }
     public double ConversionFactor { get; set; } = 1;
+}
+
+public class Labor
+{
+    public Guid Id { get; set; }
+    public Guid? WorkOrderId { get; set; }
+    public Guid LotId { get; set; }
+    public string LaborType { get; set; } = string.Empty;
+    public string Status { get; set; } = "Planned";
+    public DateTime? ExecutionDate { get; set; }
+    public decimal Hectares { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public WorkOrder? WorkOrder { get; set; }
+    public Lot? Lot { get; set; }
+    public ICollection<LaborSupply> Supplies { get; set; } = new List<LaborSupply>();
+}
+
+public class LaborSupply
+{
+    public Guid Id { get; set; }
+    public Guid LaborId { get; set; }
+    public Guid SupplyId { get; set; }
+    public decimal PlannedDose { get; set; }
+    public decimal? RealDose { get; set; }
+    public decimal PlannedTotal { get; set; }
+    public decimal? RealTotal { get; set; }
+    public string DoseUnit { get; set; } = string.Empty;
+    public Labor? Labor { get; set; }
+    public Inventory? Supply { get; set; }
 }
