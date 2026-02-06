@@ -5,11 +5,12 @@ public record LotDto(
     Guid FieldId,
     string Name,
     string Status,
-    string? GeoJson = null,
-    string? FieldName = null
+    string? WktGeometry = null,
+    string? FieldName = null,
+    double Area = 0
 )
 {
-    public LotDto() : this(Guid.Empty, Guid.Empty, string.Empty, "Active", null, null) { }
+    public LotDto() : this(Guid.Empty, Guid.Empty, string.Empty, "Active", null, null, 0) { }
 }
 
 public record WorkOrderDto(
@@ -53,9 +54,25 @@ public record GeoJsonFeatureCollection(
 public record DashboardStatsDto(
     int FieldsCount,
     int LotsCount,
+    int ActiveLotsCount,
     int PendingWorkOrders,
-    int CompletedWorkOrders
+    int InProgressWorkOrders,
+    int CompletedWorkOrders,
+    double TotalArea
 )
 {
-    public DashboardStatsDto() : this(0, 0, 0, 0) { }
+    public DashboardStatsDto() : this(0, 0, 0, 0, 0, 0, 0) { }
+}
+
+public record RecentWorkOrderDto(
+    Guid Id,
+    string Description,
+    string Status,
+    string AssignedTo,
+    DateTime DueDate,
+    string? LotName = null,
+    string? FieldName = null
+)
+{
+    public RecentWorkOrderDto() : this(Guid.Empty, string.Empty, "Pending", string.Empty, DateTime.MinValue, null, null) { }
 }

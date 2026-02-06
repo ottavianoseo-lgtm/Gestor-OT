@@ -2,10 +2,14 @@
 @using GestorOT.Shared.Dtos
 @using GestorOT.Shared
 @using System.Net.Http.Json
-@using System.Text.Json
 @inject HttpClient Http
 
 <PageTitle>Dashboard - GestorOT</PageTitle>
+
+<div class="page-header">
+    <h2 class="page-title">Farm Intelligence Dashboard</h2>
+    <span class="page-subtitle">Última actualización: @_lastSync</span>
+</div>
 
 @if (!string.IsNullOrEmpty(_errorMessage))
 {
@@ -13,134 +17,196 @@
 }
 
 <Row Gutter="(16, 16)">
-    <Col Span="6">
-        <Card Bordered="false" Style="box-shadow: 0 2px 8px rgba(0,0,0,0.09);">
-            <Statistic Title="Campos Activos" Value="@_stats.FieldsCount">
-                <PrefixTemplate>
-                    <Icon Type="environment" Theme="IconThemeType.Outline" Style="color: #E74C3C;" />
-                </PrefixTemplate>
-            </Statistic>
-        </Card>
+    <Col Xs="24" Sm="12" Lg="6">
+        <div class="kpi-card">
+            <div class="kpi-icon" style="background: linear-gradient(135deg, #E74C3C, #C0392B);">
+                <Icon Type="environment" Theme="IconThemeType.Fill" Style="font-size: 22px; color: #fff;" />
+            </div>
+            <div class="kpi-content">
+                <span class="kpi-value">@_stats.FieldsCount</span>
+                <span class="kpi-label">Campos Activos</span>
+            </div>
+        </div>
     </Col>
-    <Col Span="6">
-        <Card Bordered="false" Style="box-shadow: 0 2px 8px rgba(0,0,0,0.09);">
-            <Statistic Title="Lotes Registrados" Value="@_stats.LotsCount">
-                <PrefixTemplate>
-                    <Icon Type="block" Theme="IconThemeType.Outline" Style="color: #E74C3C;" />
-                </PrefixTemplate>
-            </Statistic>
-        </Card>
+    <Col Xs="24" Sm="12" Lg="6">
+        <div class="kpi-card">
+            <div class="kpi-icon" style="background: linear-gradient(135deg, #2ECC71, #27AE60);">
+                <Icon Type="appstore" Theme="IconThemeType.Fill" Style="font-size: 22px; color: #fff;" />
+            </div>
+            <div class="kpi-content">
+                <span class="kpi-value">@_stats.ActiveLotsCount<span class="kpi-total">/@_stats.LotsCount</span></span>
+                <span class="kpi-label">Lotes Activos</span>
+            </div>
+        </div>
     </Col>
-    <Col Span="6">
-        <Card Bordered="false" Style="box-shadow: 0 2px 8px rgba(0,0,0,0.09);">
-            <Statistic Title="OT Pendientes" Value="@_stats.PendingWorkOrders" ValueStyle="color: #F1C40F;">
-                <PrefixTemplate>
-                    <Icon Type="clock-circle" Theme="IconThemeType.Outline" Style="color: #F1C40F;" />
-                </PrefixTemplate>
-            </Statistic>
-        </Card>
+    <Col Xs="24" Sm="12" Lg="6">
+        <div class="kpi-card">
+            <div class="kpi-icon" style="background: linear-gradient(135deg, #F1C40F, #E67E22);">
+                <Icon Type="clock-circle" Theme="IconThemeType.Fill" Style="font-size: 22px; color: #fff;" />
+            </div>
+            <div class="kpi-content">
+                <span class="kpi-value">@(_stats.PendingWorkOrders + _stats.InProgressWorkOrders)</span>
+                <span class="kpi-label">OT Pendientes</span>
+            </div>
+        </div>
     </Col>
-    <Col Span="6">
-        <Card Bordered="false" Style="box-shadow: 0 2px 8px rgba(0,0,0,0.09);">
-            <Statistic Title="OT Completadas" Value="@_stats.CompletedWorkOrders" ValueStyle="color: #2ECC71;">
-                <PrefixTemplate>
-                    <Icon Type="check-circle" Theme="IconThemeType.Outline" Style="color: #2ECC71;" />
-                </PrefixTemplate>
-            </Statistic>
-        </Card>
+    <Col Xs="24" Sm="12" Lg="6">
+        <div class="kpi-card">
+            <div class="kpi-icon" style="background: linear-gradient(135deg, #3498DB, #2980B9);">
+                <Icon Type="check-circle" Theme="IconThemeType.Fill" Style="font-size: 22px; color: #fff;" />
+            </div>
+            <div class="kpi-content">
+                <span class="kpi-value">@_stats.CompletedWorkOrders</span>
+                <span class="kpi-label">OT Completadas</span>
+            </div>
+        </div>
     </Col>
 </Row>
 
-<Row Gutter="(16, 16)" Style="margin-top: 24px;">
-    <Col Span="16">
-        <Card Title="Órdenes de Trabajo Recientes" Bordered="false" Style="box-shadow: 0 2px 8px rgba(0,0,0,0.09);">
-            <Table TItem="WorkOrderDto" DataSource="@_recentOrders" Size="TableSize.Small" Loading="@_loading">
-                <PropertyColumn Property="c => c.Description" Title="Descripción" />
+<Row Gutter="(16, 16)" Style="margin-top: 20px;">
+    <Col Xs="24" Lg="16">
+        <div class="glass-card">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                <span style="font-size: 15px; font-weight: 600; color: #fff;">Órdenes Recientes</span>
+                <a href="/workorders" style="font-size: 12px; color: #E74C3C; text-decoration: none;">Ver todas →</a>
+            </div>
+            <Table TItem="RecentWorkOrderDto" DataSource="@_recentOrders" Size="TableSize.Small" Loading="@_loading">
+                <PropertyColumn Property="c => c.Description" Title="Descripción">
+                    <span style="font-weight: 600;">@context.Description</span>
+                </PropertyColumn>
                 <PropertyColumn Property="c => c.LotName" Title="Lote" />
                 <Column TData="string" Title="Estado">
                     @{
-                        var color = context.Status switch
+                        var (color, label) = context.Status switch
                         {
-                            "Completed" => "green",
-                            "InProgress" => "gold",
-                            _ => "red"
-                        };
-                        var label = context.Status switch
-                        {
-                            "Completed" => "Completada",
-                            "InProgress" => "En Progreso",
-                            _ => "Pendiente"
+                            "Completed" => ("#2ECC71", "Completada"),
+                            "InProgress" => ("#F1C40F", "En Progreso"),
+                            _ => ("#E74C3C", "Pendiente")
                         };
                     }
-                    <Tag Color="@color">@label</Tag>
+                    <Tag Style="@($"background: {color}20; color: {color}; border: 1px solid {color}40; border-radius: 12px; font-size: 11px; font-weight: 600; padding: 2px 10px;")">
+                        @label
+                    </Tag>
                 </Column>
                 <PropertyColumn Property="c => c.AssignedTo" Title="Asignado" />
             </Table>
-        </Card>
+        </div>
     </Col>
-    <Col Span="8">
-        <Card Title="Estado del Sistema" Bordered="false" Style="box-shadow: 0 2px 8px rgba(0,0,0,0.09);">
-            <div style="padding: 16px 0;">
-                <div style="display: flex; justify-content: space-between; margin-bottom: 16px;">
-                    <span>Conexión a Supabase</span>
-                    <Tag Color="@(_isConnected ? "green" : "orange")">@(_isConnected ? "Activo" : "Conectando...")</Tag>
-                </div>
-                <div style="display: flex; justify-content: space-between; margin-bottom: 16px;">
-                    <span>PostGIS</span>
-                    <Tag Color="@("green")">Habilitado</Tag>
-                </div>
-                <div style="display: flex; justify-content: space-between;">
-                    <span>Última sincronización</span>
-                    <span style="color: #888;">@_lastSync</span>
-                </div>
+    <Col Xs="24" Lg="8">
+        <div class="glass-card" style="height: 100%;">
+            <span style="font-size: 15px; font-weight: 600; color: #fff; display: block; margin-bottom: 20px;">Estado del Sistema</span>
+
+            <div class="status-row">
+                <span class="status-label">Supabase</span>
+                <Tag Style="@($"background: {(_isConnected ? "#2ECC7120" : "#E74C3C20")}; color: {(_isConnected ? "#2ECC71" : "#E74C3C")}; border: 1px solid {(_isConnected ? "#2ECC7140" : "#E74C3C40")}; border-radius: 12px; font-size: 11px;")">
+                    @(_isConnected ? "Conectado" : "Desconectado")
+                </Tag>
             </div>
-        </Card>
+            <div class="status-row">
+                <span class="status-label">PostGIS</span>
+                <Tag Style="background: #2ECC7120; color: #2ECC71; border: 1px solid #2ECC7140; border-radius: 12px; font-size: 11px;">Habilitado</Tag>
+            </div>
+            <div class="status-row">
+                <span class="status-label">Área Total</span>
+                <span style="color: rgba(255,255,255,0.7); font-size: 13px; font-weight: 600;">@_stats.TotalArea.ToString("N0") ha</span>
+            </div>
+            <div class="status-row" style="border-bottom: none;">
+                <span class="status-label">Sincronización</span>
+                <span style="color: rgba(255,255,255,0.5); font-size: 12px;">@_lastSync</span>
+            </div>
+        </div>
     </Col>
 </Row>
 
+<style>
+    .kpi-card {
+        background: rgba(255,255,255,0.04);
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+        border: 1px solid rgba(255,255,255,0.08);
+        border-radius: 14px;
+        padding: 20px;
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        transition: all 0.2s ease;
+    }
+
+    .kpi-card:hover {
+        border-color: rgba(255,255,255,0.15);
+        transform: translateY(-2px);
+    }
+
+    .kpi-icon {
+        width: 50px;
+        height: 50px;
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+    }
+
+    .kpi-content {
+        display: flex;
+        flex-direction: column;
+    }
+
+    .kpi-value {
+        font-size: 26px;
+        font-weight: 700;
+        color: #FFFFFF;
+        line-height: 1.1;
+        letter-spacing: -1px;
+    }
+
+    .kpi-total {
+        font-size: 14px;
+        color: rgba(255,255,255,0.35);
+        font-weight: 400;
+    }
+
+    .kpi-label {
+        font-size: 12px;
+        color: rgba(255,255,255,0.4);
+        margin-top: 4px;
+        font-weight: 500;
+    }
+
+    .status-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 12px 0;
+        border-bottom: 1px solid rgba(255,255,255,0.06);
+    }
+
+    .status-label {
+        color: rgba(255,255,255,0.5);
+        font-size: 13px;
+    }
+</style>
+
 @code {
     private DashboardStatsDto _stats = new();
-    private List<WorkOrderDto> _recentOrders = new();
+    private List<RecentWorkOrderDto> _recentOrders = new();
     private bool _loading = true;
     private bool _isConnected = false;
-    private bool _hasLoaded = false;
     private string _lastSync = "Cargando...";
     private string? _errorMessage;
 
-    protected override async Task OnAfterRenderAsync(bool firstRender)
-    {
-        if (firstRender && !_hasLoaded)
-        {
-            _hasLoaded = true;
-            await LoadDataAsync();
-            StateHasChanged();
-        }
-    }
-
-    private async Task LoadDataAsync()
+    protected override async Task OnInitializedAsync()
     {
         try
         {
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
-            
-            var statsResponse = await Http.GetAsync("api/dashboard/stats", cts.Token);
-            if (statsResponse.IsSuccessStatusCode)
-            {
-                var statsContent = await statsResponse.Content.ReadAsStringAsync(cts.Token);
-                _stats = JsonSerializer.Deserialize(statsContent, AppJsonSerializerContext.Default.DashboardStatsDto) ?? new();
-            }
-            else
-            {
-                _errorMessage = $"Error al obtener estadísticas: {statsResponse.StatusCode}";
-            }
-            
-            var ordersResponse = await Http.GetAsync("api/dashboard/recent-orders", cts.Token);
-            if (ordersResponse.IsSuccessStatusCode)
-            {
-                var ordersContent = await ordersResponse.Content.ReadAsStringAsync(cts.Token);
-                _recentOrders = JsonSerializer.Deserialize(ordersContent, AppJsonSerializerContext.Default.ListWorkOrderDto) ?? new();
-            }
-            
+
+            _stats = await Http.GetFromJsonAsync("api/dashboard/stats",
+                AppJsonSerializerContext.Default.DashboardStatsDto, cts.Token) ?? new();
+
+            _recentOrders = await Http.GetFromJsonAsync("api/dashboard/recent-orders",
+                AppJsonSerializerContext.Default.ListRecentWorkOrderDto, cts.Token) ?? new();
+
             _isConnected = true;
             _lastSync = DateTime.Now.ToString("HH:mm:ss");
         }
@@ -151,13 +217,14 @@
         }
         catch (Exception ex)
         {
-            _errorMessage = $"Error de conexión: {ex.Message}";
+            _errorMessage = $"Error de conexión: {ex.GetType().Name}: {ex.Message}";
             _isConnected = false;
             _lastSync = "Error";
         }
         finally
         {
             _loading = false;
+            StateHasChanged();
         }
     }
 }

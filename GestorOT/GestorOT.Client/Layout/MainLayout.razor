@@ -1,85 +1,255 @@
 @inherits LayoutComponentBase
 
-<Layout Style="min-height: 100vh;">
-    <Sider 
-        Theme="SiderTheme.Light"
-        Collapsible 
+<Layout Style="min-height: 100vh; background: #0f0f1a;">
+    <Sider
+        Width="260"
+        CollapsedWidth="72"
+        Collapsible
         @bind-Collapsed="@_collapsed"
-        Style="background: #FFFFFF;">
-        
-        <div class="logo" style="height: 64px; display: flex; align-items: center; justify-content: center; padding: 16px;">
-            <img src="favicon.png" alt="Logo" style="height: 32px; margin-right: 8px;" />
+        Style="background: #1E1E2E; border-right: 1px solid rgba(255,255,255,0.06);">
+
+        <div style="height: 64px; display: flex; align-items: center; padding: 0 20px; gap: 12px; border-bottom: 1px solid rgba(255,255,255,0.06);">
+            <div style="width: 36px; height: 36px; background: linear-gradient(135deg, #E74C3C, #C0392B); border-radius: 10px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+                <Icon Type="thunderbolt" Theme="IconThemeType.Fill" Style="color: #fff; font-size: 18px;" />
+            </div>
             @if (!_collapsed)
             {
-                <span style="font-weight: bold; font-size: 18px; color: #E74C3C;">GestorOT</span>
+                <span style="font-weight: 700; font-size: 18px; color: #FFFFFF; letter-spacing: -0.5px;">GestorOT</span>
             }
         </div>
-        
-        <Menu Theme="MenuTheme.Light" Mode="MenuMode.Inline" DefaultSelectedKeys="@(new[] { "1" })">
-            <MenuItem Key="1" RouterLink="/">
+
+        @if (!_collapsed)
+        {
+            <div style="padding: 16px 20px 8px; font-size: 10px; text-transform: uppercase; letter-spacing: 1.5px; color: rgba(255,255,255,0.3); font-weight: 600;">
+                Principal
+            </div>
+        }
+
+        <Menu Theme="MenuTheme.Dark" Mode="MenuMode.Inline" DefaultSelectedKeys="@(new[] { _activeKey })"
+              Style="background: transparent; border-right: none;">
+            <MenuItem Key="1" RouterLink="/" Style="@MenuItemStyle">
                 <Icon Type="dashboard" Theme="IconThemeType.Outline" />
                 <span>Dashboard</span>
             </MenuItem>
-            <MenuItem Key="2" RouterLink="/fields">
+            <MenuItem Key="2" RouterLink="/fields" Style="@MenuItemStyle">
                 <Icon Type="environment" Theme="IconThemeType.Outline" />
                 <span>Campos</span>
             </MenuItem>
-            <MenuItem Key="3" RouterLink="/lots">
-                <Icon Type="block" Theme="IconThemeType.Outline" />
+            <MenuItem Key="3" RouterLink="/lots" Style="@MenuItemStyle">
+                <Icon Type="appstore" Theme="IconThemeType.Outline" />
                 <span>Lotes</span>
             </MenuItem>
-            <MenuItem Key="4" RouterLink="/workorders">
+            <MenuItem Key="4" RouterLink="/workorders" Style="@MenuItemStyle">
                 <Icon Type="file-text" Theme="IconThemeType.Outline" />
                 <span>Órdenes de Trabajo</span>
             </MenuItem>
-            <MenuItem Key="5" RouterLink="/mapa">
+        </Menu>
+
+        @if (!_collapsed)
+        {
+            <div style="padding: 16px 20px 8px; font-size: 10px; text-transform: uppercase; letter-spacing: 1.5px; color: rgba(255,255,255,0.3); font-weight: 600;">
+                Análisis
+            </div>
+        }
+
+        <Menu Theme="MenuTheme.Dark" Mode="MenuMode.Inline" DefaultSelectedKeys="@(new[] { _activeKey })"
+              Style="background: transparent; border-right: none;">
+            <MenuItem Key="5" RouterLink="/mapa" Style="@MenuItemStyle">
                 <Icon Type="global" Theme="IconThemeType.Outline" />
-                <span>Explorador de Lotes</span>
+                <span>Explorador GIS</span>
             </MenuItem>
         </Menu>
     </Sider>
-    
-    <Layout>
-        <Header Style="background: #FFFFFF; padding: 0 24px; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 1px 4px rgba(0,0,0,0.08);">
-            <span style="font-size: 20px; font-weight: 600;">Sistema de Gestión de Órdenes de Trabajo</span>
-            <Space>
+
+    <Layout Style="background: #12121f;">
+        <Header Style="background: rgba(18,18,31,0.8); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); padding: 0 28px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.06); height: 56px;">
+            <span style="font-size: 14px; font-weight: 500; color: rgba(255,255,255,0.6);">Farm Intelligence Center</span>
+            <Space Size="@("16")">
                 <SpaceItem>
-                    <Badge Count="3">
-                        <Icon Type="bell" Theme="IconThemeType.Outline" Style="font-size: 20px; cursor: pointer;" />
+                    <Badge Count="3" Style="box-shadow: none;">
+                        <div style="width: 36px; height: 36px; background: rgba(255,255,255,0.06); border-radius: 10px; display: flex; align-items: center; justify-content: center; cursor: pointer;">
+                            <Icon Type="bell" Theme="IconThemeType.Outline" Style="font-size: 16px; color: rgba(255,255,255,0.7);" />
+                        </div>
                     </Badge>
                 </SpaceItem>
                 <SpaceItem>
-                    <Avatar Icon="user" Style="background-color: #E74C3C;" />
+                    <div style="width: 36px; height: 36px; background: linear-gradient(135deg, #E74C3C, #C0392B); border-radius: 10px; display: flex; align-items: center; justify-content: center; cursor: pointer;">
+                        <Icon Type="user" Theme="IconThemeType.Outline" Style="font-size: 16px; color: #fff;" />
+                    </div>
                 </SpaceItem>
             </Space>
         </Header>
-        
-        <Content Style="margin: 24px; padding: 24px; background: #FFFFFF; border-radius: 8px; min-height: 280px;">
+
+        <Content Style="margin: 20px; min-height: 280px;">
             @Body
         </Content>
-        
-        <Footer Style="text-align: center; background: transparent;">
-            GestorOT ©2026 - Agrivant
+
+        <Footer Style="text-align: center; background: transparent; color: rgba(255,255,255,0.25); font-size: 12px; padding: 12px 0;">
+            GestorOT &copy;2026 &mdash; Agrivant
         </Footer>
     </Layout>
 </Layout>
 
 <style>
-    .ant-menu-item-selected {
-        background-color: #FCE8E6 !important;
-        border-left: 3px solid #E74C3C !important;
+    .ant-layout-sider-trigger {
+        background: rgba(255,255,255,0.04) !important;
+        border-top: 1px solid rgba(255,255,255,0.06) !important;
     }
-    
-    .ant-menu-item-selected .anticon,
-    .ant-menu-item-selected span {
+
+    .ant-menu-dark .ant-menu-item-selected {
+        background: linear-gradient(90deg, rgba(231,76,60,0.2), rgba(231,76,60,0.05)) !important;
+        border-right: 3px solid #E74C3C !important;
+        border-radius: 0 !important;
+    }
+
+    .ant-menu-dark .ant-menu-item-selected .anticon,
+    .ant-menu-dark .ant-menu-item-selected span {
         color: #E74C3C !important;
     }
-    
-    .ant-menu-item:hover {
-        color: #E74C3C !important;
+
+    .ant-menu-dark .ant-menu-item:hover {
+        background: rgba(255,255,255,0.04) !important;
+    }
+
+    .ant-menu-dark .ant-menu-item {
+        color: rgba(255,255,255,0.55) !important;
+        margin: 2px 0 !important;
+        border-radius: 0 !important;
+        height: 42px !important;
+        line-height: 42px !important;
+    }
+
+    .ant-menu-dark .ant-menu-item .anticon {
+        color: rgba(255,255,255,0.4) !important;
+        font-size: 16px !important;
+    }
+
+    .ant-menu-dark .ant-menu-item:hover .anticon,
+    .ant-menu-dark .ant-menu-item:hover span {
+        color: rgba(255,255,255,0.85) !important;
+    }
+
+    .page-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        margin-bottom: 20px;
+    }
+
+    .page-title {
+        margin: 0;
+        color: #FFFFFF;
+        font-size: 22px;
+        font-weight: 700;
+        letter-spacing: -0.5px;
+    }
+
+    .page-subtitle {
+        color: rgba(255,255,255,0.4);
+        font-size: 13px;
+    }
+
+    .glass-card {
+        background: rgba(255,255,255,0.04);
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+        border: 1px solid rgba(255,255,255,0.08);
+        border-radius: 14px;
+        padding: 20px;
+        margin-bottom: 20px;
+    }
+
+    .ant-table {
+        background: transparent !important;
+        color: rgba(255,255,255,0.85) !important;
+    }
+
+    .ant-table-thead > tr > th {
+        background: rgba(255,255,255,0.06) !important;
+        color: rgba(255,255,255,0.5) !important;
+        font-size: 11px !important;
+        text-transform: uppercase !important;
+        letter-spacing: 0.5px !important;
+        font-weight: 600 !important;
+        border-bottom: 1px solid rgba(255,255,255,0.06) !important;
+        padding: 10px 16px !important;
+    }
+
+    .ant-table-tbody > tr > td {
+        border-bottom: 1px solid rgba(255,255,255,0.04) !important;
+        color: rgba(255,255,255,0.8) !important;
+        padding: 12px 16px !important;
+    }
+
+    .ant-table-tbody > tr:hover > td {
+        background: rgba(255,255,255,0.04) !important;
+    }
+
+    .ant-table-tbody > tr {
+        background: transparent !important;
+    }
+
+    .ant-pagination .ant-pagination-item {
+        background: rgba(255,255,255,0.06) !important;
+        border: 1px solid rgba(255,255,255,0.1) !important;
+    }
+
+    .ant-pagination .ant-pagination-item a {
+        color: rgba(255,255,255,0.7) !important;
+    }
+
+    .ant-pagination .ant-pagination-item-active {
+        background: #E74C3C !important;
+        border-color: #E74C3C !important;
+    }
+
+    .ant-pagination .ant-pagination-item-active a {
+        color: #fff !important;
+    }
+
+    .ant-card {
+        background: rgba(255,255,255,0.04) !important;
+        border: 1px solid rgba(255,255,255,0.08) !important;
+        border-radius: 14px !important;
+        color: rgba(255,255,255,0.85) !important;
+    }
+
+    .ant-card-head {
+        border-bottom: 1px solid rgba(255,255,255,0.06) !important;
+        color: rgba(255,255,255,0.85) !important;
+    }
+
+    .ant-card-head-title {
+        color: rgba(255,255,255,0.85) !important;
+    }
+
+    .ant-statistic-title {
+        color: rgba(255,255,255,0.45) !important;
+    }
+
+    .ant-statistic-content {
+        color: #FFFFFF !important;
+    }
+
+    .ant-alert {
+        border-radius: 10px !important;
+    }
+
+    .ant-spin-text {
+        color: rgba(255,255,255,0.6) !important;
+    }
+
+    .ant-empty-description {
+        color: rgba(255,255,255,0.4) !important;
+    }
+
+    .ant-table-column-sorter {
+        color: rgba(255,255,255,0.3) !important;
     }
 </style>
 
 @code {
     private bool _collapsed = false;
+    private string _activeKey = "1";
+    private const string MenuItemStyle = "font-size: 13px;";
 }

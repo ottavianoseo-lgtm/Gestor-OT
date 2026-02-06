@@ -1,74 +1,112 @@
 @page "/mapa"
 @using GestorOT.Shared.Dtos
 @using GestorOT.Shared
-@using System.Text.Json
+@using System.Net.Http.Json
 @inject HttpClient Http
 @inject IJSRuntime JS
 
-<PageTitle>Explorador de Lotes - GestorOT</PageTitle>
+<PageTitle>Explorador GIS - GestorOT</PageTitle>
 
-<div class="map-container">
-    <div id="map" class="map-view"></div>
-    
+<div class="gis-container">
+    <div id="map" class="gis-map"></div>
+
     @if (_loading)
     {
-        <div class="map-overlay">
+        <div class="gis-overlay">
             <Spin Size="@SpinSize.Large" Tip="Cargando lotes..." />
         </div>
     }
-    
+
     @if (!string.IsNullOrEmpty(_errorMessage))
     {
-        <div class="map-error">
+        <div class="gis-toast">
             <Alert Type="@AlertType.Error" Message="@_errorMessage" ShowIcon="true" />
         </div>
     }
-    
-    <div class="map-controls">
-        <Card Style="width: 200px;">
-            <div style="font-weight: bold; margin-bottom: 8px;">Leyenda</div>
-            <div style="display: flex; align-items: center; margin-bottom: 4px;">
-                <div style="width: 16px; height: 16px; background: #2ECC71; border-radius: 3px; margin-right: 8px;"></div>
-                <span>Lote Activo</span>
+
+    <div class="gis-legend">
+        <div style="font-weight: 700; font-size: 12px; color: #fff; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 1px;">Leyenda</div>
+        <div class="legend-item">
+            <div class="legend-dot" style="background: #2ECC71;"></div>
+            <span>Lote Activo</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-dot" style="background: #E74C3C;"></div>
+            <span>Lote Inactivo</span>
+        </div>
+        <div class="legend-divider"></div>
+        <div style="font-size: 11px; color: rgba(255,255,255,0.4);">
+            Lotes: @_lotsCount
+        </div>
+    </div>
+
+    <div class="gis-rail @(_selectedLot != null ? "gis-rail--open" : "")">
+        @if (_selectedLot != null)
+        {
+            <div class="rail-header">
+                <span class="rail-title">@_selectedLot.Name</span>
+                <div style="cursor: pointer;" @onclick="CloseRail">
+                    <Icon Type="close" Theme="IconThemeType.Outline" Style="color: rgba(255,255,255,0.5); font-size: 16px;" />
+                </div>
             </div>
-            <div style="display: flex; align-items: center;">
-                <div style="width: 16px; height: 16px; background: #E74C3C; border-radius: 3px; margin-right: 8px;"></div>
-                <span>Lote Inactivo</span>
+
+            <div class="rail-body">
+                <div class="rail-section">
+                    <span class="rail-label">Estado</span>
+                    <Tag Style="@($"background: {(_selectedLot.Status == "Active" ? "#2ECC71" : "#E74C3C")}20; color: {(_selectedLot.Status == "Active" ? "#2ECC71" : "#E74C3C")}; border: 1px solid {(_selectedLot.Status == "Active" ? "#2ECC71" : "#E74C3C")}40; border-radius: 12px; font-size: 11px; padding: 2px 10px;")">
+                        @(_selectedLot.Status == "Active" ? "Activo" : "Inactivo")
+                    </Tag>
+                </div>
+                <div class="rail-section">
+                    <span class="rail-label">Campo</span>
+                    <span class="rail-value">@(_selectedLot.FieldName ?? "—")</span>
+                </div>
+                <div class="rail-section">
+                    <span class="rail-label">Área</span>
+                    <span class="rail-value">@_selectedLot.Area.ToString("N2") ha</span>
+                </div>
+                <div class="rail-section">
+                    <span class="rail-label">Geometría</span>
+                    <span class="rail-value">@(!string.IsNullOrEmpty(_selectedLot.WktGeometry) ? "Definida" : "Sin datos")</span>
+                </div>
             </div>
-            <Divider Style="margin: 12px 0;" />
-            <div style="font-size: 12px; color: #888;">
-                Lotes: @_lotsCount
+
+            <div class="rail-actions">
+                <Button Type="@ButtonType.Primary" Block Size="@ButtonSize.Small"
+                        Style="background: #E74C3C; border-color: #E74C3C; border-radius: 8px;"
+                        OnClick="() => CenterOnSelectedLot()">
+                    <Icon Type="aim" Theme="IconThemeType.Outline" /> Centrar en mapa
+                </Button>
             </div>
-        </Card>
+        }
     </div>
 </div>
 
 <style>
-    .map-container {
+    .gis-container {
         position: relative;
-        width: 100%;
-        height: calc(100vh - 64px);
+        width: calc(100% + 40px);
+        height: calc(100vh - 96px);
+        margin: -20px;
+        overflow: hidden;
     }
-    
-    .map-view {
+
+    .gis-map {
         width: 100%;
         height: 100%;
     }
-    
-    .map-overlay {
+
+    .gis-overlay {
         position: absolute;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        background: rgba(255, 255, 255, 0.8);
+        top: 0; left: 0; right: 0; bottom: 0;
+        background: rgba(15,15,26,0.85);
         display: flex;
         align-items: center;
         justify-content: center;
         z-index: 1000;
     }
-    
-    .map-error {
+
+    .gis-toast {
         position: absolute;
         top: 16px;
         left: 50%;
@@ -76,12 +114,106 @@
         z-index: 1001;
         max-width: 400px;
     }
-    
-    .map-controls {
+
+    .gis-legend {
         position: absolute;
         top: 16px;
         right: 16px;
         z-index: 999;
+        background: rgba(30,30,46,0.9);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        border: 1px solid rgba(255,255,255,0.1);
+        border-radius: 12px;
+        padding: 14px 18px;
+        min-width: 160px;
+    }
+
+    .legend-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 6px;
+        font-size: 12px;
+        color: rgba(255,255,255,0.7);
+    }
+
+    .legend-dot {
+        width: 12px;
+        height: 12px;
+        border-radius: 4px;
+        flex-shrink: 0;
+    }
+
+    .legend-divider {
+        height: 1px;
+        background: rgba(255,255,255,0.08);
+        margin: 10px 0;
+    }
+
+    .gis-rail {
+        position: absolute;
+        top: 0;
+        right: -340px;
+        width: 320px;
+        height: 100%;
+        background: rgba(30,30,46,0.95);
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+        border-left: 1px solid rgba(255,255,255,0.08);
+        z-index: 998;
+        transition: right 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        display: flex;
+        flex-direction: column;
+    }
+
+    .gis-rail--open {
+        right: 0;
+    }
+
+    .rail-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 20px;
+        border-bottom: 1px solid rgba(255,255,255,0.06);
+    }
+
+    .rail-title {
+        font-size: 16px;
+        font-weight: 700;
+        color: #fff;
+    }
+
+    .rail-body {
+        padding: 16px 20px;
+        flex: 1;
+    }
+
+    .rail-section {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 12px 0;
+        border-bottom: 1px solid rgba(255,255,255,0.04);
+    }
+
+    .rail-label {
+        font-size: 12px;
+        color: rgba(255,255,255,0.4);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    .rail-value {
+        font-size: 13px;
+        color: rgba(255,255,255,0.85);
+        font-weight: 600;
+    }
+
+    .rail-actions {
+        padding: 16px 20px;
+        border-top: 1px solid rgba(255,255,255,0.06);
     }
 </style>
 
@@ -90,6 +222,8 @@
     private bool _loading = true;
     private bool _hasLoaded = false;
     private string? _errorMessage;
+    private LotDto? _selectedLot;
+    private List<LotDto> _allLots = new();
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -106,48 +240,54 @@
         try
         {
             await JS.InvokeAsync<bool>("mapInterop.initMap", "map", -34.6, -58.5, 10);
-            
+
+            var dotNetRef = DotNetObjectReference.Create(this);
+            await JS.InvokeVoidAsync("mapInterop.setDotNetRef", dotNetRef);
+
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
-            var response = await Http.GetAsync("api/lots/geojson", cts.Token);
-            
-            if (response.IsSuccessStatusCode)
+
+            var lotsTask = Http.GetFromJsonAsync("api/lots",
+                AppJsonSerializerContext.Default.ListLotDto, cts.Token);
+            var geoTask = Http.GetFromJsonAsync("api/lots/geojson",
+                AppJsonSerializerContext.Default.GeoJsonFeatureCollection, cts.Token);
+
+            _allLots = await lotsTask ?? new();
+
+            var featureCollection = await geoTask;
+
+            if (featureCollection?.Features != null)
             {
-                var content = await response.Content.ReadAsStringAsync(cts.Token);
-                var featureCollection = JsonSerializer.Deserialize(content, AppJsonSerializerContext.Default.GeoJsonFeatureCollection);
-                
-                if (featureCollection?.Features != null)
+                _lotsCount = featureCollection.Features.Count;
+
+                foreach (var feature in featureCollection.Features)
                 {
-                    _lotsCount = featureCollection.Features.Count;
-                    
-                    foreach (var feature in featureCollection.Features)
+                    if (feature.Geometry?.Coordinates != null && feature.Properties != null)
                     {
-                        if (feature.Geometry?.Coordinates != null && feature.Properties != null)
+                        var lotId = feature.Properties.TryGetValue("id", out var id) ? id?.ToString() ?? "" : "";
+                        var lotName = feature.Properties.TryGetValue("name", out var name) ? name?.ToString() ?? "" : "";
+                        var status = feature.Properties.TryGetValue("status", out var s) ? s?.ToString() ?? "Active" : "Active";
+                        var fieldName = feature.Properties.TryGetValue("fieldName", out var fn) ? fn?.ToString() ?? "" : "";
+                        double area = 0;
+                        if (feature.Properties.TryGetValue("area", out var a))
                         {
-                            var lotId = feature.Properties.TryGetValue("id", out var id) ? id?.ToString() ?? "" : "";
-                            var lotName = feature.Properties.TryGetValue("name", out var name) ? name?.ToString() ?? "" : "";
-                            var status = feature.Properties.TryGetValue("status", out var s) ? s?.ToString() ?? "Active" : "Active";
-                            
-                            var leafletCoords = ConvertToLeafletCoords(feature.Geometry.Coordinates);
-                            var coordsJson = JsonSerializer.Serialize(leafletCoords);
-                            
-                            await JS.InvokeAsync<bool>("mapInterop.addLotPolygon", 
-                                lotId, 
-                                lotName, 
-                                status, 
-                                50.0,
-                                coordsJson);
+                            if (a is System.Text.Json.JsonElement je)
+                                area = je.GetDouble();
+                            else
+                                area = Convert.ToDouble(a);
                         }
-                    }
-                    
-                    if (_lotsCount > 0)
-                    {
-                        await JS.InvokeAsync<bool>("mapInterop.fitAllLots");
+
+                        var leafletCoords = ConvertToLeafletCoords(feature.Geometry.Coordinates);
+                        var coordsJson = System.Text.Json.JsonSerializer.Serialize(leafletCoords);
+
+                        await JS.InvokeAsync<bool>("mapInterop.addLotPolygon",
+                            lotId, lotName, status, area, fieldName, coordsJson);
                     }
                 }
-            }
-            else
-            {
-                _errorMessage = "Error al cargar los lotes del servidor";
+
+                if (_lotsCount > 0)
+                {
+                    await JS.InvokeAsync<bool>("mapInterop.fitAllLots");
+                }
             }
         }
         catch (Exception ex)
@@ -160,9 +300,33 @@
         }
     }
 
+    private void CloseRail()
+    {
+        _selectedLot = null;
+    }
+
+    private async Task CenterOnSelectedLot()
+    {
+        if (_selectedLot != null)
+        {
+            await JS.InvokeAsync<bool>("mapInterop.centerOnLot", _selectedLot.Id.ToString());
+        }
+    }
+
+    [JSInvokable]
+    public void OnLotSelected(string lotId)
+    {
+        var lot = _allLots.FirstOrDefault(l => l.Id.ToString() == lotId);
+        if (lot != null)
+        {
+            _selectedLot = lot;
+            StateHasChanged();
+        }
+    }
+
     private static double[][][] ConvertToLeafletCoords(double[][][] geoJsonCoords)
     {
-        return geoJsonCoords.Select(ring => 
+        return geoJsonCoords.Select(ring =>
             ring.Select(coord => new double[] { coord[1], coord[0] }).ToArray()
         ).ToArray();
     }

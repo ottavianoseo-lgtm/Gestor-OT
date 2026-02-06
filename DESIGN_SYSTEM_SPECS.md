@@ -1,17 +1,15 @@
-# 🎨 GESTOR OT - VISUAL DESIGN SYSTEM (AGRIVANT UI)
+# 🎨 GUIÓN DE ESTILO: PREMIUM COMMAND CENTER
+Interfaz de alta fidelidad basada en tendencias SaaS 2026.
 
-## 1. PALETA DE COLORES (EXTRACTO DE MOCKUPS)
-- **Primary Brand Red:** `#E74C3C` (Acciones principales, Botones 'Submit').
-- **Status Green:** `#2ECC71` (Healthy / Done).
-- **Status Gold:** `#F1C40F` (Watch / In Progress).
-- **Surface Dark:** `#1E1E2E` (Fondo del Dashboard de Inteligencia).
-- **Surface Light:** `#FFFFFF` (Sidebar y Header).
+## 1. ESTÉTICA GLASSMORPHISM
+- **Sidebar Flotante:** Diseño con `backdrop-filter: blur(10px)` y fondo `rgba(30, 30, 46, 0.7)`.
+- **Dashboard Widgets:** Tarjetas con bordes sutiles de 1px (blanco transparente) y sombras suaves.
+- **Color Brand:** Rojo Principal `#E74C3C` para acentos y estados críticos.
 
-## 2. COMPONENTES ANT DESIGN BLAZOR
-- **Sidebar (Menu):** Fondo blanco. Iconos en gris suave. El elemento activo debe tener un borde lateral izquierdo rojo y un fondo rojo traslúcido (`#FCE8E6`).
-- **Dashboard Widgets:** Usar `AntCard` con `Bordered="false"` y `Shadow` sutil. Títulos en negrita, fuente sans-serif.
-- **Work Orders Table:** Usar `AntTable` con `Size="Small"`. Los estados deben representarse con `AntTag` usando colores semánticos (Rojo/Amarillo/Verde).
-- **GIS Panel:** El panel lateral en el mapa debe ser un `AntDrawer` o un panel flotante con `Z-Index` superior, fondo blanco y transparencia del 95%.
-
+## 2. COMPONENTES CLAVE (ANT DESIGN)
+- **Ultra-Modern OT Manager:** Vista de lista compacta usando `AntTable` con `StickyHeader`.
+- **Modern GIS Explorer:** Mapa a sangre (full-bleed) con panel lateral deslizante ("Sliding Side Rail") y "Bottom Sheet" de analíticas para visualización máxima.
+- **Status Indicators:** Usar `AntTag` con colores semánticos (Healthy/Watch/Issue) y bordes redondeados.
+  
 ## 3. LOGO SVG RESPONSIVE
 - El logo debe usar `viewBox` y `preserveAspectRatio="xMidYMid meet"` para evitar que se corte en el Sider comprimido.

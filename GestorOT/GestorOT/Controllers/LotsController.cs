@@ -27,13 +27,15 @@ public class LotsController : ControllerBase
             .OrderBy(l => l.Name)
             .ToListAsync();
 
+        var writer = new WKTWriter();
         return lots.Select(l => new LotDto(
             l.Id,
             l.FieldId,
             l.Name,
             l.Status,
-            l.Geometry != null ? GeometryToGeoJson(l.Geometry) : null,
-            l.Field?.Name
+            l.Geometry != null ? writer.Write(l.Geometry) : null,
+            l.Field?.Name,
+            l.Geometry != null ? l.Geometry.Area * 10000 : 0
         )).ToList();
     }
 
@@ -48,13 +50,15 @@ public class LotsController : ControllerBase
         if (lot == null)
             return NotFound();
 
+        var writer = new WKTWriter();
         return new LotDto(
             lot.Id,
             lot.FieldId,
             lot.Name,
             lot.Status,
-            lot.Geometry != null ? GeometryToGeoJson(lot.Geometry) : null,
-            lot.Field?.Name
+            lot.Geometry != null ? writer.Write(lot.Geometry) : null,
+            lot.Field?.Name,
+            lot.Geometry != null ? lot.Geometry.Area * 10000 : 0
         );
     }
 
@@ -74,7 +78,8 @@ public class LotsController : ControllerBase
                 ["id"] = l.Id.ToString(),
                 ["name"] = l.Name,
                 ["status"] = l.Status,
-                ["fieldName"] = l.Field?.Name ?? ""
+                ["fieldName"] = l.Field?.Name ?? "",
+                ["area"] = Math.Round(l.Geometry!.Area * 10000, 2)
             },
             l.Geometry != null ? ParseGeometry((Polygon)l.Geometry) : null
         )).ToList();
@@ -85,13 +90,21 @@ public class LotsController : ControllerBase
     [HttpPost]
     public async Task<ActionResult<LotDto>> CreateLot(LotDto dto)
     {
+        Polygon? geometry = null;
+        if (!string.IsNullOrEmpty(dto.WktGeometry))
+        {
+            var reader = new WKTReader();
+            geometry = (Polygon)reader.Read(dto.WktGeometry);
+            geometry.SRID = 4326;
+        }
+
         var lot = new Lot
         {
             Id = Guid.NewGuid(),
             FieldId = dto.FieldId,
             Name = dto.Name,
             Status = dto.Status,
-            Geometry = !string.IsNullOrEmpty(dto.GeoJson) ? GeoJsonToGeometry(dto.GeoJson) : null
+            Geometry = geometry
         };
 
         _context.Lots.Add(lot);
@@ -102,8 +115,9 @@ public class LotsController : ControllerBase
             lot.FieldId,
             lot.Name,
             lot.Status,
-            dto.GeoJson,
-            null
+            dto.WktGeometry,
+            null,
+            geometry != null ? geometry.Area * 10000 : 0
         );
 
         return CreatedAtAction(nameof(GetLot), new { id = lot.Id }, result);
@@ -119,8 +133,12 @@ public class LotsController : ControllerBase
         lot.Name = dto.Name;
         lot.Status = dto.Status;
         lot.FieldId = dto.FieldId;
-        if (!string.IsNullOrEmpty(dto.GeoJson))
-            lot.Geometry = GeoJsonToGeometry(dto.GeoJson);
+        if (!string.IsNullOrEmpty(dto.WktGeometry))
+        {
+            var reader = new WKTReader();
+            lot.Geometry = (Polygon)reader.Read(dto.WktGeometry);
+            lot.Geometry.SRID = 4326;
+        }
 
         await _context.SaveChangesAsync();
         return NoContent();
@@ -138,23 +156,10 @@ public class LotsController : ControllerBase
         return NoContent();
     }
 
-    private static string GeometryToGeoJson(Geometry geometry)
-    {
-        var writer = new GeoJsonWriter();
-        return writer.Write(geometry);
-    }
-
-    private static Polygon? GeoJsonToGeometry(string geoJson)
-    {
-        var reader = new GeoJsonReader();
-        return reader.Read<Polygon>(geoJson);
-    }
-
     private static GeoJsonGeometry ParseGeometry(Polygon polygon)
     {
         var coords = polygon.Coordinates;
         var ring = coords.Select(c => new double[] { c.X, c.Y }).ToArray();
-        
         return new GeoJsonGeometry("Polygon", new double[][][] { ring });
     }
 }

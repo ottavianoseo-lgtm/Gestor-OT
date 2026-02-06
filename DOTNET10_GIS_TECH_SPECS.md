@@ -1,22 +1,14 @@
-# 🗺️ GIS & PERFORMANCE TECHNICAL SPECIFICATIONS (.NET 10)
+# 🗺️ ESPECIFICACIONES TÉCNICAS GIS (MAPAS)
+Manejo de miles de polígonos agrícolas sin lag.
 
-## 1. INTEROPERABILIDAD DE ALTO RENDIMIENTO (JSImport)
-- **Patrón:** Abandonar `IJSRuntime` para la transferencia de GeoJSON. 
-- **Implementación:** Usar `[JSImport]` y `[JSExport]` de .NET 10.
-- **Memoria:** Utilizar `MemoryView` para pasar el buffer de coordenadas directamente desde el heap de WASM a JavaScript sin copias intermedias (Zero-copy).
-- **JS Integration:** El archivo `map.js` debe exponer funciones tipadas compatibles con `JSImport`.
+## 1. INTEROPERABILIDAD "ZERO-COPY" (CRÍTICO)
+- [cite_start]**Prohibido:** No usar `IJSRuntime.InvokeAsync` para mover FeatureCollections masivas.
+- [cite_start]**Obligatorio:** Usar `[JSImport]` y `[JSExport]` con `MemoryView` para permitir que JavaScript acceda directamente a los datos en la memoria de WASM sin realizar copias[cite: 4, 11].
 
-## 2. SERIALIZACIÓN OPTIMIZADA (Source Generation)
-- **Regla:** Prohibido el uso de serialización basada en reflexión.
-- **Implementación:** Definir un `JsonSerializerContext` parcial. 
-- **Configuración:** Registrar todos los DTOs que incluyan tipos `Geometry` o `FeatureCollection`. Esto es crítico para mantener el rendimiento bajo AOT (Ahead-Of-Time compilation).
+## 2. RENDIMIENTO DE LEAFLET
+- [cite_start]**Canvas Rendering:** Inicializar el mapa con `preferCanvas: true` para renderizar +1000 polígonos fluídamente[cite: 20, 953].
+- [cite_start]**Spatial Indexing:** Todas las consultas espaciales en Supabase deben usar índices `GiST` y la función `ST_Intersects` de PostGIS[cite: 5, 4264].
 
-## 3. POSTGIS & EF CORE 10
-- **Conexión:** `Npgsql.EntityFrameworkCore.PostgreSQL.NetTopologySuite` es obligatorio.
-- **Mapeo:** Las columnas espaciales deben definirse como `geometry(Polygon, 4326)`.
-- **Bulk Operations:** Usar `context.Lots.ExecuteUpdateAsync(...)` para cambios de estado masivos (ej. cambiar status de 50 lotes a la vez) para evitar el overhead del Change Tracker de EF.
-- **Índices:** Las migraciones deben incluir índices `GiST` en las columnas de geometría para optimizar consultas de intersección (`ST_Intersects`).
-
-## 4. RENDIMIENTO DEL MAPA (Leaflet)
-- **Renderer:** Forzar `preferCanvas: true` en las opciones del mapa. Esto permite manejar +1000 polígonos agrícolas sin lag en el navegador.
-- **Clustering:** Implementar clustering de puntos si la densidad de Work Orders en el mapa supera los 100 elementos por vista.
+## 3. PIPELINE DE DATOS ESPACIALES
+- [cite_start]**Serialización:** Usar `NetTopologySuite.IO.GeoJSON4STJ` integrado con System.Text.Json Source Generators[cite: 13, 15].
+- [cite_start]**DTO Safety:** Para evitar crashes de serialización, enviar la geometría desde el Server como `string WKT` o `string GeoJSON` y deserializar en el Client[cite: 13].
