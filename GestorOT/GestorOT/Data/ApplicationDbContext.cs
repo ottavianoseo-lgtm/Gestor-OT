@@ -67,6 +67,9 @@ public class ApplicationDbContext : DbContext
             entity.Property(e => e.ItemName).IsRequired().HasMaxLength(200);
             entity.Property(e => e.CurrentStock).HasPrecision(18, 4);
             entity.Property(e => e.ReorderLevel).HasPrecision(18, 4);
+            entity.Property(e => e.UnitA).HasMaxLength(50);
+            entity.Property(e => e.UnitB).HasMaxLength(50);
+            entity.Property(e => e.ConversionFactor).HasPrecision(18, 6).HasDefaultValue(1);
         });
     }
 }
@@ -109,4 +112,7 @@ public class Inventory
     public string ItemName { get; set; } = string.Empty;
     public double CurrentStock { get; set; }
     public double ReorderLevel { get; set; }
+    public string UnitA { get; set; } = string.Empty;
+    public string UnitB { get; set; } = string.Empty;
+    public double ConversionFactor { get; set; } = 1;
 }

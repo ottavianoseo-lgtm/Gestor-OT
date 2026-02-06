@@ -3,12 +3,19 @@
 @using GestorOT.Shared
 @using System.Net.Http.Json
 @inject HttpClient Http
+@inject IMessageService Message
 
 <PageTitle>Órdenes de Trabajo - GestorOT</PageTitle>
 
 <div class="page-header">
-    <h2 class="page-title">Órdenes de Trabajo</h2>
-    <span class="page-subtitle">@_workOrders.Count órdenes registradas</span>
+    <div>
+        <h2 class="page-title">Órdenes de Trabajo</h2>
+        <span class="page-subtitle">@_workOrders.Count órdenes registradas</span>
+    </div>
+    <Button Type="@ButtonType.Primary" OnClick="OpenCreateModal"
+            Style="background: #E74C3C; border-color: #E74C3C; border-radius: 8px; font-weight: 600;">
+        <Icon Type="plus" Theme="IconThemeType.Outline" /> Nueva Orden
+    </Button>
 </div>
 
 @if (!string.IsNullOrEmpty(_errorMessage))
@@ -16,9 +23,30 @@
     <Alert Type="@AlertType.Error" Message="@_errorMessage" ShowIcon="true" Style="margin-bottom: 16px;" />
 }
 
+<Row Gutter="(16, 16)" Style="margin-bottom: 16px;">
+    <Col Xs="24" Sm="8">
+        <div class="kpi-card-sm" style="border-left: 3px solid #E74C3C;">
+            <span class="kpi-sm-value">@_workOrders.Count(w => w.Status == "Pending")</span>
+            <span class="kpi-sm-label">Pendientes</span>
+        </div>
+    </Col>
+    <Col Xs="24" Sm="8">
+        <div class="kpi-card-sm" style="border-left: 3px solid #F1C40F;">
+            <span class="kpi-sm-value">@_workOrders.Count(w => w.Status == "InProgress")</span>
+            <span class="kpi-sm-label">En Progreso</span>
+        </div>
+    </Col>
+    <Col Xs="24" Sm="8">
+        <div class="kpi-card-sm" style="border-left: 3px solid #2ECC71;">
+            <span class="kpi-sm-value">@_workOrders.Count(w => w.Status == "Completed")</span>
+            <span class="kpi-sm-label">Completadas</span>
+        </div>
+    </Col>
+</Row>
+
 <div class="glass-card">
     <Table TItem="WorkOrderDto" DataSource="_workOrders" Loading="_loading" Size="@TableSize.Small"
-           ScrollX="1000">
+           ScrollX="1100">
         <PropertyColumn Property="c => c.Description" Title="Descripción">
             <span style="font-weight: 600;">@context.Description</span>
         </PropertyColumn>
@@ -40,21 +68,157 @@
         <PropertyColumn Property="c => c.DueDate" Title="Fecha Límite" Sortable>
             @context.DueDate.ToString("dd/MM/yyyy")
         </PropertyColumn>
+        <ActionColumn Title="Flujo" Width="180">
+            @if (context.Status == "Pending")
+            {
+                <Button Size="@ButtonSize.Small" OnClick="@(() => ChangeStatus(context, "InProgress"))"
+                        Style="border-radius: 6px; background: #F1C40F20; border-color: #F1C40F40; color: #F1C40F; font-size: 11px;">
+                    <Icon Type="play-circle" Theme="IconThemeType.Outline" /> Iniciar
+                </Button>
+            }
+            else if (context.Status == "InProgress")
+            {
+                <Button Size="@ButtonSize.Small" OnClick="@(() => ChangeStatus(context, "Completed"))"
+                        Style="border-radius: 6px; background: #2ECC7120; border-color: #2ECC7140; color: #2ECC71; font-size: 11px;">
+                    <Icon Type="check-circle" Theme="IconThemeType.Outline" /> Completar
+                </Button>
+            }
+            else
+            {
+                <Tag Style="background: #2ECC7110; color: #2ECC71; border: 1px solid #2ECC7130; border-radius: 12px; font-size: 11px; padding: 2px 10px;">
+                    Finalizada
+                </Tag>
+            }
+        </ActionColumn>
+        <ActionColumn Title="Acciones" Width="160">
+            <Space>
+                <SpaceItem>
+                    <Button Size="@ButtonSize.Small" OnClick="() => OpenEditModal(context)"
+                            Style="border-radius: 6px; border-color: rgba(255,255,255,0.15); color: rgba(255,255,255,0.7);">
+                        <Icon Type="edit" Theme="IconThemeType.Outline" />
+                    </Button>
+                </SpaceItem>
+                <SpaceItem>
+                    <Popconfirm Title="¿Eliminar esta orden de trabajo?"
+                                OnConfirm="() => DeleteWorkOrder(context.Id)"
+                                OkText="Eliminar" CancelText="Cancelar">
+                        <Button Danger Size="@ButtonSize.Small" Style="border-radius: 6px;">
+                            <Icon Type="delete" Theme="IconThemeType.Outline" />
+                        </Button>
+                    </Popconfirm>
+                </SpaceItem>
+            </Space>
+        </ActionColumn>
     </Table>
 </div>
 
+<Modal Title="@(_isEditing ? "Editar Orden de Trabajo" : "Nueva Orden de Trabajo")"
+       Visible="_modalVisible"
+       OnCancel="CloseModal"
+       OnOk="SaveWorkOrder"
+       OkText="@(_isEditing ? "Guardar" : "Crear")"
+       ConfirmLoading="_saving"
+       Width="560">
+    <Form @ref="_form" Model="_formModel" Layout="@FormLayout.Vertical">
+        <FormItem Label="Descripción">
+            <TextArea @bind-Value="_formModel.Description" Placeholder="Descripción de la labor"
+                      Rows="3" />
+        </FormItem>
+        <FormItem Label="Lote">
+            <Select TItem="LotDto"
+                    TItemValue="Guid"
+                    DataSource="_availableLots"
+                    @bind-Value="_formModel.LotId"
+                    LabelName="@nameof(LotDto.Name)"
+                    ValueName="@nameof(LotDto.Id)"
+                    Placeholder="Seleccionar lote"
+                    Style="width: 100%;"
+                    EnableSearch />
+        </FormItem>
+        <Row Gutter="16">
+            <Col Span="12">
+                <FormItem Label="Asignado a">
+                    <Input @bind-Value="_formModel.AssignedTo" Placeholder="Nombre del responsable" />
+                </FormItem>
+            </Col>
+            <Col Span="12">
+                <FormItem Label="Fecha Límite">
+                    <DatePicker @bind-Value="_formModel.DueDate" Style="width: 100%;"
+                                Format="dd/MM/yyyy" />
+                </FormItem>
+            </Col>
+        </Row>
+        <FormItem Label="Estado">
+            <RadioGroup @bind-Value="_formModel.Status">
+                <Radio Value="@("Pending")">Pendiente</Radio>
+                <Radio Value="@("InProgress")">En Progreso</Radio>
+                <Radio Value="@("Completed")">Completada</Radio>
+            </RadioGroup>
+        </FormItem>
+    </Form>
+</Modal>
+
+<style>
+    .kpi-card-sm {
+        background: rgba(255,255,255,0.04);
+        border: 1px solid rgba(255,255,255,0.08);
+        border-radius: 10px;
+        padding: 14px 18px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+    .kpi-sm-value {
+        font-size: 22px;
+        font-weight: 700;
+        color: #fff;
+    }
+    .kpi-sm-label {
+        font-size: 12px;
+        color: rgba(255,255,255,0.5);
+    }
+</style>
+
 @code {
     private List<WorkOrderDto> _workOrders = new();
+    private List<LotDto> _availableLots = new();
     private bool _loading = true;
     private string? _errorMessage;
+    private bool _modalVisible;
+    private bool _isEditing;
+    private bool _saving;
+    private Guid _editingId;
+    private WoFormModel _formModel = new();
+    private Form<WoFormModel>? _form;
+
+    public class WoFormModel
+    {
+        public string Description { get; set; } = string.Empty;
+        public Guid LotId { get; set; }
+        public string AssignedTo { get; set; } = string.Empty;
+        public DateTime DueDate { get; set; } = DateTime.Today.AddDays(7);
+        public string Status { get; set; } = "Pending";
+    }
 
     protected override async Task OnInitializedAsync()
     {
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
         try
         {
+            _loading = true;
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
-            _workOrders = await Http.GetFromJsonAsync("api/workorders",
-                AppJsonSerializerContext.Default.ListWorkOrderDto, cts.Token) ?? new();
+            var ordersTask = Http.GetFromJsonAsync("api/workorders",
+                AppJsonSerializerContext.Default.ListWorkOrderDto, cts.Token);
+            var lotsTask = Http.GetFromJsonAsync("api/lots",
+                AppJsonSerializerContext.Default.ListLotDto, cts.Token);
+
+            _workOrders = await ordersTask ?? new();
+            _availableLots = await lotsTask ?? new();
+            _errorMessage = null;
         }
         catch (Exception ex)
         {
@@ -64,6 +228,141 @@
         {
             _loading = false;
             StateHasChanged();
+        }
+    }
+
+    private void OpenCreateModal()
+    {
+        _isEditing = false;
+        _formModel = new WoFormModel();
+        if (_availableLots.Count > 0)
+            _formModel.LotId = _availableLots[0].Id;
+        _modalVisible = true;
+    }
+
+    private void OpenEditModal(WorkOrderDto wo)
+    {
+        _isEditing = true;
+        _editingId = wo.Id;
+        _formModel = new WoFormModel
+        {
+            Description = wo.Description,
+            LotId = wo.LotId,
+            AssignedTo = wo.AssignedTo,
+            DueDate = wo.DueDate,
+            Status = wo.Status
+        };
+        _modalVisible = true;
+    }
+
+    private void CloseModal()
+    {
+        _modalVisible = false;
+    }
+
+    private async Task SaveWorkOrder()
+    {
+        if (string.IsNullOrWhiteSpace(_formModel.Description))
+        {
+            Message.Warning("La descripción es obligatoria.");
+            return;
+        }
+        if (_formModel.LotId == Guid.Empty)
+        {
+            Message.Warning("Debe seleccionar un lote.");
+            return;
+        }
+
+        _saving = true;
+        try
+        {
+            var dto = new WorkOrderDto(
+                _isEditing ? _editingId : Guid.Empty,
+                _formModel.LotId,
+                _formModel.Description,
+                _formModel.Status,
+                _formModel.AssignedTo,
+                _formModel.DueDate
+            );
+
+            HttpResponseMessage response;
+            if (_isEditing)
+            {
+                response = await Http.PutAsJsonAsync($"api/workorders/{_editingId}",
+                    dto, AppJsonSerializerContext.Default.WorkOrderDto);
+            }
+            else
+            {
+                response = await Http.PostAsJsonAsync("api/workorders",
+                    dto, AppJsonSerializerContext.Default.WorkOrderDto);
+            }
+
+            if (response.IsSuccessStatusCode)
+            {
+                Message.Success(_isEditing ? "Orden actualizada." : "Orden creada correctamente.");
+                _modalVisible = false;
+                await LoadData();
+            }
+            else
+            {
+                Message.Error($"Error al guardar: {response.StatusCode}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Message.Error($"Error: {ex.Message}");
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private async Task ChangeStatus(WorkOrderDto wo, string newStatus)
+    {
+        try
+        {
+            var dto = new WorkOrderDto(
+                wo.Id, wo.LotId, wo.Description, newStatus, wo.AssignedTo, wo.DueDate, wo.LotName
+            );
+            var response = await Http.PutAsJsonAsync($"api/workorders/{wo.Id}",
+                dto, AppJsonSerializerContext.Default.WorkOrderDto);
+
+            if (response.IsSuccessStatusCode)
+            {
+                var label = newStatus == "InProgress" ? "en progreso" : "completada";
+                Message.Success($"Orden marcada como {label}.");
+                await LoadData();
+            }
+            else
+            {
+                Message.Error($"Error: {response.StatusCode}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Message.Error($"Error: {ex.Message}");
+        }
+    }
+
+    private async Task DeleteWorkOrder(Guid id)
+    {
+        try
+        {
+            var response = await Http.DeleteAsync($"api/workorders/{id}");
+            if (response.IsSuccessStatusCode)
+            {
+                Message.Success("Orden eliminada correctamente.");
+                await LoadData();
+            }
+            else
+            {
+                Message.Error($"Error al eliminar: {response.StatusCode}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Message.Error($"Error: {ex.Message}");
         }
     }
 }

@@ -59,6 +59,21 @@
                 <span>Explorador GIS</span>
             </MenuItem>
         </Menu>
+
+        @if (!_collapsed)
+        {
+            <div style="padding: 16px 20px 8px; font-size: 10px; text-transform: uppercase; letter-spacing: 1.5px; color: rgba(255,255,255,0.3); font-weight: 600;">
+                Logística
+            </div>
+        }
+
+        <Menu Theme="MenuTheme.Dark" Mode="MenuMode.Inline" DefaultSelectedKeys="@(new[] { _activeKey })"
+              Style="background: transparent; border-right: none;">
+            <MenuItem Key="6" RouterLink="/inventory" Style="@MenuItemStyle">
+                <Icon Type="database" Theme="IconThemeType.Outline" />
+                <span>Inventario</span>
+            </MenuItem>
+        </Menu>
     </Sider>
 
     <Layout Style="background: #12121f;">
@@ -245,6 +260,132 @@
 
     .ant-table-column-sorter {
         color: rgba(255,255,255,0.3) !important;
+    }
+
+    .ant-modal-content {
+        background: #1E1E2E !important;
+        border: 1px solid rgba(255,255,255,0.1) !important;
+        border-radius: 14px !important;
+    }
+
+    .ant-modal-header {
+        background: transparent !important;
+        border-bottom: 1px solid rgba(255,255,255,0.08) !important;
+    }
+
+    .ant-modal-title {
+        color: #fff !important;
+        font-weight: 700 !important;
+    }
+
+    .ant-modal-close-x {
+        color: rgba(255,255,255,0.5) !important;
+    }
+
+    .ant-modal-body {
+        color: rgba(255,255,255,0.85) !important;
+    }
+
+    .ant-modal-footer {
+        border-top: 1px solid rgba(255,255,255,0.08) !important;
+    }
+
+    .ant-form-item-label > label {
+        color: rgba(255,255,255,0.7) !important;
+        font-size: 12px !important;
+        font-weight: 600 !important;
+    }
+
+    .ant-input, .ant-input-affix-wrapper, .ant-select-selector, .ant-picker, .ant-input-number {
+        background: rgba(255,255,255,0.06) !important;
+        border-color: rgba(255,255,255,0.12) !important;
+        color: rgba(255,255,255,0.85) !important;
+        border-radius: 8px !important;
+    }
+
+    .ant-input::placeholder, .ant-select-selection-placeholder {
+        color: rgba(255,255,255,0.3) !important;
+    }
+
+    .ant-input:hover, .ant-input:focus, .ant-input-affix-wrapper:hover, .ant-input-affix-wrapper:focus,
+    .ant-select-selector:hover, .ant-picker:hover {
+        border-color: #E74C3C !important;
+    }
+
+    .ant-input-number-input {
+        color: rgba(255,255,255,0.85) !important;
+    }
+
+    .ant-select-dropdown {
+        background: #1E1E2E !important;
+        border: 1px solid rgba(255,255,255,0.1) !important;
+    }
+
+    .ant-select-item {
+        color: rgba(255,255,255,0.7) !important;
+    }
+
+    .ant-select-item-option-active,
+    .ant-select-item-option-selected {
+        background: rgba(231,76,60,0.15) !important;
+        color: #E74C3C !important;
+    }
+
+    .ant-radio-wrapper {
+        color: rgba(255,255,255,0.7) !important;
+    }
+
+    .ant-radio-checked .ant-radio-inner {
+        border-color: #E74C3C !important;
+        background: #E74C3C !important;
+    }
+
+    .ant-picker-panel-container {
+        background: #1E1E2E !important;
+    }
+
+    .ant-picker-header, .ant-picker-content th {
+        color: rgba(255,255,255,0.7) !important;
+    }
+
+    .ant-picker-cell-in-view .ant-picker-cell-inner {
+        color: rgba(255,255,255,0.85) !important;
+    }
+
+    .ant-picker-cell-selected .ant-picker-cell-inner {
+        background: #E74C3C !important;
+    }
+
+    .ant-popover-inner {
+        background: #1E1E2E !important;
+        border: 1px solid rgba(255,255,255,0.1) !important;
+    }
+
+    .ant-popover-message-title {
+        color: rgba(255,255,255,0.85) !important;
+    }
+
+    .ant-btn-default {
+        background: rgba(255,255,255,0.06) !important;
+        border-color: rgba(255,255,255,0.15) !important;
+        color: rgba(255,255,255,0.7) !important;
+    }
+
+    .ant-message-notice-content {
+        background: #1E1E2E !important;
+        border: 1px solid rgba(255,255,255,0.1) !important;
+        color: rgba(255,255,255,0.85) !important;
+        border-radius: 10px !important;
+    }
+
+    .ant-upload {
+        background: rgba(255,255,255,0.04) !important;
+        border-color: rgba(255,255,255,0.12) !important;
+        border-radius: 8px !important;
+    }
+
+    .ant-upload-text {
+        color: rgba(255,255,255,0.7) !important;
     }
 </style>
 

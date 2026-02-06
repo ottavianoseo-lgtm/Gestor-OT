@@ -3,6 +3,9 @@ window.mapInterop = {
     lotLayers: {},
     selectedLayer: null,
     dotNetRef: null,
+    drawControl: null,
+    drawnItems: null,
+    editingLotId: null,
 
     initMap: function(containerId, centerLat, centerLng, zoom) {
         if (this.map) {
@@ -12,6 +15,7 @@ window.mapInterop = {
 
         this.lotLayers = {};
         this.selectedLayer = null;
+        this.editingLotId = null;
 
         this.map = L.map(containerId, {
             preferCanvas: true,
@@ -27,6 +31,65 @@ window.mapInterop = {
             attribution: '',
             maxZoom: 19
         }).addTo(this.map);
+
+        this.drawnItems = new L.FeatureGroup();
+        this.map.addLayer(this.drawnItems);
+
+        if (typeof L.Control.Draw !== 'undefined') {
+            this.drawControl = new L.Control.Draw({
+                position: 'topleft',
+                draw: {
+                    polygon: {
+                        allowIntersection: false,
+                        showArea: true,
+                        shapeOptions: {
+                            color: '#E74C3C',
+                            fillColor: '#E74C3C',
+                            fillOpacity: 0.3,
+                            weight: 3
+                        }
+                    },
+                    polyline: false,
+                    circle: false,
+                    rectangle: false,
+                    marker: false,
+                    circlemarker: false
+                },
+                edit: {
+                    featureGroup: this.drawnItems,
+                    edit: true,
+                    remove: true
+                }
+            });
+            this.map.addControl(this.drawControl);
+
+            this.map.on(L.Draw.Event.CREATED, (e) => {
+                var layer = e.layer;
+                this.drawnItems.addLayer(layer);
+                var wkt = this.layerToWkt(layer);
+                var area = this.calculateArea(layer);
+                if (this.dotNetRef) {
+                    this.dotNetRef.invokeMethodAsync('OnPolygonDrawn', wkt, area);
+                }
+            });
+
+            this.map.on(L.Draw.Event.EDITED, (e) => {
+                var layers = e.layers;
+                layers.eachLayer((layer) => {
+                    var wkt = this.layerToWkt(layer);
+                    var area = this.calculateArea(layer);
+                    if (this.dotNetRef) {
+                        this.dotNetRef.invokeMethodAsync('OnPolygonEdited', wkt, area);
+                    }
+                });
+            });
+
+            this.map.on(L.Draw.Event.DELETED, (e) => {
+                if (this.dotNetRef) {
+                    this.dotNetRef.invokeMethodAsync('OnPolygonDeleted');
+                }
+            });
+        }
 
         return true;
     },
@@ -82,12 +145,7 @@ window.mapInterop = {
 
     highlightLot: function(lotId) {
         if (this.selectedLayer) {
-            var prevId = Object.keys(this.lotLayers).find(k => this.lotLayers[k] === this.selectedLayer);
-            if (prevId && this.lotLayers[prevId]) {
-                var prevStatus = this.lotLayers[prevId].options._status;
-                var prevColor = prevStatus === 'Active' ? '#2ECC71' : '#E74C3C';
-                this.selectedLayer.setStyle({ weight: 2, fillOpacity: 0.35 });
-            }
+            this.selectedLayer.setStyle({ weight: 2, fillOpacity: 0.35 });
         }
 
         if (this.lotLayers[lotId]) {
@@ -127,9 +185,141 @@ window.mapInterop = {
         this.selectedLayer = null;
     },
 
+    clearDrawn: function() {
+        if (this.drawnItems) {
+            this.drawnItems.clearLayers();
+        }
+    },
+
     invalidateSize: function() {
         if (this.map) {
             setTimeout(() => this.map.invalidateSize(), 100);
+        }
+    },
+
+    layerToWkt: function(layer) {
+        var latlngs = layer.getLatLngs()[0];
+        var coords = latlngs.map(function(ll) {
+            return ll.lng.toFixed(8) + ' ' + ll.lat.toFixed(8);
+        });
+        coords.push(coords[0]);
+        return 'POLYGON ((' + coords.join(', ') + '))';
+    },
+
+    calculateArea: function(layer) {
+        if (!layer || !layer.getLatLngs) return 0;
+        var latlngs = layer.getLatLngs()[0];
+        var area = 0;
+        for (var i = 0; i < latlngs.length; i++) {
+            var j = (i + 1) % latlngs.length;
+            var xi = latlngs[i].lng * Math.PI / 180;
+            var yi = latlngs[i].lat * Math.PI / 180;
+            var xj = latlngs[j].lng * Math.PI / 180;
+            var yj = latlngs[j].lat * Math.PI / 180;
+            area += (xj - xi) * (2 + Math.sin(yi) + Math.sin(yj));
+        }
+        area = Math.abs(area * 6371000 * 6371000 / 2);
+        return area / 10000;
+    },
+
+    parseGeoJsonFile: function(geoJsonString) {
+        try {
+            var geojson = JSON.parse(geoJsonString);
+            var results = [];
+
+            var features = [];
+            if (geojson.type === 'FeatureCollection') {
+                features = geojson.features || [];
+            } else if (geojson.type === 'Feature') {
+                features = [geojson];
+            } else if (geojson.type === 'Polygon' || geojson.type === 'MultiPolygon') {
+                features = [{ type: 'Feature', geometry: geojson, properties: {} }];
+            }
+
+            features.forEach(function(feature) {
+                if (feature.geometry && feature.geometry.type === 'Polygon') {
+                    var coords = feature.geometry.coordinates[0];
+                    var wktCoords = coords.map(function(c) {
+                        return c[0].toFixed(8) + ' ' + c[1].toFixed(8);
+                    });
+                    var wkt = 'POLYGON ((' + wktCoords.join(', ') + '))';
+                    var name = (feature.properties && feature.properties.name) ||
+                               (feature.properties && feature.properties.Name) || '';
+                    results.push({ wkt: wkt, name: name });
+                }
+            });
+
+            return JSON.stringify(results);
+        } catch (e) {
+            console.error('Error parsing GeoJSON:', e);
+            return '[]';
+        }
+    },
+
+    parseKmlFile: function(kmlString) {
+        try {
+            var parser = new DOMParser();
+            var kml = parser.parseFromString(kmlString, 'text/xml');
+            var results = [];
+
+            var placemarks = kml.getElementsByTagName('Placemark');
+            for (var i = 0; i < placemarks.length; i++) {
+                var pm = placemarks[i];
+                var nameEl = pm.getElementsByTagName('name')[0];
+                var name = nameEl ? nameEl.textContent : '';
+
+                var coordsEl = pm.getElementsByTagName('coordinates')[0];
+                if (!coordsEl) continue;
+
+                var coordsText = coordsEl.textContent.trim();
+                var points = coordsText.split(/\s+/).filter(function(s) { return s.length > 0; });
+                var wktCoords = points.map(function(p) {
+                    var parts = p.split(',');
+                    return parseFloat(parts[0]).toFixed(8) + ' ' + parseFloat(parts[1]).toFixed(8);
+                });
+
+                if (wktCoords.length >= 3) {
+                    if (wktCoords[0] !== wktCoords[wktCoords.length - 1]) {
+                        wktCoords.push(wktCoords[0]);
+                    }
+                    var wkt = 'POLYGON ((' + wktCoords.join(', ') + '))';
+                    results.push({ wkt: wkt, name: name });
+                }
+            }
+
+            return JSON.stringify(results);
+        } catch (e) {
+            console.error('Error parsing KML:', e);
+            return '[]';
+        }
+    },
+
+    addImportedPolygon: function(wkt, name) {
+        if (!this.map || !wkt) return false;
+        try {
+            var match = wkt.match(/POLYGON\s*\(\((.+)\)\)/i);
+            if (!match) return false;
+
+            var coords = match[1].split(',').map(function(pair) {
+                var parts = pair.trim().split(/\s+/);
+                return [parseFloat(parts[1]), parseFloat(parts[0])];
+            });
+
+            var polygon = L.polygon(coords, {
+                color: '#9B59B6',
+                fillColor: '#9B59B6',
+                fillOpacity: 0.3,
+                weight: 3,
+                dashArray: '5,5'
+            }).addTo(this.map);
+
+            polygon.bindPopup('<strong>' + (name || 'Polígono importado') + '</strong>');
+            this.drawnItems.addLayer(polygon);
+            this.map.fitBounds(polygon.getBounds(), { padding: [50, 50] });
+            return true;
+        } catch (e) {
+            console.error('Error adding imported polygon:', e);
+            return false;
         }
     }
 };

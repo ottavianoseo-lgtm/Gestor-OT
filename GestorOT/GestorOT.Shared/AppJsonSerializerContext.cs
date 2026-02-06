@@ -18,6 +18,8 @@ namespace GestorOT.Shared;
 [JsonSerializable(typeof(GeoJsonGeometry))]
 [JsonSerializable(typeof(GeoJsonFeatureCollection))]
 [JsonSerializable(typeof(DashboardStatsDto))]
+[JsonSerializable(typeof(InventoryDto))]
+[JsonSerializable(typeof(List<InventoryDto>))]
 [JsonSerializable(typeof(Dictionary<string, object>))]
 [JsonSourceGenerationOptions(
     PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,
