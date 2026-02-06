@@ -163,3 +163,7 @@ cd GestorOT/GestorOT && ASPNETCORE_ENVIRONMENT=Development dotnet run --urls "ht
 - 2026-02-06: Startup DB migration para asegurar columnas y tablas en Supabase
 - 2026-02-06: Fix Row/Col Razor syntax (fully qualified AntDesign.Row/Col)
 - 2026-02-06: Fix Inventory nullable UnitA/UnitB handling
+- 2026-02-06: Dashboard Inmersivo con mapa satelital de fondo (Leaflet sin controles)
+- 2026-02-06: Overlay gradiente semitransparente y widgets KPI glassmorphism flotantes
+- 2026-02-06: Sidebar glassmorphic con branding AGRIVANT y layout transparente
+- 2026-02-06: JS initDashboardMap/addDashboardLotPolygon/fitDashboardLots para mapa de fondo

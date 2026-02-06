@@ -1,11 +1,85 @@
 window.mapInterop = {
     map: null,
+    dashboardMap: null,
     lotLayers: {},
     selectedLayer: null,
     dotNetRef: null,
     drawControl: null,
     drawnItems: null,
     editingLotId: null,
+
+    initDashboardMap: function(containerId, centerLat, centerLng, zoom) {
+        if (this.dashboardMap) {
+            this.dashboardMap.remove();
+            this.dashboardMap = null;
+        }
+
+        this.dashboardMap = L.map(containerId, {
+            preferCanvas: true,
+            zoomControl: false,
+            attributionControl: false,
+            dragging: false,
+            scrollWheelZoom: false,
+            doubleClickZoom: false,
+            boxZoom: false,
+            keyboard: false,
+            touchZoom: false
+        }).setView([centerLat, centerLng], zoom);
+
+        L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+            maxZoom: 19
+        }).addTo(this.dashboardMap);
+
+        var self = this;
+        setTimeout(function() {
+            if (self.dashboardMap) {
+                self.dashboardMap.invalidateSize();
+            }
+        }, 300);
+
+        return true;
+    },
+
+    addDashboardLotPolygon: function(coordinatesJson, status) {
+        if (!this.dashboardMap) return false;
+        try {
+            var coordinates = JSON.parse(coordinatesJson);
+            var isActive = status === 'Active';
+            var color = isActive ? '#2ECC71' : '#E74C3C';
+            L.polygon(coordinates, {
+                color: color,
+                fillColor: color,
+                fillOpacity: 0.25,
+                weight: 1.5
+            }).addTo(this.dashboardMap);
+            return true;
+        } catch (e) {
+            return false;
+        }
+    },
+
+    fitDashboardLots: function() {
+        if (!this.dashboardMap) return false;
+        var bounds = [];
+        this.dashboardMap.eachLayer(function(layer) {
+            if (layer.getBounds) {
+                bounds.push(layer.getBounds());
+            }
+        });
+        if (bounds.length > 0) {
+            var group = new L.LatLngBounds(bounds[0].getSouthWest(), bounds[0].getNorthEast());
+            bounds.forEach(function(b) { group.extend(b); });
+            this.dashboardMap.fitBounds(group, { padding: [100, 100], maxZoom: 14 });
+        }
+        return true;
+    },
+
+    destroyDashboardMap: function() {
+        if (this.dashboardMap) {
+            this.dashboardMap.remove();
+            this.dashboardMap = null;
+        }
+    },
 
     initMap: function(containerId, centerLat, centerLng, zoom) {
         if (this.map) {

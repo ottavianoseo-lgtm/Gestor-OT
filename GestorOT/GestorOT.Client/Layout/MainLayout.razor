@@ -1,4 +1,5 @@
 @inherits LayoutComponentBase
+@inject NavigationManager Nav
 
 <Layout Style="min-height: 100vh; background: #0f0f1a;">
     <Sider
@@ -6,7 +7,7 @@
         CollapsedWidth="72"
         Collapsible
         @bind-Collapsed="@_collapsed"
-        Style="background: #1E1E2E; border-right: 1px solid rgba(255,255,255,0.06);">
+        Style="background: rgba(30, 30, 46, 0.85); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border-right: 1px solid rgba(255,255,255,0.08); z-index: 10;">
 
         <div style="height: 64px; display: flex; align-items: center; padding: 0 20px; gap: 12px; border-bottom: 1px solid rgba(255,255,255,0.06);">
             <div style="width: 36px; height: 36px; background: linear-gradient(135deg, #E74C3C, #C0392B); border-radius: 10px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
@@ -14,7 +15,10 @@
             </div>
             @if (!_collapsed)
             {
-                <span style="font-weight: 700; font-size: 18px; color: #FFFFFF; letter-spacing: -0.5px;">GestorOT</span>
+                <div style="display: flex; flex-direction: column;">
+                    <span style="font-weight: 800; font-size: 16px; color: #FFFFFF; letter-spacing: 2px; line-height: 1;">AGRIVANT</span>
+                    <span style="font-size: 9px; color: rgba(255,255,255,0.35); letter-spacing: 1px; font-weight: 500;">Farm Intelligence</span>
+                </div>
             }
         </div>
 
@@ -76,8 +80,8 @@
         </Menu>
     </Sider>
 
-    <Layout Style="background: #12121f;">
-        <Header Style="background: rgba(18,18,31,0.8); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); padding: 0 28px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.06); height: 56px;">
+    <Layout Style="background: transparent;">
+        <Header Style="background: rgba(18,18,31,0.8); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); padding: 0 28px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.06); height: 56px; z-index: 10;">
             <span style="font-size: 14px; font-weight: 500; color: rgba(255,255,255,0.6);">Farm Intelligence Center</span>
             <Space Size="@("16")">
                 <SpaceItem>
@@ -95,13 +99,9 @@
             </Space>
         </Header>
 
-        <Content Style="margin: 20px; min-height: 280px;">
+        <Content Style="@ContentStyle">
             @Body
         </Content>
-
-        <Footer Style="text-align: center; background: transparent; color: rgba(255,255,255,0.25); font-size: 12px; padding: 12px 0;">
-            GestorOT &copy;2026 &mdash; Agrivant
-        </Footer>
     </Layout>
 </Layout>
 
@@ -387,10 +387,24 @@
     .ant-upload-text {
         color: rgba(255,255,255,0.7) !important;
     }
+
+    .ant-layout {
+        background: transparent !important;
+    }
+
+    .ant-layout-content {
+        background: transparent !important;
+    }
 </style>
 
 @code {
     private bool _collapsed = false;
     private string _activeKey = "1";
     private const string MenuItemStyle = "font-size: 13px;";
+
+    private bool IsDashboard => Nav.Uri == Nav.BaseUri || Nav.Uri == Nav.BaseUri.TrimEnd('/');
+
+    private string ContentStyle => IsDashboard
+        ? "position: relative; padding: 0; overflow: hidden; flex: 1;"
+        : "min-height: 280px; position: relative; margin: 20px;";
 }
