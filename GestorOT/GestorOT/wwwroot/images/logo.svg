@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 120">
+  <path d="M45,35 C35,35 25,45 25,55 C25,65 35,75 45,75 C48,75 51,74 53,72 C55,85 65,95 75,95 C85,95 95,85 95,75 C95,65 85,55 75,55 C72,55 69,56 67,58 C65,45 55,35 45,35 Z M60,75 L55,100" fill="#c61d3e" stroke="#c61d3e" stroke-width="2" stroke-linecap="round"/>
+  
+  <text x="105" y="75" font-family="Arial, Helvetica, sans-serif" font-weight="bold" font-size="45" fill="#CCCCCC">GESTOR</text>
+  
+  <text x="215" y="100" font-family="Georgia, serif" font-style="italic" font-size="25" fill="#CCCCCC">max</text>
+</svg>
