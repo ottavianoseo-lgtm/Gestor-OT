@@ -167,3 +167,4 @@ cd GestorOT/GestorOT && ASPNETCORE_ENVIRONMENT=Development dotnet run --urls "ht
 - 2026-02-06: Overlay gradiente semitransparente y widgets KPI glassmorphism flotantes
 - 2026-02-06: Sidebar glassmorphic con branding AGRIVANT y layout transparente
 - 2026-02-06: JS initDashboardMap/addDashboardLotPolygon/fitDashboardLots para mapa de fondo
+- 2026-02-09: Rebranding a "Gestor OT" con logo de empresa GestorMax en sidebar
