@@ -72,24 +72,6 @@
     </Sider>
 
     <Layout Style="background: transparent;">
-        <Header Style="background: rgba(18,18,31,0.8); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); padding: 0 28px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.06); height: 56px; z-index: 10;">
-            <span style="font-size: 14px; font-weight: 500; color: rgba(255,255,255,0.6);">Gestor OT</span>
-            <Space Size="@("16")">
-                <SpaceItem>
-                    <Badge Count="3" Style="box-shadow: none;">
-                        <div style="width: 36px; height: 36px; background: rgba(255,255,255,0.06); border-radius: 10px; display: flex; align-items: center; justify-content: center; cursor: pointer;">
-                            <Icon Type="bell" Theme="IconThemeType.Outline" Style="font-size: 16px; color: rgba(255,255,255,0.7);" />
-                        </div>
-                    </Badge>
-                </SpaceItem>
-                <SpaceItem>
-                    <div style="width: 36px; height: 36px; background: linear-gradient(135deg, #E74C3C, #C0392B); border-radius: 10px; display: flex; align-items: center; justify-content: center; cursor: pointer;">
-                        <Icon Type="user" Theme="IconThemeType.Outline" Style="font-size: 16px; color: #fff;" />
-                    </div>
-                </SpaceItem>
-            </Space>
-        </Header>
-
         <Content Style="@ContentStyle">
             @Body
         </Content>
