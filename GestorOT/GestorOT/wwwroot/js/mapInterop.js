@@ -16,14 +16,14 @@ window.mapInterop = {
 
         this.dashboardMap = L.map(containerId, {
             preferCanvas: true,
-            zoomControl: false,
+            zoomControl: true,
             attributionControl: false,
-            dragging: false,
-            scrollWheelZoom: false,
-            doubleClickZoom: false,
-            boxZoom: false,
-            keyboard: false,
-            touchZoom: false
+            dragging: true,
+            scrollWheelZoom: true,
+            doubleClickZoom: true,
+            boxZoom: true,
+            keyboard: true,
+            touchZoom: true
         }).setView([centerLat, centerLng], zoom);
 
         L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
