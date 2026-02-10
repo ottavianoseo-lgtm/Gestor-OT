@@ -143,14 +143,14 @@
 
 <style>
     .dashboard-immersive {
-        position: absolute;
+        position: fixed;
         top: 0;
         left: 0;
         right: 0;
         bottom: 0;
-        width: 100%;
-        height: calc(100vh - 56px);
-        z-index: 1;
+        width: 100vw;
+        height: 100vh;
+        z-index: 0;
         overflow: hidden;
     }
 
@@ -181,8 +181,8 @@
         height: 100%;
         z-index: 1;
         background:
-            linear-gradient(90deg, rgba(15, 15, 26, 0.92) 0%, rgba(15, 15, 26, 0.7) 35%, rgba(15, 15, 26, 0.15) 65%, transparent 100%),
-            linear-gradient(180deg, rgba(15, 15, 26, 0.6) 0%, transparent 30%, transparent 70%, rgba(15, 15, 26, 0.8) 100%);
+            linear-gradient(90deg, rgba(15, 15, 26, 0.4) 0%, rgba(15, 15, 26, 0.25) 35%, rgba(15, 15, 26, 0.1) 65%, transparent 100%),
+            linear-gradient(180deg, rgba(15, 15, 26, 0.3) 0%, transparent 30%, transparent 70%, rgba(15, 15, 26, 0.4) 100%);
         pointer-events: none;
     }
 

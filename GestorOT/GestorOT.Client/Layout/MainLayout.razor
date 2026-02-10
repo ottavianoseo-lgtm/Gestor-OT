@@ -1,7 +1,7 @@
 @inherits LayoutComponentBase
 @inject NavigationManager Nav
 
-<Layout Style="min-height: 100vh; background: #0f0f1a;">
+<Layout Style="min-height: 100vh; background: transparent;">
     <Sider
         Width="260"
         CollapsedWidth="72"
@@ -79,6 +79,10 @@
 </Layout>
 
 <style>
+    .ant-layout {
+        background: transparent !important;
+    }
+
     .ant-layout-sider,
     .ant-layout-sider-dark,
     .ant-layout-sider-has-trigger,
