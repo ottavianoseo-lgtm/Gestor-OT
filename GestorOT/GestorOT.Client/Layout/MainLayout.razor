@@ -79,17 +79,27 @@
 </Layout>
 
 <style>
-    .ant-layout-sider {
+    .ant-layout-sider,
+    .ant-layout-sider-dark,
+    .ant-layout-sider-has-trigger,
+    aside.ant-layout-sider {
         background: rgba(30, 30, 46, 0.20) !important;
         backdrop-filter: blur(20px) !important;
         -webkit-backdrop-filter: blur(20px) !important;
     }
 
+    .ant-layout-sider-children {
+        background: transparent !important;
+    }
+
     .ant-menu-dark,
     .ant-menu-dark .ant-menu-sub,
     .ant-menu.ant-menu-dark,
-    .ant-menu.ant-menu-dark .ant-menu-sub {
+    .ant-menu.ant-menu-dark .ant-menu-sub,
+    .ant-menu-dark .ant-menu-inline.ant-menu-sub,
+    .ant-menu.ant-menu-dark .ant-menu-item-group-title {
         background: transparent !important;
+        background-color: transparent !important;
     }
 
     .ant-layout-sider-trigger {
