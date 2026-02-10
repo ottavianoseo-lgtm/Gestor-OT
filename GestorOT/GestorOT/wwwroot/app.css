@@ -50,3 +50,29 @@ a, .btn-link {
 .leaflet-popup-tip {
     box-shadow: none !important;
 }
+
+.leaflet-control-layers {
+    background: rgba(30, 30, 46, 0.85) !important;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid rgba(255,255,255,0.15) !important;
+    border-radius: 10px !important;
+    color: rgba(255,255,255,0.85) !important;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.3) !important;
+}
+
+.leaflet-control-layers-toggle {
+    background-color: rgba(30, 30, 46, 0.85) !important;
+    border: 1px solid rgba(255,255,255,0.15) !important;
+    border-radius: 10px !important;
+    width: 36px !important;
+    height: 36px !important;
+}
+
+.leaflet-control-layers label {
+    color: rgba(255,255,255,0.85) !important;
+}
+
+.leaflet-control-layers-separator {
+    border-top-color: rgba(255,255,255,0.15) !important;
+}

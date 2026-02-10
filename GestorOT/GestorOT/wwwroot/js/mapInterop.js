@@ -26,9 +26,39 @@ window.mapInterop = {
             touchZoom: true
         }).setView([centerLat, centerLng], zoom);
 
-        L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+        var satellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
             maxZoom: 19
-        }).addTo(this.dashboardMap);
+        });
+        var streets = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19
+        });
+        var topo = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
+            maxZoom: 17
+        });
+        var hybridLabels = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', {
+            maxZoom: 19
+        });
+
+        satellite.addTo(this.dashboardMap);
+        hybridLabels.addTo(this.dashboardMap);
+
+        var baseMaps = {
+            "Satélite": satellite,
+            "Calles y Rutas": streets,
+            "Topográfico": topo
+        };
+        var overlays = {
+            "Localidades y Límites": hybridLabels
+        };
+        L.control.layers(baseMaps, overlays, { position: 'topright', collapsed: true }).addTo(this.dashboardMap);
+
+        this.dashboardMap.on('baselayerchange', function(e) {
+            if (e.name === 'Satélite') {
+                if (!this.hasLayer(hybridLabels)) hybridLabels.addTo(this);
+            } else {
+                if (this.hasLayer(hybridLabels)) this.removeLayer(hybridLabels);
+            }
+        });
 
         var self = this;
         setTimeout(function() {
@@ -96,15 +126,43 @@ window.mapInterop = {
             zoomControl: true
         }).setView([centerLat, centerLng], zoom);
 
-        L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+        var satellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
             attribution: 'Tiles &copy; Esri',
             maxZoom: 19
-        }).addTo(this.map);
-
-        L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', {
+        });
+        var streets = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; OpenStreetMap',
+            maxZoom: 19
+        });
+        var topo = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; OpenTopoMap',
+            maxZoom: 17
+        });
+        var hybridLabels = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', {
             attribution: '',
             maxZoom: 19
-        }).addTo(this.map);
+        });
+
+        satellite.addTo(this.map);
+        hybridLabels.addTo(this.map);
+
+        var baseMaps = {
+            "Satélite": satellite,
+            "Calles y Rutas": streets,
+            "Topográfico": topo
+        };
+        var overlays = {
+            "Localidades y Límites": hybridLabels
+        };
+        L.control.layers(baseMaps, overlays, { position: 'topright', collapsed: true }).addTo(this.map);
+
+        this.map.on('baselayerchange', function(e) {
+            if (e.name === 'Satélite') {
+                if (!this.hasLayer(hybridLabels)) hybridLabels.addTo(this);
+            } else {
+                if (this.hasLayer(hybridLabels)) this.removeLayer(hybridLabels);
+            }
+        });
 
         this.drawnItems = new L.FeatureGroup();
         this.map.addLayer(this.drawnItems);
