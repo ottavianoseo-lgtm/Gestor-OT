@@ -1,13 +1,13 @@
 @inherits LayoutComponentBase
 @inject NavigationManager Nav
 
-<Layout Style="min-height: 100vh; background: #0f0f1a;">
+<Layout Style="min-height: 100vh; background: transparent;">
     <Sider
         Width="260"
         CollapsedWidth="72"
         Collapsible
         @bind-Collapsed="@_collapsed"
-        Style="background: rgba(30, 30, 46, 0.20); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border-right: 1px solid rgba(255,255,255,0.08); z-index: 10;">
+        Style="background: rgba(30, 30, 46, 0.10) !important; backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border-right: 1px solid rgba(255,255,255,0.08); z-index: 10;">
 
         <div style="height: 64px; display: flex; align-items: center; justify-content: center; padding: 0 16px; border-bottom: 1px solid rgba(255,255,255,0.06);">
             <img src="images/logo.svg" alt="Gestor OT" style="width: 200px; object-fit: contain;" />
@@ -79,16 +79,23 @@
 </Layout>
 
 <style>
-    .ant-layout-sider {
-        background: rgba(30, 30, 46, 0.20) !important;
-        backdrop-filter: blur(20px) !important;
-        -webkit-backdrop-filter: blur(20px) !important;
+    .ant-layout-sider,
+    .ant-layout-sider-dark,
+    .ant-layout-sider-has-trigger {
+        background: rgba(30, 30, 46, 0.10) !important;
+        backdrop-filter: blur(16px) !important;
+        -webkit-backdrop-filter: blur(16px) !important;
     }
 
     .ant-menu-dark,
     .ant-menu-dark .ant-menu-sub,
     .ant-menu.ant-menu-dark,
-    .ant-menu.ant-menu-dark .ant-menu-sub {
+    .ant-menu.ant-menu-dark .ant-menu-sub,
+    .ant-menu-dark .ant-menu-inline.ant-menu-sub {
+        background: transparent !important;
+    }
+
+    .ant-layout-sider-children {
         background: transparent !important;
     }
 
