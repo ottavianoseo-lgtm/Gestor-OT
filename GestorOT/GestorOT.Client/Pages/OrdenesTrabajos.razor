@@ -26,29 +26,35 @@
     }
 
     <AntDesign.Row Gutter="@((16, 16))" Style="margin-bottom: 16px;">
-        <AntDesign.Col Xs="24" Sm="8">
+        <AntDesign.Col Xs="24" Sm="6">
             <div class="kpi-card-sm" style="border-left: 3px solid #E74C3C;">
-                <span class="kpi-sm-value">@_workOrders.Count(w => w.Status == "Pending")</span>
+                <span class="kpi-sm-value">@_workOrders.Count(w => w.Status == "Pending" || w.Status == "Draft")</span>
                 <span class="kpi-sm-label">Pendientes</span>
             </div>
         </AntDesign.Col>
-        <AntDesign.Col Xs="24" Sm="8">
+        <AntDesign.Col Xs="24" Sm="6">
             <div class="kpi-card-sm" style="border-left: 3px solid #F1C40F;">
                 <span class="kpi-sm-value">@_workOrders.Count(w => w.Status == "InProgress")</span>
                 <span class="kpi-sm-label">En Progreso</span>
             </div>
         </AntDesign.Col>
-        <AntDesign.Col Xs="24" Sm="8">
-            <div class="kpi-card-sm" style="border-left: 3px solid #2ECC71;">
-                <span class="kpi-sm-value">@_workOrders.Count(w => w.Status == "Completed")</span>
+        <AntDesign.Col Xs="24" Sm="6">
+            <div class="kpi-card-sm" style="border-left: 3px solid #3498DB;">
+                <span class="kpi-sm-value">@_workOrders.Count(w => w.Status == "Completed" || w.Status == "Done")</span>
                 <span class="kpi-sm-label">Completadas</span>
+            </div>
+        </AntDesign.Col>
+        <AntDesign.Col Xs="24" Sm="6">
+            <div class="kpi-card-sm" style="border-left: 3px solid #2ECC71;">
+                <span class="kpi-sm-value">@_workOrders.Count(w => w.Status == "Approved")</span>
+                <span class="kpi-sm-label">Aprobadas</span>
             </div>
         </AntDesign.Col>
     </AntDesign.Row>
 
     <div class="glass-card">
         <Table TItem="WorkOrderDto" DataSource="_workOrders" Loading="_loading" Size="@TableSize.Small"
-               ScrollX="1100">
+               ScrollX="1200">
             <PropertyColumn Property="c => c.Description" Title="Descripción">
                 <span style="font-weight: 600;">@context.Description</span>
             </PropertyColumn>
@@ -57,8 +63,11 @@
                 @{
                     var (color, label) = context.Status switch
                     {
-                        "Completed" => ("#2ECC71", "Completada"),
+                        "Approved" => ("#2ECC71", "Aprobada"),
+                        "Completed" or "Done" => ("#3498DB", "Completada"),
                         "InProgress" => ("#F1C40F", "En Progreso"),
+                        "Cancelled" => ("#95A5A6", "Cancelada"),
+                        "Draft" => ("#9B59B6", "Borrador"),
                         _ => ("#E74C3C", "Pendiente")
                     };
                 }
@@ -67,6 +76,16 @@
                 </Tag>
             </Column>
             <PropertyColumn Property="c => c.AssignedTo" Title="Asignado a" Sortable />
+            <Column TData="string" Title="Tarifa">
+                @if (context.AgreedRate > 0)
+                {
+                    <span style="color: #2ECC71; font-weight: 600;">$@context.AgreedRate.ToString("N2")/ha</span>
+                }
+                else
+                {
+                    <span style="color: rgba(255,255,255,0.3);">—</span>
+                }
+            </Column>
             <PropertyColumn Property="c => c.DueDate" Title="Fecha Límite" Sortable>
                 @context.DueDate.ToString("dd/MM/yyyy")
             </PropertyColumn>
@@ -75,7 +94,7 @@
                     <SpaceItem>
                         <Button Size="@ButtonSize.Small" OnClick="() => OpenDetail(context.Id)"
                                 Style="border-radius: 6px; background: #3498DB20; border-color: #3498DB40; color: #3498DB; font-size: 11px;">
-                            <Icon Type="eye" Theme="IconThemeType.Outline" /> Ver / Labores
+                            <Icon Type="eye" Theme="IconThemeType.Outline" /> Ver
                         </Button>
                     </SpaceItem>
                     <SpaceItem>
@@ -114,8 +133,11 @@ else
             @{
                 var (stColor, stLabel) = _selectedOrder.Status switch
                 {
-                    "Completed" => ("#2ECC71", "Completada"),
+                    "Approved" => ("#2ECC71", "Aprobada"),
+                    "Completed" or "Done" => ("#3498DB", "Completada"),
                     "InProgress" => ("#F1C40F", "En Progreso"),
+                    "Cancelled" => ("#95A5A6", "Cancelada"),
+                    "Draft" => ("#9B59B6", "Borrador"),
                     _ => ("#E74C3C", "Pendiente")
                 };
             }
@@ -125,6 +147,12 @@ else
             <span style="color: rgba(255,255,255,0.5); font-size: 12px;">
                 Responsable: <strong style="color: #fff;">@_selectedOrder.AssignedTo</strong>
             </span>
+            @if (_selectedOrder.AgreedRate > 0)
+            {
+                <span style="color: rgba(255,255,255,0.5); font-size: 12px;">
+                    Tarifa: <strong style="color: #2ECC71;">$@_selectedOrder.AgreedRate.ToString("N2")/ha</strong>
+                </span>
+            }
             <span style="color: rgba(255,255,255,0.5); font-size: 12px;">
                 Vence: <strong style="color: #fff;">@_selectedOrder.DueDate.ToString("dd/MM/yyyy")</strong>
             </span>
@@ -137,32 +165,92 @@ else
     }
 
     <AntDesign.Row Gutter="@((16, 16))" Style="margin-bottom: 16px;">
-        <AntDesign.Col Xs="24" Sm="8">
+        <AntDesign.Col Xs="24" Sm="6">
             <div class="kpi-card-sm" style="border-left: 3px solid #3498DB;">
                 <span class="kpi-sm-value">@_selectedOrder.Labors.Count</span>
                 <span class="kpi-sm-label">Total Labores</span>
             </div>
         </AntDesign.Col>
-        <AntDesign.Col Xs="24" Sm="8">
+        <AntDesign.Col Xs="24" Sm="6">
             <div class="kpi-card-sm" style="border-left: 3px solid #F1C40F;">
                 <span class="kpi-sm-value">@_selectedOrder.Labors.Count(l => l.Status == "Planned")</span>
                 <span class="kpi-sm-label">Planificadas</span>
             </div>
         </AntDesign.Col>
-        <AntDesign.Col Xs="24" Sm="8">
+        <AntDesign.Col Xs="24" Sm="6">
             <div class="kpi-card-sm" style="border-left: 3px solid #2ECC71;">
                 <span class="kpi-sm-value">@_selectedOrder.Labors.Count(l => l.Status == "Realized")</span>
                 <span class="kpi-sm-label">Realizadas</span>
             </div>
         </AntDesign.Col>
+        <AntDesign.Col Xs="24" Sm="6">
+            <div class="kpi-card-sm" style="border-left: 3px solid #9B59B6;">
+                @{
+                    var totalHa = _selectedOrder.Labors.Sum(l => l.Hectares);
+                }
+                <span class="kpi-sm-value">@totalHa.ToString("N1")</span>
+                <span class="kpi-sm-label">Hectáreas</span>
+            </div>
+        </AntDesign.Col>
     </AntDesign.Row>
+
+    @if (_selectedOrder.Status != "Approved" && _selectedOrder.Status != "Cancelled")
+    {
+        <div style="display: flex; gap: 8px; margin-bottom: 16px;">
+            @if (_selectedOrder.Labors.All(l => l.Status == "Realized") && _selectedOrder.Labors.Count > 0)
+            {
+                <Button Type="@ButtonType.Primary" OnClick="ApproveWorkOrder" Loading="_approving"
+                        Style="background: #2ECC71; border-color: #2ECC71; border-radius: 8px; font-weight: 600;">
+                    <Icon Type="check-circle" Theme="IconThemeType.Outline" /> Aprobar OT y Generar Liquidación
+                </Button>
+            }
+            else if (_selectedOrder.Labors.Count > 0)
+            {
+                <Button Disabled
+                        Style="border-radius: 8px; font-weight: 600; border-color: rgba(255,255,255,0.1); color: rgba(255,255,255,0.3);">
+                    <Icon Type="lock" Theme="IconThemeType.Outline" /> Aprobar (faltan @(_selectedOrder.Labors.Count(l => l.Status == "Planned")) labores por realizar)
+                </Button>
+            }
+        </div>
+    }
+
+    @if (_selectedOrder.Settlement != null)
+    {
+        <div class="glass-card" style="margin-bottom: 16px; padding: 20px; border: 1px solid rgba(46,204,113,0.3); background: rgba(46,204,113,0.05);">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <div style="width: 44px; height: 44px; border-radius: 12px; background: #2ECC7120; display: flex; align-items: center; justify-content: center;">
+                        <Icon Type="dollar" Theme="IconThemeType.Outline" Style="font-size: 20px; color: #2ECC71;" />
+                    </div>
+                    <div>
+                        <span style="font-weight: 700; color: #2ECC71; font-size: 16px;">Liquidación Generada</span>
+                        <br />
+                        <span style="color: rgba(255,255,255,0.5); font-size: 12px;">
+                            @_selectedOrder.Settlement.GeneratedAt.ToString("dd/MM/yyyy HH:mm") — Estado ERP: @_selectedOrder.Settlement.ErpSyncStatus
+                        </span>
+                    </div>
+                </div>
+                <div style="text-align: right;">
+                    <div style="font-size: 24px; font-weight: 800; color: #2ECC71;">
+                        $@_selectedOrder.Settlement.TotalAmount.ToString("N2")
+                    </div>
+                    <div style="color: rgba(255,255,255,0.5); font-size: 12px;">
+                        @_selectedOrder.Settlement.TotalHectares.ToString("N2") ha × $@_selectedOrder.Settlement.AgreedRate.ToString("N2")/ha
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
 
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
         <h3 style="color: #fff; margin: 0; font-size: 16px;">Labores</h3>
-        <Button Type="@ButtonType.Primary" OnClick="OpenLaborModal"
-                Style="background: #E74C3C; border-color: #E74C3C; border-radius: 8px; font-weight: 600;">
-            <Icon Type="plus" Theme="IconThemeType.Outline" /> Nueva Labor
-        </Button>
+        @if (_selectedOrder.Status != "Approved" && _selectedOrder.Status != "Cancelled")
+        {
+            <Button Type="@ButtonType.Primary" OnClick="OpenLaborModal"
+                    Style="background: #E74C3C; border-color: #E74C3C; border-radius: 8px; font-weight: 600;">
+                <Icon Type="plus" Theme="IconThemeType.Outline" /> Nueva Labor
+            </Button>
+        }
     </div>
 
     @if (_selectedOrder.Labors.Count == 0)
@@ -193,27 +281,26 @@ else
                     }
                 </div>
                 <div style="display: flex; gap: 6px;">
-                    @if (labor.Status == "Planned")
+                    @if (labor.Status == "Planned" && _selectedOrder.Status != "Approved")
                     {
                         <Button Size="@ButtonSize.Small" OnClick="() => OpenRealizeModal(labor)"
                                 Style="border-radius: 6px; background: #2ECC7120; border-color: #2ECC7140; color: #2ECC71; font-size: 11px;">
-                            <Icon Type="check-circle" Theme="IconThemeType.Outline" /> Confirmar Realizado
-                        </Button>
-                        <Button Size="@ButtonSize.Small" OnClick="() => ReplicateLabor(labor.Id)"
-                                Style="border-radius: 6px; background: #3498DB20; border-color: #3498DB40; color: #3498DB; font-size: 11px;">
-                            <Icon Type="copy" Theme="IconThemeType.Outline" /> Replicar
+                            <Icon Type="check-circle" Theme="IconThemeType.Outline" /> Ejecutar Labor
                         </Button>
                     }
-                    <Button Size="@ButtonSize.Small" OnClick="() => OpenEditLaborModal(labor)"
-                            Style="border-radius: 6px; border-color: rgba(255,255,255,0.15); color: rgba(255,255,255,0.7);">
-                        <Icon Type="edit" Theme="IconThemeType.Outline" />
-                    </Button>
-                    <Popconfirm Title="¿Eliminar esta labor?" OnConfirm="() => DeleteLabor(labor.Id)"
-                                OkText="@("Eliminar")" CancelText="@("Cancelar")">
-                        <Button Danger Size="@ButtonSize.Small" Style="border-radius: 6px;">
-                            <Icon Type="delete" Theme="IconThemeType.Outline" />
+                    @if (_selectedOrder.Status != "Approved")
+                    {
+                        <Button Size="@ButtonSize.Small" OnClick="() => OpenEditLaborModal(labor)"
+                                Style="border-radius: 6px; border-color: rgba(255,255,255,0.15); color: rgba(255,255,255,0.7);">
+                            <Icon Type="edit" Theme="IconThemeType.Outline" />
                         </Button>
-                    </Popconfirm>
+                        <Popconfirm Title="¿Eliminar esta labor?" OnConfirm="() => DeleteLabor(labor.Id)"
+                                    OkText="@("Eliminar")" CancelText="@("Cancelar")">
+                            <Button Danger Size="@ButtonSize.Small" Style="border-radius: 6px;">
+                                <Icon Type="delete" Theme="IconThemeType.Outline" />
+                            </Button>
+                        </Popconfirm>
+                    }
                 </div>
             </div>
 
@@ -298,23 +385,29 @@ else
                     EnableSearch />
         </FormItem>
         <AntDesign.Row Gutter="16">
-            <AntDesign.Col Span="12">
+            <AntDesign.Col Span="8">
                 <FormItem Label="Asignado a">
                     <Input @bind-Value="_formModel.AssignedTo" Placeholder="Nombre del responsable" />
                 </FormItem>
             </AntDesign.Col>
-            <AntDesign.Col Span="12">
+            <AntDesign.Col Span="8">
                 <FormItem Label="Fecha Límite">
                     <DatePicker @bind-Value="_formModel.DueDate" Style="width: 100%;"
                                 Format="dd/MM/yyyy" />
                 </FormItem>
             </AntDesign.Col>
+            <AntDesign.Col Span="8">
+                <FormItem Label="Tarifa ($/Ha)">
+                    <AntDesign.InputNumber TValue="decimal" @bind-Value="_formModel.AgreedRate" Min="0m" Step="100m"
+                                Style="width: 100%;" />
+                </FormItem>
+            </AntDesign.Col>
         </AntDesign.Row>
         <FormItem Label="Estado">
             <RadioGroup @bind-Value="_formModel.Status">
+                <Radio Value="@("Draft")">Borrador</Radio>
                 <Radio Value="@("Pending")">Pendiente</Radio>
                 <Radio Value="@("InProgress")">En Progreso</Radio>
-                <Radio Value="@("Completed")">Completada</Radio>
             </RadioGroup>
         </FormItem>
     </Form>
@@ -416,7 +509,7 @@ else
     </Form>
 </Modal>
 
-<Modal Title="Confirmar Realización"
+<Modal Title="Ejecutar Labor — Confirmar Dosis Real"
        Visible="_realizeModalVisible"
        OnCancel="CloseRealizeModal"
        OnOk="ConfirmRealize"
@@ -425,10 +518,12 @@ else
        Width="680">
     @if (_realizingLabor != null)
     {
-        <p style="color: rgba(255,255,255,0.6); margin-bottom: 16px;">
-            Confirmá la <strong style="color: #fff;">dosis real</strong> utilizada en cada insumo.
-            Si no hubo cambios, se usará la dosis planificada.
-        </p>
+        <div style="background: rgba(52,152,219,0.1); border: 1px solid rgba(52,152,219,0.3); border-radius: 8px; padding: 12px; margin-bottom: 16px;">
+            <span style="color: #3498DB; font-weight: 600;">Lógica de Snapshot:</span>
+            <span style="color: rgba(255,255,255,0.7); font-size: 13px;">
+                La dosis planificada se copia como dosis real. Modificá si hubo variación en campo.
+            </span>
+        </div>
         <table class="supply-table" style="width: 100%;">
             <thead>
                 <tr>
@@ -436,6 +531,7 @@ else
                     <th>Dosis Planificada</th>
                     <th>Dosis Real</th>
                     <th>Total Real</th>
+                    <th>Delta</th>
                 </tr>
             </thead>
             <tbody>
@@ -454,6 +550,15 @@ else
                             <strong style="color: #2ECC71;">
                                 @((rs.RealDoseInput * _realizingLabor.Hectares).ToString("N2"))
                             </strong>
+                        </td>
+                        <td>
+                            @{
+                                var rdelta = rs.PlannedDose > 0 ? ((rs.RealDoseInput - rs.PlannedDose) / rs.PlannedDose) * 100 : 0;
+                                var rdColor = rdelta > 0 ? "#E74C3C" : rdelta < 0 ? "#2ECC71" : "rgba(255,255,255,0.4)";
+                            }
+                            <span style="color: @rdColor; font-weight: 600;">
+                                @(rdelta != 0 ? (rdelta > 0 ? "+" : "") + rdelta.ToString("N1") + "%" : "—")
+                            </span>
                         </td>
                     </tr>
                 }
@@ -499,34 +604,33 @@ else
     .supply-table {
         width: 100%;
         border-collapse: collapse;
-        font-size: 12px;
+        font-size: 13px;
     }
     .supply-table th {
         text-align: left;
-        color: rgba(255,255,255,0.4);
-        font-weight: 600;
-        padding: 6px 10px;
+        padding: 8px 12px;
         border-bottom: 1px solid rgba(255,255,255,0.08);
+        color: rgba(255,255,255,0.45);
+        font-weight: 500;
         font-size: 11px;
         text-transform: uppercase;
         letter-spacing: 0.5px;
     }
     .supply-table td {
-        padding: 8px 10px;
-        color: rgba(255,255,255,0.7);
+        padding: 10px 12px;
         border-bottom: 1px solid rgba(255,255,255,0.04);
+        color: rgba(255,255,255,0.7);
     }
     .supply-row {
         background: rgba(255,255,255,0.02);
         border: 1px solid rgba(255,255,255,0.06);
         border-radius: 8px;
-        padding: 10px;
-        margin-bottom: 8px;
+        padding: 10px 12px;
+        margin-bottom: 6px;
     }
     .calc-total {
         display: flex;
         flex-direction: column;
-        align-items: flex-start;
         gap: 2px;
     }
 </style>
@@ -535,21 +639,21 @@ else
     private List<WorkOrderDto> _workOrders = new();
     private List<LotDto> _availableLots = new();
     private List<InventoryDto> _availableSupplies = new();
-    private bool _loading = true;
+    private bool _loading;
     private string? _errorMessage;
 
     private WorkOrderDetailDto? _selectedOrder;
 
     private bool _modalVisible;
-    private bool _isEditing;
     private bool _saving;
+    private bool _isEditing;
     private Guid _editingId;
     private WoFormModel _formModel = new();
-    private Form<WoFormModel>? _form;
+    private IForm? _form;
 
     private bool _laborModalVisible;
-    private bool _isEditingLabor;
     private bool _savingLabor;
+    private bool _isEditingLabor;
     private Guid _editingLaborId;
     private LaborFormModel _laborForm = new();
 
@@ -557,6 +661,8 @@ else
     private bool _savingRealize;
     private LaborDto? _realizingLabor;
     private List<RealizeSupplyModel> _realizeSupplies = new();
+
+    private bool _approving;
 
     private readonly string[] _laborTypes = { "Siembra", "Pulverización", "Cosecha", "Fertilización", "Laboreo", "Riego", "Otro" };
 
@@ -566,7 +672,8 @@ else
         public Guid LotId { get; set; }
         public string AssignedTo { get; set; } = string.Empty;
         public DateTime DueDate { get; set; } = DateTime.Today.AddDays(7);
-        public string Status { get; set; } = "Pending";
+        public string Status { get; set; } = "Draft";
+        public decimal AgreedRate { get; set; }
     }
 
     public class LaborFormModel
@@ -683,7 +790,8 @@ else
             LotId = wo.LotId,
             AssignedTo = wo.AssignedTo,
             DueDate = wo.DueDate,
-            Status = wo.Status
+            Status = wo.Status,
+            AgreedRate = wo.AgreedRate
         };
         _modalVisible = true;
     }
@@ -715,7 +823,9 @@ else
                 _formModel.Description,
                 _formModel.Status,
                 _formModel.AssignedTo,
-                _formModel.DueDate
+                _formModel.DueDate,
+                null,
+                _formModel.AgreedRate
             );
 
             HttpResponseMessage response;
@@ -989,7 +1099,8 @@ else
             }
             else
             {
-                Message.Error($"Error: {response.StatusCode}");
+                var err = await response.Content.ReadAsStringAsync();
+                Message.Error($"Error: {err}");
             }
         }
         catch (Exception ex)
@@ -1002,24 +1113,33 @@ else
         }
     }
 
-    private async Task ReplicateLabor(Guid laborId)
+    private async Task ApproveWorkOrder()
     {
+        if (_selectedOrder == null) return;
+
+        _approving = true;
         try
         {
-            var response = await Http.PostAsync($"api/labors/{laborId}/replicate", null);
+            var response = await Http.PostAsync($"api/workorders/{_selectedOrder.Id}/approve", null);
+
             if (response.IsSuccessStatusCode)
             {
-                Message.Success("Labor replicada como 'Realizada'.");
+                Message.Success("OT Aprobada. Liquidación generada exitosamente.");
                 await RefreshDetail();
             }
             else
             {
-                Message.Error($"Error al replicar: {response.StatusCode}");
+                var err = await response.Content.ReadAsStringAsync();
+                Message.Error($"Error al aprobar: {err}");
             }
         }
         catch (Exception ex)
         {
             Message.Error($"Error: {ex.Message}");
+        }
+        finally
+        {
+            _approving = false;
         }
     }
 }

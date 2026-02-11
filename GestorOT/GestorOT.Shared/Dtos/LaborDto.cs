@@ -41,8 +41,10 @@ public record WorkOrderDetailDto(
     DateTime DueDate,
     string? LotName,
     string? FieldName,
-    List<LaborDto> Labors
+    List<LaborDto> Labors,
+    decimal AgreedRate = 0,
+    ServiceSettlementDto? Settlement = null
 )
 {
-    public WorkOrderDetailDto() : this(Guid.Empty, Guid.Empty, string.Empty, "Pending", string.Empty, DateTime.MinValue, null, null, new()) { }
+    public WorkOrderDetailDto() : this(Guid.Empty, Guid.Empty, string.Empty, "Draft", string.Empty, DateTime.MinValue, null, null, new(), 0, null) { }
 }

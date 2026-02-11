@@ -1,0 +1,640 @@
+@page "/estrategias"
+@using GestorOT.Shared.Dtos
+@using GestorOT.Shared
+@using System.Net.Http.Json
+@inject HttpClient Http
+@inject IMessageService Message
+
+<PageTitle>Estrategias de Cultivo - GestorOT</PageTitle>
+
+<div class="page-header">
+    <div>
+        <h2 class="page-title">Estrategias de Cultivo</h2>
+        <span class="page-subtitle">Plantillas de labores para aplicación masiva</span>
+    </div>
+    <Button Type="@ButtonType.Primary" OnClick="OpenCreateModal"
+            Style="background: #E74C3C; border-color: #E74C3C; border-radius: 8px; font-weight: 600;">
+        <Icon Type="plus" Theme="IconThemeType.Outline" /> Nueva Estrategia
+    </Button>
+</div>
+
+@if (!string.IsNullOrEmpty(_errorMessage))
+{
+    <Alert Type="@AlertType.Error" Message="@_errorMessage" ShowIcon="true" Style="margin-bottom: 16px;" />
+}
+
+@if (_strategies.Count == 0 && !_loading)
+{
+    <div class="glass-card" style="text-align: center; padding: 60px;">
+        <Icon Type="experiment" Theme="IconThemeType.Outline" Style="font-size: 48px; color: rgba(255,255,255,0.2); margin-bottom: 16px;" />
+        <p style="color: rgba(255,255,255,0.4); margin: 0; font-size: 14px;">No hay estrategias creadas. Creá una para automatizar la generación de OTs.</p>
+    </div>
+}
+
+@foreach (var strategy in _strategies)
+{
+    <div class="glass-card" style="margin-bottom: 16px; padding: 20px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+            <div style="display: flex; align-items: center; gap: 12px;">
+                <div style="width: 40px; height: 40px; border-radius: 10px; background: #2ECC7120; display: flex; align-items: center; justify-content: center;">
+                    <Icon Type="experiment" Theme="IconThemeType.Outline" Style="font-size: 18px; color: #2ECC71;" />
+                </div>
+                <div>
+                    <span style="font-weight: 700; color: #fff; font-size: 16px;">@strategy.Name</span>
+                    <br />
+                    <span style="color: rgba(255,255,255,0.5); font-size: 12px;">Cultivo: @strategy.CropType — @(strategy.Items?.Count ?? 0) labores definidas</span>
+                </div>
+            </div>
+            <div style="display: flex; gap: 8px;">
+                <Button Type="@ButtonType.Primary" Size="@ButtonSize.Small" OnClick="() => OpenApplyModal(strategy)"
+                        Style="background: #2ECC71; border-color: #2ECC71; border-radius: 6px; font-weight: 600; font-size: 11px;">
+                    <Icon Type="thunderbolt" Theme="IconThemeType.Outline" /> Aplicar a Lotes
+                </Button>
+                <Button Size="@ButtonSize.Small" OnClick="() => OpenEditModal(strategy)"
+                        Style="border-radius: 6px; border-color: rgba(255,255,255,0.15); color: rgba(255,255,255,0.7);">
+                    <Icon Type="edit" Theme="IconThemeType.Outline" />
+                </Button>
+                <Popconfirm Title="¿Eliminar esta estrategia?"
+                            OnConfirm="() => DeleteStrategy(strategy.Id)"
+                            OkText="@("Eliminar")" CancelText="@("Cancelar")">
+                    <Button Danger Size="@ButtonSize.Small" Style="border-radius: 6px;">
+                        <Icon Type="delete" Theme="IconThemeType.Outline" />
+                    </Button>
+                </Popconfirm>
+            </div>
+        </div>
+
+        @if (strategy.Items != null && strategy.Items.Count > 0)
+        {
+            <div class="supply-table-wrapper">
+                <table class="supply-table">
+                    <thead>
+                        <tr>
+                            <th>Labor</th>
+                            <th>Día Offset</th>
+                            <th>Insumos por Defecto</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var item in strategy.Items)
+                        {
+                            <tr>
+                                <td style="font-weight: 600; color: #fff;">@item.LaborType</td>
+                                <td>Día +@item.DayOffset</td>
+                                <td>
+                                    @if (item.DefaultSupplies != null && item.DefaultSupplies.Count > 0)
+                                    {
+                                        @foreach (var s in item.DefaultSupplies)
+                                        {
+                                            <Tag Style="background: rgba(52,152,219,0.15); color: #3498DB; border: 1px solid rgba(52,152,219,0.3); border-radius: 8px; font-size: 11px; margin: 2px;">
+                                                @(s.SupplyName ?? "Insumo") @s.Dose @s.DoseUnit
+                                            </Tag>
+                                        }
+                                    }
+                                    else
+                                    {
+                                        <span style="color: rgba(255,255,255,0.3); font-size: 12px;">Sin insumos</span>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+}
+
+<Modal Title="@(_isEditing ? "Editar Estrategia" : "Nueva Estrategia")"
+       Visible="_modalVisible"
+       OnCancel="CloseModal"
+       OnOk="SaveStrategy"
+       OkText="@(_isEditing ? "Guardar" : "Crear")"
+       ConfirmLoading="_saving"
+       Width="800">
+    <Form Model="_formModel" Layout="@FormLayout.Vertical">
+        <AntDesign.Row Gutter="16">
+            <AntDesign.Col Span="12">
+                <FormItem Label="Nombre">
+                    <Input @bind-Value="_formModel.Name" Placeholder="Ej: Soja 1ra, Maíz tardío" />
+                </FormItem>
+            </AntDesign.Col>
+            <AntDesign.Col Span="12">
+                <FormItem Label="Tipo de Cultivo">
+                    <Select TItem="string"
+                            TItemValue="string"
+                            DataSource="@_cropTypes"
+                            @bind-Value="_formModel.CropType"
+                            Placeholder="Seleccionar cultivo"
+                            Style="width: 100%;" />
+                </FormItem>
+            </AntDesign.Col>
+        </AntDesign.Row>
+
+        <Divider Style="border-color: rgba(255,255,255,0.1); margin: 12px 0;">Labores de la Estrategia</Divider>
+
+        @for (int i = 0; i < _formModel.Items.Count; i++)
+        {
+            var idx = i;
+            var item = _formModel.Items[idx];
+            <div class="supply-row" style="margin-bottom: 8px;">
+                <AntDesign.Row Gutter="8">
+                    <AntDesign.Col Span="7">
+                        <Select TItem="string"
+                                TItemValue="string"
+                                DataSource="@_laborTypes"
+                                @bind-Value="item.LaborType"
+                                Placeholder="Tipo labor"
+                                Style="width: 100%;" />
+                    </AntDesign.Col>
+                    <AntDesign.Col Span="4">
+                        <AntDesign.InputNumber TValue="int" @bind-Value="item.DayOffset" Min="0" Step="1"
+                                    Style="width: 100%;" />
+                    </AntDesign.Col>
+                    <AntDesign.Col Span="11">
+                        <div style="display: flex; gap: 4px; flex-wrap: wrap; align-items: center;">
+                            @if (item.DefaultSupplies != null)
+                            {
+                                @for (int si = 0; si < item.DefaultSupplies.Count; si++)
+                                {
+                                    var sidx = si;
+                                    var supply = item.DefaultSupplies[sidx];
+                                    <div style="display: flex; gap: 4px; align-items: center;">
+                                        <Select TItem="InventoryDto"
+                                                TItemValue="Guid"
+                                                DataSource="_availableSupplies"
+                                                Value="supply.SupplyId"
+                                                ValueChanged="v => OnStrategySupplySelected(idx, sidx, v)"
+                                                LabelName="@nameof(InventoryDto.ItemName)"
+                                                ValueName="@nameof(InventoryDto.Id)"
+                                                Placeholder="Insumo"
+                                                Style="width: 130px;"
+                                                EnableSearch />
+                                        <AntDesign.InputNumber TValue="decimal" @bind-Value="supply.Dose" Min="0m" Step="0.1m"
+                                                    Style="width: 80px;" />
+                                        <Input @bind-Value="supply.DoseUnit" Placeholder="ud" Style="width: 80px;" />
+                                        <Button Danger Size="@ButtonSize.Small" OnClick="() => RemoveItemSupply(idx, sidx)"
+                                                Style="border-radius: 4px; min-width: 24px; padding: 0 4px;">
+                                            <Icon Type="minus" Theme="IconThemeType.Outline" />
+                                        </Button>
+                                    </div>
+                                }
+                            }
+                            <Button Size="@ButtonSize.Small" OnClick="() => AddItemSupply(idx)"
+                                    Style="border-radius: 4px; border-color: rgba(255,255,255,0.15); color: rgba(255,255,255,0.5); font-size: 11px;">
+                                <Icon Type="plus" Theme="IconThemeType.Outline" />
+                            </Button>
+                        </div>
+                    </AntDesign.Col>
+                    <AntDesign.Col Span="2">
+                        <Button Danger Size="@ButtonSize.Small" OnClick="() => RemoveItem(idx)"
+                                Style="border-radius: 6px;">
+                            <Icon Type="delete" Theme="IconThemeType.Outline" />
+                        </Button>
+                    </AntDesign.Col>
+                </AntDesign.Row>
+            </div>
+        }
+
+        <Button Type="@ButtonType.Dashed" OnClick="AddItem" Block
+                Style="border-color: rgba(255,255,255,0.15); color: rgba(255,255,255,0.5); margin-top: 8px;">
+            <Icon Type="plus" Theme="IconThemeType.Outline" /> Agregar Labor
+        </Button>
+    </Form>
+</Modal>
+
+<Modal Title="@($"Aplicar: {_applyingStrategy?.Name}")"
+       Visible="_applyModalVisible"
+       OnCancel="CloseApplyModal"
+       OnOk="ConfirmApply"
+       OkText="@("Generar OTs")"
+       ConfirmLoading="_applying"
+       Width="640">
+    @if (_applyingStrategy != null)
+    {
+        <p style="color: rgba(255,255,255,0.6); margin-bottom: 16px;">
+            Se generará <strong style="color: #fff;">1 Orden de Trabajo por cada lote seleccionado</strong>,
+            con @(_applyingStrategy.Items?.Count ?? 0) labores planificadas según la estrategia.
+        </p>
+
+        <Form Model="_applyForm" Layout="@FormLayout.Vertical">
+            <FormItem Label="Lotes a aplicar">
+                <div style="max-height: 200px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; padding: 8px; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px;">
+                    @foreach (var lot in _availableLots)
+                    {
+                        var lotId = lot.Id;
+                        var isChecked = _applyForm.SelectedLotIds.Contains(lotId);
+                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; color: rgba(255,255,255,0.8); font-size: 13px; padding: 4px 8px; border-radius: 6px; background: @(isChecked ? "rgba(46,204,113,0.1)" : "transparent"); border: 1px solid @(isChecked ? "rgba(46,204,113,0.3)" : "transparent");">
+                            <input type="checkbox" checked="@isChecked" @onchange="() => ToggleLot(lotId)" style="accent-color: #2ECC71;" />
+                            <span>@lot.Name</span>
+                            @if (!string.IsNullOrEmpty(lot.FieldName))
+                            {
+                                <span style="color: rgba(255,255,255,0.4); font-size: 11px;">(@lot.FieldName)</span>
+                            }
+                        </label>
+                    }
+                </div>
+                <span style="color: rgba(255,255,255,0.4); font-size: 11px; margin-top: 4px;">@_applyForm.SelectedLotIds.Count seleccionados</span>
+            </FormItem>
+            <AntDesign.Row Gutter="16">
+                <AntDesign.Col Span="8">
+                    <FormItem Label="Fecha Inicio">
+                        <DatePicker @bind-Value="_applyForm.StartDate" Style="width: 100%;"
+                                    Format="dd/MM/yyyy" />
+                    </FormItem>
+                </AntDesign.Col>
+                <AntDesign.Col Span="8">
+                    <FormItem Label="Responsable">
+                        <Input @bind-Value="_applyForm.AssignedTo" Placeholder="Nombre" />
+                    </FormItem>
+                </AntDesign.Col>
+                <AntDesign.Col Span="8">
+                    <FormItem Label="Tarifa Pactada ($/Ha)">
+                        <AntDesign.InputNumber TValue="decimal" @bind-Value="_applyForm.AgreedRate" Min="0m" Step="100m"
+                                    Style="width: 100%;" />
+                    </FormItem>
+                </AntDesign.Col>
+            </AntDesign.Row>
+        </Form>
+
+        @if (_applyForm.SelectedLotIds.Count > 0)
+        {
+            <div style="background: rgba(46,204,113,0.1); border: 1px solid rgba(46,204,113,0.3); border-radius: 8px; padding: 12px; margin-top: 8px;">
+                <span style="color: #2ECC71; font-weight: 600;">Resumen:</span>
+                <span style="color: rgba(255,255,255,0.7);">
+                    Se crearán <strong style="color: #fff;">@_applyForm.SelectedLotIds.Count OTs</strong>
+                    con <strong style="color: #fff;">@((_applyingStrategy.Items?.Count ?? 0) * _applyForm.SelectedLotIds.Count) labores</strong> en total.
+                </span>
+            </div>
+        }
+    }
+</Modal>
+
+@if (_applyResult != null)
+{
+    <Modal Title="Resultado de Aplicación"
+           Visible="_resultModalVisible"
+           OnCancel="() => _resultModalVisible = false"
+           Footer="null"
+           Width="480">
+        <div style="text-align: center; padding: 24px;">
+            <div style="width: 64px; height: 64px; border-radius: 50%; background: #2ECC7120; display: flex; align-items: center; justify-content: center; margin: 0 auto 16px;">
+                <Icon Type="check-circle" Theme="IconThemeType.Fill" Style="font-size: 40px; color: #2ECC71;" />
+            </div>
+            <h3 style="color: #fff; margin-bottom: 8px;">Estrategia Aplicada Exitosamente</h3>
+            <p style="color: rgba(255,255,255,0.6);">
+                @_applyResult.WorkOrdersCreated OTs creadas con @_applyResult.LaborsCreated labores planificadas.
+            </p>
+            <Button Type="@ButtonType.Primary" OnClick="() => { _resultModalVisible = false; }"
+                    Style="background: #E74C3C; border-color: #E74C3C; border-radius: 8px; margin-top: 12px;">
+                Cerrar
+            </Button>
+        </div>
+    </Modal>
+}
+
+<style>
+    .supply-table-wrapper {
+        overflow-x: auto;
+    }
+    .supply-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+    }
+    .supply-table th {
+        text-align: left;
+        padding: 8px 12px;
+        border-bottom: 1px solid rgba(255,255,255,0.08);
+        color: rgba(255,255,255,0.45);
+        font-weight: 500;
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    .supply-table td {
+        padding: 10px 12px;
+        border-bottom: 1px solid rgba(255,255,255,0.04);
+        color: rgba(255,255,255,0.7);
+    }
+    .supply-row {
+        background: rgba(255,255,255,0.02);
+        border: 1px solid rgba(255,255,255,0.06);
+        border-radius: 8px;
+        padding: 10px 12px;
+    }
+</style>
+
+@code {
+    private List<CropStrategyDto> _strategies = new();
+    private List<LotDto> _availableLots = new();
+    private List<InventoryDto> _availableSupplies = new();
+    private bool _loading;
+    private string? _errorMessage;
+
+    private bool _modalVisible;
+    private bool _saving;
+    private bool _isEditing;
+    private Guid _editingId;
+    private StrategyFormModel _formModel = new();
+
+    private bool _applyModalVisible;
+    private bool _applying;
+    private CropStrategyDto? _applyingStrategy;
+    private ApplyFormModel _applyForm = new();
+
+    private ApplyStrategyResult? _applyResult;
+    private bool _resultModalVisible;
+
+    private readonly string[] _laborTypes = { "Siembra", "Pulverización", "Cosecha", "Fertilización", "Laboreo", "Riego", "Otro" };
+    private readonly string[] _cropTypes = { "Soja", "Maíz", "Trigo", "Girasol", "Cebada", "Sorgo", "Algodón", "Otro" };
+
+    public class StrategyFormModel
+    {
+        public string Name { get; set; } = string.Empty;
+        public string CropType { get; set; } = string.Empty;
+        public List<StrategyItemForm> Items { get; set; } = new();
+    }
+
+    public class StrategyItemForm
+    {
+        public string LaborType { get; set; } = string.Empty;
+        public int DayOffset { get; set; }
+        public List<SupplyDefaultForm> DefaultSupplies { get; set; } = new();
+    }
+
+    public class SupplyDefaultForm
+    {
+        public Guid SupplyId { get; set; }
+        public decimal Dose { get; set; }
+        public string DoseUnit { get; set; } = string.Empty;
+        public string? SupplyName { get; set; }
+    }
+
+    public class ApplyFormModel
+    {
+        public List<Guid> SelectedLotIds { get; set; } = new();
+        public DateTime StartDate { get; set; } = DateTime.Today;
+        public string AssignedTo { get; set; } = string.Empty;
+        public decimal AgreedRate { get; set; }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        try
+        {
+            _loading = true;
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+            var strategiesTask = Http.GetFromJsonAsync("api/strategies",
+                AppJsonSerializerContext.Default.ListCropStrategyDto, cts.Token);
+            var lotsTask = Http.GetFromJsonAsync("api/lots",
+                AppJsonSerializerContext.Default.ListLotDto, cts.Token);
+            var suppliesTask = Http.GetFromJsonAsync("api/inventory",
+                AppJsonSerializerContext.Default.ListInventoryDto, cts.Token);
+
+            _strategies = await strategiesTask ?? new();
+            _availableLots = await lotsTask ?? new();
+            _availableSupplies = await suppliesTask ?? new();
+            _errorMessage = null;
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Error: {ex.Message}";
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private void OpenCreateModal()
+    {
+        _isEditing = false;
+        _formModel = new StrategyFormModel();
+        _modalVisible = true;
+    }
+
+    private void OpenEditModal(CropStrategyDto strategy)
+    {
+        _isEditing = true;
+        _editingId = strategy.Id;
+        _formModel = new StrategyFormModel
+        {
+            Name = strategy.Name,
+            CropType = strategy.CropType,
+            Items = strategy.Items?.Select(i => new StrategyItemForm
+            {
+                LaborType = i.LaborType,
+                DayOffset = i.DayOffset,
+                DefaultSupplies = i.DefaultSupplies?.Select(s => new SupplyDefaultForm
+                {
+                    SupplyId = s.SupplyId,
+                    Dose = s.Dose,
+                    DoseUnit = s.DoseUnit,
+                    SupplyName = s.SupplyName
+                }).ToList() ?? new()
+            }).ToList() ?? new()
+        };
+        _modalVisible = true;
+    }
+
+    private void CloseModal() => _modalVisible = false;
+
+    private void AddItem()
+    {
+        _formModel.Items.Add(new StrategyItemForm());
+    }
+
+    private void RemoveItem(int idx)
+    {
+        if (idx >= 0 && idx < _formModel.Items.Count)
+            _formModel.Items.RemoveAt(idx);
+    }
+
+    private void AddItemSupply(int itemIdx)
+    {
+        _formModel.Items[itemIdx].DefaultSupplies ??= new();
+        _formModel.Items[itemIdx].DefaultSupplies.Add(new SupplyDefaultForm());
+    }
+
+    private void RemoveItemSupply(int itemIdx, int supplyIdx)
+    {
+        if (supplyIdx >= 0 && supplyIdx < _formModel.Items[itemIdx].DefaultSupplies.Count)
+            _formModel.Items[itemIdx].DefaultSupplies.RemoveAt(supplyIdx);
+    }
+
+    private void OnStrategySupplySelected(int itemIdx, int supplyIdx, Guid supplyId)
+    {
+        var supply = _formModel.Items[itemIdx].DefaultSupplies[supplyIdx];
+        supply.SupplyId = supplyId;
+        var inv = _availableSupplies.FirstOrDefault(s => s.Id == supplyId);
+        if (inv != null)
+        {
+            supply.DoseUnit = $"{inv.UnitB}/ha";
+            supply.SupplyName = inv.ItemName;
+        }
+    }
+
+    private async Task SaveStrategy()
+    {
+        if (string.IsNullOrWhiteSpace(_formModel.Name))
+        {
+            Message.Warning("El nombre es obligatorio.");
+            return;
+        }
+
+        _saving = true;
+        try
+        {
+            var dto = new CropStrategyDto(
+                _isEditing ? _editingId : Guid.Empty,
+                _formModel.Name,
+                _formModel.CropType,
+                DateTime.MinValue,
+                _formModel.Items.Select(i => new StrategyItemDto(
+                    Guid.Empty,
+                    Guid.Empty,
+                    i.LaborType,
+                    i.DayOffset,
+                    i.DefaultSupplies.Select(s => new StrategySupplyDefault(
+                        s.SupplyId,
+                        s.Dose,
+                        s.DoseUnit,
+                        s.SupplyName
+                    )).ToList()
+                )).ToList()
+            );
+
+            HttpResponseMessage response;
+            if (_isEditing)
+            {
+                response = await Http.PutAsJsonAsync($"api/strategies/{_editingId}",
+                    dto, AppJsonSerializerContext.Default.CropStrategyDto);
+            }
+            else
+            {
+                response = await Http.PostAsJsonAsync("api/strategies",
+                    dto, AppJsonSerializerContext.Default.CropStrategyDto);
+            }
+
+            if (response.IsSuccessStatusCode)
+            {
+                Message.Success(_isEditing ? "Estrategia actualizada." : "Estrategia creada.");
+                _modalVisible = false;
+                await LoadData();
+            }
+            else
+            {
+                Message.Error($"Error: {response.StatusCode}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Message.Error($"Error: {ex.Message}");
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private async Task DeleteStrategy(Guid id)
+    {
+        try
+        {
+            var response = await Http.DeleteAsync($"api/strategies/{id}");
+            if (response.IsSuccessStatusCode)
+            {
+                Message.Success("Estrategia eliminada.");
+                await LoadData();
+            }
+            else
+            {
+                Message.Error($"Error: {response.StatusCode}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Message.Error($"Error: {ex.Message}");
+        }
+    }
+
+    private void ToggleLot(Guid lotId)
+    {
+        if (_applyForm.SelectedLotIds.Contains(lotId))
+            _applyForm.SelectedLotIds.Remove(lotId);
+        else
+            _applyForm.SelectedLotIds.Add(lotId);
+    }
+
+    private void OpenApplyModal(CropStrategyDto strategy)
+    {
+        _applyingStrategy = strategy;
+        _applyForm = new ApplyFormModel();
+        _applyModalVisible = true;
+    }
+
+    private void CloseApplyModal()
+    {
+        _applyModalVisible = false;
+        _applyingStrategy = null;
+    }
+
+    private async Task ConfirmApply()
+    {
+        if (_applyingStrategy == null) return;
+        if (_applyForm.SelectedLotIds.Count == 0)
+        {
+            Message.Warning("Seleccioná al menos un lote.");
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(_applyForm.AssignedTo))
+        {
+            Message.Warning("Ingresá un responsable.");
+            return;
+        }
+
+        _applying = true;
+        try
+        {
+            var request = new ApplyStrategyRequest(
+                _applyingStrategy.Id,
+                _applyForm.SelectedLotIds,
+                _applyForm.StartDate,
+                _applyForm.AssignedTo,
+                _applyForm.AgreedRate
+            );
+
+            var response = await Http.PostAsJsonAsync("api/strategies/apply",
+                request, AppJsonSerializerContext.Default.ApplyStrategyRequest);
+
+            if (response.IsSuccessStatusCode)
+            {
+                _applyResult = await response.Content.ReadFromJsonAsync(
+                    AppJsonSerializerContext.Default.ApplyStrategyResult);
+                _applyModalVisible = false;
+                _resultModalVisible = true;
+                Message.Success($"Se generaron {_applyResult?.WorkOrdersCreated} OTs exitosamente.");
+            }
+            else
+            {
+                var err = await response.Content.ReadAsStringAsync();
+                Message.Error($"Error: {err}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Message.Error($"Error: {ex.Message}");
+        }
+        finally
+        {
+            _applying = false;
+        }
+    }
+}

@@ -16,6 +16,9 @@ public class ApplicationDbContext : DbContext
     public DbSet<Inventory> Inventories => Set<Inventory>();
     public DbSet<Labor> Labors => Set<Labor>();
     public DbSet<LaborSupply> LaborSupplies => Set<LaborSupply>();
+    public DbSet<CropStrategy> CropStrategies => Set<CropStrategy>();
+    public DbSet<StrategyItem> StrategyItems => Set<StrategyItem>();
+    public DbSet<ServiceSettlement> ServiceSettlements => Set<ServiceSettlement>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -54,6 +57,7 @@ public class ApplicationDbContext : DbContext
             entity.Property(e => e.Description).HasMaxLength(1000);
             entity.Property(e => e.Status).HasMaxLength(50);
             entity.Property(e => e.AssignedTo).HasMaxLength(200);
+            entity.Property(e => e.AgreedRate).HasPrecision(18, 4).HasDefaultValue(0m);
             
             entity.HasOne(e => e.Lot)
                 .WithMany(l => l.WorkOrders)
@@ -81,6 +85,7 @@ public class ApplicationDbContext : DbContext
             entity.Property(e => e.LaborType).IsRequired().HasMaxLength(100);
             entity.Property(e => e.Status).IsRequired().HasMaxLength(50).HasDefaultValue("Planned");
             entity.Property(e => e.Hectares).HasPrecision(18, 4);
+            entity.Property(e => e.EffectiveArea).HasPrecision(18, 4);
             entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
 
             entity.HasOne(e => e.WorkOrder)
@@ -114,6 +119,44 @@ public class ApplicationDbContext : DbContext
                 .HasForeignKey(e => e.SupplyId)
                 .OnDelete(DeleteBehavior.Restrict);
         });
+
+        modelBuilder.Entity<CropStrategy>(entity =>
+        {
+            entity.ToTable("CropStrategies", "public");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Name).IsRequired().HasMaxLength(200);
+            entity.Property(e => e.CropType).HasMaxLength(100);
+            entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
+        });
+
+        modelBuilder.Entity<StrategyItem>(entity =>
+        {
+            entity.ToTable("StrategyItems", "public");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.LaborType).IsRequired().HasMaxLength(100);
+            entity.Property(e => e.DefaultSuppliesJson).HasColumnName("DefaultSupplies").HasColumnType("jsonb");
+
+            entity.HasOne(e => e.Strategy)
+                .WithMany(s => s.Items)
+                .HasForeignKey(e => e.CropStrategyId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<ServiceSettlement>(entity =>
+        {
+            entity.ToTable("ServiceSettlements", "public");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.TotalHectares).HasPrecision(18, 4);
+            entity.Property(e => e.AgreedRate).HasPrecision(18, 4);
+            entity.Property(e => e.TotalAmount).HasPrecision(18, 4);
+            entity.Property(e => e.GeneratedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
+            entity.Property(e => e.ErpSyncStatus).HasMaxLength(50).HasDefaultValue("Pending");
+
+            entity.HasOne(e => e.WorkOrder)
+                .WithMany()
+                .HasForeignKey(e => e.WorkOrderId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
     }
 }
 
@@ -142,9 +185,10 @@ public class WorkOrder
     public Guid Id { get; set; }
     public Guid LotId { get; set; }
     public string Description { get; set; } = string.Empty;
-    public string Status { get; set; } = "Pending";
+    public string Status { get; set; } = "Draft";
     public string AssignedTo { get; set; } = string.Empty;
     public DateTime DueDate { get; set; }
+    public decimal AgreedRate { get; set; }
     public Lot? Lot { get; set; }
     public ICollection<Labor> Labors { get; set; } = new List<Labor>();
 }
@@ -170,6 +214,7 @@ public class Labor
     public string Status { get; set; } = "Planned";
     public DateTime? ExecutionDate { get; set; }
     public decimal Hectares { get; set; }
+    public decimal EffectiveArea { get; set; }
     public DateTime CreatedAt { get; set; }
     public WorkOrder? WorkOrder { get; set; }
     public Lot? Lot { get; set; }
@@ -188,4 +233,35 @@ public class LaborSupply
     public string DoseUnit { get; set; } = string.Empty;
     public Labor? Labor { get; set; }
     public Inventory? Supply { get; set; }
+}
+
+public class CropStrategy
+{
+    public Guid Id { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public string CropType { get; set; } = string.Empty;
+    public DateTime CreatedAt { get; set; }
+    public ICollection<StrategyItem> Items { get; set; } = new List<StrategyItem>();
+}
+
+public class StrategyItem
+{
+    public Guid Id { get; set; }
+    public Guid CropStrategyId { get; set; }
+    public string LaborType { get; set; } = string.Empty;
+    public int DayOffset { get; set; }
+    public string? DefaultSuppliesJson { get; set; }
+    public CropStrategy? Strategy { get; set; }
+}
+
+public class ServiceSettlement
+{
+    public Guid Id { get; set; }
+    public Guid WorkOrderId { get; set; }
+    public decimal TotalHectares { get; set; }
+    public decimal AgreedRate { get; set; }
+    public decimal TotalAmount { get; set; }
+    public DateTime GeneratedAt { get; set; }
+    public string ErpSyncStatus { get; set; } = "Pending";
+    public WorkOrder? WorkOrder { get; set; }
 }

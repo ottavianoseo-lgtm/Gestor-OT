@@ -32,7 +32,8 @@ public class WorkOrdersController : ControllerBase
             w.Status,
             w.AssignedTo,
             w.DueDate,
-            w.Lot?.Name
+            w.Lot?.Name,
+            w.AgreedRate
         )).ToList();
     }
 
@@ -52,6 +53,26 @@ public class WorkOrdersController : ControllerBase
 
         if (workOrder == null)
             return NotFound();
+
+        ServiceSettlementDto? settlementDto = null;
+        var settlement = await _context.ServiceSettlements
+            .AsNoTracking()
+            .FirstOrDefaultAsync(s => s.WorkOrderId == id);
+        if (settlement != null)
+        {
+            settlementDto = new ServiceSettlementDto(
+                settlement.Id,
+                settlement.WorkOrderId,
+                settlement.TotalHectares,
+                settlement.AgreedRate,
+                settlement.TotalAmount,
+                settlement.GeneratedAt,
+                settlement.ErpSyncStatus,
+                workOrder.Description,
+                workOrder.Lot?.Name,
+                workOrder.AssignedTo
+            );
+        }
 
         return new WorkOrderDetailDto(
             workOrder.Id,
@@ -84,7 +105,9 @@ public class WorkOrdersController : ControllerBase
                     s.Supply?.ItemName,
                     s.Supply?.UnitB
                 )).ToList()
-            )).ToList()
+            )).ToList(),
+            workOrder.AgreedRate,
+            settlementDto
         );
     }
 
@@ -98,7 +121,8 @@ public class WorkOrdersController : ControllerBase
             Description = dto.Description,
             Status = dto.Status,
             AssignedTo = dto.AssignedTo,
-            DueDate = dto.DueDate
+            DueDate = dto.DueDate,
+            AgreedRate = dto.AgreedRate
         };
 
         _context.WorkOrders.Add(workOrder);
@@ -111,7 +135,8 @@ public class WorkOrdersController : ControllerBase
             workOrder.Status,
             workOrder.AssignedTo,
             workOrder.DueDate,
-            null
+            null,
+            workOrder.AgreedRate
         );
 
         return CreatedAtAction(nameof(GetWorkOrder), new { id = workOrder.Id }, result);
@@ -129,9 +154,122 @@ public class WorkOrdersController : ControllerBase
         workOrder.AssignedTo = dto.AssignedTo;
         workOrder.DueDate = dto.DueDate;
         workOrder.LotId = dto.LotId;
+        workOrder.AgreedRate = dto.AgreedRate;
 
         await _context.SaveChangesAsync();
         return NoContent();
+    }
+
+    [HttpPost("{id:guid}/approve")]
+    public async Task<ActionResult<ServiceSettlementDto>> ApproveWorkOrder(Guid id)
+    {
+        var workOrder = await _context.WorkOrders
+            .Include(w => w.Labors)
+                .ThenInclude(l => l.Supplies)
+            .Include(w => w.Lot)
+            .FirstOrDefaultAsync(w => w.Id == id);
+
+        if (workOrder == null)
+            return NotFound();
+
+        if (workOrder.Status == "Approved")
+            return BadRequest("La OT ya fue aprobada.");
+
+        if (workOrder.Status == "Cancelled")
+            return BadRequest("No se puede aprobar una OT cancelada.");
+
+        var unrealizedLabors = workOrder.Labors.Where(l => l.Status != "Realized").ToList();
+        if (unrealizedLabors.Count > 0)
+            return BadRequest($"Hay {unrealizedLabors.Count} labor(es) sin realizar. Todas las labores deben estar realizadas para aprobar.");
+
+        workOrder.Status = "Approved";
+
+        var totalHectares = workOrder.Labors.Sum(l => l.EffectiveArea > 0 ? l.EffectiveArea : l.Hectares);
+        var totalAmount = totalHectares * workOrder.AgreedRate;
+
+        var existingSettlement = await _context.ServiceSettlements
+            .FirstOrDefaultAsync(s => s.WorkOrderId == id);
+
+        ServiceSettlement settlement;
+        if (existingSettlement != null)
+        {
+            existingSettlement.TotalHectares = totalHectares;
+            existingSettlement.AgreedRate = workOrder.AgreedRate;
+            existingSettlement.TotalAmount = totalAmount;
+            existingSettlement.GeneratedAt = DateTime.UtcNow;
+            settlement = existingSettlement;
+        }
+        else
+        {
+            settlement = new ServiceSettlement
+            {
+                Id = Guid.NewGuid(),
+                WorkOrderId = id,
+                TotalHectares = totalHectares,
+                AgreedRate = workOrder.AgreedRate,
+                TotalAmount = totalAmount,
+                GeneratedAt = DateTime.UtcNow,
+                ErpSyncStatus = "Pending"
+            };
+            _context.ServiceSettlements.Add(settlement);
+        }
+
+        await _context.SaveChangesAsync();
+
+        return new ServiceSettlementDto(
+            settlement.Id,
+            settlement.WorkOrderId,
+            settlement.TotalHectares,
+            settlement.AgreedRate,
+            settlement.TotalAmount,
+            settlement.GeneratedAt,
+            settlement.ErpSyncStatus,
+            workOrder.Description,
+            workOrder.Lot?.Name,
+            workOrder.AssignedTo
+        );
+    }
+
+    [HttpGet("{id:guid}/discrepancy")]
+    public async Task<ActionResult<DiscrepancyReportDto>> GetDiscrepancy(Guid id)
+    {
+        var workOrder = await _context.WorkOrders
+            .AsNoTracking()
+            .Include(w => w.Labors)
+                .ThenInclude(l => l.Supplies)
+                    .ThenInclude(s => s.Supply)
+            .FirstOrDefaultAsync(w => w.Id == id);
+
+        if (workOrder == null)
+            return NotFound();
+
+        var laborDiscrepancies = workOrder.Labors
+            .Where(l => l.Status == "Realized")
+            .Select(l => new LaborDiscrepancyDto(
+                l.Id,
+                l.LaborType,
+                l.EffectiveArea > 0 ? l.EffectiveArea : l.Hectares,
+                l.Supplies
+                    .Where(s => s.RealDose.HasValue)
+                    .Select(s =>
+                    {
+                        var discrepancy = s.PlannedDose > 0
+                            ? ((s.RealDose!.Value - s.PlannedDose) / s.PlannedDose) * 100
+                            : 0;
+                        return new SupplyDiscrepancyDto(
+                            s.Supply?.ItemName ?? "Insumo",
+                            s.PlannedDose,
+                            s.RealDose!.Value,
+                            Math.Round(discrepancy, 2)
+                        );
+                    }).ToList()
+            )).ToList();
+
+        return new DiscrepancyReportDto(
+            workOrder.Id,
+            workOrder.Description,
+            laborDiscrepancies
+        );
     }
 
     [HttpDelete("{id:guid}")]

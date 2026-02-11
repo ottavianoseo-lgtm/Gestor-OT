@@ -90,6 +90,35 @@ using (var scope = app.Services.CreateScope())
                     ""PlannedTotal"" numeric(18,4) NOT NULL DEFAULT 0,
                     ""RealTotal"" numeric(18,4),
                     ""DoseUnit"" varchar(100)
+                )",
+
+                @"ALTER TABLE public.""WorkOrders"" ADD COLUMN IF NOT EXISTS ""AgreedRate"" numeric(18,4) DEFAULT 0",
+
+                @"ALTER TABLE public.""Labors"" ADD COLUMN IF NOT EXISTS ""EffectiveArea"" numeric(18,4) DEFAULT 0",
+
+                @"CREATE TABLE IF NOT EXISTS public.""CropStrategies"" (
+                    ""Id"" uuid PRIMARY KEY,
+                    ""Name"" varchar(200) NOT NULL,
+                    ""CropType"" varchar(100),
+                    ""CreatedAt"" timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )",
+
+                @"CREATE TABLE IF NOT EXISTS public.""StrategyItems"" (
+                    ""Id"" uuid PRIMARY KEY,
+                    ""CropStrategyId"" uuid NOT NULL REFERENCES public.""CropStrategies""(""Id"") ON DELETE CASCADE,
+                    ""LaborType"" varchar(100) NOT NULL,
+                    ""DayOffset"" integer NOT NULL DEFAULT 0,
+                    ""DefaultSupplies"" jsonb
+                )",
+
+                @"CREATE TABLE IF NOT EXISTS public.""ServiceSettlements"" (
+                    ""Id"" uuid PRIMARY KEY,
+                    ""WorkOrderId"" uuid NOT NULL REFERENCES public.""WorkOrders""(""Id"") ON DELETE CASCADE,
+                    ""TotalHectares"" numeric(18,4) NOT NULL DEFAULT 0,
+                    ""AgreedRate"" numeric(18,4) NOT NULL DEFAULT 0,
+                    ""TotalAmount"" numeric(18,4) NOT NULL DEFAULT 0,
+                    ""GeneratedAt"" timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    ""ErpSyncStatus"" varchar(50) DEFAULT 'Pending'
                 )"
             };
 
