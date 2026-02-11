@@ -1,0 +1,227 @@
+@page "/admin/audit"
+@layout AdminLayout
+@inject HttpClient Http
+@using GestorOT.Shared
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Registro de Auditoría</h1>
+        <span class="page-subtitle">Historial de cambios en Órdenes de Trabajo y Labores</span>
+    </div>
+    <Button Type="@ButtonType.Default" OnClick="LoadLogs"
+            Style="border-radius: 8px;">
+        <Icon Type="reload" Theme="IconThemeType.Outline" /> Actualizar
+    </Button>
+</div>
+
+<div class="glass-card">
+    <div style="display: flex; gap: 12px; margin-bottom: 16px; align-items: center;">
+        <Select TItemValue="string" TItem="string" @bind-Value="_entityFilter" Placeholder="Filtrar por entidad"
+                Style="width: 180px;" AllowClear OnSelectedItemChanged="_ => StateHasChanged()">
+            <SelectOptions>
+                <SelectOption TItemValue="string" TItem="string" Value="@("WorkOrder")" Label="WorkOrder" />
+                <SelectOption TItemValue="string" TItem="string" Value="@("Labor")" Label="Labor" />
+            </SelectOptions>
+        </Select>
+        <Select TItemValue="string" TItem="string" @bind-Value="_actionFilter" Placeholder="Filtrar por acción"
+                Style="width: 180px;" AllowClear OnSelectedItemChanged="_ => StateHasChanged()">
+            <SelectOptions>
+                <SelectOption TItemValue="string" TItem="string" Value="@("Added")" Label="Creado" />
+                <SelectOption TItemValue="string" TItem="string" Value="@("Modified")" Label="Modificado" />
+                <SelectOption TItemValue="string" TItem="string" Value="@("Deleted")" Label="Eliminado" />
+            </SelectOptions>
+        </Select>
+    </div>
+
+    @if (_loading)
+    {
+        <div style="text-align: center; padding: 40px;">
+            <Spin Tip="Cargando registros..." />
+        </div>
+    }
+    else if (_error != null)
+    {
+        <Alert Type="@AlertType.Error" Message="@_error" ShowIcon="true" />
+    }
+    else if (_logs.Count == 0)
+    {
+        <Empty Description="@("No hay registros de auditoría")" />
+    }
+    else
+    {
+        <Table TItem="AuditLogDto"
+               DataSource="@FilteredLogs"
+               Loading="@_loading"
+               Size="TableSize.Small"
+               ScrollX="1100">
+            <PropertyColumn Property="c => c.Timestamp" Title="Fecha/Hora" Sortable>
+                @context.Timestamp.ToString("dd/MM/yyyy HH:mm:ss")
+            </PropertyColumn>
+            <Column TData="string" Title="Acción">
+                <Tag Color="@GetActionColor(context.Action)">@GetActionLabel(context.Action)</Tag>
+            </Column>
+            <Column TData="string" Title="Entidad">
+                <Tag Color="@(context.EntityType == "WorkOrder" ? "blue" : "purple")">@context.EntityType</Tag>
+            </Column>
+            <Column TData="string" Title="ID Entidad">
+                <span style="font-family: monospace; font-size: 11px; color: rgba(255,255,255,0.5);">
+                    @(context.EntityId?.Substring(0, Math.Min(8, context.EntityId?.Length ?? 0)) ?? "—")...
+                </span>
+            </Column>
+            <Column TData="string" Title="Usuario">
+                @(context.UserEmail ?? "Sistema")
+            </Column>
+            <ActionColumn Title="Detalle" Width="80">
+                <Button Type="@ButtonType.Text" Size="@ButtonSize.Small" OnClick="() => ShowDetail(context)"
+                        Style="color: rgba(255,255,255,0.6); font-size: 12px;">
+                    <Icon Type="eye" Theme="IconThemeType.Outline" /> Ver
+                </Button>
+            </ActionColumn>
+        </Table>
+
+        <div style="display: flex; justify-content: center; gap: 8px; margin-top: 16px;">
+            <Button Disabled="@(_page <= 1)" OnClick="() => ChangePage(-1)"
+                    Style="border-radius: 8px;">
+                <Icon Type="left" Theme="IconThemeType.Outline" /> Anterior
+            </Button>
+            <span style="color: rgba(255,255,255,0.5); line-height: 32px; font-size: 13px;">
+                Página @_page
+            </span>
+            <Button Disabled="@(_logs.Count < _pageSize)" OnClick="() => ChangePage(1)"
+                    Style="border-radius: 8px;">
+                Siguiente <Icon Type="right" Theme="IconThemeType.Outline" />
+            </Button>
+        </div>
+    }
+</div>
+
+<Modal Title="Detalle de Cambio" Visible="_detailVisible" OnCancel="() => _detailVisible = false"
+       Footer="null" Width="700">
+    @if (_selectedLog != null)
+    {
+        <div style="display: grid; gap: 12px;">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                <div>
+                    <div style="color: rgba(255,255,255,0.4); font-size: 11px; text-transform: uppercase; margin-bottom: 4px;">Acción</div>
+                    <Tag Color="@GetActionColor(_selectedLog.Action)">@GetActionLabel(_selectedLog.Action)</Tag>
+                </div>
+                <div>
+                    <div style="color: rgba(255,255,255,0.4); font-size: 11px; text-transform: uppercase; margin-bottom: 4px;">Entidad</div>
+                    <span style="color: rgba(255,255,255,0.85);">@_selectedLog.EntityType (@_selectedLog.EntityId)</span>
+                </div>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                <div>
+                    <div style="color: rgba(255,255,255,0.4); font-size: 11px; text-transform: uppercase; margin-bottom: 4px;">Usuario</div>
+                    <span style="color: rgba(255,255,255,0.85);">@(_selectedLog.UserEmail ?? "Sistema")</span>
+                </div>
+                <div>
+                    <div style="color: rgba(255,255,255,0.4); font-size: 11px; text-transform: uppercase; margin-bottom: 4px;">Fecha</div>
+                    <span style="color: rgba(255,255,255,0.85);">@_selectedLog.Timestamp.ToString("dd/MM/yyyy HH:mm:ss")</span>
+                </div>
+            </div>
+
+            @if (!string.IsNullOrEmpty(_selectedLog.OldValue))
+            {
+                <div>
+                    <div style="color: rgba(255,255,255,0.4); font-size: 11px; text-transform: uppercase; margin-bottom: 4px;">Valores Anteriores</div>
+                    <pre style="background: rgba(231,76,60,0.08); border: 1px solid rgba(231,76,60,0.2); border-radius: 8px; padding: 12px; color: rgba(255,255,255,0.7); font-size: 12px; overflow-x: auto; white-space: pre-wrap; word-break: break-all;">@FormatJson(_selectedLog.OldValue)</pre>
+                </div>
+            }
+
+            @if (!string.IsNullOrEmpty(_selectedLog.NewValue))
+            {
+                <div>
+                    <div style="color: rgba(255,255,255,0.4); font-size: 11px; text-transform: uppercase; margin-bottom: 4px;">Valores Nuevos</div>
+                    <pre style="background: rgba(46,204,113,0.08); border: 1px solid rgba(46,204,113,0.2); border-radius: 8px; padding: 12px; color: rgba(255,255,255,0.7); font-size: 12px; overflow-x: auto; white-space: pre-wrap; word-break: break-all;">@FormatJson(_selectedLog.NewValue)</pre>
+                </div>
+            }
+        </div>
+    }
+</Modal>
+
+@code {
+    private List<AuditLogDto> _logs = new();
+    private bool _loading = true;
+    private string? _error;
+    private int _page = 1;
+    private int _pageSize = 50;
+    private string? _entityFilter;
+    private string? _actionFilter;
+    private bool _detailVisible;
+    private AuditLogDto? _selectedLog;
+
+    private List<AuditLogDto> FilteredLogs => _logs
+        .Where(l =>
+            (string.IsNullOrEmpty(_entityFilter) || l.EntityType == _entityFilter) &&
+            (string.IsNullOrEmpty(_actionFilter) || l.Action == _actionFilter))
+        .ToList();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadLogs();
+    }
+
+    private async Task LoadLogs()
+    {
+        _loading = true;
+        _error = null;
+        try
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+            _logs = await Http.GetFromJsonAsync($"api/auditlogs?page={_page}&pageSize={_pageSize}",
+                AppJsonSerializerContext.Default.ListAuditLogDto, cts.Token) ?? new();
+        }
+        catch (Exception ex)
+        {
+            _error = $"Error: {ex.Message}";
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task ChangePage(int delta)
+    {
+        _page += delta;
+        if (_page < 1) _page = 1;
+        await LoadLogs();
+    }
+
+    private void ShowDetail(AuditLogDto log)
+    {
+        _selectedLog = log;
+        _detailVisible = true;
+    }
+
+    private string GetActionColor(string action) => action switch
+    {
+        "Added" => "green",
+        "Modified" => "orange",
+        "Deleted" => "red",
+        _ => "default"
+    };
+
+    private string GetActionLabel(string action) => action switch
+    {
+        "Added" => "Creado",
+        "Modified" => "Modificado",
+        "Deleted" => "Eliminado",
+        _ => action
+    };
+
+    private string FormatJson(string json)
+    {
+        try
+        {
+            var element = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(json);
+            return System.Text.Json.JsonSerializer.Serialize(element, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+        }
+        catch
+        {
+            return json;
+        }
+    }
+}

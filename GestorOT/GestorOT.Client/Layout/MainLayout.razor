@@ -87,6 +87,21 @@
                 <span>Inventario</span>
             </MenuItem>
         </Menu>
+
+        @if (!_collapsed)
+        {
+            <div style="padding: 16px 20px 8px; font-size: 10px; text-transform: uppercase; letter-spacing: 1.5px; color: rgba(255,255,255,0.3); font-weight: 600;">
+                Sistema
+            </div>
+        }
+
+        <Menu Theme="MenuTheme.Dark" Mode="MenuMode.Inline" DefaultSelectedKeys="@(new[] { _activeKey })"
+              Style="background: transparent; border-right: none;">
+            <MenuItem Key="8" RouterLink="/admin" Style="@MenuItemStyle">
+                <Icon Type="setting" Theme="IconThemeType.Outline" />
+                <span>Administración</span>
+            </MenuItem>
+        </Menu>
     </Sider>
 
     <Layout Style="background: transparent;">

@@ -54,6 +54,9 @@ public class ApplicationDbContext : DbContext
     public DbSet<ServiceSettlement> ServiceSettlements => Set<ServiceSettlement>();
     public DbSet<SharedToken> SharedTokens => Set<SharedToken>();
     public DbSet<Tenant> Tenants => Set<Tenant>();
+    public DbSet<UserProfile> UserProfiles => Set<UserProfile>();
+    public DbSet<TankMixRule> TankMixRules => Set<TankMixRule>();
+    public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
 
     private Guid CurrentTenantId => _tenantService?.TenantId ?? Guid.Empty;
 
@@ -223,6 +226,51 @@ public class ApplicationDbContext : DbContext
                 .HasForeignKey(e => e.WorkOrderId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
+
+        modelBuilder.Entity<UserProfile>(entity =>
+        {
+            entity.ToTable("UserProfiles", "public");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Email).IsRequired().HasMaxLength(200);
+            entity.Property(e => e.DisplayName).IsRequired().HasMaxLength(200);
+            entity.Property(e => e.Role).IsRequired().HasMaxLength(50).HasDefaultValue("Agronomist");
+            entity.Property(e => e.IsActive).HasDefaultValue(true);
+            entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
+            entity.HasQueryFilter(e => CurrentTenantId == Guid.Empty || e.TenantId == CurrentTenantId);
+        });
+
+        modelBuilder.Entity<TankMixRule>(entity =>
+        {
+            entity.ToTable("TankMixRules", "public");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Severity).IsRequired().HasMaxLength(50).HasDefaultValue("Warning");
+            entity.Property(e => e.WarningMessage).IsRequired().HasMaxLength(500);
+            entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
+            entity.HasQueryFilter(e => CurrentTenantId == Guid.Empty || e.TenantId == CurrentTenantId);
+
+            entity.HasOne(e => e.ProductA)
+                .WithMany()
+                .HasForeignKey(e => e.ProductAId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(e => e.ProductB)
+                .WithMany()
+                .HasForeignKey(e => e.ProductBId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<AuditLog>(entity =>
+        {
+            entity.ToTable("AuditLogs", "public");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Action).IsRequired().HasMaxLength(100);
+            entity.Property(e => e.EntityType).IsRequired().HasMaxLength(100);
+            entity.Property(e => e.EntityId).HasMaxLength(100);
+            entity.Property(e => e.UserId).HasMaxLength(200);
+            entity.Property(e => e.UserEmail).HasMaxLength(200);
+            entity.Property(e => e.Timestamp).HasDefaultValueSql("CURRENT_TIMESTAMP");
+            entity.HasQueryFilter(e => CurrentTenantId == Guid.Empty || e.TenantId == CurrentTenantId);
+        });
     }
 
     public override int SaveChanges()
@@ -379,4 +427,42 @@ public class SharedToken
     public bool IsRevoked { get; set; }
     public DateTime CreatedAt { get; set; }
     public WorkOrder? WorkOrder { get; set; }
+}
+
+public class UserProfile : ITenantEntity
+{
+    public Guid Id { get; set; }
+    public Guid TenantId { get; set; }
+    public string Email { get; set; } = string.Empty;
+    public string DisplayName { get; set; } = string.Empty;
+    public string Role { get; set; } = "Agronomist";
+    public bool IsActive { get; set; } = true;
+    public DateTime CreatedAt { get; set; }
+}
+
+public class TankMixRule : ITenantEntity
+{
+    public Guid Id { get; set; }
+    public Guid TenantId { get; set; }
+    public Guid ProductAId { get; set; }
+    public Guid ProductBId { get; set; }
+    public string Severity { get; set; } = "Warning";
+    public string WarningMessage { get; set; } = string.Empty;
+    public DateTime CreatedAt { get; set; }
+    public Inventory? ProductA { get; set; }
+    public Inventory? ProductB { get; set; }
+}
+
+public class AuditLog : ITenantEntity
+{
+    public Guid Id { get; set; }
+    public Guid TenantId { get; set; }
+    public string? UserId { get; set; }
+    public string? UserEmail { get; set; }
+    public string Action { get; set; } = string.Empty;
+    public string EntityType { get; set; } = string.Empty;
+    public string? EntityId { get; set; }
+    public string? OldValue { get; set; }
+    public string? NewValue { get; set; }
+    public DateTime Timestamp { get; set; }
 }

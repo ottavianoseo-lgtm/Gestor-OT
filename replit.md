@@ -174,3 +174,11 @@ cd GestorOT/GestorOT && ASPNETCORE_ENVIRONMENT=Development dotnet run --urls "ht
 - 2026-02-11: UI: Tarifa/unidad en formulario y cards de labor, tabla desglose en liquidación
 - 2026-02-11: Estrategias: Eliminado campo AgreedRate del formulario de aplicación
 - 2026-02-11: DB migration: Columnas Rate/RateUnit agregadas a tabla Labors
+- 2026-02-11: Multi-tenancy con EF Core Global Query Filters (TenantId en todas las entidades)
+- 2026-02-11: Magic Links con SHA256 token hashing para acceso anónimo de contratistas
+- 2026-02-11: Panel Admin con RBAC: gestión de usuarios, roles, perfiles
+- 2026-02-11: Tank Mix Rules: reglas de incompatibilidad entre productos agroquímicos
+- 2026-02-11: AuditLog con SaveChangesInterceptor para WorkOrder/Labor changes
+- 2026-02-11: AgronomicValidationService: validación de mezclas con alertas Danger/Warning
+- 2026-02-11: Admin pages (Users, TankMix, Audit) con AntDesign Table
+- 2026-02-11: Tank Mix validation integrada en flujo de creación de labores

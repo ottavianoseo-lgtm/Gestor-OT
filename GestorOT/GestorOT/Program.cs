@@ -17,12 +17,15 @@ if (!string.IsNullOrEmpty(connectionString))
     dataSourceBuilder.UseNetTopologySuite();
     var dataSource = dataSourceBuilder.Build();
 
-    builder.Services.AddDbContext<ApplicationDbContext>(options =>
+    builder.Services.AddDbContext<ApplicationDbContext>((serviceProvider, options) =>
     {
         options.UseNpgsql(dataSource, npgsqlOptions =>
         {
             npgsqlOptions.UseNetTopologySuite();
         });
+
+        var httpContextAccessor = serviceProvider.GetRequiredService<IHttpContextAccessor>();
+        options.AddInterceptors(new GestorOT.Services.AuditInterceptor(httpContextAccessor));
         
         if (builder.Environment.IsDevelopment())
         {
@@ -39,6 +42,8 @@ else
 
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<CurrentTenantService>();
+builder.Services.AddScoped<GestorOT.Services.AgronomicValidationService>();
+builder.Services.AddScoped<GestorOT.Services.AuditInterceptor>();
 
 builder.Services.AddRazorComponents()
     .AddInteractiveWebAssemblyComponents();
@@ -153,7 +158,43 @@ using (var scope = app.Services.CreateScope())
                     ""CreatedAt"" timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
                 )",
 
-                @"CREATE UNIQUE INDEX IF NOT EXISTS ""IX_SharedTokens_TokenHash"" ON public.""SharedTokens"" (""TokenHash"")"
+                @"CREATE UNIQUE INDEX IF NOT EXISTS ""IX_SharedTokens_TokenHash"" ON public.""SharedTokens"" (""TokenHash"")",
+
+                @"CREATE TABLE IF NOT EXISTS public.""UserProfiles"" (
+                    ""Id"" uuid PRIMARY KEY,
+                    ""TenantId"" uuid NOT NULL DEFAULT '00000000-0000-0000-0000-000000000000',
+                    ""Email"" varchar(200) NOT NULL,
+                    ""DisplayName"" varchar(200) NOT NULL,
+                    ""Role"" varchar(50) NOT NULL DEFAULT 'Agronomist',
+                    ""IsActive"" boolean NOT NULL DEFAULT true,
+                    ""CreatedAt"" timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )",
+
+                @"CREATE TABLE IF NOT EXISTS public.""TankMixRules"" (
+                    ""Id"" uuid PRIMARY KEY,
+                    ""TenantId"" uuid NOT NULL DEFAULT '00000000-0000-0000-0000-000000000000',
+                    ""ProductAId"" uuid NOT NULL REFERENCES public.""Inventories""(""Id"") ON DELETE RESTRICT,
+                    ""ProductBId"" uuid NOT NULL REFERENCES public.""Inventories""(""Id"") ON DELETE RESTRICT,
+                    ""Severity"" varchar(50) NOT NULL DEFAULT 'Warning',
+                    ""WarningMessage"" varchar(500) NOT NULL,
+                    ""CreatedAt"" timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )",
+
+                @"CREATE TABLE IF NOT EXISTS public.""AuditLogs"" (
+                    ""Id"" uuid PRIMARY KEY,
+                    ""TenantId"" uuid NOT NULL DEFAULT '00000000-0000-0000-0000-000000000000',
+                    ""UserId"" varchar(200),
+                    ""UserEmail"" varchar(200),
+                    ""Action"" varchar(100) NOT NULL,
+                    ""EntityType"" varchar(100) NOT NULL,
+                    ""EntityId"" varchar(100),
+                    ""OldValue"" text,
+                    ""NewValue"" text,
+                    ""Timestamp"" timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )",
+
+                @"CREATE INDEX IF NOT EXISTS ""IX_AuditLogs_Timestamp"" ON public.""AuditLogs"" (""Timestamp"" DESC)",
+                @"CREATE INDEX IF NOT EXISTS ""IX_AuditLogs_EntityType"" ON public.""AuditLogs"" (""EntityType"")"
             };
 
             foreach (var sql in migrationSql)
