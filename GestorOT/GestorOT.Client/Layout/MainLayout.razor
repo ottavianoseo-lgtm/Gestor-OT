@@ -1,5 +1,6 @@
 @inherits LayoutComponentBase
 @inject NavigationManager Nav
+@inject GestorOT.Client.Services.TenantState TenantState
 
 <Layout Style="min-height: 100vh; background: transparent;">
     <Sider
@@ -12,6 +13,19 @@
         <div style="height: 64px; display: flex; align-items: center; justify-content: center; padding: 0 16px; border-bottom: 1px solid rgba(255,255,255,0.06);">
             <img src="images/logo.svg" alt="Gestor OT" style="width: 200px; object-fit: contain;" />
         </div>
+
+        @if (TenantState.IsSelected && !_collapsed)
+        {
+            <div class="tenant-badge" @onclick="SwitchTenant">
+                <div style="width: 28px; height: 28px; border-radius: 7px; background: linear-gradient(135deg, #E74C3C, #C0392B); display: flex; align-items: center; justify-content: center; font-weight: 700; color: #fff; font-size: 12px; flex-shrink: 0;">
+                    @TenantState.CurrentTenant!.Name[0]
+                </div>
+                <div style="flex: 1; min-width: 0;">
+                    <div style="color: rgba(255,255,255,0.7); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">@TenantState.CurrentTenant.Name</div>
+                </div>
+                <Icon Type="swap" Theme="IconThemeType.Outline" Style="color: rgba(255,255,255,0.3); font-size: 12px; cursor: pointer;" />
+            </div>
+        }
 
         @if (!_collapsed)
         {
@@ -81,6 +95,8 @@
         </Content>
     </Layout>
 </Layout>
+
+<TenantSelector />
 
 <style>
     .ant-layout {
@@ -399,6 +415,24 @@
     .ant-layout-content {
         background: transparent !important;
     }
+
+    .tenant-badge {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin: 10px 14px;
+        padding: 8px 12px;
+        border-radius: 10px;
+        background: rgba(231,76,60,0.08);
+        border: 1px solid rgba(231,76,60,0.15);
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+
+    .tenant-badge:hover {
+        background: rgba(231,76,60,0.15);
+        border-color: rgba(231,76,60,0.3);
+    }
 </style>
 
 @code {
@@ -411,4 +445,14 @@
     private string ContentStyle => IsDashboard
         ? "position: relative; padding: 0; overflow: hidden; flex: 1;"
         : "min-height: 280px; position: relative; margin: 20px;";
+
+    protected override void OnInitialized()
+    {
+        TenantState.OnChange += StateHasChanged;
+    }
+
+    private void SwitchTenant()
+    {
+        TenantState.Clear();
+    }
 }

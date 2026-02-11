@@ -3,11 +3,44 @@ using NetTopologySuite.Geometries;
 
 namespace GestorOT.Data;
 
+public interface ITenantEntity
+{
+    Guid TenantId { get; set; }
+}
+
+public class CurrentTenantService
+{
+    private readonly IHttpContextAccessor _httpContextAccessor;
+
+    public CurrentTenantService(IHttpContextAccessor httpContextAccessor)
+    {
+        _httpContextAccessor = httpContextAccessor;
+    }
+
+    public Guid TenantId
+    {
+        get
+        {
+            var httpContext = _httpContextAccessor.HttpContext;
+            if (httpContext != null)
+            {
+                var tenantHeader = httpContext.Request.Headers["X-Tenant-ID"].FirstOrDefault();
+                if (Guid.TryParse(tenantHeader, out var tenantId))
+                    return tenantId;
+            }
+            return Guid.Empty;
+        }
+    }
+}
+
 public class ApplicationDbContext : DbContext
 {
-    public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options)
+    private readonly CurrentTenantService? _tenantService;
+
+    public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options, CurrentTenantService? tenantService = null)
         : base(options)
     {
+        _tenantService = tenantService;
     }
 
     public DbSet<Field> Fields => Set<Field>();
@@ -19,12 +52,24 @@ public class ApplicationDbContext : DbContext
     public DbSet<CropStrategy> CropStrategies => Set<CropStrategy>();
     public DbSet<StrategyItem> StrategyItems => Set<StrategyItem>();
     public DbSet<ServiceSettlement> ServiceSettlements => Set<ServiceSettlement>();
+    public DbSet<SharedToken> SharedTokens => Set<SharedToken>();
+    public DbSet<Tenant> Tenants => Set<Tenant>();
+
+    private Guid CurrentTenantId => _tenantService?.TenantId ?? Guid.Empty;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
 
         modelBuilder.HasPostgresExtension("postgis");
+
+        modelBuilder.Entity<Tenant>(entity =>
+        {
+            entity.ToTable("Tenants", "public");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Name).IsRequired().HasMaxLength(200);
+            entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
+        });
 
         modelBuilder.Entity<Field>(entity =>
         {
@@ -33,6 +78,7 @@ public class ApplicationDbContext : DbContext
             entity.Property(e => e.Name).IsRequired().HasMaxLength(200);
             entity.Property(e => e.TotalArea).HasPrecision(18, 4);
             entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
+            entity.HasQueryFilter(e => CurrentTenantId == Guid.Empty || e.TenantId == CurrentTenantId);
         });
 
         modelBuilder.Entity<Lot>(entity =>
@@ -43,6 +89,7 @@ public class ApplicationDbContext : DbContext
             entity.Property(e => e.Status).HasMaxLength(50);
             entity.Property(e => e.Geometry).HasColumnType("geometry(Polygon, 4326)");
             entity.HasIndex(e => e.Geometry).HasMethod("GIST");
+            entity.HasQueryFilter(e => CurrentTenantId == Guid.Empty || e.TenantId == CurrentTenantId);
             
             entity.HasOne(e => e.Field)
                 .WithMany(f => f.Lots)
@@ -57,6 +104,7 @@ public class ApplicationDbContext : DbContext
             entity.Property(e => e.Description).HasMaxLength(1000);
             entity.Property(e => e.Status).HasMaxLength(50);
             entity.Property(e => e.AssignedTo).HasMaxLength(200);
+            entity.HasQueryFilter(e => CurrentTenantId == Guid.Empty || e.TenantId == CurrentTenantId);
             entity.HasOne(e => e.Lot)
                 .WithMany(l => l.WorkOrders)
                 .HasForeignKey(e => e.LotId)
@@ -74,6 +122,7 @@ public class ApplicationDbContext : DbContext
             entity.Property(e => e.UnitA).HasMaxLength(50);
             entity.Property(e => e.UnitB).HasMaxLength(50);
             entity.Property(e => e.ConversionFactor).HasPrecision(18, 6).HasDefaultValue(1);
+            entity.HasQueryFilter(e => CurrentTenantId == Guid.Empty || e.TenantId == CurrentTenantId);
         });
 
         modelBuilder.Entity<Labor>(entity =>
@@ -87,6 +136,7 @@ public class ApplicationDbContext : DbContext
             entity.Property(e => e.Rate).HasPrecision(18, 4).HasDefaultValue(0m);
             entity.Property(e => e.RateUnit).HasMaxLength(50).HasDefaultValue("ha");
             entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
+            entity.HasQueryFilter(e => CurrentTenantId == Guid.Empty || e.TenantId == CurrentTenantId);
 
             entity.HasOne(e => e.WorkOrder)
                 .WithMany(w => w.Labors)
@@ -127,6 +177,7 @@ public class ApplicationDbContext : DbContext
             entity.Property(e => e.Name).IsRequired().HasMaxLength(200);
             entity.Property(e => e.CropType).HasMaxLength(100);
             entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
+            entity.HasQueryFilter(e => CurrentTenantId == Guid.Empty || e.TenantId == CurrentTenantId);
         });
 
         modelBuilder.Entity<StrategyItem>(entity =>
@@ -150,6 +201,22 @@ public class ApplicationDbContext : DbContext
             entity.Property(e => e.TotalAmount).HasPrecision(18, 4);
             entity.Property(e => e.GeneratedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
             entity.Property(e => e.ErpSyncStatus).HasMaxLength(50).HasDefaultValue("Pending");
+            entity.HasQueryFilter(e => CurrentTenantId == Guid.Empty || e.TenantId == CurrentTenantId);
+
+            entity.HasOne(e => e.WorkOrder)
+                .WithMany()
+                .HasForeignKey(e => e.WorkOrderId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<SharedToken>(entity =>
+        {
+            entity.ToTable("SharedTokens", "public");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.TokenHash).IsRequired().HasMaxLength(128);
+            entity.HasIndex(e => e.TokenHash).IsUnique();
+            entity.Property(e => e.ExpiresAt);
+            entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
 
             entity.HasOne(e => e.WorkOrder)
                 .WithMany()
@@ -157,20 +224,52 @@ public class ApplicationDbContext : DbContext
                 .OnDelete(DeleteBehavior.Cascade);
         });
     }
+
+    public override int SaveChanges()
+    {
+        SetTenantId();
+        return base.SaveChanges();
+    }
+
+    public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
+    {
+        SetTenantId();
+        return base.SaveChangesAsync(cancellationToken);
+    }
+
+    private void SetTenantId()
+    {
+        if (CurrentTenantId == Guid.Empty) return;
+
+        foreach (var entry in ChangeTracker.Entries<ITenantEntity>()
+            .Where(e => e.State == EntityState.Added && e.Entity.TenantId == Guid.Empty))
+        {
+            entry.Entity.TenantId = CurrentTenantId;
+        }
+    }
 }
 
-public class Field
+public class Tenant
 {
     public Guid Id { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public DateTime CreatedAt { get; set; }
+}
+
+public class Field : ITenantEntity
+{
+    public Guid Id { get; set; }
+    public Guid TenantId { get; set; }
     public string Name { get; set; } = string.Empty;
     public double TotalArea { get; set; }
     public DateTime CreatedAt { get; set; }
     public ICollection<Lot> Lots { get; set; } = new List<Lot>();
 }
 
-public class Lot
+public class Lot : ITenantEntity
 {
     public Guid Id { get; set; }
+    public Guid TenantId { get; set; }
     public Guid FieldId { get; set; }
     public string Name { get; set; } = string.Empty;
     public string Status { get; set; } = "Active";
@@ -179,9 +278,10 @@ public class Lot
     public ICollection<WorkOrder> WorkOrders { get; set; } = new List<WorkOrder>();
 }
 
-public class WorkOrder
+public class WorkOrder : ITenantEntity
 {
     public Guid Id { get; set; }
+    public Guid TenantId { get; set; }
     public Guid LotId { get; set; }
     public string Description { get; set; } = string.Empty;
     public string Status { get; set; } = "Draft";
@@ -191,9 +291,10 @@ public class WorkOrder
     public ICollection<Labor> Labors { get; set; } = new List<Labor>();
 }
 
-public class Inventory
+public class Inventory : ITenantEntity
 {
     public Guid Id { get; set; }
+    public Guid TenantId { get; set; }
     public string Category { get; set; } = string.Empty;
     public string ItemName { get; set; } = string.Empty;
     public double CurrentStock { get; set; }
@@ -203,9 +304,10 @@ public class Inventory
     public double ConversionFactor { get; set; } = 1;
 }
 
-public class Labor
+public class Labor : ITenantEntity
 {
     public Guid Id { get; set; }
+    public Guid TenantId { get; set; }
     public Guid? WorkOrderId { get; set; }
     public Guid LotId { get; set; }
     public string LaborType { get; set; } = string.Empty;
@@ -235,9 +337,10 @@ public class LaborSupply
     public Inventory? Supply { get; set; }
 }
 
-public class CropStrategy
+public class CropStrategy : ITenantEntity
 {
     public Guid Id { get; set; }
+    public Guid TenantId { get; set; }
     public string Name { get; set; } = string.Empty;
     public string CropType { get; set; } = string.Empty;
     public DateTime CreatedAt { get; set; }
@@ -254,13 +357,26 @@ public class StrategyItem
     public CropStrategy? Strategy { get; set; }
 }
 
-public class ServiceSettlement
+public class ServiceSettlement : ITenantEntity
 {
     public Guid Id { get; set; }
+    public Guid TenantId { get; set; }
     public Guid WorkOrderId { get; set; }
     public decimal TotalHectares { get; set; }
     public decimal TotalAmount { get; set; }
     public DateTime GeneratedAt { get; set; }
     public string ErpSyncStatus { get; set; } = "Pending";
+    public WorkOrder? WorkOrder { get; set; }
+}
+
+public class SharedToken
+{
+    public Guid Id { get; set; }
+    public Guid WorkOrderId { get; set; }
+    public Guid TenantId { get; set; }
+    public string TokenHash { get; set; } = string.Empty;
+    public DateTime ExpiresAt { get; set; }
+    public bool IsRevoked { get; set; }
+    public DateTime CreatedAt { get; set; }
     public WorkOrder? WorkOrder { get; set; }
 }

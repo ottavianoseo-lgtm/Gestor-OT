@@ -1,0 +1,116 @@
+@inject HttpClient Http
+@inject GestorOT.Client.Services.TenantState TenantState
+@using GestorOT.Shared
+@using GestorOT.Shared.Dtos
+
+@if (!TenantState.IsSelected)
+{
+    <div class="tenant-overlay">
+        <div class="tenant-card">
+            <div style="text-align: center; margin-bottom: 24px;">
+                <img src="images/logo.svg" alt="Gestor OT" style="width: 180px; margin-bottom: 16px;" />
+                <h2 style="color: #fff; margin: 0 0 4px 0; font-size: 20px; font-weight: 700;">Seleccionar Empresa</h2>
+                <p style="color: rgba(255,255,255,0.5); margin: 0; font-size: 13px;">Elegí el contexto de trabajo</p>
+            </div>
+
+            @if (_loading)
+            {
+                <div style="text-align: center; padding: 20px;">
+                    <Spin />
+                </div>
+            }
+            else
+            {
+                <div class="tenant-list">
+                    @foreach (var tenant in _tenants)
+                    {
+                        <div class="tenant-item" @onclick="() => SelectTenant(tenant)">
+                            <div style="width: 40px; height: 40px; border-radius: 10px; background: linear-gradient(135deg, #E74C3C, #C0392B); display: flex; align-items: center; justify-content: center; font-weight: 700; color: #fff; font-size: 16px;">
+                                @tenant.Name[0]
+                            </div>
+                            <div style="flex: 1;">
+                                <div style="color: #fff; font-weight: 600; font-size: 14px;">@tenant.Name</div>
+                                <div style="color: rgba(255,255,255,0.4); font-size: 11px;">ID: @tenant.Id.ToString()[..8]...</div>
+                            </div>
+                            <Icon Type="right" Theme="IconThemeType.Outline" Style="color: rgba(255,255,255,0.3); font-size: 16px;" />
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+}
+
+<style>
+    .tenant-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 9999;
+        background: rgba(15, 15, 26, 0.95);
+        backdrop-filter: blur(20px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .tenant-card {
+        background: rgba(30, 30, 46, 0.9);
+        border: 1px solid rgba(255,255,255,0.1);
+        border-radius: 20px;
+        padding: 32px;
+        width: 400px;
+        max-width: 90vw;
+    }
+
+    .tenant-list {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+    }
+
+    .tenant-item {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        padding: 14px 16px;
+        border-radius: 12px;
+        background: rgba(255,255,255,0.04);
+        border: 1px solid rgba(255,255,255,0.08);
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+
+    .tenant-item:hover {
+        background: rgba(231,76,60,0.12);
+        border-color: rgba(231,76,60,0.3);
+        transform: translateX(4px);
+    }
+</style>
+
+@code {
+    private List<TenantDto> _tenants = new();
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            _tenants = await Http.GetFromJsonAsync("api/tenants",
+                AppJsonSerializerContext.Default.ListTenantDto, cts.Token) ?? new();
+        }
+        catch
+        {
+            _tenants = new();
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void SelectTenant(TenantDto tenant)
+    {
+        TenantState.SetTenant(tenant);
+    }
+}

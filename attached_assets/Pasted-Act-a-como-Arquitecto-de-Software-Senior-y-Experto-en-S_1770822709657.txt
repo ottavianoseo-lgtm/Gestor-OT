@@ -1,0 +1,31 @@
+Actúa como Arquitecto de Software Senior y Experto en Seguridad.
+Vamos a escalar el sistema con funcionalidades Enterprise definidas en 'ENTERPRISE_ARCHITECTURE.md'.
+
+**TAREA 1: IMPLEMENTAR MULTI-TENANCY (ROW-LEVEL SECURITY)**
+1.  **Backend:**
+    - Crea la interfaz `ITenantEntity` con la propiedad `TenantId`.
+    - Haz que `WorkOrder`, `Labor`, `Campaign` y `CampaignLot` implementen esta interfaz.
+    - Crea un `CurrentTenantService` que capture el `TenantId` de los Headers HTTP.
+    - Configura EF Core `HasQueryFilter` para filtrar automáticamente por Tenant.
+2.  **Frontend:**
+    - Crea un componente `TenantSelector.razor` que se muestre después del Login si el usuario tiene múltiples empresas.
+    - Intercepta todas las llamadas HTTP (`HttpClientInterceptor`) para inyectar el Header `X-Tenant-ID` seleccionado.
+
+**TAREA 2: IMPLEMENTAR MAGIC LINKS (ACCESO CONTRATISTAS)**
+1.  **Backend:**
+    - Crea la entidad `SharedToken` (Token, WorkOrderId, Expiry, IsActive).
+    - Crea el endpoint `POST /api/share/generate/{workOrderId}` que devuelva la URL firmada.
+    - Crea el endpoint `GET /api/share/validate/{token}` que devuelva los datos de la OT si el token es válido.
+2.  **Frontend (Public View):**
+    - Crea un `PublicLayout.razor` minimalista (solo logo y contenido).
+    - Crea la página `/public/ot/{token}`.
+    - Esta vista debe ser "Solo Ejecución": Muestra las labores y permite marcarlas como `Realized` y cargar insumos reales.
+    - **IMPORTANTE:** Esta página NO debe requerir autenticación de Supabase.
+
+**TAREA 3: INTEGRACIÓN CON LÓGICA EXISTENTE**
+- Asegúrate de que las OTs creadas vía "Estrategias" hereden el TenantId correctamente.
+- El "Auto-Facturador" (ServiceSettlement) también debe ser Multi-Tenant.
+
+**ENTREGABLE:**
+1. Un flujo donde elijo "Empresa A", creo una OT, cambio a "Empresa B" y esa OT desaparece (aislamiento correcto).
+2. Genero un Link Mágico para esa OT, lo abro en una ventana de incógnito (sin login) y puedo marcar labores como realizadas.

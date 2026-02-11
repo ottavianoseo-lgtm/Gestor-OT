@@ -4,6 +4,7 @@
 @using System.Net.Http.Json
 @inject HttpClient Http
 @inject IMessageService Message
+@inject IJSRuntime JS
 
 <PageTitle>Órdenes de Trabajo - GestorOT</PageTitle>
 
@@ -195,7 +196,28 @@ else
                     <Icon Type="lock" Theme="IconThemeType.Outline" /> Aprobar (faltan @(_selectedOrder.Labors.Count(l => l.Status == "Planned")) labores por realizar)
                 </Button>
             }
+
+            <Button OnClick="GenerateShareLink" Loading="_generatingLink"
+                    Style="border-radius: 8px; font-weight: 600; border-color: rgba(255,255,255,0.15); color: rgba(255,255,255,0.7);">
+                <Icon Type="link" Theme="IconThemeType.Outline" /> Compartir con Contratista
+            </Button>
         </div>
+
+        @if (!string.IsNullOrEmpty(_shareLink))
+        {
+            <div class="glass-card" style="margin-bottom: 16px; padding: 14px 16px; border: 1px solid rgba(231,76,60,0.3); background: rgba(231,76,60,0.05);">
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <Icon Type="link" Theme="IconThemeType.Outline" Style="color: #E74C3C; font-size: 18px;" />
+                    <div style="flex: 1; min-width: 0;">
+                        <div style="color: rgba(255,255,255,0.5); font-size: 11px; margin-bottom: 2px;">Magic Link (expira @_shareLinkExpiry?.ToString("dd/MM/yyyy"))</div>
+                        <div style="color: #fff; font-size: 12px; word-break: break-all; font-family: monospace;">@_shareLink</div>
+                    </div>
+                    <Button OnClick="CopyShareLink" Style="border-radius: 6px; border-color: rgba(255,255,255,0.15); color: rgba(255,255,255,0.7); font-size: 12px; padding: 2px 8px;">
+                        <Icon Type="copy" Theme="IconThemeType.Outline" /> Copiar
+                    </Button>
+                </div>
+            </div>
+        }
     }
 
     @if (_selectedOrder.Settlement != null)
@@ -706,6 +728,9 @@ else
     private List<RealizeSupplyModel> _realizeSupplies = new();
 
     private bool _approving;
+    private bool _generatingLink;
+    private string? _shareLink;
+    private DateTime? _shareLinkExpiry;
 
     private readonly string[] _laborTypes = { "Siembra", "Pulverización", "Cosecha", "Fertilización", "Laboreo", "Riego", "Otro" };
     private readonly string[] _rateUnits = { "ha", "tn", "km", "hora", "jornal", "viaje" };
@@ -1187,6 +1212,57 @@ else
         finally
         {
             _approving = false;
+        }
+    }
+
+    private async Task GenerateShareLink()
+    {
+        if (_selectedOrder == null) return;
+
+        _generatingLink = true;
+        try
+        {
+            var response = await Http.PostAsync($"api/share/generate/{_selectedOrder.Id}", null);
+            if (response.IsSuccessStatusCode)
+            {
+                var result = await response.Content.ReadFromJsonAsync(
+                    AppJsonSerializerContext.Default.ShareLinkDto);
+                if (result != null)
+                {
+                    _shareLink = result.Url;
+                    _shareLinkExpiry = result.ExpiresAt;
+                    Message.Success("Magic Link generado exitosamente.");
+                }
+            }
+            else
+            {
+                Message.Error("Error al generar el enlace.");
+            }
+        }
+        catch
+        {
+            Message.Error("Error de conexión.");
+        }
+        finally
+        {
+            _generatingLink = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task CopyShareLink()
+    {
+        if (!string.IsNullOrEmpty(_shareLink))
+        {
+            try
+            {
+                await JS.InvokeVoidAsync("navigator.clipboard.writeText", _shareLink);
+                Message.Success("Enlace copiado al portapapeles.");
+            }
+            catch
+            {
+                Message.Info("Copia el enlace manualmente.");
+            }
         }
     }
 }

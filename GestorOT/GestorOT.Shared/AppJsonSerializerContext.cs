@@ -41,6 +41,14 @@ namespace GestorOT.Shared;
 [JsonSerializable(typeof(DiscrepancyReportDto))]
 [JsonSerializable(typeof(LaborDiscrepancyDto))]
 [JsonSerializable(typeof(SupplyDiscrepancyDto))]
+[JsonSerializable(typeof(TenantDto))]
+[JsonSerializable(typeof(List<TenantDto>))]
+[JsonSerializable(typeof(ShareLinkDto))]
+[JsonSerializable(typeof(PublicWorkOrderDto))]
+[JsonSerializable(typeof(PublicLaborDto))]
+[JsonSerializable(typeof(List<PublicLaborDto>))]
+[JsonSerializable(typeof(PublicLaborSupplyDto))]
+[JsonSerializable(typeof(List<PublicLaborSupplyDto>))]
 [JsonSerializable(typeof(Dictionary<string, object>))]
 [JsonSourceGenerationOptions(
     PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,

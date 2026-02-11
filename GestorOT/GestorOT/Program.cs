@@ -2,6 +2,7 @@ using GestorOT.Client.Pages;
 using GestorOT.Components;
 using GestorOT.Data;
 using GestorOT.Shared;
+using GestorOT.Shared.Dtos;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
 
@@ -35,6 +36,9 @@ else
     Console.WriteLine("WARNING: No database connection string configured. Database features disabled.");
     Console.WriteLine("Set SUPABASE_CONNECTION_STRING environment variable to enable database features.");
 }
+
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<CurrentTenantService>();
 
 builder.Services.AddRazorComponents()
     .AddInteractiveWebAssemblyComponents();
@@ -123,7 +127,33 @@ using (var scope = app.Services.CreateScope())
                     ""TotalAmount"" numeric(18,4) NOT NULL DEFAULT 0,
                     ""GeneratedAt"" timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
                     ""ErpSyncStatus"" varchar(50) DEFAULT 'Pending'
-                )"
+                )",
+
+                @"CREATE TABLE IF NOT EXISTS public.""Tenants"" (
+                    ""Id"" uuid PRIMARY KEY,
+                    ""Name"" varchar(200) NOT NULL,
+                    ""CreatedAt"" timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )",
+
+                @"ALTER TABLE public.""Fields"" ADD COLUMN IF NOT EXISTS ""TenantId"" uuid DEFAULT '00000000-0000-0000-0000-000000000000'",
+                @"ALTER TABLE public.""Lots"" ADD COLUMN IF NOT EXISTS ""TenantId"" uuid DEFAULT '00000000-0000-0000-0000-000000000000'",
+                @"ALTER TABLE public.""WorkOrders"" ADD COLUMN IF NOT EXISTS ""TenantId"" uuid DEFAULT '00000000-0000-0000-0000-000000000000'",
+                @"ALTER TABLE public.""Inventories"" ADD COLUMN IF NOT EXISTS ""TenantId"" uuid DEFAULT '00000000-0000-0000-0000-000000000000'",
+                @"ALTER TABLE public.""Labors"" ADD COLUMN IF NOT EXISTS ""TenantId"" uuid DEFAULT '00000000-0000-0000-0000-000000000000'",
+                @"ALTER TABLE public.""CropStrategies"" ADD COLUMN IF NOT EXISTS ""TenantId"" uuid DEFAULT '00000000-0000-0000-0000-000000000000'",
+                @"ALTER TABLE public.""ServiceSettlements"" ADD COLUMN IF NOT EXISTS ""TenantId"" uuid DEFAULT '00000000-0000-0000-0000-000000000000'",
+
+                @"CREATE TABLE IF NOT EXISTS public.""SharedTokens"" (
+                    ""Id"" uuid PRIMARY KEY,
+                    ""WorkOrderId"" uuid NOT NULL REFERENCES public.""WorkOrders""(""Id"") ON DELETE CASCADE,
+                    ""TenantId"" uuid NOT NULL DEFAULT '00000000-0000-0000-0000-000000000000',
+                    ""TokenHash"" varchar(128) NOT NULL,
+                    ""ExpiresAt"" timestamp NOT NULL,
+                    ""IsRevoked"" boolean NOT NULL DEFAULT false,
+                    ""CreatedAt"" timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )",
+
+                @"CREATE UNIQUE INDEX IF NOT EXISTS ""IX_SharedTokens_TokenHash"" ON public.""SharedTokens"" (""TokenHash"")"
             };
 
             foreach (var sql in migrationSql)
@@ -132,6 +162,24 @@ using (var scope = app.Services.CreateScope())
                 cmd.CommandText = sql;
                 await cmd.ExecuteNonQueryAsync();
             }
+
+            using var seedCmd = conn.CreateCommand();
+            seedCmd.CommandText = @"
+                INSERT INTO public.""Tenants"" (""Id"", ""Name"", ""CreatedAt"")
+                VALUES ('11111111-1111-1111-1111-111111111111', 'Empresa A', CURRENT_TIMESTAMP)
+                ON CONFLICT (""Id"") DO NOTHING;
+                INSERT INTO public.""Tenants"" (""Id"", ""Name"", ""CreatedAt"")
+                VALUES ('22222222-2222-2222-2222-222222222222', 'Empresa B', CURRENT_TIMESTAMP)
+                ON CONFLICT (""Id"") DO NOTHING;
+                UPDATE public.""Fields"" SET ""TenantId"" = '11111111-1111-1111-1111-111111111111' WHERE ""TenantId"" = '00000000-0000-0000-0000-000000000000';
+                UPDATE public.""Lots"" SET ""TenantId"" = '11111111-1111-1111-1111-111111111111' WHERE ""TenantId"" = '00000000-0000-0000-0000-000000000000';
+                UPDATE public.""WorkOrders"" SET ""TenantId"" = '11111111-1111-1111-1111-111111111111' WHERE ""TenantId"" = '00000000-0000-0000-0000-000000000000';
+                UPDATE public.""Inventories"" SET ""TenantId"" = '11111111-1111-1111-1111-111111111111' WHERE ""TenantId"" = '00000000-0000-0000-0000-000000000000';
+                UPDATE public.""Labors"" SET ""TenantId"" = '11111111-1111-1111-1111-111111111111' WHERE ""TenantId"" = '00000000-0000-0000-0000-000000000000';
+                UPDATE public.""CropStrategies"" SET ""TenantId"" = '11111111-1111-1111-1111-111111111111' WHERE ""TenantId"" = '00000000-0000-0000-0000-000000000000';
+                UPDATE public.""ServiceSettlements"" SET ""TenantId"" = '11111111-1111-1111-1111-111111111111' WHERE ""TenantId"" = '00000000-0000-0000-0000-000000000000';
+            ";
+            await seedCmd.ExecuteNonQueryAsync();
 
             await conn.CloseAsync();
             Console.WriteLine("Database migration completed successfully.");
