@@ -1,0 +1,52 @@
+# 🛡️ ESPECIFICACIONES: PANEL DE ADMINISTRACIÓN Y REGLAS AGRONÓMICAS (.NET 10)
+
+## 1. ARQUITECTURA UX/UI (.NET 10 NATIVO)
+El Panel de Administración (`/admin`) debe ser modular y de alto rendimiento.
+
+### 1.1 Renderizado Híbrido
+* [cite_start]**Modo:** Utilizar `@rendermode InteractiveAuto`[cite: 506].
+* **Beneficio:** Carga inicial instantánea (SSR) y posterior interactividad fluida (WASM).
+* **Persistencia:** Implementar el atributo `[PersistentState]` en todos los formularios de configuración y filtros de grillas. [cite_start]Si el admin recarga la página, no debe perder los filtros aplicados[cite: 507].
+
+### 1.2 Componentes de Datos (QuickGrid)
+* [cite_start]**Estándar:** Reemplazar las tablas HTML/AntDesign pesadas en el admin por `Microsoft.AspNetCore.Components.QuickGrid` para la gestión de usuarios y logs[cite: 511].
+* **Funciones:** Paginación, ordenamiento y filtrado nativo sin librerías JS externas.
+
+---
+
+## 2. SEGURIDAD Y GESTIÓN DE IDENTIDAD (RBAC)
+
+### 2.1 Roles y Permisos
+* **Modelo:** Implementar RBAC (Role-Based Access Control) conectado a los Claims del Token JWT de Supabase.
+* **Roles Iniciales:** `GlobalAdmin`, `TenantAdmin`, `Agronomist`, `Contractor`.
+* [cite_start]**Gestión de Usuarios:** CRUD de usuarios que permite asignar roles y asociar usuarios a múltiples Tenants (Espacios de Trabajo)[cite: 515].
+
+### 2.2 Auditoría (Audit Logs)
+* **Entidad:** `AuditLog` (Id, UserId, Action, EntityAffected, Timestamp, OldValue, NewValue).
+* [cite_start]**Trigger:** Cada acción de escritura crítica (Aprobar OT, Cambiar Stock, Modificar Usuario) debe generar un registro inmutable.
+* **Visor:** Grid de solo lectura en el panel admin.
+
+---
+
+## 3. MOTOR AGRONÓMICO (REGLAS DE NEGOCIO)
+[cite_start]El sistema debe prevenir errores agronómicos antes de que sucedan[cite: 518].
+
+### 3.1 Reglas de Mezcla (Tank Mix)
+* **Entidad:** `TankMixRule` (ProductA_Id, ProductB_Id, Severity, WarningMessage).
+* **Lógica:** Al agregar insumos a una Labor, el sistema verifica si existe una regla de incompatibilidad (ej: "No mezclar 2,4-D con Graminicida").
+* [cite_start]**UX:** Mostrar alerta "Toast" si se detecta una mezcla prohibida.
+
+### 3.2 Umbrales de Alerta
+* **Configuración:** Sliders en el panel admin para definir:
+    * [cite_start]`MinStockThreshold`: % para avisar "Stock Bajo"[cite: 523].
+    * `MaxWindSpeed`: Límite de viento para planificación (integración futura con clima).
+
+---
+
+## 4. CONFIGURACIÓN TÉCNICA (OFFLINE)
+[cite_start]Control sobre el comportamiento de la PWA[cite: 524].
+
+### 4.1 Políticas de Sync
+* **Panel:** Configuración global para definir:
+    * `SyncImagesOverWifiOnly`: Bool.
+    * [cite_start]`ForceCacheRefresh`: Botón de pánico para invalidar la caché de los clientes móviles (IndexedDB) cuando cambian datos maestros críticos[cite: 526].
