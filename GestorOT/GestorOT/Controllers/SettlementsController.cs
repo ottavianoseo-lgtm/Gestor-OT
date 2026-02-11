@@ -30,10 +30,10 @@ public class SettlementsController : ControllerBase
             s.Id,
             s.WorkOrderId,
             s.TotalHectares,
-            s.AgreedRate,
             s.TotalAmount,
             s.GeneratedAt,
             s.ErpSyncStatus,
+            null,
             s.WorkOrder?.Description,
             s.WorkOrder?.Lot?.Name,
             s.WorkOrder?.AssignedTo
@@ -56,10 +56,10 @@ public class SettlementsController : ControllerBase
             s.Id,
             s.WorkOrderId,
             s.TotalHectares,
-            s.AgreedRate,
             s.TotalAmount,
             s.GeneratedAt,
             s.ErpSyncStatus,
+            null,
             s.WorkOrder?.Description,
             s.WorkOrder?.Lot?.Name,
             s.WorkOrder?.AssignedTo

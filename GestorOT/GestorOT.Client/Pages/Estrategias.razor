@@ -248,12 +248,6 @@
                         <Input @bind-Value="_applyForm.AssignedTo" Placeholder="Nombre" />
                     </FormItem>
                 </AntDesign.Col>
-                <AntDesign.Col Span="8">
-                    <FormItem Label="Tarifa Pactada ($/Ha)">
-                        <AntDesign.InputNumber TValue="decimal" @bind-Value="_applyForm.AgreedRate" Min="0m" Step="100m"
-                                    Style="width: 100%;" />
-                    </FormItem>
-                </AntDesign.Col>
             </AntDesign.Row>
         </Form>
 
@@ -376,7 +370,6 @@
         public List<Guid> SelectedLotIds { get; set; } = new();
         public DateTime StartDate { get; set; } = DateTime.Today;
         public string AssignedTo { get; set; } = string.Empty;
-        public decimal AgreedRate { get; set; }
     }
 
     protected override async Task OnInitializedAsync()
@@ -607,8 +600,7 @@
                 _applyingStrategy.Id,
                 _applyForm.SelectedLotIds,
                 _applyForm.StartDate,
-                _applyForm.AssignedTo,
-                _applyForm.AgreedRate
+                _applyForm.AssignedTo
             );
 
             var response = await Http.PostAsJsonAsync("api/strategies/apply",

@@ -9,11 +9,13 @@ public record LaborDto(
     DateTime? ExecutionDate,
     decimal Hectares,
     DateTime CreatedAt,
+    decimal Rate = 0,
+    string RateUnit = "ha",
     string? LotName = null,
     List<LaborSupplyDto>? Supplies = null
 )
 {
-    public LaborDto() : this(Guid.Empty, null, Guid.Empty, string.Empty, "Planned", null, 0, DateTime.MinValue, null, null) { }
+    public LaborDto() : this(Guid.Empty, null, Guid.Empty, string.Empty, "Planned", null, 0, DateTime.MinValue, 0, "ha", null, null) { }
 }
 
 public record LaborSupplyDto(
@@ -42,9 +44,8 @@ public record WorkOrderDetailDto(
     string? LotName,
     string? FieldName,
     List<LaborDto> Labors,
-    decimal AgreedRate = 0,
     ServiceSettlementDto? Settlement = null
 )
 {
-    public WorkOrderDetailDto() : this(Guid.Empty, Guid.Empty, string.Empty, "Draft", string.Empty, DateTime.MinValue, null, null, new(), 0, null) { }
+    public WorkOrderDetailDto() : this(Guid.Empty, Guid.Empty, string.Empty, "Draft", string.Empty, DateTime.MinValue, null, null, new(), null) { }
 }

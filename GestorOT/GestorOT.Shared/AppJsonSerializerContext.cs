@@ -36,6 +36,8 @@ namespace GestorOT.Shared;
 [JsonSerializable(typeof(ApplyStrategyResult))]
 [JsonSerializable(typeof(ServiceSettlementDto))]
 [JsonSerializable(typeof(List<ServiceSettlementDto>))]
+[JsonSerializable(typeof(LaborSettlementLineDto))]
+[JsonSerializable(typeof(List<LaborSettlementLineDto>))]
 [JsonSerializable(typeof(DiscrepancyReportDto))]
 [JsonSerializable(typeof(LaborDiscrepancyDto))]
 [JsonSerializable(typeof(SupplyDiscrepancyDto))]

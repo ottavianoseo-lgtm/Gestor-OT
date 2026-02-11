@@ -20,11 +20,10 @@ public record WorkOrderDto(
     string Status,
     string AssignedTo,
     DateTime DueDate,
-    string? LotName = null,
-    decimal AgreedRate = 0
+    string? LotName = null
 )
 {
-    public WorkOrderDto() : this(Guid.Empty, Guid.Empty, string.Empty, "Draft", string.Empty, DateTime.MinValue, null, 0) { }
+    public WorkOrderDto() : this(Guid.Empty, Guid.Empty, string.Empty, "Draft", string.Empty, DateTime.MinValue, null) { }
 }
 
 public record GeoJsonFeature(

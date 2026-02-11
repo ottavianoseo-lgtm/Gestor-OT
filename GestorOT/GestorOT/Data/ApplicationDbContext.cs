@@ -57,8 +57,6 @@ public class ApplicationDbContext : DbContext
             entity.Property(e => e.Description).HasMaxLength(1000);
             entity.Property(e => e.Status).HasMaxLength(50);
             entity.Property(e => e.AssignedTo).HasMaxLength(200);
-            entity.Property(e => e.AgreedRate).HasPrecision(18, 4).HasDefaultValue(0m);
-            
             entity.HasOne(e => e.Lot)
                 .WithMany(l => l.WorkOrders)
                 .HasForeignKey(e => e.LotId)
@@ -86,6 +84,8 @@ public class ApplicationDbContext : DbContext
             entity.Property(e => e.Status).IsRequired().HasMaxLength(50).HasDefaultValue("Planned");
             entity.Property(e => e.Hectares).HasPrecision(18, 4);
             entity.Property(e => e.EffectiveArea).HasPrecision(18, 4);
+            entity.Property(e => e.Rate).HasPrecision(18, 4).HasDefaultValue(0m);
+            entity.Property(e => e.RateUnit).HasMaxLength(50).HasDefaultValue("ha");
             entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
 
             entity.HasOne(e => e.WorkOrder)
@@ -147,7 +147,6 @@ public class ApplicationDbContext : DbContext
             entity.ToTable("ServiceSettlements", "public");
             entity.HasKey(e => e.Id);
             entity.Property(e => e.TotalHectares).HasPrecision(18, 4);
-            entity.Property(e => e.AgreedRate).HasPrecision(18, 4);
             entity.Property(e => e.TotalAmount).HasPrecision(18, 4);
             entity.Property(e => e.GeneratedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
             entity.Property(e => e.ErpSyncStatus).HasMaxLength(50).HasDefaultValue("Pending");
@@ -188,7 +187,6 @@ public class WorkOrder
     public string Status { get; set; } = "Draft";
     public string AssignedTo { get; set; } = string.Empty;
     public DateTime DueDate { get; set; }
-    public decimal AgreedRate { get; set; }
     public Lot? Lot { get; set; }
     public ICollection<Labor> Labors { get; set; } = new List<Labor>();
 }
@@ -215,6 +213,8 @@ public class Labor
     public DateTime? ExecutionDate { get; set; }
     public decimal Hectares { get; set; }
     public decimal EffectiveArea { get; set; }
+    public decimal Rate { get; set; }
+    public string RateUnit { get; set; } = "ha";
     public DateTime CreatedAt { get; set; }
     public WorkOrder? WorkOrder { get; set; }
     public Lot? Lot { get; set; }
@@ -259,7 +259,6 @@ public class ServiceSettlement
     public Guid Id { get; set; }
     public Guid WorkOrderId { get; set; }
     public decimal TotalHectares { get; set; }
-    public decimal AgreedRate { get; set; }
     public decimal TotalAmount { get; set; }
     public DateTime GeneratedAt { get; set; }
     public string ErpSyncStatus { get; set; } = "Pending";

@@ -168,3 +168,9 @@ cd GestorOT/GestorOT && ASPNETCORE_ENVIRONMENT=Development dotnet run --urls "ht
 - 2026-02-06: Sidebar glassmorphic con branding AGRIVANT y layout transparente
 - 2026-02-06: JS initDashboardMap/addDashboardLotPolygon/fitDashboardLots para mapa de fondo
 - 2026-02-09: Rebranding a "Gestor OT" con logo de empresa GestorMax en sidebar
+- 2026-02-11: Refactor tarifas: Rate/RateUnit movido de WorkOrder a Labor (cada labor tiene su propia tarifa)
+- 2026-02-11: ServiceSettlement calcula TotalAmount = Sum(Labor.Rate × EffectiveArea) con desglose por labor
+- 2026-02-11: LaborSettlementLineDto para líneas de detalle en liquidación
+- 2026-02-11: UI: Tarifa/unidad en formulario y cards de labor, tabla desglose en liquidación
+- 2026-02-11: Estrategias: Eliminado campo AgreedRate del formulario de aplicación
+- 2026-02-11: DB migration: Columnas Rate/RateUnit agregadas a tabla Labors

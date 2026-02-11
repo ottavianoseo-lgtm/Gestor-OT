@@ -36,11 +36,10 @@ public record ApplyStrategyRequest(
     Guid StrategyId,
     List<Guid> LotIds,
     DateTime StartDate,
-    string AssignedTo,
-    decimal AgreedRate
+    string AssignedTo
 )
 {
-    public ApplyStrategyRequest() : this(Guid.Empty, new(), DateTime.MinValue, string.Empty, 0) { }
+    public ApplyStrategyRequest() : this(Guid.Empty, new(), DateTime.MinValue, string.Empty) { }
 }
 
 public record ApplyStrategyResult(
@@ -56,16 +55,27 @@ public record ServiceSettlementDto(
     Guid Id,
     Guid WorkOrderId,
     decimal TotalHectares,
-    decimal AgreedRate,
     decimal TotalAmount,
     DateTime GeneratedAt,
     string ErpSyncStatus,
+    List<LaborSettlementLineDto>? Lines = null,
     string? WorkOrderDescription = null,
     string? LotName = null,
     string? AssignedTo = null
 )
 {
-    public ServiceSettlementDto() : this(Guid.Empty, Guid.Empty, 0, 0, 0, DateTime.MinValue, "Pending", null, null, null) { }
+    public ServiceSettlementDto() : this(Guid.Empty, Guid.Empty, 0, 0, DateTime.MinValue, "Pending", null, null, null, null) { }
+}
+
+public record LaborSettlementLineDto(
+    string LaborType,
+    decimal Quantity,
+    string RateUnit,
+    decimal Rate,
+    decimal Subtotal
+)
+{
+    public LaborSettlementLineDto() : this(string.Empty, 0, "ha", 0, 0) { }
 }
 
 public record DiscrepancyReportDto(

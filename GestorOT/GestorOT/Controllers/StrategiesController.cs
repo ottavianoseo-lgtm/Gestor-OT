@@ -163,8 +163,7 @@ public class StrategiesController : ControllerBase
                 Description = $"{strategy.Name} — {lot.Name}",
                 Status = "Pending",
                 AssignedTo = request.AssignedTo,
-                DueDate = request.StartDate.AddDays(strategy.Items.Any() ? strategy.Items.Max(i => i.DayOffset) + 7 : 30),
-                AgreedRate = request.AgreedRate
+                DueDate = request.StartDate.AddDays(strategy.Items.Any() ? strategy.Items.Max(i => i.DayOffset) + 7 : 30)
             };
 
             foreach (var item in strategy.Items)

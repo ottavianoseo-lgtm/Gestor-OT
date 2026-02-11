@@ -76,16 +76,6 @@
                 </Tag>
             </Column>
             <PropertyColumn Property="c => c.AssignedTo" Title="Asignado a" Sortable />
-            <Column TData="string" Title="Tarifa">
-                @if (context.AgreedRate > 0)
-                {
-                    <span style="color: #2ECC71; font-weight: 600;">$@context.AgreedRate.ToString("N2")/ha</span>
-                }
-                else
-                {
-                    <span style="color: rgba(255,255,255,0.3);">—</span>
-                }
-            </Column>
             <PropertyColumn Property="c => c.DueDate" Title="Fecha Límite" Sortable>
                 @context.DueDate.ToString("dd/MM/yyyy")
             </PropertyColumn>
@@ -147,12 +137,6 @@ else
             <span style="color: rgba(255,255,255,0.5); font-size: 12px;">
                 Responsable: <strong style="color: #fff;">@_selectedOrder.AssignedTo</strong>
             </span>
-            @if (_selectedOrder.AgreedRate > 0)
-            {
-                <span style="color: rgba(255,255,255,0.5); font-size: 12px;">
-                    Tarifa: <strong style="color: #2ECC71;">$@_selectedOrder.AgreedRate.ToString("N2")/ha</strong>
-                </span>
-            }
             <span style="color: rgba(255,255,255,0.5); font-size: 12px;">
                 Vence: <strong style="color: #fff;">@_selectedOrder.DueDate.ToString("dd/MM/yyyy")</strong>
             </span>
@@ -235,10 +219,40 @@ else
                         $@_selectedOrder.Settlement.TotalAmount.ToString("N2")
                     </div>
                     <div style="color: rgba(255,255,255,0.5); font-size: 12px;">
-                        @_selectedOrder.Settlement.TotalHectares.ToString("N2") ha × $@_selectedOrder.Settlement.AgreedRate.ToString("N2")/ha
+                        @_selectedOrder.Settlement.TotalHectares.ToString("N2") ha totales
                     </div>
                 </div>
             </div>
+            @if (_selectedOrder.Settlement.Lines != null && _selectedOrder.Settlement.Lines.Count > 0)
+            {
+                <table class="supply-table" style="width: 100%; margin-top: 12px;">
+                    <thead>
+                        <tr>
+                            <th>Labor</th>
+                            <th>Cantidad</th>
+                            <th>Tarifa</th>
+                            <th style="text-align: right;">Subtotal</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var line in _selectedOrder.Settlement.Lines)
+                        {
+                            <tr>
+                                <td style="font-weight: 600; color: #fff;">@line.LaborType</td>
+                                <td>@line.Quantity.ToString("N2") @line.RateUnit</td>
+                                <td>$@line.Rate.ToString("N2")/@line.RateUnit</td>
+                                <td style="text-align: right; font-weight: 600; color: #2ECC71;">$@line.Subtotal.ToString("N2")</td>
+                            </tr>
+                        }
+                    </tbody>
+                    <tfoot>
+                        <tr>
+                            <td colspan="3" style="text-align: right; font-weight: 700; color: #fff;">TOTAL</td>
+                            <td style="text-align: right; font-weight: 800; color: #2ECC71; font-size: 16px;">$@_selectedOrder.Settlement.TotalAmount.ToString("N2")</td>
+                        </tr>
+                    </tfoot>
+                </table>
+            }
         </div>
     }
 
@@ -273,6 +287,12 @@ else
                     <span style="color: rgba(255,255,255,0.5); font-size: 12px;">
                         en <strong style="color: rgba(255,255,255,0.7);">@labor.LotName</strong> — @labor.Hectares.ToString("N2") ha
                     </span>
+                    @if (labor.Rate > 0)
+                    {
+                        <span style="color: #2ECC71; font-size: 12px; font-weight: 600;">
+                            $@labor.Rate.ToString("N2")/@labor.RateUnit
+                        </span>
+                    }
                     @if (labor.ExecutionDate.HasValue)
                     {
                         <span style="color: rgba(255,255,255,0.4); font-size: 11px;">
@@ -396,12 +416,6 @@ else
                                 Format="dd/MM/yyyy" />
                 </FormItem>
             </AntDesign.Col>
-            <AntDesign.Col Span="8">
-                <FormItem Label="Tarifa ($/Ha)">
-                    <AntDesign.InputNumber TValue="decimal" @bind-Value="_formModel.AgreedRate" Min="0m" Step="100m"
-                                Style="width: 100%;" />
-                </FormItem>
-            </AntDesign.Col>
         </AntDesign.Row>
         <FormItem Label="Estado">
             <RadioGroup @bind-Value="_formModel.Status">
@@ -450,6 +464,35 @@ else
                     <AntDesign.InputNumber TValue="decimal" @bind-Value="_laborForm.Hectares" Min="0m" Step="0.5m"
                                 Style="width: 100%;" />
                 </FormItem>
+            </AntDesign.Col>
+        </AntDesign.Row>
+        <AntDesign.Row Gutter="16">
+            <AntDesign.Col Span="8">
+                <FormItem Label="Tarifa ($)">
+                    <AntDesign.InputNumber TValue="decimal" @bind-Value="_laborForm.Rate" Min="0m" Step="100m"
+                                Style="width: 100%;" />
+                </FormItem>
+            </AntDesign.Col>
+            <AntDesign.Col Span="8">
+                <FormItem Label="Unidad de Tarifa">
+                    <Select TItem="string"
+                            TItemValue="string"
+                            DataSource="@_rateUnits"
+                            @bind-Value="_laborForm.RateUnit"
+                            Placeholder="Seleccionar unidad"
+                            Style="width: 100%;" />
+                </FormItem>
+            </AntDesign.Col>
+            <AntDesign.Col Span="8">
+                <div style="padding-top: 30px;">
+                    @if (_laborForm.Rate > 0)
+                    {
+                        <span style="color: rgba(255,255,255,0.4); font-size: 12px;">Subtotal estimado: </span>
+                        <strong style="color: #2ECC71; font-size: 16px;">
+                            $@((_laborForm.Rate * _laborForm.Hectares).ToString("N2"))
+                        </strong>
+                    }
+                </div>
             </AntDesign.Col>
         </AntDesign.Row>
 
@@ -665,6 +708,7 @@ else
     private bool _approving;
 
     private readonly string[] _laborTypes = { "Siembra", "Pulverización", "Cosecha", "Fertilización", "Laboreo", "Riego", "Otro" };
+    private readonly string[] _rateUnits = { "ha", "tn", "km", "hora", "jornal", "viaje" };
 
     public class WoFormModel
     {
@@ -673,7 +717,6 @@ else
         public string AssignedTo { get; set; } = string.Empty;
         public DateTime DueDate { get; set; } = DateTime.Today.AddDays(7);
         public string Status { get; set; } = "Draft";
-        public decimal AgreedRate { get; set; }
     }
 
     public class LaborFormModel
@@ -681,6 +724,8 @@ else
         public string LaborType { get; set; } = string.Empty;
         public Guid LotId { get; set; }
         public decimal Hectares { get; set; }
+        public decimal Rate { get; set; }
+        public string RateUnit { get; set; } = "ha";
         public List<SupplyFormModel> Supplies { get; set; } = new();
     }
 
@@ -790,8 +835,7 @@ else
             LotId = wo.LotId,
             AssignedTo = wo.AssignedTo,
             DueDate = wo.DueDate,
-            Status = wo.Status,
-            AgreedRate = wo.AgreedRate
+            Status = wo.Status
         };
         _modalVisible = true;
     }
@@ -824,8 +868,7 @@ else
                 _formModel.Status,
                 _formModel.AssignedTo,
                 _formModel.DueDate,
-                null,
-                _formModel.AgreedRate
+                null
             );
 
             HttpResponseMessage response;
@@ -900,6 +943,8 @@ else
             LaborType = labor.LaborType,
             LotId = labor.LotId,
             Hectares = labor.Hectares,
+            Rate = labor.Rate,
+            RateUnit = labor.RateUnit,
             Supplies = labor.Supplies?.Select(s => new SupplyFormModel
             {
                 Id = s.Id,
@@ -975,6 +1020,8 @@ else
                 null,
                 _laborForm.Hectares,
                 DateTime.MinValue,
+                _laborForm.Rate,
+                _laborForm.RateUnit,
                 null,
                 _laborForm.Supplies.Select(s => new LaborSupplyDto(
                     s.Id,

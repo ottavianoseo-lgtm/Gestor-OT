@@ -96,6 +96,10 @@ using (var scope = app.Services.CreateScope())
 
                 @"ALTER TABLE public.""Labors"" ADD COLUMN IF NOT EXISTS ""EffectiveArea"" numeric(18,4) DEFAULT 0",
 
+                @"ALTER TABLE public.""Labors"" ADD COLUMN IF NOT EXISTS ""Rate"" numeric(18,4) DEFAULT 0",
+
+                @"ALTER TABLE public.""Labors"" ADD COLUMN IF NOT EXISTS ""RateUnit"" varchar(50) DEFAULT 'ha'",
+
                 @"CREATE TABLE IF NOT EXISTS public.""CropStrategies"" (
                     ""Id"" uuid PRIMARY KEY,
                     ""Name"" varchar(200) NOT NULL,

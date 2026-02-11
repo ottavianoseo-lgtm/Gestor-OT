@@ -32,8 +32,7 @@ public class WorkOrdersController : ControllerBase
             w.Status,
             w.AssignedTo,
             w.DueDate,
-            w.Lot?.Name,
-            w.AgreedRate
+            w.Lot?.Name
         )).ToList();
     }
 
@@ -60,14 +59,24 @@ public class WorkOrdersController : ControllerBase
             .FirstOrDefaultAsync(s => s.WorkOrderId == id);
         if (settlement != null)
         {
+            var lines = workOrder.Labors
+                .Where(l => l.Status == "Realized")
+                .Select(l => new LaborSettlementLineDto(
+                    l.LaborType,
+                    l.EffectiveArea > 0 ? l.EffectiveArea : l.Hectares,
+                    l.RateUnit,
+                    l.Rate,
+                    l.Rate * (l.EffectiveArea > 0 ? l.EffectiveArea : l.Hectares)
+                )).ToList();
+
             settlementDto = new ServiceSettlementDto(
                 settlement.Id,
                 settlement.WorkOrderId,
                 settlement.TotalHectares,
-                settlement.AgreedRate,
                 settlement.TotalAmount,
                 settlement.GeneratedAt,
                 settlement.ErpSyncStatus,
+                lines,
                 workOrder.Description,
                 workOrder.Lot?.Name,
                 workOrder.AssignedTo
@@ -92,6 +101,8 @@ public class WorkOrdersController : ControllerBase
                 l.ExecutionDate,
                 l.Hectares,
                 l.CreatedAt,
+                l.Rate,
+                l.RateUnit,
                 l.Lot?.Name,
                 l.Supplies.Select(s => new LaborSupplyDto(
                     s.Id,
@@ -106,7 +117,6 @@ public class WorkOrdersController : ControllerBase
                     s.Supply?.UnitB
                 )).ToList()
             )).ToList(),
-            workOrder.AgreedRate,
             settlementDto
         );
     }
@@ -121,8 +131,7 @@ public class WorkOrdersController : ControllerBase
             Description = dto.Description,
             Status = dto.Status,
             AssignedTo = dto.AssignedTo,
-            DueDate = dto.DueDate,
-            AgreedRate = dto.AgreedRate
+            DueDate = dto.DueDate
         };
 
         _context.WorkOrders.Add(workOrder);
@@ -135,8 +144,7 @@ public class WorkOrdersController : ControllerBase
             workOrder.Status,
             workOrder.AssignedTo,
             workOrder.DueDate,
-            null,
-            workOrder.AgreedRate
+            null
         );
 
         return CreatedAtAction(nameof(GetWorkOrder), new { id = workOrder.Id }, result);
@@ -154,7 +162,6 @@ public class WorkOrdersController : ControllerBase
         workOrder.AssignedTo = dto.AssignedTo;
         workOrder.DueDate = dto.DueDate;
         workOrder.LotId = dto.LotId;
-        workOrder.AgreedRate = dto.AgreedRate;
 
         await _context.SaveChangesAsync();
         return NoContent();
@@ -185,7 +192,7 @@ public class WorkOrdersController : ControllerBase
         workOrder.Status = "Approved";
 
         var totalHectares = workOrder.Labors.Sum(l => l.EffectiveArea > 0 ? l.EffectiveArea : l.Hectares);
-        var totalAmount = totalHectares * workOrder.AgreedRate;
+        var totalAmount = workOrder.Labors.Sum(l => l.Rate * (l.EffectiveArea > 0 ? l.EffectiveArea : l.Hectares));
 
         var existingSettlement = await _context.ServiceSettlements
             .FirstOrDefaultAsync(s => s.WorkOrderId == id);
@@ -194,7 +201,6 @@ public class WorkOrdersController : ControllerBase
         if (existingSettlement != null)
         {
             existingSettlement.TotalHectares = totalHectares;
-            existingSettlement.AgreedRate = workOrder.AgreedRate;
             existingSettlement.TotalAmount = totalAmount;
             existingSettlement.GeneratedAt = DateTime.UtcNow;
             settlement = existingSettlement;
@@ -206,7 +212,6 @@ public class WorkOrdersController : ControllerBase
                 Id = Guid.NewGuid(),
                 WorkOrderId = id,
                 TotalHectares = totalHectares,
-                AgreedRate = workOrder.AgreedRate,
                 TotalAmount = totalAmount,
                 GeneratedAt = DateTime.UtcNow,
                 ErpSyncStatus = "Pending"
@@ -216,14 +221,24 @@ public class WorkOrdersController : ControllerBase
 
         await _context.SaveChangesAsync();
 
+        var lines = workOrder.Labors
+            .Where(l => l.Status == "Realized")
+            .Select(l => new LaborSettlementLineDto(
+                l.LaborType,
+                l.EffectiveArea > 0 ? l.EffectiveArea : l.Hectares,
+                l.RateUnit,
+                l.Rate,
+                l.Rate * (l.EffectiveArea > 0 ? l.EffectiveArea : l.Hectares)
+            )).ToList();
+
         return new ServiceSettlementDto(
             settlement.Id,
             settlement.WorkOrderId,
             settlement.TotalHectares,
-            settlement.AgreedRate,
             settlement.TotalAmount,
             settlement.GeneratedAt,
             settlement.ErpSyncStatus,
+            lines,
             workOrder.Description,
             workOrder.Lot?.Name,
             workOrder.AssignedTo

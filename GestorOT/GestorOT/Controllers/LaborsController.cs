@@ -59,6 +59,8 @@ public class LaborsController : ControllerBase
             Status = "Planned",
             ExecutionDate = dto.ExecutionDate,
             Hectares = dto.Hectares,
+            Rate = dto.Rate,
+            RateUnit = dto.RateUnit ?? "ha",
             CreatedAt = DateTime.UtcNow
         };
 
@@ -105,6 +107,8 @@ public class LaborsController : ControllerBase
         labor.LaborType = dto.LaborType;
         labor.ExecutionDate = dto.ExecutionDate;
         labor.Hectares = dto.Hectares;
+        labor.Rate = dto.Rate;
+        labor.RateUnit = dto.RateUnit ?? "ha";
 
         if (dto.Supplies != null)
         {
@@ -195,6 +199,8 @@ public class LaborsController : ControllerBase
             Status = "Realized",
             ExecutionDate = DateTime.UtcNow,
             Hectares = source.Hectares,
+            Rate = source.Rate,
+            RateUnit = source.RateUnit,
             CreatedAt = DateTime.UtcNow
         };
 
@@ -249,6 +255,8 @@ public class LaborsController : ControllerBase
             labor.ExecutionDate,
             labor.Hectares,
             labor.CreatedAt,
+            labor.Rate,
+            labor.RateUnit,
             labor.Lot?.Name,
             labor.Supplies.Select(s => new LaborSupplyDto(
                 s.Id,
