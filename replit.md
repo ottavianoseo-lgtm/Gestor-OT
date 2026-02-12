@@ -129,11 +129,19 @@ cd GestorOT/GestorOT && ASPNETCORE_ENVIRONMENT=Development dotnet run --urls "ht
 - Called via IJSRuntime.InvokeAsync("mapInterop.methodName", args)
 - JSInvokable callbacks: OnLotSelected, OnPolygonDrawn, OnPolygonEdited, OnPolygonDeleted
 
+## Work Planner Module
+- WorkPlanner.razor: CSS Grid calendar (month/week views) showing OTs on PlannedDate
+- Status color coding: Draft=#9B59B6, Pending=#E74C3C, Scheduled=#3498DB, InProgress=#F1C40F, Completed=#2ECC71, Cancelled=#95A5A6
+- StockValidatorService: soft-commit inventory validation per WorkOrder
+- IsoXmlExporterService: ISO 11783 TaskData.xml export in ZIP format
+- API endpoints: POST validate-stock, POST reserve-stock, GET export-isoxml
+
 ## Pages
 - `/` - Dashboard (KPIs, recent orders)
 - `/fields` - Campos CRUD
 - `/lots` - Lotes CRUD
 - `/workorders` - Órdenes de Trabajo CRUD con workflow de estado
+- `/planner` - Work Planner calendario visual de OTs
 - `/mapa` - Explorador GIS con editor de polígonos
 - `/inventory` - Inventario con unidad dual
 
@@ -200,3 +208,11 @@ cd GestorOT/GestorOT && ASPNETCORE_ENVIRONMENT=Development dotnet run --urls "ht
 - 2026-02-12: Campanias.razor: página completa de gestión de campañas con tabla, CRUD, status workflow
 - 2026-02-12: Gestión de campos por campaña: sub-modal para agregar/quitar campos con hectáreas y rendimiento
 - 2026-02-12: Link "Campañas" agregado al menú lateral en sección Principal
+- 2026-02-12: Work Planner module: data model extensions (OTNumber, PlannedDate, ExpirationDate, EstimatedCostUSD, StockReserved, ContractorId)
+- 2026-02-12: LaborSupply: TankMixOrder (secuencia de carga) e IsSubstitute (producto sustituto)
+- 2026-02-12: Labor: PrescriptionMapUrl, MachineryUsedId, WeatherLogJson, EvidencePhotosJson
+- 2026-02-12: WorkPlanner.razor: calendario CSS Grid con vistas mes/semana y cards color-coded por status
+- 2026-02-12: StockValidatorService: validación de stock con soft-commit y reporte de faltantes
+- 2026-02-12: IsoXmlExporterService: exportación ISO 11783 TaskData.xml en ZIP
+- 2026-02-12: API endpoints: validate-stock, reserve-stock, export-isoxml en WorkOrdersController
+- 2026-02-12: Link "Work Planner" agregado al menú lateral en sección Principal

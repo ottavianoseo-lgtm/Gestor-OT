@@ -61,7 +61,10 @@ public class LaborsController : ControllerBase
             Hectares = dto.Hectares,
             Rate = dto.Rate,
             RateUnit = dto.RateUnit ?? "ha",
-            CreatedAt = DateTime.UtcNow
+            CreatedAt = DateTime.UtcNow,
+            PrescriptionMapUrl = dto.PrescriptionMapUrl,
+            MachineryUsedId = dto.MachineryUsedId,
+            WeatherLogJson = dto.WeatherLogJson
         };
 
         if (dto.Supplies != null)
@@ -75,7 +78,9 @@ public class LaborsController : ControllerBase
                     SupplyId = supplyDto.SupplyId,
                     PlannedDose = supplyDto.PlannedDose,
                     PlannedTotal = supplyDto.PlannedDose * labor.Hectares,
-                    DoseUnit = supplyDto.DoseUnit
+                    DoseUnit = supplyDto.DoseUnit,
+                    TankMixOrder = supplyDto.TankMixOrder,
+                    IsSubstitute = supplyDto.IsSubstitute
                 });
             }
         }
@@ -109,6 +114,9 @@ public class LaborsController : ControllerBase
         labor.Hectares = dto.Hectares;
         labor.Rate = dto.Rate;
         labor.RateUnit = dto.RateUnit ?? "ha";
+        labor.PrescriptionMapUrl = dto.PrescriptionMapUrl;
+        labor.MachineryUsedId = dto.MachineryUsedId;
+        labor.WeatherLogJson = dto.WeatherLogJson;
 
         if (dto.Supplies != null)
         {
@@ -128,6 +136,8 @@ public class LaborsController : ControllerBase
                         existing.PlannedDose = supplyDto.PlannedDose;
                         existing.PlannedTotal = supplyDto.PlannedDose * labor.Hectares;
                         existing.DoseUnit = supplyDto.DoseUnit;
+                        existing.TankMixOrder = supplyDto.TankMixOrder;
+                        existing.IsSubstitute = supplyDto.IsSubstitute;
                     }
                 }
                 else
@@ -139,7 +149,9 @@ public class LaborsController : ControllerBase
                         SupplyId = supplyDto.SupplyId,
                         PlannedDose = supplyDto.PlannedDose,
                         PlannedTotal = supplyDto.PlannedDose * labor.Hectares,
-                        DoseUnit = supplyDto.DoseUnit
+                        DoseUnit = supplyDto.DoseUnit,
+                        TankMixOrder = supplyDto.TankMixOrder,
+                        IsSubstitute = supplyDto.IsSubstitute
                     });
                 }
             }
@@ -258,7 +270,7 @@ public class LaborsController : ControllerBase
             labor.Rate,
             labor.RateUnit,
             labor.Lot?.Name,
-            labor.Supplies.Select(s => new LaborSupplyDto(
+            labor.Supplies.OrderBy(s => s.TankMixOrder).Select(s => new LaborSupplyDto(
                 s.Id,
                 s.LaborId,
                 s.SupplyId,
@@ -268,8 +280,13 @@ public class LaborsController : ControllerBase
                 s.RealTotal,
                 s.DoseUnit,
                 s.Supply?.ItemName,
-                s.Supply?.UnitB
-            )).ToList()
+                s.Supply?.UnitB,
+                s.TankMixOrder,
+                s.IsSubstitute
+            )).ToList(),
+            labor.PrescriptionMapUrl,
+            labor.MachineryUsedId,
+            labor.WeatherLogJson
         );
     }
 }

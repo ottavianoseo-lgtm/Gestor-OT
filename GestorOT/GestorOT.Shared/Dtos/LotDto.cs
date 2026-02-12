@@ -20,10 +20,17 @@ public record WorkOrderDto(
     string Status,
     string AssignedTo,
     DateTime DueDate,
-    string? LotName = null
+    string? LotName = null,
+    string? OTNumber = null,
+    DateTime? PlannedDate = null,
+    DateTime? ExpirationDate = null,
+    decimal EstimatedCostUSD = 0,
+    bool StockReserved = false,
+    Guid? ContractorId = null,
+    Guid? CampaignId = null
 )
 {
-    public WorkOrderDto() : this(Guid.Empty, Guid.Empty, string.Empty, "Draft", string.Empty, DateTime.MinValue, null) { }
+    public WorkOrderDto() : this(Guid.Empty, Guid.Empty, string.Empty, "Draft", string.Empty, DateTime.MinValue, null, null, null, null, 0, false, null, null) { }
 }
 
 public record GeoJsonFeature(

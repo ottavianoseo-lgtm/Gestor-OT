@@ -12,10 +12,13 @@ public record LaborDto(
     decimal Rate = 0,
     string RateUnit = "ha",
     string? LotName = null,
-    List<LaborSupplyDto>? Supplies = null
+    List<LaborSupplyDto>? Supplies = null,
+    string? PrescriptionMapUrl = null,
+    string? MachineryUsedId = null,
+    string? WeatherLogJson = null
 )
 {
-    public LaborDto() : this(Guid.Empty, null, Guid.Empty, string.Empty, "Planned", null, 0, DateTime.MinValue, 0, "ha", null, null) { }
+    public LaborDto() : this(Guid.Empty, null, Guid.Empty, string.Empty, "Planned", null, 0, DateTime.MinValue, 0, "ha", null, null, null, null, null) { }
 }
 
 public record LaborSupplyDto(
@@ -28,10 +31,12 @@ public record LaborSupplyDto(
     decimal? RealTotal,
     string DoseUnit,
     string? SupplyName = null,
-    string? SupplyUnit = null
+    string? SupplyUnit = null,
+    int TankMixOrder = 0,
+    bool IsSubstitute = false
 )
 {
-    public LaborSupplyDto() : this(Guid.Empty, Guid.Empty, Guid.Empty, 0, null, 0, null, string.Empty, null, null) { }
+    public LaborSupplyDto() : this(Guid.Empty, Guid.Empty, Guid.Empty, 0, null, 0, null, string.Empty, null, null, 0, false) { }
 }
 
 public record WorkOrderDetailDto(
@@ -44,8 +49,15 @@ public record WorkOrderDetailDto(
     string? LotName,
     string? FieldName,
     List<LaborDto> Labors,
-    ServiceSettlementDto? Settlement = null
+    ServiceSettlementDto? Settlement = null,
+    string? OTNumber = null,
+    DateTime? PlannedDate = null,
+    DateTime? ExpirationDate = null,
+    decimal EstimatedCostUSD = 0,
+    bool StockReserved = false,
+    Guid? CampaignId = null,
+    Guid? ContractorId = null
 )
 {
-    public WorkOrderDetailDto() : this(Guid.Empty, Guid.Empty, string.Empty, "Draft", string.Empty, DateTime.MinValue, null, null, new(), null) { }
+    public WorkOrderDetailDto() : this(Guid.Empty, Guid.Empty, string.Empty, "Draft", string.Empty, DateTime.MinValue, null, null, new(), null, null, null, null, 0, false, null, null) { }
 }

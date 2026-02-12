@@ -370,6 +370,12 @@ public class WorkOrder : ITenantEntity
     public string Status { get; set; } = "Draft";
     public string AssignedTo { get; set; } = string.Empty;
     public DateTime DueDate { get; set; }
+    public string OTNumber { get; set; } = string.Empty;
+    public Guid? ContractorId { get; set; }
+    public DateTime PlannedDate { get; set; }
+    public DateTime ExpirationDate { get; set; }
+    public decimal EstimatedCostUSD { get; set; }
+    public bool StockReserved { get; set; }
     public Lot? Lot { get; set; }
     public Campaign? Campaign { get; set; }
     public ICollection<Labor> Labors { get; set; } = new List<Labor>();
@@ -402,6 +408,10 @@ public class Labor : ITenantEntity
     public decimal Rate { get; set; }
     public string RateUnit { get; set; } = "ha";
     public DateTime CreatedAt { get; set; }
+    public string? PrescriptionMapUrl { get; set; }
+    public string? MachineryUsedId { get; set; }
+    public string? WeatherLogJson { get; set; }
+    public string? EvidencePhotosJson { get; set; }
     public WorkOrder? WorkOrder { get; set; }
     public Lot? Lot { get; set; }
     public ICollection<LaborSupply> Supplies { get; set; } = new List<LaborSupply>();
@@ -417,6 +427,8 @@ public class LaborSupply
     public decimal PlannedTotal { get; set; }
     public decimal? RealTotal { get; set; }
     public string DoseUnit { get; set; } = string.Empty;
+    public int TankMixOrder { get; set; }
+    public bool IsSubstitute { get; set; }
     public Labor? Labor { get; set; }
     public Inventory? Supply { get; set; }
 }

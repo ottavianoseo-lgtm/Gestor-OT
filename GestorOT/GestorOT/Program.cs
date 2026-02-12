@@ -51,6 +51,8 @@ builder.Services.AddScoped<CurrentTenantService>();
 builder.Services.AddScoped<GestorOT.Services.CampaignContextService>();
 builder.Services.AddScoped<GestorOT.Services.AgronomicValidationService>();
 builder.Services.AddScoped<GestorOT.Services.AuditInterceptor>();
+builder.Services.AddScoped<GestorOT.Services.StockValidatorService>();
+builder.Services.AddScoped<GestorOT.Services.IsoXmlExporterService>();
 builder.Services.AddSingleton<GestorOT.Shared.Services.ITenantService, GestorOT.Services.MockTenantService>();
 
 builder.Services.AddValidation();
@@ -231,6 +233,21 @@ using (var scope = app.Services.CreateScope())
                 @"CREATE UNIQUE INDEX IF NOT EXISTS ""IX_CampaignFields_CampaignId_FieldId"" ON public.""CampaignFields"" (""CampaignId"", ""FieldId"")",
 
                 @"ALTER TABLE public.""WorkOrders"" ADD COLUMN IF NOT EXISTS ""CampaignId"" uuid REFERENCES public.""Campaigns""(""Id"") ON DELETE SET NULL",
+
+                @"ALTER TABLE public.""WorkOrders"" ADD COLUMN IF NOT EXISTS ""OTNumber"" text NOT NULL DEFAULT ''",
+                @"ALTER TABLE public.""WorkOrders"" ADD COLUMN IF NOT EXISTS ""ContractorId"" uuid",
+                @"ALTER TABLE public.""WorkOrders"" ADD COLUMN IF NOT EXISTS ""PlannedDate"" timestamp NOT NULL DEFAULT NOW()",
+                @"ALTER TABLE public.""WorkOrders"" ADD COLUMN IF NOT EXISTS ""ExpirationDate"" timestamp NOT NULL DEFAULT NOW()",
+                @"ALTER TABLE public.""WorkOrders"" ADD COLUMN IF NOT EXISTS ""EstimatedCostUSD"" numeric NOT NULL DEFAULT 0",
+                @"ALTER TABLE public.""WorkOrders"" ADD COLUMN IF NOT EXISTS ""StockReserved"" boolean NOT NULL DEFAULT false",
+
+                @"ALTER TABLE public.""Labors"" ADD COLUMN IF NOT EXISTS ""PrescriptionMapUrl"" text",
+                @"ALTER TABLE public.""Labors"" ADD COLUMN IF NOT EXISTS ""MachineryUsedId"" text",
+                @"ALTER TABLE public.""Labors"" ADD COLUMN IF NOT EXISTS ""WeatherLogJson"" text",
+                @"ALTER TABLE public.""Labors"" ADD COLUMN IF NOT EXISTS ""EvidencePhotosJson"" text",
+
+                @"ALTER TABLE public.""LaborSupplies"" ADD COLUMN IF NOT EXISTS ""TankMixOrder"" integer NOT NULL DEFAULT 0",
+                @"ALTER TABLE public.""LaborSupplies"" ADD COLUMN IF NOT EXISTS ""IsSubstitute"" boolean NOT NULL DEFAULT false",
 
                 @"DO $$ BEGIN
                     ALTER TABLE public.""Campaigns"" ENABLE ROW LEVEL SECURITY;

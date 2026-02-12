@@ -1,0 +1,91 @@
+Especificación Técnica: Módulo "Work Planner" y Ejecución de Labores (.NET 10)
+Rol del Agente: Arquitecto de Software .NET Senior & Especialista en UI/UX Agrícola. Objetivo: Construir un módulo de gestión de trabajos agrícolas donde la planificación visual (Calendario) es la interfaz principal, soportando operaciones offline y validaciones agronómicas complejas.
+1. Arquitectura de Datos: Separación de Responsabilidades (Domain Driven Design)
+El modelo de datos debe reflejar que una Orden de Trabajo (OT) es un contrato logístico/financiero, mientras que la Labor es la ejecución técnica en un lote específico.
+Entidades Core (C# Records)
+// 1. La Orden de Trabajo (El "Contrato")
+// Representa el "Quién", "Cuándo" y "Cuánto (dinero/stock)".
+public class WorkOrder
+{
+    public Guid Id { get; set; }
+    public string OTNumber { get; set; } // Ej: "OT-2026-001"
+    public Guid CampaignId { get; set; } // Contexto financiero
+    public Guid ContractorId { get; set; } // Quién ejecuta (Propio o Tercero)
+    
+    // Planificación Temporal (Para el Calendario)
+    public DateTime PlannedDate { get; set; } 
+    public DateTime ExpirationDate { get; set; } // Ventana de ejecución
+    
+    // Estado del Flujo
+    public WorkOrderStatus Status { get; set; } // Draft, Scheduled, InProgress, PartiallyCompleted, Closed, Canceled
+    
+    // Finanzas
+    public decimal EstimatedCostUSD { get; set; }
+    public bool StockReserved { get; set; } // "Soft Commit" en almacén
+    
+    // Colección de tareas específicas
+    public List<Labor> Labors { get; set; } = new();
+}
+
+// 2. La Labor (La "Ejecución")
+// Representa el "Dónde", "Qué" y "Cómo".
+public class Labor
+{
+    public Guid Id { get; set; }
+    public Guid WorkOrderId { get; set; }
+    public Guid FieldId { get; set; } // El Lote Específico (Geo-referencia)
+    
+    // Definición Técnica
+    public LaborType Type { get; set; } // Siembra, Pulverización, Cosecha
+    public string? PrescriptionMapUrl { get; set; } // Mapa VRT (Variable Rate)
+    
+    // Receta Agronómica (The "Mix")
+    public List<LaborInput> PlannedInputs { get; set; }
+    public List<LaborInput> ActualInputs { get; set; } // Lo que realmente se usó
+    
+    // Datos de Ejecución (Trazabilidad)
+    public WeatherLog? WeatherAtApplication { get; set; } // Viento, Humedad, Temp
+    public string? MachineryUsedId { get; set; } // Tractor/Implemento
+    public List<string> EvidencePhotos { get; set; } // Fotos de bidones/trabajo
+}
+
+// 3. El Insumo (La "Química")
+public class LaborInput
+{
+    public Guid ProductId { get; set; }
+    public decimal DosePerHa { get; set; }
+    public int TankMixOrder { get; set; } // CRÍTICO: Orden de carga (1, 2, 3...)
+    public bool IsSubstitute { get; set; } // Si se usó un alternativo al planificado
+}
+
+--------------------------------------------------------------------------------
+2. Componente Principal: "Work Planner Calendar" (UI/UX)
+Requerimiento: El panel principal NO es una lista. Es un calendario interactivo similar al John Deere Work Planner,, permitiendo al ingeniero "arrastrar y soltar" OTs para reprogramarlas.
+Especificaciones del Componente WorkScheduler.razor
+1. Tecnología: Utilizar una implementación ligera de CSS Grid o un wrapper de FullCalendar compatible con Blazor .NET 10.
+2. Vistas: Mensual (Panorama general), Semanal (Detalle de recursos), Diaria (Ejecución).
+3. Funcionalidad Drag-and-Drop:
+    ◦ Al mover una OT del día 5 al día 10, el sistema debe actualizar PlannedDate y validar automáticamente si la nueva fecha cae dentro de la ventana de la campaña.
+    ◦ Validación de Conflicto: Si se asigna el mismo tractor a dos OTs el mismo día, mostrar alerta visual (rojo).
+4. Codificación por Estado (Visual):
+    ◦ Gris: Borrador (Falta asignar insumos).
+    ◦ Azul: Planificada (Lista para sincronizar).
+    ◦ Amarillo: En Progreso (Sincronizada en app móvil).
+    ◦ Verde: Finalizada (Cerrada y stock descontado).
+5. Persistencia: Usar [PersistentState] para que si el usuario filtra por "Sembradoras" y recarga la página, el calendario mantenga el filtro y la fecha vista.
+
+--------------------------------------------------------------------------------
+3. Funcionalidades "Best-in-Class" a Implementar
+El agente debe implementar la lógica de negocio para las siguientes características diferenciadoras:
+A. Motor de "Tank Mix" (Mezcla de Tanque) - Influencia AgroPro
+• Lógica: Al agregar insumos en la Labor, el sistema debe asignar automáticamente un número de orden (TankMixOrder) basado en la formulación del producto (ej: 1. Granulados, 2. Líquidos Solubles, 3. Emulsiones).
+• UI: En el detalle de la OT, mostrar una lista ordenada visualmente con iconos de "Bidón" o "Bolsa" para guiar al operario en la carga física.
+B. Validación de Stock "Soft Commit" - Influencia AgriERP
+• Backend (.NET 10): Utilizar HybridCache para mantener el stock disponible en memoria.
+• Flujo: Al cambiar una OT a estado "Scheduled", el sistema resta temporalmente la cantidad necesaria del "Stock Disponible" (pero no del físico). Esto impide que otra OT planificada para el mismo día use los mismos insumos.
+C. Interoperabilidad ADAPT - Influencia John Deere/AgGateway
+• Servicio de Exportación: Crear una clase IsoXmlExporterService.
+• Función: Generar un archivo .ZIP con la estructura ISO 11783 (TaskData.xml) que contenga los límites del lote (FieldId) y la prescripción de insumos. Esto permite descargar la OT a un pendrive para monitores de maquinaria,.
+D. Ejecución Offline "Field Mode" - Influencia SIMA
+• PWA: Configurar manifest.json y service-worker.js para cacheo agresivo de las OTs asignadas al usuario actual.
+• Background Sync: Implementar la API de sincronización en segundo plano para que, cuando el operario marque "Finalizar Labor" en el campo, los datos (incluyendo fotos de evidencia) se suban automáticamente cuando el dispositivo recupere conexión,.

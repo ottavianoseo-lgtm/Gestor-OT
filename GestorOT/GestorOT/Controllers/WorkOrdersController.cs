@@ -10,10 +10,17 @@ namespace GestorOT.Controllers;
 public class WorkOrdersController : ControllerBase
 {
     private readonly ApplicationDbContext _context;
+    private readonly GestorOT.Services.StockValidatorService _stockValidator;
+    private readonly GestorOT.Services.IsoXmlExporterService _isoXmlExporter;
 
-    public WorkOrdersController(ApplicationDbContext context)
+    public WorkOrdersController(
+        ApplicationDbContext context,
+        GestorOT.Services.StockValidatorService stockValidator,
+        GestorOT.Services.IsoXmlExporterService isoXmlExporter)
     {
         _context = context;
+        _stockValidator = stockValidator;
+        _isoXmlExporter = isoXmlExporter;
     }
 
     [HttpGet]
@@ -32,7 +39,14 @@ public class WorkOrdersController : ControllerBase
             w.Status,
             w.AssignedTo,
             w.DueDate,
-            w.Lot?.Name
+            w.Lot?.Name,
+            w.OTNumber,
+            w.PlannedDate,
+            w.ExpirationDate,
+            w.EstimatedCostUSD,
+            w.StockReserved,
+            w.ContractorId,
+            w.CampaignId
         )).ToList();
     }
 
@@ -104,7 +118,7 @@ public class WorkOrdersController : ControllerBase
                 l.Rate,
                 l.RateUnit,
                 l.Lot?.Name,
-                l.Supplies.Select(s => new LaborSupplyDto(
+                l.Supplies.OrderBy(s => s.TankMixOrder).Select(s => new LaborSupplyDto(
                     s.Id,
                     s.LaborId,
                     s.SupplyId,
@@ -114,10 +128,22 @@ public class WorkOrdersController : ControllerBase
                     s.RealTotal,
                     s.DoseUnit,
                     s.Supply?.ItemName,
-                    s.Supply?.UnitB
-                )).ToList()
+                    s.Supply?.UnitB,
+                    s.TankMixOrder,
+                    s.IsSubstitute
+                )).ToList(),
+                l.PrescriptionMapUrl,
+                l.MachineryUsedId,
+                l.WeatherLogJson
             )).ToList(),
-            settlementDto
+            settlementDto,
+            workOrder.OTNumber,
+            workOrder.PlannedDate,
+            workOrder.ExpirationDate,
+            workOrder.EstimatedCostUSD,
+            workOrder.StockReserved,
+            workOrder.CampaignId,
+            workOrder.ContractorId
         );
     }
 
@@ -131,7 +157,14 @@ public class WorkOrdersController : ControllerBase
             Description = dto.Description,
             Status = dto.Status,
             AssignedTo = dto.AssignedTo,
-            DueDate = dto.DueDate
+            DueDate = dto.DueDate,
+            OTNumber = dto.OTNumber ?? string.Empty,
+            PlannedDate = dto.PlannedDate ?? dto.DueDate,
+            ExpirationDate = dto.ExpirationDate ?? dto.DueDate,
+            EstimatedCostUSD = dto.EstimatedCostUSD,
+            StockReserved = dto.StockReserved,
+            ContractorId = dto.ContractorId,
+            CampaignId = dto.CampaignId
         };
 
         _context.WorkOrders.Add(workOrder);
@@ -144,7 +177,14 @@ public class WorkOrdersController : ControllerBase
             workOrder.Status,
             workOrder.AssignedTo,
             workOrder.DueDate,
-            null
+            null,
+            workOrder.OTNumber,
+            workOrder.PlannedDate,
+            workOrder.ExpirationDate,
+            workOrder.EstimatedCostUSD,
+            workOrder.StockReserved,
+            workOrder.ContractorId,
+            workOrder.CampaignId
         );
 
         return CreatedAtAction(nameof(GetWorkOrder), new { id = workOrder.Id }, result);
@@ -162,6 +202,13 @@ public class WorkOrdersController : ControllerBase
         workOrder.AssignedTo = dto.AssignedTo;
         workOrder.DueDate = dto.DueDate;
         workOrder.LotId = dto.LotId;
+        workOrder.OTNumber = dto.OTNumber ?? workOrder.OTNumber;
+        workOrder.PlannedDate = dto.PlannedDate ?? workOrder.PlannedDate;
+        workOrder.ExpirationDate = dto.ExpirationDate ?? workOrder.ExpirationDate;
+        workOrder.EstimatedCostUSD = dto.EstimatedCostUSD;
+        workOrder.StockReserved = dto.StockReserved;
+        workOrder.ContractorId = dto.ContractorId;
+        workOrder.CampaignId = dto.CampaignId;
 
         await _context.SaveChangesAsync();
         return NoContent();
@@ -285,6 +332,49 @@ public class WorkOrdersController : ControllerBase
             workOrder.Description,
             laborDiscrepancies
         );
+    }
+
+    [HttpPost("{id:guid}/validate-stock")]
+    public async Task<ActionResult<object>> ValidateStock(Guid id)
+    {
+        var result = await _stockValidator.ValidateStockForWorkOrder(id);
+        return Ok(new
+        {
+            result.IsValid,
+            Shortages = result.Shortages.Select(s => new
+            {
+                s.ProductId,
+                s.ProductName,
+                s.Available,
+                s.Required,
+                s.Deficit
+            })
+        });
+    }
+
+    [HttpPost("{id:guid}/reserve-stock")]
+    public async Task<IActionResult> ReserveStock(Guid id)
+    {
+        var validation = await _stockValidator.ValidateStockForWorkOrder(id);
+        if (!validation.IsValid)
+            return BadRequest(new { Message = "Stock insuficiente", validation.Shortages });
+
+        await _stockValidator.ReserveStock(id);
+        return Ok(new { Message = "Stock reservado correctamente" });
+    }
+
+    [HttpGet("{id:guid}/export-isoxml")]
+    public async Task<IActionResult> ExportIsoXml(Guid id)
+    {
+        try
+        {
+            var zipBytes = await _isoXmlExporter.ExportWorkOrderAsIsoXml(id);
+            return File(zipBytes, "application/zip", $"OT_{id:N}.zip");
+        }
+        catch (InvalidOperationException)
+        {
+            return NotFound();
+        }
     }
 
     [HttpDelete("{id:guid}")]
