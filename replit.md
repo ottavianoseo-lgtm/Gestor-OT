@@ -182,3 +182,10 @@ cd GestorOT/GestorOT && ASPNETCORE_ENVIRONMENT=Development dotnet run --urls "ht
 - 2026-02-11: AgronomicValidationService: validación de mezclas con alertas Danger/Warning
 - 2026-02-11: Admin pages (Users, TankMix, Audit) con AntDesign Table
 - 2026-02-11: Tank Mix validation integrada en flujo de creación de labores
+- 2026-02-12: Admin Panel V2: QuickGrid + Paginator para Users, AdminDashboardLayout con sidebar colapsable
+- 2026-02-12: Import isolation: AntDesign per-page imports, Admin/_Imports.razor sin AntDesign para evitar conflictos
+- 2026-02-12: PersistentComponentState para persistencia de búsqueda/filtro en Admin/Users
+- 2026-02-12: AddValidation() .NET 10, UserFormDto/ProductFormDto con DataAnnotations
+- 2026-02-12: ITenantService + MockTenantService con 5 tenants de ejemplo
+- 2026-02-12: NotFound.razor (404) con Router NotFoundPage property
+- 2026-02-12: Consolidación: AdminUsers/AdminTankMix/AdminAudit movidos a Pages/Admin/
