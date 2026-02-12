@@ -36,11 +36,16 @@ public class CurrentTenantService
 public class ApplicationDbContext : DbContext
 {
     private readonly CurrentTenantService? _tenantService;
+    private readonly GestorOT.Services.CampaignContextService? _campaignContext;
 
-    public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options, CurrentTenantService? tenantService = null)
+    public ApplicationDbContext(
+        DbContextOptions<ApplicationDbContext> options,
+        CurrentTenantService? tenantService = null,
+        GestorOT.Services.CampaignContextService? campaignContext = null)
         : base(options)
     {
         _tenantService = tenantService;
+        _campaignContext = campaignContext;
     }
 
     public DbSet<Field> Fields => Set<Field>();
@@ -57,8 +62,11 @@ public class ApplicationDbContext : DbContext
     public DbSet<UserProfile> UserProfiles => Set<UserProfile>();
     public DbSet<TankMixRule> TankMixRules => Set<TankMixRule>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
+    public DbSet<Campaign> Campaigns => Set<Campaign>();
+    public DbSet<CampaignField> CampaignFields => Set<CampaignField>();
 
     private Guid CurrentTenantId => _tenantService?.TenantId ?? Guid.Empty;
+    private Guid? CurrentCampaignId => _campaignContext?.CurrentCampaignId;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -105,10 +113,15 @@ public class ApplicationDbContext : DbContext
             entity.Property(e => e.Description).HasMaxLength(1000);
             entity.Property(e => e.Status).HasMaxLength(50);
             entity.Property(e => e.AssignedTo).HasMaxLength(200);
+            entity.HasQueryFilter(e => CurrentCampaignId == null || e.CampaignId == CurrentCampaignId);
             entity.HasOne(e => e.Lot)
                 .WithMany(l => l.WorkOrders)
                 .HasForeignKey(e => e.LotId)
                 .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(e => e.Campaign)
+                .WithMany(c => c.WorkOrders)
+                .HasForeignKey(e => e.CampaignId)
+                .OnDelete(DeleteBehavior.SetNull);
         });
 
         modelBuilder.Entity<Inventory>(entity =>
@@ -261,6 +274,37 @@ public class ApplicationDbContext : DbContext
             entity.Property(e => e.UserEmail).HasMaxLength(200);
             entity.Property(e => e.Timestamp).HasDefaultValueSql("CURRENT_TIMESTAMP");
         });
+
+        modelBuilder.Entity<Campaign>(entity =>
+        {
+            entity.ToTable("Campaigns", "public");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Name).IsRequired().HasMaxLength(200);
+            entity.Property(e => e.Status).IsRequired().HasMaxLength(50).HasDefaultValue("Planning");
+            entity.Property(e => e.BudgetTotalUSD).HasPrecision(18, 4).HasDefaultValue(0m);
+            entity.Property(e => e.BusinessRulesJson).HasColumnName("BusinessRules").HasColumnType("jsonb");
+            entity.Property(e => e.IsActive).HasDefaultValue(true);
+            entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
+        });
+
+        modelBuilder.Entity<CampaignField>(entity =>
+        {
+            entity.ToTable("CampaignFields", "public");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.TargetYieldTonHa).HasPrecision(18, 4).HasDefaultValue(0m);
+            entity.Property(e => e.AllocatedHectares).HasPrecision(18, 4).HasDefaultValue(0m);
+            entity.HasIndex(e => new { e.CampaignId, e.FieldId }).IsUnique();
+
+            entity.HasOne(e => e.Campaign)
+                .WithMany(c => c.CampaignFields)
+                .HasForeignKey(e => e.CampaignId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(e => e.Field)
+                .WithMany()
+                .HasForeignKey(e => e.FieldId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
     }
 
     public override int SaveChanges()
@@ -321,11 +365,13 @@ public class WorkOrder : ITenantEntity
     public Guid Id { get; set; }
     public Guid TenantId { get; set; }
     public Guid LotId { get; set; }
+    public Guid? CampaignId { get; set; }
     public string Description { get; set; } = string.Empty;
     public string Status { get; set; } = "Draft";
     public string AssignedTo { get; set; } = string.Empty;
     public DateTime DueDate { get; set; }
     public Lot? Lot { get; set; }
+    public Campaign? Campaign { get; set; }
     public ICollection<Labor> Labors { get; set; } = new List<Labor>();
 }
 
@@ -455,4 +501,32 @@ public class AuditLog : ITenantEntity
     public string? OldValue { get; set; }
     public string? NewValue { get; set; }
     public DateTime Timestamp { get; set; }
+}
+
+public class Campaign : ITenantEntity
+{
+    public Guid Id { get; set; }
+    public Guid TenantId { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public DateOnly StartDate { get; set; }
+    public DateOnly? EndDate { get; set; }
+    public bool IsActive { get; set; } = true;
+    public string Status { get; set; } = "Planning";
+    public decimal BudgetTotalUSD { get; set; }
+    public string? BusinessRulesJson { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public ICollection<CampaignField> CampaignFields { get; set; } = new List<CampaignField>();
+    public ICollection<WorkOrder> WorkOrders { get; set; } = new List<WorkOrder>();
+}
+
+public class CampaignField : ITenantEntity
+{
+    public Guid Id { get; set; }
+    public Guid TenantId { get; set; }
+    public Guid CampaignId { get; set; }
+    public Guid FieldId { get; set; }
+    public decimal TargetYieldTonHa { get; set; }
+    public decimal AllocatedHectares { get; set; }
+    public Campaign? Campaign { get; set; }
+    public Field? Field { get; set; }
 }

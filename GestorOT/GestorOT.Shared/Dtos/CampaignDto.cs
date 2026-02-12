@@ -1,0 +1,45 @@
+namespace GestorOT.Shared.Dtos;
+
+public enum CampaignStatus
+{
+    Planning,
+    Active,
+    Locked
+}
+
+public record CampaignDto(
+    Guid Id,
+    string Name,
+    DateOnly StartDate,
+    DateOnly? EndDate,
+    bool IsActive,
+    CampaignStatus Status,
+    decimal BudgetTotalUSD,
+    string? BusinessRulesJson,
+    DateTime CreatedAt,
+    List<CampaignFieldDto>? Fields = null
+)
+{
+    public CampaignDto() : this(Guid.Empty, string.Empty, DateOnly.MinValue, null, true, CampaignStatus.Planning, 0, null, DateTime.MinValue, null) { }
+}
+
+public record CampaignFieldDto(
+    Guid CampaignId,
+    Guid FieldId,
+    string? FieldName,
+    decimal TargetYieldTonHa,
+    decimal AllocatedHectares
+)
+{
+    public CampaignFieldDto() : this(Guid.Empty, Guid.Empty, null, 0, 0) { }
+}
+
+public record CampaignSummaryDto(
+    Guid Id,
+    string Name,
+    CampaignStatus Status,
+    bool IsActive
+)
+{
+    public CampaignSummaryDto() : this(Guid.Empty, string.Empty, CampaignStatus.Planning, true) { }
+}

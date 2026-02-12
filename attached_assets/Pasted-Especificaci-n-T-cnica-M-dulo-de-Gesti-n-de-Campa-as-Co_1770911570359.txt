@@ -1,0 +1,80 @@
+Especificación Técnica: Módulo de Gestión de Campañas (Context-Aware Seasons)
+Objetivo: Implementar la entidad "Campaña" como el eje transversal del sistema, permitiendo la segregación de datos, el control presupuestario (estilo AgroPro) y la comparación histórica agronómica (estilo Auravant), pero con una arquitectura superior basada en Contexto Dinámico en .NET 10.
+1. Diferenciación Estratégica (El "Secret Sauce")
+Para ser mejores que la competencia, la Campaña debe tener estas 3 características únicas en el diseño de datos:
+1. Herencia de Reglas (Compliance): A diferencia de AgroPro, donde la campaña es financiera, aquí la campaña define reglas técnicas. Ejemplo: "Campaña Soja No-GMO 24/25" -> Bloquea automáticamente la creación de OTs con glifosato en el frontend.
+2. Ciclos Solapados (Multi-Crop Support): Permitir que un mismo Lote (Field) esté activo en dos campañas simultáneas (ej: "Trigo Invierno" y "Soja 2da" solapados en labores de barbecho). La mayoría de los sistemas fallan aquí.
+3. Estado de Bloqueo (Audit Lock): Implementar un estado de "Cierre Contable" que congela las OTs de esa campaña para garantizar que los reportes de margen bruto sean inmutables (crítico para inversores).
+
+--------------------------------------------------------------------------------
+2. Modelo de Datos (Entity Framework Core / Supabase)
+El agente debe crear estas entidades. Nota el uso de JsonB para flexibilidad en las reglas.
+public class Campaign : BaseEntity
+{
+    public Guid Id { get; set; }
+    public Guid TenantId { get; set; } // RLS Security
+    public string Name { get; set; } // Ej: "Maíz 2025 - Zona Norte"
+    
+    // Configuración Temporal
+    public DateOnly StartDate { get; set; }
+    public DateOnly? EndDate { get; set; }
+    public bool IsActive { get; set; }
+    public CampaignStatus Status { get; set; } // Planning, Active, Closing, Archived
+    
+    // Diferenciador: Presupuesto Base integrado (Meta Financiera)
+    public decimal BudgetTotalUSD { get; set; } 
+    
+    // Diferenciador: Reglas de Negocio (JSONB en Postgres)
+    // Ej: { "AllowedProducts": ["GreenLabel"], "MaxDosageVariance": 0.05 }
+    public string BusinessRulesJson { get; set; } 
+
+    // Relaciones
+    public ICollection<CampaignField> CampaignFields { get; set; }
+}
+
+// Tabla pivote: Un Lote puede estar en muchas campañas, y una campaña tiene muchos lotes
+public class CampaignField
+{
+    public Guid CampaignId { get; set; }
+    public Guid FieldId { get; set; }
+    
+    // Diferenciador: Objetivo de Rendimiento por Lote en esta Campaña específica
+    public decimal TargetYieldTonHa { get; set; } 
+    public decimal AllocatedHectares { get; set; } // Puede ser parcial
+}
+
+public enum CampaignStatus 
+{ 
+    Planning, // Solo permite OTs "Borrador"
+    Active,   // Permite ejecución
+    Locked    // Solo lectura (Auditoría)
+}
+
+--------------------------------------------------------------------------------
+3. Lógica de Negocio y Servicios (.NET 10 Backend)
+A. Servicio de Contexto de Campaña (ICampaignContext)
+Similar al TenantId, necesitamos inyectar la campaña activa en el contexto del usuario para no tener que seleccionarla en cada pantalla.
+• Requerimiento: Crear un Middleware o Servicio Scoped que intercepte el Header X-Campaign-ID.
+• Global Query Filters: Aplicar un filtro automático en EF Core para que, si hay una Campaña seleccionada, todas las consultas a Labores, OrdenesTrabajo y MovimientosStock se filtren por esa campaña automáticamente.
+// En el DbContext
+protected override void OnModelCreating(ModelBuilder builder)
+{
+    // Filtro Global: Si el servicio tiene un ID, filtra. Si es null, trae todo (para reportes históricos).
+    builder.Entity<WorkOrder>().HasQueryFilter(w => 
+        _campaignContext.CurrentCampaignId == null || w.CampaignId == _campaignContext.CurrentCampaignId);
+}
+B. Validación de "Reglas de Campaña"
+Al intentar crear una OT, el sistema debe leer el BusinessRulesJson de la campaña activa.
+• Lógica: Si la campaña es "Orgánica 2025", y el usuario intenta agregar un insumo químico, el backend rechaza la transacción. Esto supera a AgroPro que permite errores humanos.
+
+--------------------------------------------------------------------------------
+4. Frontend (Blazor Web App - InteractiveAuto)
+A. Selector de Campaña Global (The "Context Switcher")
+En el MainLayout.razor, implementar un dropdown en la barra superior.
+• Comportamiento: Al cambiar de campaña, debe recargar la página actual conservando la ruta pero cambiando los datos.
+• Persistencia: Usar [PersistentState] para que, si el usuario presiona F5, no pierda la campaña seleccionada.
+B. Dashboard de Campaña (El "Command Center")
+Crear una página CampaignDashboard.razor que muestre:
+1. Progreso de Labores: Gráfico de barra (Planificadas vs. Realizadas).
+2. Alertas de Desviación: Usar el presupuesto de la entidad Campaign vs. la suma de costos de las OTs.
+3. Mapa de Cobertura: Usar GeoBlazor para pintar los lotes activos en esta campaña (usando la relación CampaignField).

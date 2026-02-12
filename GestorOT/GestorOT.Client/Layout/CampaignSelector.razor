@@ -1,0 +1,278 @@
+@inject HttpClient Http
+@inject GestorOT.Client.Services.CampaignState CampaignState
+@inject NavigationManager Nav
+@using GestorOT.Shared
+@using GestorOT.Shared.Dtos
+@using AntDesign
+
+<div class="campaign-selector-wrapper">
+    @if (_loading)
+    {
+        <Spin Size="SpinSize.Small" />
+    }
+    else if (_campaigns.Count == 0)
+    {
+        <div class="campaign-empty" @onclick="OpenModal">
+            <Icon Type="calendar" Theme="IconThemeType.Outline" Style="color: rgba(255,255,255,0.4); font-size: 14px;" />
+            <span style="color: rgba(255,255,255,0.5); font-size: 12px;">Sin campañas</span>
+        </div>
+    }
+    else if (CampaignState.IsSelected)
+    {
+        <div class="campaign-badge" @onclick="OpenModal">
+            <div class="campaign-icon">
+                <Icon Type="calendar" Theme="IconThemeType.Outline" Style="color: #fff; font-size: 13px;" />
+            </div>
+            <div style="flex: 1; min-width: 0;">
+                <div style="color: rgba(255,255,255,0.5); font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px;">Campaña</div>
+                <div style="color: #fff; font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">@CampaignState.CurrentCampaign!.Name</div>
+            </div>
+            <Icon Type="swap" Theme="IconThemeType.Outline" Style="color: rgba(255,255,255,0.3); font-size: 12px; cursor: pointer;" />
+        </div>
+    }
+    else
+    {
+        <div class="campaign-badge campaign-badge-empty" @onclick="OpenModal">
+            <div class="campaign-icon" style="background: rgba(255,255,255,0.1);">
+                <Icon Type="calendar" Theme="IconThemeType.Outline" Style="color: rgba(255,255,255,0.5); font-size: 13px;" />
+            </div>
+            <div style="flex: 1;">
+                <div style="color: rgba(255,255,255,0.5); font-size: 12px;">Seleccionar Campaña</div>
+            </div>
+        </div>
+    }
+</div>
+
+@if (_modalVisible)
+{
+    <div class="campaign-modal-overlay" @onclick="CloseModal">
+        <div class="campaign-modal" @onclick:stopPropagation="true">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                <h3 style="color: #fff; margin: 0; font-size: 16px; font-weight: 700;">Campañas</h3>
+                <div style="cursor: pointer; color: rgba(255,255,255,0.4);" @onclick="CloseModal">
+                    <Icon Type="close" Theme="IconThemeType.Outline" />
+                </div>
+            </div>
+
+            @if (CampaignState.IsSelected)
+            {
+                <div class="campaign-clear" @onclick="ClearCampaign">
+                    <Icon Type="eye" Theme="IconThemeType.Outline" Style="font-size: 14px;" />
+                    <span>Ver todas las campañas (sin filtro)</span>
+                </div>
+            }
+
+            <div class="campaign-list">
+                @foreach (var campaign in _campaigns)
+                {
+                    var isSelected = CampaignState.CurrentCampaign?.Id == campaign.Id;
+                    <div class="campaign-item @(isSelected ? "campaign-item-selected" : "")" @onclick="() => SelectCampaign(campaign)">
+                        <div style="flex: 1;">
+                            <div style="color: #fff; font-weight: 600; font-size: 13px;">@campaign.Name</div>
+                            <div style="color: rgba(255,255,255,0.4); font-size: 11px; margin-top: 2px;">
+                                @campaign.Status
+                            </div>
+                        </div>
+                        @if (campaign.Status == CampaignStatus.Locked)
+                        {
+                            <Tag Color="@("red")" Style="margin: 0;">Cerrada</Tag>
+                        }
+                        else if (campaign.Status == CampaignStatus.Active)
+                        {
+                            <Tag Color="@("green")" Style="margin: 0;">Activa</Tag>
+                        }
+                        else
+                        {
+                            <Tag Style="margin: 0;">Planificación</Tag>
+                        }
+                        @if (isSelected)
+                        {
+                            <Icon Type="check" Theme="IconThemeType.Outline" Style="color: #2ECC71; font-size: 16px;" />
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+<style>
+    .campaign-selector-wrapper {
+        margin: 6px 14px;
+    }
+
+    .campaign-badge {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 8px 12px;
+        border-radius: 10px;
+        background: rgba(46, 204, 113, 0.08);
+        border: 1px solid rgba(46, 204, 113, 0.15);
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+
+    .campaign-badge:hover {
+        background: rgba(46, 204, 113, 0.15);
+        border-color: rgba(46, 204, 113, 0.3);
+    }
+
+    .campaign-badge-empty {
+        background: rgba(255,255,255,0.04);
+        border-color: rgba(255,255,255,0.08);
+    }
+
+    .campaign-badge-empty:hover {
+        background: rgba(255,255,255,0.08);
+        border-color: rgba(255,255,255,0.15);
+    }
+
+    .campaign-icon {
+        width: 28px;
+        height: 28px;
+        border-radius: 7px;
+        background: linear-gradient(135deg, #2ECC71, #27AE60);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+    }
+
+    .campaign-empty {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 12px;
+        border-radius: 10px;
+        background: rgba(255,255,255,0.03);
+        border: 1px dashed rgba(255,255,255,0.1);
+        cursor: pointer;
+    }
+
+    .campaign-modal-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 10000;
+        background: rgba(0,0,0,0.6);
+        backdrop-filter: blur(4px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .campaign-modal {
+        background: #1E1E2E;
+        border: 1px solid rgba(255,255,255,0.1);
+        border-radius: 16px;
+        padding: 24px;
+        width: 400px;
+        max-width: 90vw;
+        max-height: 70vh;
+        overflow-y: auto;
+    }
+
+    .campaign-clear {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 10px 14px;
+        border-radius: 10px;
+        background: rgba(255,255,255,0.04);
+        border: 1px solid rgba(255,255,255,0.08);
+        color: rgba(255,255,255,0.6);
+        font-size: 12px;
+        cursor: pointer;
+        margin-bottom: 12px;
+        transition: all 0.2s ease;
+    }
+
+    .campaign-clear:hover {
+        background: rgba(255,255,255,0.08);
+        color: #fff;
+    }
+
+    .campaign-list {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .campaign-item {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 12px 14px;
+        border-radius: 10px;
+        background: rgba(255,255,255,0.04);
+        border: 1px solid rgba(255,255,255,0.06);
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+
+    .campaign-item:hover {
+        background: rgba(46, 204, 113, 0.08);
+        border-color: rgba(46, 204, 113, 0.2);
+    }
+
+    .campaign-item-selected {
+        background: rgba(46, 204, 113, 0.12);
+        border-color: rgba(46, 204, 113, 0.3);
+    }
+</style>
+
+@code {
+    private List<CampaignSummaryDto> _campaigns = new();
+    private bool _loading = true;
+    private bool _modalVisible = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        CampaignState.OnChange += StateHasChanged;
+        await LoadCampaigns();
+    }
+
+    private async Task LoadCampaigns()
+    {
+        try
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            var allCampaigns = await Http.GetFromJsonAsync("api/campaigns",
+                AppJsonSerializerContext.Default.ListCampaignDto, cts.Token);
+
+            _campaigns = allCampaigns?.Select(c => new CampaignSummaryDto(c.Id, c.Name, c.Status, c.IsActive)).ToList() ?? new();
+        }
+        catch
+        {
+            _campaigns = new();
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void OpenModal()
+    {
+        _modalVisible = true;
+    }
+
+    private void CloseModal()
+    {
+        _modalVisible = false;
+    }
+
+    private void SelectCampaign(CampaignSummaryDto campaign)
+    {
+        CampaignState.SetCampaign(campaign);
+        _modalVisible = false;
+        Nav.Refresh(forceReload: false);
+    }
+
+    private void ClearCampaign()
+    {
+        CampaignState.Clear();
+        _modalVisible = false;
+        Nav.Refresh(forceReload: false);
+    }
+}

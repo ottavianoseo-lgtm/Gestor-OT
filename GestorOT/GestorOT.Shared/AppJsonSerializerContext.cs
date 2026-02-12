@@ -58,6 +58,12 @@ namespace GestorOT.Shared;
 [JsonSerializable(typeof(AuditLogDto))]
 [JsonSerializable(typeof(List<AuditLogDto>))]
 [JsonSerializable(typeof(TankMixValidationRequest))]
+[JsonSerializable(typeof(CampaignDto))]
+[JsonSerializable(typeof(List<CampaignDto>))]
+[JsonSerializable(typeof(CampaignFieldDto))]
+[JsonSerializable(typeof(List<CampaignFieldDto>))]
+[JsonSerializable(typeof(CampaignSummaryDto))]
+[JsonSerializable(typeof(List<CampaignSummaryDto>))]
 [JsonSerializable(typeof(int))]
 [JsonSerializable(typeof(Dictionary<string, object>))]
 [JsonSourceGenerationOptions(

@@ -5,13 +5,20 @@ var builder = WebAssemblyHostBuilder.CreateDefault(args);
 
 var tenantState = new TenantState();
 builder.Services.AddSingleton(tenantState);
+
+var campaignState = new CampaignState();
+builder.Services.AddSingleton(campaignState);
+
 builder.Services.AddScoped<TenantHttpHandler>();
+builder.Services.AddScoped<CampaignHttpHandler>();
 
 builder.Services.AddScoped(sp =>
 {
-    var handler = sp.GetRequiredService<TenantHttpHandler>();
-    handler.InnerHandler = new HttpClientHandler();
-    return new HttpClient(handler) { BaseAddress = new Uri(builder.HostEnvironment.BaseAddress) };
+    var tenantHandler = sp.GetRequiredService<TenantHttpHandler>();
+    var campaignHandler = sp.GetRequiredService<CampaignHttpHandler>();
+    campaignHandler.InnerHandler = new HttpClientHandler();
+    tenantHandler.InnerHandler = campaignHandler;
+    return new HttpClient(tenantHandler) { BaseAddress = new Uri(builder.HostEnvironment.BaseAddress) };
 });
 
 builder.Services.AddAntDesign();

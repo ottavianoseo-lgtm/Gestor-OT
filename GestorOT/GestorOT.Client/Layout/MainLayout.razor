@@ -2,6 +2,7 @@
 @using AntDesign
 @inject NavigationManager Nav
 @inject GestorOT.Client.Services.TenantState TenantState
+@inject GestorOT.Client.Services.CampaignState CampaignState
 
 <Layout Style="min-height: 100vh; background: transparent;">
     <Sider
@@ -26,6 +27,11 @@
                 </div>
                 <Icon Type="swap" Theme="IconThemeType.Outline" Style="color: rgba(255,255,255,0.3); font-size: 12px; cursor: pointer;" />
             </div>
+        }
+
+        @if (!_collapsed)
+        {
+            <CampaignSelector />
         }
 
         @if (!_collapsed)
@@ -465,6 +471,7 @@
     protected override void OnInitialized()
     {
         TenantState.OnChange += StateHasChanged;
+        CampaignState.OnChange += StateHasChanged;
     }
 
     private void SwitchTenant()

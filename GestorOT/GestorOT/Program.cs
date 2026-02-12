@@ -28,7 +28,10 @@ if (!string.IsNullOrEmpty(connectionString))
 
         var tenantInterceptor = serviceProvider.GetRequiredService<GestorOT.Services.TenantSessionInterceptor>();
         var httpContextAccessor = serviceProvider.GetRequiredService<IHttpContextAccessor>();
-        options.AddInterceptors(tenantInterceptor, new GestorOT.Services.AuditInterceptor(httpContextAccessor));
+        options.AddInterceptors(
+            tenantInterceptor,
+            new GestorOT.Services.AuditInterceptor(httpContextAccessor),
+            new GestorOT.Services.CampaignLockedInterceptor());
         
         if (builder.Environment.IsDevelopment())
         {
@@ -45,6 +48,7 @@ else
 
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<CurrentTenantService>();
+builder.Services.AddScoped<GestorOT.Services.CampaignContextService>();
 builder.Services.AddScoped<GestorOT.Services.AgronomicValidationService>();
 builder.Services.AddScoped<GestorOT.Services.AuditInterceptor>();
 builder.Services.AddSingleton<GestorOT.Shared.Services.ITenantService, GestorOT.Services.MockTenantService>();
@@ -200,7 +204,55 @@ using (var scope = app.Services.CreateScope())
                 )",
 
                 @"CREATE INDEX IF NOT EXISTS ""IX_AuditLogs_Timestamp"" ON public.""AuditLogs"" (""Timestamp"" DESC)",
-                @"CREATE INDEX IF NOT EXISTS ""IX_AuditLogs_EntityType"" ON public.""AuditLogs"" (""EntityType"")"
+                @"CREATE INDEX IF NOT EXISTS ""IX_AuditLogs_EntityType"" ON public.""AuditLogs"" (""EntityType"")",
+
+                @"CREATE TABLE IF NOT EXISTS public.""Campaigns"" (
+                    ""Id"" uuid PRIMARY KEY,
+                    ""TenantId"" uuid NOT NULL DEFAULT '00000000-0000-0000-0000-000000000000',
+                    ""Name"" varchar(200) NOT NULL,
+                    ""StartDate"" date NOT NULL,
+                    ""EndDate"" date,
+                    ""IsActive"" boolean NOT NULL DEFAULT true,
+                    ""Status"" varchar(50) NOT NULL DEFAULT 'Planning',
+                    ""BudgetTotalUSD"" numeric(18,4) NOT NULL DEFAULT 0,
+                    ""BusinessRules"" jsonb,
+                    ""CreatedAt"" timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )",
+
+                @"CREATE TABLE IF NOT EXISTS public.""CampaignFields"" (
+                    ""Id"" uuid PRIMARY KEY,
+                    ""TenantId"" uuid NOT NULL DEFAULT '00000000-0000-0000-0000-000000000000',
+                    ""CampaignId"" uuid NOT NULL REFERENCES public.""Campaigns""(""Id"") ON DELETE CASCADE,
+                    ""FieldId"" uuid NOT NULL REFERENCES public.""Fields""(""Id"") ON DELETE CASCADE,
+                    ""TargetYieldTonHa"" numeric(18,4) NOT NULL DEFAULT 0,
+                    ""AllocatedHectares"" numeric(18,4) NOT NULL DEFAULT 0
+                )",
+
+                @"CREATE UNIQUE INDEX IF NOT EXISTS ""IX_CampaignFields_CampaignId_FieldId"" ON public.""CampaignFields"" (""CampaignId"", ""FieldId"")",
+
+                @"ALTER TABLE public.""WorkOrders"" ADD COLUMN IF NOT EXISTS ""CampaignId"" uuid REFERENCES public.""Campaigns""(""Id"") ON DELETE SET NULL",
+
+                @"DO $$ BEGIN
+                    ALTER TABLE public.""Campaigns"" ENABLE ROW LEVEL SECURITY;
+                    DROP POLICY IF EXISTS tenant_isolation ON public.""Campaigns"";
+                    CREATE POLICY tenant_isolation ON public.""Campaigns""
+                        USING (
+                            NULLIF(current_setting('app.current_tenant', true), '') IS NULL
+                            OR ""TenantId"" = current_setting('app.current_tenant', true)::uuid
+                        );
+                EXCEPTION WHEN OTHERS THEN NULL;
+                END $$",
+
+                @"DO $$ BEGIN
+                    ALTER TABLE public.""CampaignFields"" ENABLE ROW LEVEL SECURITY;
+                    DROP POLICY IF EXISTS tenant_isolation ON public.""CampaignFields"";
+                    CREATE POLICY tenant_isolation ON public.""CampaignFields""
+                        USING (
+                            NULLIF(current_setting('app.current_tenant', true), '') IS NULL
+                            OR ""TenantId"" = current_setting('app.current_tenant', true)::uuid
+                        );
+                EXCEPTION WHEN OTHERS THEN NULL;
+                END $$"
             };
 
             foreach (var sql in migrationSql)
