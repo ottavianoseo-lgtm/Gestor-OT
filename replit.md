@@ -193,3 +193,10 @@ cd GestorOT/GestorOT && ASPNETCORE_ENVIRONMENT=Development dotnet run --urls "ht
 - 2026-02-12: TenantSessionInterceptor inyecta SET app.current_tenant en cada conexión DB
 - 2026-02-12: Eliminados todos los HasQueryFilter del ApplicationDbContext (11 filtros)
 - 2026-02-12: TenantProvider.razor con [PersistentState] para persistir TenantId SSR→WASM
+- 2026-02-12: Campaign module: entities, CampaignContextService, EF Global Query Filter en WorkOrder
+- 2026-02-12: CampaignLockedInterceptor bloquea modificaciones en campañas bloqueadas
+- 2026-02-12: CampaignsController API CRUD completo con campos asociados y status workflow
+- 2026-02-12: CampaignSelector con [PersistentState] y CampaignHttpHandler para header X-Campaign-ID
+- 2026-02-12: Campanias.razor: página completa de gestión de campañas con tabla, CRUD, status workflow
+- 2026-02-12: Gestión de campos por campaña: sub-modal para agregar/quitar campos con hectáreas y rendimiento
+- 2026-02-12: Link "Campañas" agregado al menú lateral en sección Principal
