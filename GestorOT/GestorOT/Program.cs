@@ -17,6 +17,8 @@ if (!string.IsNullOrEmpty(connectionString))
     dataSourceBuilder.UseNetTopologySuite();
     var dataSource = dataSourceBuilder.Build();
 
+    builder.Services.AddScoped<GestorOT.Services.TenantSessionInterceptor>();
+
     builder.Services.AddDbContext<ApplicationDbContext>((serviceProvider, options) =>
     {
         options.UseNpgsql(dataSource, npgsqlOptions =>
@@ -24,8 +26,9 @@ if (!string.IsNullOrEmpty(connectionString))
             npgsqlOptions.UseNetTopologySuite();
         });
 
+        var tenantInterceptor = serviceProvider.GetRequiredService<GestorOT.Services.TenantSessionInterceptor>();
         var httpContextAccessor = serviceProvider.GetRequiredService<IHttpContextAccessor>();
-        options.AddInterceptors(new GestorOT.Services.AuditInterceptor(httpContextAccessor));
+        options.AddInterceptors(tenantInterceptor, new GestorOT.Services.AuditInterceptor(httpContextAccessor));
         
         if (builder.Environment.IsDevelopment())
         {

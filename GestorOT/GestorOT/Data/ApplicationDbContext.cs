@@ -81,7 +81,6 @@ public class ApplicationDbContext : DbContext
             entity.Property(e => e.Name).IsRequired().HasMaxLength(200);
             entity.Property(e => e.TotalArea).HasPrecision(18, 4);
             entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
-            entity.HasQueryFilter(e => CurrentTenantId == Guid.Empty || e.TenantId == CurrentTenantId);
         });
 
         modelBuilder.Entity<Lot>(entity =>
@@ -92,7 +91,6 @@ public class ApplicationDbContext : DbContext
             entity.Property(e => e.Status).HasMaxLength(50);
             entity.Property(e => e.Geometry).HasColumnType("geometry(Polygon, 4326)");
             entity.HasIndex(e => e.Geometry).HasMethod("GIST");
-            entity.HasQueryFilter(e => CurrentTenantId == Guid.Empty || e.TenantId == CurrentTenantId);
             
             entity.HasOne(e => e.Field)
                 .WithMany(f => f.Lots)
@@ -107,7 +105,6 @@ public class ApplicationDbContext : DbContext
             entity.Property(e => e.Description).HasMaxLength(1000);
             entity.Property(e => e.Status).HasMaxLength(50);
             entity.Property(e => e.AssignedTo).HasMaxLength(200);
-            entity.HasQueryFilter(e => CurrentTenantId == Guid.Empty || e.TenantId == CurrentTenantId);
             entity.HasOne(e => e.Lot)
                 .WithMany(l => l.WorkOrders)
                 .HasForeignKey(e => e.LotId)
@@ -125,7 +122,6 @@ public class ApplicationDbContext : DbContext
             entity.Property(e => e.UnitA).HasMaxLength(50);
             entity.Property(e => e.UnitB).HasMaxLength(50);
             entity.Property(e => e.ConversionFactor).HasPrecision(18, 6).HasDefaultValue(1);
-            entity.HasQueryFilter(e => CurrentTenantId == Guid.Empty || e.TenantId == CurrentTenantId);
         });
 
         modelBuilder.Entity<Labor>(entity =>
@@ -139,7 +135,6 @@ public class ApplicationDbContext : DbContext
             entity.Property(e => e.Rate).HasPrecision(18, 4).HasDefaultValue(0m);
             entity.Property(e => e.RateUnit).HasMaxLength(50).HasDefaultValue("ha");
             entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
-            entity.HasQueryFilter(e => CurrentTenantId == Guid.Empty || e.TenantId == CurrentTenantId);
 
             entity.HasOne(e => e.WorkOrder)
                 .WithMany(w => w.Labors)
@@ -180,7 +175,6 @@ public class ApplicationDbContext : DbContext
             entity.Property(e => e.Name).IsRequired().HasMaxLength(200);
             entity.Property(e => e.CropType).HasMaxLength(100);
             entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
-            entity.HasQueryFilter(e => CurrentTenantId == Guid.Empty || e.TenantId == CurrentTenantId);
         });
 
         modelBuilder.Entity<StrategyItem>(entity =>
@@ -204,7 +198,6 @@ public class ApplicationDbContext : DbContext
             entity.Property(e => e.TotalAmount).HasPrecision(18, 4);
             entity.Property(e => e.GeneratedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
             entity.Property(e => e.ErpSyncStatus).HasMaxLength(50).HasDefaultValue("Pending");
-            entity.HasQueryFilter(e => CurrentTenantId == Guid.Empty || e.TenantId == CurrentTenantId);
 
             entity.HasOne(e => e.WorkOrder)
                 .WithMany()
@@ -236,7 +229,6 @@ public class ApplicationDbContext : DbContext
             entity.Property(e => e.Role).IsRequired().HasMaxLength(50).HasDefaultValue("Agronomist");
             entity.Property(e => e.IsActive).HasDefaultValue(true);
             entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
-            entity.HasQueryFilter(e => CurrentTenantId == Guid.Empty || e.TenantId == CurrentTenantId);
         });
 
         modelBuilder.Entity<TankMixRule>(entity =>
@@ -246,7 +238,6 @@ public class ApplicationDbContext : DbContext
             entity.Property(e => e.Severity).IsRequired().HasMaxLength(50).HasDefaultValue("Warning");
             entity.Property(e => e.WarningMessage).IsRequired().HasMaxLength(500);
             entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
-            entity.HasQueryFilter(e => CurrentTenantId == Guid.Empty || e.TenantId == CurrentTenantId);
 
             entity.HasOne(e => e.ProductA)
                 .WithMany()
@@ -269,7 +260,6 @@ public class ApplicationDbContext : DbContext
             entity.Property(e => e.UserId).HasMaxLength(200);
             entity.Property(e => e.UserEmail).HasMaxLength(200);
             entity.Property(e => e.Timestamp).HasDefaultValueSql("CURRENT_TIMESTAMP");
-            entity.HasQueryFilter(e => CurrentTenantId == Guid.Empty || e.TenantId == CurrentTenantId);
         });
     }
 

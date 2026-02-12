@@ -174,7 +174,7 @@ cd GestorOT/GestorOT && ASPNETCORE_ENVIRONMENT=Development dotnet run --urls "ht
 - 2026-02-11: UI: Tarifa/unidad en formulario y cards de labor, tabla desglose en liquidación
 - 2026-02-11: Estrategias: Eliminado campo AgreedRate del formulario de aplicación
 - 2026-02-11: DB migration: Columnas Rate/RateUnit agregadas a tabla Labors
-- 2026-02-11: Multi-tenancy con EF Core Global Query Filters (TenantId en todas las entidades)
+- 2026-02-11: Multi-tenancy inicial con EF Core Global Query Filters (reemplazado por RLS)
 - 2026-02-11: Magic Links con SHA256 token hashing para acceso anónimo de contratistas
 - 2026-02-11: Panel Admin con RBAC: gestión de usuarios, roles, perfiles
 - 2026-02-11: Tank Mix Rules: reglas de incompatibilidad entre productos agroquímicos
@@ -189,3 +189,7 @@ cd GestorOT/GestorOT && ASPNETCORE_ENVIRONMENT=Development dotnet run --urls "ht
 - 2026-02-12: ITenantService + MockTenantService con 5 tenants de ejemplo
 - 2026-02-12: NotFound.razor (404) con Router NotFoundPage property
 - 2026-02-12: Consolidación: AdminUsers/AdminTankMix/AdminAudit movidos a Pages/Admin/
+- 2026-02-12: RLS multi-tenancy: PostgreSQL Row-Level Security reemplaza EF Core Query Filters
+- 2026-02-12: TenantSessionInterceptor inyecta SET app.current_tenant en cada conexión DB
+- 2026-02-12: Eliminados todos los HasQueryFilter del ApplicationDbContext (11 filtros)
+- 2026-02-12: TenantProvider.razor con [PersistentState] para persistir TenantId SSR→WASM
