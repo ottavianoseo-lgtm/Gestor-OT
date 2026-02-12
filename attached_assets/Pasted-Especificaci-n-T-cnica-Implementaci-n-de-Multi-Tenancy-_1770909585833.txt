@@ -1,0 +1,28 @@
+Especificación Técnica: Implementación de Multi-Tenancy Seguro con RLS y .NET 10
+Rol del Agente: Arquitecto de Software .NET Senior & DBA PostgreSQL. Objetivo: Refactorizar la capa de acceso a datos y la gestión de estado del cliente para implementar una arquitectura Multi-Tenant segura mediante "Contextual Session Injection" en PostgreSQL (Supabase), eliminando la necesidad de filtros Where(t => t.TenantId == ...) manuales.
+1. Stack Tecnológico Definido
+• Framework: .NET 10 (Preview/RC).
+• Database: Supabase (PostgreSQL).
+• ORM: Entity Framework Core (Npgsql).
+• Frontend: Blazor Web App (InteractiveAuto).
+2. Estrategia de Base de Datos (Supabase RLS)
+Instrucción: No agregar columnas de tenant manualmente en cada consulta. Delegar la seguridad al motor de base de datos.
+1. Variable de Sesión: Utilizar app.current_tenant como variable de configuración de sesión en Postgres.
+2. Política RLS:
+    ◦ Habilitar RLS en todas las tablas sensibles (ej: WorkOrders, Labors, Products).
+    ◦ Crear la política de aislamiento:
+3. Implementación Backend (.NET 10 API/Server)
+A. Servicio de Contexto (Scoped)
+Crear un servicio que capture el Tenant actual desde los Claims del usuario autenticado.
+public interface ITenantService { Guid CurrentTenantId { get; } }
+// Implementación que extrae el "TenantId" del HttpContext o AuthState
+B. Interceptor de EF Core (El Núcleo de la Solución)
+Implementar un DbConnectionInterceptor para inyectar la variable de sesión antes de que EF Core ejecute cualquier consulta.
+• Clase: TenantSessionInterceptor
+• Método a sobreescribir: ConnectionOpenedAsync
+• Lógica:
+• Configuración: Registrar en Program.cs dentro de AddDbContext usando .AddInterceptors().
+4. Implementación Frontend (Blazor .NET 10)
+A. Persistencia de Estado del Tenant
+Dado que Blazor InteractiveAuto puede cambiar entre Server y WASM, el ID del Tenant no debe perderse ni requerir una nueva llamada a la API durante la hidratación.
+• Uso de [PersistentState]: En el MainLayout.razor o un TenantProvider.razor, utilizar el nuevo atributo de .NET 10 para persistir el ID del Tenant resuelto en el servidor y pasarlo al cliente WASM automáticamente.

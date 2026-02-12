@@ -44,6 +44,9 @@ builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<CurrentTenantService>();
 builder.Services.AddScoped<GestorOT.Services.AgronomicValidationService>();
 builder.Services.AddScoped<GestorOT.Services.AuditInterceptor>();
+builder.Services.AddSingleton<GestorOT.Shared.Services.ITenantService, GestorOT.Services.MockTenantService>();
+
+builder.Services.AddValidation();
 
 builder.Services.AddRazorComponents()
     .AddInteractiveWebAssemblyComponents();

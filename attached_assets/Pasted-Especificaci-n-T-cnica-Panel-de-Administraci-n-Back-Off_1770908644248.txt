@@ -1,0 +1,35 @@
+Especificación Técnica: Panel de Administración (Back-Office)
+Rol del Agente: Desarrollador Full-Stack .NET Senior. Contexto: Crear el módulo de administración para la plataforma de gestión agrícola. Este panel es el centro de control para la configuración de usuarios, tenants (empresas), catálogos maestros y auditoría. Tech Stack: .NET 10, Blazor (Interactive Auto), ASP.NET Core Identity (con Endpoints), Entity Framework Core.
+1. Arquitectura del Módulo y Navegación
+El panel debe vivir bajo el área /Admin y utilizar un Layout específico.
+• Render Mode: InteractiveAuto (Server prerederizado + WebAssembly para interactividad posterior).
+• Layout: AdminLayout.razor. Debe incluir una barra lateral (Sidebar) colapsable y una barra superior con el perfil del usuario.
+• Gestión de Estado: Utilizar el atributo [PersistentState] de .NET 10 para mantener filtros de grillas y estados de formularios al navegar entre páginas o ante reconexiones de circuito.
+2. Definición de Funcionalidades y Componentes
+A. Gestión de Identidad y Seguridad (Identity Manager)
+Objetivo: Administración de usuarios, roles y seguridad moderna.
+• Vista: UsersList.razor
+    ◦ Componente: Utilizar QuickGrid de .NET 10.
+    ◦ Columnas: Avatar, Nombre, Email, Roles (Badge), Estado (Activo/Bloqueado), Acciones (Editar, Reset Passkey).
+    ◦ Estilizado Dinámico: Usar el nuevo parámetro RowClass de QuickGrid para resaltar usuarios bloqueados o pendientes de confirmación (ej: row => row.IsLocked ? "table-danger" : "").
+• Seguridad:
+    ◦ Habilitar soporte para Passkeys (WebAuthn) en el registro y login de administradores, utilizando las nuevas APIs de Identity de .NET 10.
+    ◦ Implementar IdentityUserAccessor para validar permisos en tiempo real.
+B. Gestión de Tenants y Espacios de Trabajo (Tenant Management)
+Objetivo: Configuración de la estructura multi-empresa (inspirado en NetSuite/AgroPro).
+• Entidades: Tenant, Farm (Campo), SubscriptionPlan.
+• Funcionalidad:
+    ◦ CRUD de Empresas.
+    ◦ Feature Flags: Un componente para activar/desactivar módulos por Tenant (ej: "Habilitar Módulo GIS", "Habilitar Integración John Deere").
+    ◦ Configuración Regional: Selector de Moneda base y Unidad de Medida (Sistema Métrico/Imperial) por Tenant.
+C. Catálogos Maestros Agronómicos (Master Data)
+Objetivo: Estandarización de datos para evitar errores en las OTs.
+• Vista: ProductsCatalog.razor
+    ◦ Funcionalidad: ABM (Alta-Baja-Modificación) de insumos.
+    ◦ Validación: Implementar la nueva validación de .NET 10 (AddValidation()) definiendo las reglas en un archivo separado del componente (ej: ProductValidator.cs) para soportar validación de objetos anidados (ej: Composición química del producto).
+    ◦ Propiedad Crítica: Campo TankMixOrder (int) para definir el orden de mezcla por defecto.
+D. Panel de Configuración Técnica y Auditoría
+Objetivo: Control del comportamiento de la App Móvil y trazabilidad.
+• Vista: SystemSettings.razor
+    ◦ Sync Policy: Formulario para configurar la frecuencia de sincronización offline (ej: "Subir fotos solo con Wi-Fi"). Guardar esto en una tabla de configuración global que la API expone a las apps móviles.
+    ◦ Audit Log: Un QuickGrid de solo lectura conectado a la tabla de Logs. Debe soportar filtrado por UserId, EntityId (ID de la OT) y DateRange. Usar virtualización para performance si hay muchos registros.
