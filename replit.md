@@ -53,12 +53,18 @@ Do not make changes to files related to authentication without explicit approval
 - **WorkOrders**: Orders for agricultural tasks, linked to Lots.
 - **Inventories**: Inventory items with dual unit tracking.
 - **Labors**: Individual tasks, can be linked to WorkOrders or be "loose".
+- **Cultivos**: Crop types with variety and cycle information.
+- **PlanificacionCultivos**: Lot-Campaign-Crop planning with user-editable sown area (SuperficieSembradaHa) and PostGIS-calculated geometry area (SuperficieGeometriaHa). Unique constraint on (LoteId, CampanaId).
 
 ### API Endpoints
 - **Fields, Lots, Work Orders, Inventory**: Standard RESTful CRUD endpoints.
 - **Dashboard**: `GET /api/dashboard/stats`, `GET /api/dashboard/recent-orders`.
 - **Labors**: `GET /api/labors/calendar`, `POST validate-stock`, `POST reserve-stock`, `GET export-isoxml`.
 - **Unassigned Labors**: `GET /unassigned`, `GET /unassigned/count`, `PATCH /assign-bulk`, `PATCH /{id}/unassign`.
+- **Cultivos**: `GET/POST/PUT/DELETE /api/cultivos` - CRUD for crop types.
+- **Planificación Cultivos**: `GET/POST/PUT/DELETE /api/planificacion-cultivos` - Lot-Campaign crop planning with filtering by campanaId/loteId.
+- **Superficie Campo**: `GET /api/campos/{campoId}/campanas/{campanaId}/superficie` - Aggregate sown/geometry area for all active lots in a field-campaign.
+- **Rotación**: `GET /api/lotes/{loteId}/rotacion` - Crop rotation history for a lot ordered by campaign start date.
 
 ## External Dependencies
 

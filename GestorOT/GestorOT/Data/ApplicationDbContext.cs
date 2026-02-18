@@ -64,6 +64,8 @@ public class ApplicationDbContext : DbContext
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
     public DbSet<Campaign> Campaigns => Set<Campaign>();
     public DbSet<CampaignField> CampaignFields => Set<CampaignField>();
+    public DbSet<Cultivo> Cultivos => Set<Cultivo>();
+    public DbSet<PlanificacionCultivo> PlanificacionCultivos => Set<PlanificacionCultivo>();
 
     private Guid CurrentTenantId => _tenantService?.TenantId ?? Guid.Empty;
     private Guid? CurrentCampaignId => _campaignContext?.CurrentCampaignId;
@@ -308,6 +310,41 @@ public class ApplicationDbContext : DbContext
                 .HasForeignKey(e => e.FieldId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
+
+        modelBuilder.Entity<Cultivo>(entity =>
+        {
+            entity.ToTable("Cultivos", "public");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Name).IsRequired().HasMaxLength(200);
+            entity.Property(e => e.Variedad).HasMaxLength(200);
+            entity.Property(e => e.Ciclo).HasMaxLength(100);
+            entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
+        });
+
+        modelBuilder.Entity<PlanificacionCultivo>(entity =>
+        {
+            entity.ToTable("PlanificacionCultivos", "public");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.SuperficieSembradaHa).HasPrecision(18, 4);
+            entity.Property(e => e.SuperficieGeometriaHa).HasPrecision(18, 4);
+            entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
+            entity.HasIndex(e => new { e.LoteId, e.CampanaId }).IsUnique();
+
+            entity.HasOne(e => e.Lote)
+                .WithMany()
+                .HasForeignKey(e => e.LoteId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(e => e.Campana)
+                .WithMany()
+                .HasForeignKey(e => e.CampanaId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(e => e.Cultivo)
+                .WithMany()
+                .HasForeignKey(e => e.CultivoId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
     }
 
     public override int SaveChanges()
@@ -519,6 +556,31 @@ public class AuditLog : ITenantEntity
     public string? OldValue { get; set; }
     public string? NewValue { get; set; }
     public DateTime Timestamp { get; set; }
+}
+
+public class Cultivo : ITenantEntity
+{
+    public Guid Id { get; set; }
+    public Guid TenantId { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public string? Variedad { get; set; }
+    public string? Ciclo { get; set; }
+    public DateTime CreatedAt { get; set; }
+}
+
+public class PlanificacionCultivo : ITenantEntity
+{
+    public Guid Id { get; set; }
+    public Guid TenantId { get; set; }
+    public Guid LoteId { get; set; }
+    public Guid CampanaId { get; set; }
+    public Guid CultivoId { get; set; }
+    public decimal SuperficieSembradaHa { get; set; }
+    public decimal SuperficieGeometriaHa { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public Lot? Lote { get; set; }
+    public Campaign? Campana { get; set; }
+    public Cultivo? Cultivo { get; set; }
 }
 
 public class Campaign : ITenantEntity
