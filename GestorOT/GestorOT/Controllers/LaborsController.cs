@@ -264,13 +264,16 @@ public class LaborsController : ControllerBase
     public async Task<ActionResult<List<LaborCalendarDto>>> GetCalendarLabors(
         [FromQuery] DateTime start, [FromQuery] DateTime end)
     {
+        var startUtc = DateTime.SpecifyKind(start, DateTimeKind.Utc);
+        var endUtc = DateTime.SpecifyKind(end, DateTimeKind.Utc);
+
         var labors = await _context.Labors
             .AsNoTracking()
             .Include(l => l.Lot)
             .Include(l => l.WorkOrder)
-            .Where(l => (l.PlannedDate != null && l.PlannedDate >= start && l.PlannedDate <= end)
-                     || (l.PlannedDate == null && l.ExecutionDate != null && l.ExecutionDate >= start && l.ExecutionDate <= end)
-                     || (l.PlannedDate == null && l.ExecutionDate == null && l.CreatedAt >= start && l.CreatedAt <= end))
+            .Where(l => (l.PlannedDate != null && l.PlannedDate >= startUtc && l.PlannedDate <= endUtc)
+                     || (l.PlannedDate == null && l.ExecutionDate != null && l.ExecutionDate >= startUtc && l.ExecutionDate <= endUtc)
+                     || (l.PlannedDate == null && l.ExecutionDate == null && l.CreatedAt >= startUtc && l.CreatedAt <= endUtc))
             .OrderBy(l => l.PlannedDate ?? l.ExecutionDate ?? l.CreatedAt)
             .Select(l => new LaborCalendarDto(
                 l.Id,
