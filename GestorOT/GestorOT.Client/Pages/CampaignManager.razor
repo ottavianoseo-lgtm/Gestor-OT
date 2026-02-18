@@ -197,16 +197,24 @@ else if (_selectedCampaignId == Guid.Empty)
             </Select>
         </FormItem>
         <FormItem Label="Cultivo">
-            <Select TItemValue="Guid" TItem="string"
-                    @bind-Value="_formModel.CultivoId"
-                    Placeholder="Seleccionar cultivo"
-                    Style="width: 100%;">
-                @foreach (var c in _cultivos)
-                {
-                    var label = string.IsNullOrEmpty(c.Variedad) ? c.Name : $"{c.Name} ({c.Variedad})";
-                    <SelectOption TItemValue="Guid" TItem="string" Value="c.Id" Label="@label" />
-                }
-            </Select>
+            <div style="display: flex; gap: 8px;">
+                <Select TItemValue="Guid" TItem="string"
+                        @bind-Value="_formModel.CultivoId"
+                        Placeholder="Seleccionar cultivo"
+                        Style="flex: 1;">
+                    @foreach (var c in _cultivos)
+                    {
+                        var label = string.IsNullOrEmpty(c.Variedad) ? c.Name : $"{c.Name} ({c.Variedad})";
+                        <SelectOption TItemValue="Guid" TItem="string" Value="c.Id" Label="@label" />
+                    }
+                </Select>
+                <Tooltip Title="@("Crear nuevo cultivo")">
+                    <Button OnClick="OpenCultivoModal"
+                            Style="border-radius: 8px; border-color: #2ECC71; color: #2ECC71;">
+                        <Icon Type="plus" Theme="IconThemeType.Outline" />
+                    </Button>
+                </Tooltip>
+            </div>
         </FormItem>
         <FormItem Label="Superficie Sembrada (ha)">
             <AntDesign.InputNumber TValue="decimal" @bind-Value="_formModel.SuperficieSembradaHa"
@@ -257,6 +265,32 @@ else if (_selectedCampaignId == Guid.Empty)
     }
 </Modal>
 
+<Modal Title="Nuevo Cultivo"
+       Visible="_cultivoModalVisible"
+       OnCancel="() => _cultivoModalVisible = false"
+       OnOk="SaveNewCultivo"
+       OkText="@("Crear")"
+       ConfirmLoading="_savingCultivo"
+       Width="440">
+    <Form Model="_cultivoForm" Layout="@FormLayout.Vertical">
+        <FormItem Label="Nombre">
+            <Input @bind-Value="_cultivoForm.Name" Placeholder="Ej: Soja, Maíz, Trigo" />
+        </FormItem>
+        <AntDesign.Row Gutter="16">
+            <AntDesign.Col Span="12">
+                <FormItem Label="Variedad (opcional)">
+                    <Input @bind-Value="_cultivoForm.Variedad" Placeholder="Ej: DM 40R16" />
+                </FormItem>
+            </AntDesign.Col>
+            <AntDesign.Col Span="12">
+                <FormItem Label="Ciclo (opcional)">
+                    <Input @bind-Value="_cultivoForm.Ciclo" Placeholder="Ej: Primera, Tardío" />
+                </FormItem>
+            </AntDesign.Col>
+        </AntDesign.Row>
+    </Form>
+</Modal>
+
 @code {
     private List<CampaignDto> _campaigns = new();
     private List<FieldDto> _fields = new();
@@ -283,6 +317,17 @@ else if (_selectedCampaignId == Guid.Empty)
     private bool _loadingRotacion;
     private string _rotacionLoteName = string.Empty;
     private RotacionHistorialDto? _rotacionHistorial;
+
+    private bool _cultivoModalVisible;
+    private bool _savingCultivo;
+    private CultivoFormModel _cultivoForm = new();
+
+    public class CultivoFormModel
+    {
+        public string Name { get; set; } = string.Empty;
+        public string? Variedad { get; set; }
+        public string? Ciclo { get; set; }
+    }
 
     public class PlanFormModel
     {
@@ -542,6 +587,54 @@ else if (_selectedCampaignId == Guid.Empty)
         finally
         {
             _loadingRotacion = false;
+            StateHasChanged();
+        }
+    }
+
+    private void OpenCultivoModal()
+    {
+        _cultivoForm = new CultivoFormModel();
+        _cultivoModalVisible = true;
+    }
+
+    private async Task SaveNewCultivo()
+    {
+        if (string.IsNullOrWhiteSpace(_cultivoForm.Name))
+        {
+            Message.Warning("El nombre del cultivo es obligatorio.");
+            return;
+        }
+
+        _savingCultivo = true;
+        try
+        {
+            var dto = new CultivoDto(Guid.Empty, _cultivoForm.Name, _cultivoForm.Variedad, _cultivoForm.Ciclo, DateTime.MinValue);
+            var response = await Http.PostAsJsonAsync("api/cultivos", dto, AppJsonSerializerContext.Default.CultivoDto);
+
+            if (response.IsSuccessStatusCode)
+            {
+                var created = await response.Content.ReadFromJsonAsync(AppJsonSerializerContext.Default.CultivoDto);
+                if (created != null)
+                {
+                    _cultivos.Add(created);
+                    _formModel.CultivoId = created.Id;
+                }
+                Message.Success($"Cultivo '{_cultivoForm.Name}' creado.");
+                _cultivoModalVisible = false;
+            }
+            else
+            {
+                var body = await response.Content.ReadAsStringAsync();
+                Message.Error($"Error: {body}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Message.Error($"Error: {ex.Message}");
+        }
+        finally
+        {
+            _savingCultivo = false;
             StateHasChanged();
         }
     }
