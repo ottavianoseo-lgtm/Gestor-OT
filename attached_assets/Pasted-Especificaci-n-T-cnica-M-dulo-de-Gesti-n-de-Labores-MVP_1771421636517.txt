@@ -1,0 +1,102 @@
+Especificación Técnica: Módulo de Gestión de Labores (MVP)
+Objetivo: Permitir la creación de labores agrícolas individuales ("sueltas") sin requerir una Orden de Trabajo (OT) previa, con la capacidad de asignarlas o agruparlas en una OT posteriormente.
+Stack Tecnológico: .NET 10, C# 14, Blazor WASM, EF Core 10, PostgreSQL (PostGIS).
+
+--------------------------------------------------------------------------------
+1. Capa de Datos (PostgreSQL & PostGIS)
+El diseño de la base de datos debe soportar la existencia de labores huérfanas (sin OT).
+DDL Sugerido (SQL)
+Se requiere una tabla Labores con una clave foránea nullable hacia OrdenesTrabajo.
+CREATE TABLE "Labores" (
+    "Id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    "LoteId" UUID NOT NULL REFERENCES "Lotes"("Id"),
+    "OrdenTrabajoId" UUID NULL REFERENCES "OrdenesTrabajo"("Id"), -- CRÍTICO: Nullable para permitir labores sueltas
+    "TipoLabor" VARCHAR(50) NOT NULL, -- Ej: "Fertilización", "Monitoreo", "Siembra"
+    "Estado" VARCHAR(20) NOT NULL DEFAULT 'Pendiente', -- Estados: Pendiente, Asignada, Realizada
+    "FechaPlanificada" DATE NOT NULL,
+    "FechaEjecucion" DATE NULL,
+    "Notas" TEXT,
+    "Geometria" geometry(Polygon, 4326) NULL -- Opcional: Para marcar área específica dentro del lote si no es todo el lote
+);
+
+-- Índices obligatorios para rendimiento (citado en fuentes técnicas)
+CREATE INDEX "IX_Labores_LoteId" ON "Labores" ("LoteId");
+CREATE INDEX "IX_Labores_OrdenTrabajoId" ON "Labores" ("OrdenTrabajoId");
+CREATE INDEX "IX_Labores_Geometria" ON "Labores" USING GIST ("Geometria");
+
+--------------------------------------------------------------------------------
+2. Backend (.NET 10 API & EF Core 10)
+Implementación utilizando las novedades de C# 14 y optimizaciones de EF Core 10.
+Modelo de Entidad (C# 14)
+Utilizar la palabra clave field para propiedades limpias y record para DTOs.
+public class Labor
+{
+    public Guid Id { get; set; }
+    
+    // Relación obligatoria con el Lote
+    public Guid LoteId { get; set; }
+    
+    // Relación OPCIONAL con la OT (Clave del requerimiento)
+    public Guid? OrdenTrabajoId { get; set; } 
+
+    // Uso de C# 14 'field' keyword para validación simple en setter
+    public string TipoLabor 
+    { 
+        get; 
+        set 
+        { 
+            if (string.IsNullOrWhiteSpace(value)) throw new ArgumentException("El tipo es requerido");
+            field = value; 
+        } 
+    }
+
+    public DateTime FechaPlanificada { get; set; }
+    public string Estado { get; set; } = "Pendiente";
+    
+    // Propiedad de navegación
+    public OrdenTrabajo? OrdenTrabajo { get; set; }
+}
+Endpoints (Minimal API)
+Debes implementar endpoints específicos para el flujo de "Pool de Labores".
+1. Crear Labor Suelta: POST /api/labores (El payload envía OrdenTrabajoId: null).
+2. Obtener Labores Sin Asignar: GET /api/labores/sueltas (Filtra where OrdenTrabajoId == null).
+3. Asignar Labor a OT: PATCH /api/labores/{id}/asignar
+    ◦ Optimización EF Core 10: Usar ExecuteUpdateAsync para asignar masivamente sin traer los objetos a memoria.
+// Ejemplo de optimización para el Agente Replit
+app.MapPatch("/api/labores/asignar-masivo", async (List<Guid> laborIds, Guid otId, AppDbContext db) => 
+{
+    await db.Labores
+        .Where(l => laborIds.Contains(l.Id))
+        .ExecuteUpdateAsync(setters => setters
+            .SetProperty(l => l.OrdenTrabajoId, otId)
+            .SetProperty(l => l.Estado, "Asignada"));
+    return Results.NoContent();
+});
+
+--------------------------------------------------------------------------------
+3. Frontend (Blazor WebAssembly)
+Interfaz de usuario para gestionar el "Pool de Labores" y la creación rápida.
+Componentes Requeridos
+1. QuickTaskCreator.razor (Componente de Entrada Rápida)
+    ◦ Propósito: Permitir al usuario crear una labor en 3 clics desde el mapa o el dashboard.
+    ◦ Campos: Lote (Dropdown o selección en mapa), Tipo de Labor, Fecha.
+    ◦ Lógica: Al guardar, llama al endpoint POST con OrdenTrabajoId = null.
+2. UnassignedTasksPool.razor (Pool de Labores)
+    ◦ Visualización: Una lista o tarjeta ("kanban") de labores que están pendientes y no tienen OT.
+    ◦ Acción: Checkbox para seleccionar varias labores y botón "Crear OT con seleccionadas".
+3. Integración con Mapa (Leaflet)
+    ◦ Visualización: Las labores sueltas deben aparecer en el mapa con un icono distinto (ej. color naranja) para diferenciarlas de las que ya están en una OT (color verde).
+    ◦ Performance: Usar [JSImport] para renderizar los puntos si son muchos, evitando la sobrecarga de IJSRuntime.
+Gestión de Estado (.NET 10)
+Utilizar el atributo [PersistentState] para evitar recargas innecesarias si el usuario navega entre el mapa y el detalle de la labor.
+@code {
+    [PersistentState]
+    public List<LaborDTO> LaboresSueltas { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        LaboresSueltas ??= await Http.GetFromJsonAsync<List<LaborDTO>>("api/labores/sueltas");
+    }
+}
+
+--------------------------------------------------------------------------------

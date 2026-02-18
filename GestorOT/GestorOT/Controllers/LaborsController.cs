@@ -62,6 +62,7 @@ public class LaborsController : ControllerBase
             Rate = dto.Rate,
             RateUnit = dto.RateUnit ?? "ha",
             CreatedAt = DateTime.UtcNow,
+            Notes = dto.Notes,
             PrescriptionMapUrl = dto.PrescriptionMapUrl,
             MachineryUsedId = dto.MachineryUsedId,
             WeatherLogJson = dto.WeatherLogJson
@@ -114,6 +115,7 @@ public class LaborsController : ControllerBase
         labor.Hectares = dto.Hectares;
         labor.Rate = dto.Rate;
         labor.RateUnit = dto.RateUnit ?? "ha";
+        labor.Notes = dto.Notes;
         labor.PrescriptionMapUrl = dto.PrescriptionMapUrl;
         labor.MachineryUsedId = dto.MachineryUsedId;
         labor.WeatherLogJson = dto.WeatherLogJson;
@@ -256,6 +258,58 @@ public class LaborsController : ControllerBase
         return NoContent();
     }
 
+    [HttpGet("unassigned")]
+    public async Task<ActionResult<List<LaborDto>>> GetUnassignedLabors()
+    {
+        var labors = await _context.Labors
+            .AsNoTracking()
+            .Include(l => l.Lot)
+                .ThenInclude(l => l!.Field)
+            .Include(l => l.Supplies)
+                .ThenInclude(s => s.Supply)
+            .Where(l => l.WorkOrderId == null)
+            .OrderByDescending(l => l.CreatedAt)
+            .ToListAsync();
+
+        return labors.Select(MapToDto).ToList();
+    }
+
+    [HttpGet("unassigned/count")]
+    public async Task<ActionResult<int>> GetUnassignedCount()
+    {
+        var count = await _context.Labors
+            .AsNoTracking()
+            .CountAsync(l => l.WorkOrderId == null);
+        return count;
+    }
+
+    [HttpPatch("assign-bulk")]
+    public async Task<IActionResult> AssignBulk([FromBody] BulkAssignRequest request)
+    {
+        if (request.LaborIds == null || request.LaborIds.Count == 0)
+            return BadRequest("Debe seleccionar al menos una labor.");
+
+        var updated = await _context.Labors
+            .Where(l => request.LaborIds.Contains(l.Id) && l.WorkOrderId == null)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(l => l.WorkOrderId, request.WorkOrderId)
+                .SetProperty(l => l.Status, "Planned"));
+
+        return Ok(new { Updated = updated });
+    }
+
+    [HttpPatch("{id:guid}/unassign")]
+    public async Task<IActionResult> UnassignLabor(Guid id)
+    {
+        var labor = await _context.Labors.FindAsync(id);
+        if (labor == null) return NotFound();
+
+        labor.WorkOrderId = null;
+        labor.Status = "Pending";
+        await _context.SaveChangesAsync();
+        return NoContent();
+    }
+
     private static LaborDto MapToDto(Labor labor)
     {
         return new LaborDto(
@@ -286,7 +340,15 @@ public class LaborsController : ControllerBase
             )).ToList(),
             labor.PrescriptionMapUrl,
             labor.MachineryUsedId,
-            labor.WeatherLogJson
+            labor.WeatherLogJson,
+            labor.Notes,
+            labor.Lot?.Field?.Name
         );
     }
+}
+
+public class BulkAssignRequest
+{
+    public List<Guid> LaborIds { get; set; } = new();
+    public Guid WorkOrderId { get; set; }
 }

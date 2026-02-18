@@ -134,7 +134,9 @@ public class WorkOrdersController : ControllerBase
                 )).ToList(),
                 l.PrescriptionMapUrl,
                 l.MachineryUsedId,
-                l.WeatherLogJson
+                l.WeatherLogJson,
+                l.Notes,
+                l.Lot?.Field?.Name
             )).ToList(),
             settlementDto,
             workOrder.OTNumber,

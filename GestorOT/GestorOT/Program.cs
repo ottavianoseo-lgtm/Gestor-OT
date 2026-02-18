@@ -246,8 +246,15 @@ using (var scope = app.Services.CreateScope())
                 @"ALTER TABLE public.""Labors"" ADD COLUMN IF NOT EXISTS ""WeatherLogJson"" text",
                 @"ALTER TABLE public.""Labors"" ADD COLUMN IF NOT EXISTS ""EvidencePhotosJson"" text",
 
+                @"ALTER TABLE public.""Labors"" ADD COLUMN IF NOT EXISTS ""Notes"" text",
+                @"ALTER TABLE public.""Labors"" ADD COLUMN IF NOT EXISTS ""MetadataExterna"" jsonb",
+
                 @"ALTER TABLE public.""LaborSupplies"" ADD COLUMN IF NOT EXISTS ""TankMixOrder"" integer NOT NULL DEFAULT 0",
                 @"ALTER TABLE public.""LaborSupplies"" ADD COLUMN IF NOT EXISTS ""IsSubstitute"" boolean NOT NULL DEFAULT false",
+
+                @"ALTER TABLE public.""Labors"" DROP CONSTRAINT IF EXISTS ""FK_Labors_WorkOrders_WorkOrderId""",
+                @"ALTER TABLE public.""Labors"" ADD CONSTRAINT ""FK_Labors_WorkOrders_WorkOrderId""
+                    FOREIGN KEY (""WorkOrderId"") REFERENCES public.""WorkOrders""(""Id"") ON DELETE SET NULL",
 
                 @"DO $$ BEGIN
                     ALTER TABLE public.""Campaigns"" ENABLE ROW LEVEL SECURITY;

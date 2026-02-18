@@ -149,10 +149,13 @@ public class ApplicationDbContext : DbContext
             entity.Property(e => e.RateUnit).HasMaxLength(50).HasDefaultValue("ha");
             entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
 
+            entity.Property(e => e.MetadataExterna).HasColumnType("jsonb");
+
             entity.HasOne(e => e.WorkOrder)
                 .WithMany(w => w.Labors)
                 .HasForeignKey(e => e.WorkOrderId)
-                .OnDelete(DeleteBehavior.Cascade);
+                .IsRequired(false)
+                .OnDelete(DeleteBehavior.SetNull);
 
             entity.HasOne(e => e.Lot)
                 .WithMany()
@@ -408,10 +411,12 @@ public class Labor : ITenantEntity
     public decimal Rate { get; set; }
     public string RateUnit { get; set; } = "ha";
     public DateTime CreatedAt { get; set; }
+    public string? Notes { get; set; }
     public string? PrescriptionMapUrl { get; set; }
     public string? MachineryUsedId { get; set; }
     public string? WeatherLogJson { get; set; }
     public string? EvidencePhotosJson { get; set; }
+    public string? MetadataExterna { get; set; }
     public WorkOrder? WorkOrder { get; set; }
     public Lot? Lot { get; set; }
     public ICollection<LaborSupply> Supplies { get; set; } = new List<LaborSupply>();

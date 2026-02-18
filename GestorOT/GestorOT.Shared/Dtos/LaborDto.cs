@@ -15,10 +15,12 @@ public record LaborDto(
     List<LaborSupplyDto>? Supplies = null,
     string? PrescriptionMapUrl = null,
     string? MachineryUsedId = null,
-    string? WeatherLogJson = null
+    string? WeatherLogJson = null,
+    string? Notes = null,
+    string? FieldName = null
 )
 {
-    public LaborDto() : this(Guid.Empty, null, Guid.Empty, string.Empty, "Planned", null, 0, DateTime.MinValue, 0, "ha", null, null, null, null, null) { }
+    public LaborDto() : this(Guid.Empty, null, Guid.Empty, string.Empty, "Planned", null, 0, DateTime.MinValue, 0, "ha", null, null, null, null, null, null, null) { }
 }
 
 public record LaborSupplyDto(

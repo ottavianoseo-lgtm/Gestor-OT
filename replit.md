@@ -216,3 +216,11 @@ cd GestorOT/GestorOT && ASPNETCORE_ENVIRONMENT=Development dotnet run --urls "ht
 - 2026-02-12: IsoXmlExporterService: exportación ISO 11783 TaskData.xml en ZIP
 - 2026-02-12: API endpoints: validate-stock, reserve-stock, export-isoxml en WorkOrdersController
 - 2026-02-12: Link "Work Planner" agregado al menú lateral en sección Principal
+- 2026-02-18: Loose Labors: Labor.WorkOrderId nullable (Guid?) para labores sin OT
+- 2026-02-18: Loose Labors API: GET /unassigned, GET /unassigned/count, PATCH /assign-bulk, PATCH /{id}/unassign
+- 2026-02-18: Labor entity: Notes field y MetadataExterna JSONB column
+- 2026-02-18: FK constraint cambiado a ON DELETE SET NULL (orphan labors on WorkOrder delete)
+- 2026-02-18: LaboresSueltas.razor: página completa con pool de labores sin asignar
+- 2026-02-18: QuickLaborCreator integrado en LaboresSueltas (modal de creación rápida)
+- 2026-02-18: Batch assign: selección múltiple → asignar a OT existente o crear nueva OT
+- 2026-02-18: Sidebar: badge con contador de labores sin asignar en menú "Labores Sueltas"
