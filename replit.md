@@ -34,7 +34,7 @@ Do not make changes to files related to authentication without explicit approval
 - **Work Order Workflow**: Status progression (Pending → InProgress → Completed) with quick-action buttons and KPI tracking. Supports "Loose Labors" (labors without assigned Work Orders) and batch assignment.
 - **Work Planner**: CSS Grid calendar (month/week views) displaying "Labores" (tasks) with color-coded statuses and types. Includes quick labor creation and detailed cards.
 - **Multi-tenancy**: Implemented via PostgreSQL Row-Level Security (RLS) and `TenantSessionInterceptor` to inject `app.current_tenant`.
-- **Campaigns Module**: Manages campaigns with associated fields, status workflows, and field allocation. Uses `CampaignSelector` and `CampaignHttpHandler`.
+- **Campaigns Module**: Manages campaigns with associated fields and plots (lots), status workflows, field allocation, and crop rotation tracking. Uses `CampaignSelector`, `CampaignHttpHandler`, `CampaignPlot` for lot-level linkage with crops, and `PlotHistoryDto` for rotation timeline.
 - **Admin Panel**: User and role management (RBAC), Tank Mix Rules for agrochemical compatibility, and Audit Log for tracking changes. Uses QuickGrid and Paginator.
 - **Agronomic Validation**: `AgronomicValidationService` for validating tank mixes with alerts.
 - **ISO XML Export**: `IsoXmlExporterService` for exporting ISO 11783 TaskData.xml in ZIP format.
@@ -52,13 +52,18 @@ Do not make changes to files related to authentication without explicit approval
 - **Lots**: Lots with PostGIS geometry.
 - **WorkOrders**: Orders for agricultural tasks, linked to Lots.
 - **Inventories**: Inventory items with dual unit tracking.
-- **Labors**: Individual tasks, can be linked to WorkOrders or be "loose".
+- **Labors**: Individual tasks, can be linked to WorkOrders or be "loose". Optional CampaignPlotId FK for cross-campaign cost tracking.
+- **Crops**: Crop catalog (Name, Type) for rotation tracking.
+- **CampaignPlots**: Links campaigns to lots with crop, productive surface, and estimated dates. Unique constraint on (CampaignId, PlotId).
 
 ### API Endpoints
 - **Fields, Lots, Work Orders, Inventory**: Standard RESTful CRUD endpoints.
 - **Dashboard**: `GET /api/dashboard/stats`, `GET /api/dashboard/recent-orders`.
 - **Labors**: `GET /api/labors/calendar`, `POST validate-stock`, `POST reserve-stock`, `GET export-isoxml`.
 - **Unassigned Labors**: `GET /unassigned`, `GET /unassigned/count`, `PATCH /assign-bulk`, `PATCH /{id}/unassign`.
+- **Crops**: `GET /api/crops`, `POST /api/crops`, `PUT /api/crops/{id}`, `DELETE /api/crops/{id}`.
+- **Campaign Plots**: `GET /api/campaigns/{id}/plots`, `POST /api/campaigns/{id}/plots` (batch save).
+- **Lot History**: `GET /api/lots/{id}/history` (rotation timeline across campaigns).
 
 ## External Dependencies
 

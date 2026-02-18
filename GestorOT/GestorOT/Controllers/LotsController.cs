@@ -156,6 +156,34 @@ public class LotsController : ControllerBase
         return NoContent();
     }
 
+    [HttpGet("{id:guid}/history")]
+    public async Task<ActionResult<List<PlotHistoryDto>>> GetPlotHistory(Guid id)
+    {
+        var exists = await _context.Lots.AnyAsync(l => l.Id == id);
+        if (!exists)
+            return NotFound();
+
+        var history = await _context.CampaignPlots
+            .AsNoTracking()
+            .Include(cp => cp.Campaign)
+            .Include(cp => cp.Crop)
+            .Where(cp => cp.PlotId == id)
+            .OrderByDescending(cp => cp.Campaign!.StartDate)
+            .Select(cp => new PlotHistoryDto(
+                cp.CampaignId,
+                cp.Campaign != null ? cp.Campaign.Name : "",
+                cp.Campaign != null ? cp.Campaign.StartDate : DateOnly.MinValue,
+                cp.Campaign != null ? cp.Campaign.EndDate : null,
+                cp.Crop != null ? cp.Crop.Name : null,
+                cp.ProductiveSurfaceHa,
+                cp.EstimatedStartDate,
+                cp.EstimatedEndDate
+            ))
+            .ToListAsync();
+
+        return history;
+    }
+
     private static GeoJsonGeometry ParseGeometry(Polygon polygon)
     {
         var coords = polygon.Coordinates;

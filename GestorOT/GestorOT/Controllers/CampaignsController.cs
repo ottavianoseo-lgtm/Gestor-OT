@@ -245,4 +245,96 @@ public class CampaignsController : ControllerBase
         await _context.SaveChangesAsync();
         return NoContent();
     }
+
+    [HttpGet("{id:guid}/plots")]
+    public async Task<ActionResult<List<CampaignPlotDto>>> GetCampaignPlots(Guid id)
+    {
+        var exists = await _context.Campaigns.AnyAsync(c => c.Id == id);
+        if (!exists)
+            return NotFound();
+
+        var plots = await _context.CampaignPlots
+            .AsNoTracking()
+            .Include(cp => cp.Plot)
+                .ThenInclude(p => p!.Field)
+            .Include(cp => cp.Crop)
+            .Where(cp => cp.CampaignId == id)
+            .OrderBy(cp => cp.Plot != null && cp.Plot.Field != null ? cp.Plot.Field.Name : "")
+            .ThenBy(cp => cp.Plot != null ? cp.Plot.Name : "")
+            .Select(cp => new CampaignPlotDto(
+                cp.Id,
+                cp.CampaignId,
+                cp.PlotId,
+                cp.Plot != null ? cp.Plot.Name : null,
+                cp.Plot != null && cp.Plot.Field != null ? cp.Plot.Field.Name : null,
+                cp.CropId,
+                cp.Crop != null ? cp.Crop.Name : null,
+                cp.ProductiveSurfaceHa,
+                null,
+                cp.EstimatedStartDate,
+                cp.EstimatedEndDate
+            ))
+            .ToListAsync();
+
+        return plots;
+    }
+
+    [HttpPost("{id:guid}/plots")]
+    public async Task<IActionResult> SaveCampaignPlots(Guid id, List<CampaignPlotSaveDto> dtos)
+    {
+        var campaign = await _context.Campaigns.FindAsync(id);
+        if (campaign == null)
+            return NotFound();
+
+        if (campaign.Status == "Locked")
+            return BadRequest("No se pueden modificar lotes en una campaña cerrada.");
+
+        var existing = await _context.CampaignPlots
+            .Where(cp => cp.CampaignId == id)
+            .ToListAsync();
+
+        var incomingPlotIds = dtos.Select(d => d.PlotId).ToHashSet();
+        var toRemove = existing.Where(e => !incomingPlotIds.Contains(e.PlotId)).ToList();
+        _context.CampaignPlots.RemoveRange(toRemove);
+
+        foreach (var dto in dtos)
+        {
+            var existingPlot = existing.FirstOrDefault(e => e.PlotId == dto.PlotId);
+            if (existingPlot != null)
+            {
+                existingPlot.CropId = dto.CropId;
+                existingPlot.ProductiveSurfaceHa = dto.ProductiveSurfaceHa;
+                existingPlot.EstimatedStartDate = dto.EstimatedStartDate;
+                existingPlot.EstimatedEndDate = dto.EstimatedEndDate;
+            }
+            else
+            {
+                _context.CampaignPlots.Add(new CampaignPlot
+                {
+                    Id = Guid.NewGuid(),
+                    CampaignId = id,
+                    PlotId = dto.PlotId,
+                    CropId = dto.CropId,
+                    ProductiveSurfaceHa = dto.ProductiveSurfaceHa,
+                    EstimatedStartDate = dto.EstimatedStartDate,
+                    EstimatedEndDate = dto.EstimatedEndDate
+                });
+            }
+        }
+
+        await _context.SaveChangesAsync();
+        return NoContent();
+    }
+
+    [HttpGet("{id:guid}/fields/{fieldId:guid}/surface")]
+    public async Task<ActionResult<decimal>> GetFieldSurface(Guid id, Guid fieldId)
+    {
+        var total = await _context.CampaignPlots
+            .AsNoTracking()
+            .Include(cp => cp.Plot)
+            .Where(cp => cp.CampaignId == id && cp.Plot != null && cp.Plot.FieldId == fieldId)
+            .SumAsync(cp => cp.ProductiveSurfaceHa);
+
+        return total;
+    }
 }

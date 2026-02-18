@@ -71,7 +71,7 @@
                 @(context.Fields?.Count ?? 0) campos
             </Tag>
         </Column>
-        <ActionColumn Title="Acciones" Width="240">
+        <ActionColumn Title="Acciones" Width="290">
             <Space>
                 @if (context.Status == CampaignStatus.Planning)
                 {
@@ -104,6 +104,14 @@
                         <Button Size="@ButtonSize.Small" OnClick="() => OpenFieldsModal(context)"
                                 Style="border-radius: 6px; border-color: #9B59B640; color: #9B59B6;">
                             <Icon Type="cluster" Theme="IconThemeType.Outline" />
+                        </Button>
+                    </Tooltip>
+                </SpaceItem>
+                <SpaceItem>
+                    <Tooltip Title="@("Gestionar lotes")">
+                        <Button Size="@ButtonSize.Small" OnClick="() => OpenPlotsModal(context)"
+                                Style="border-radius: 6px; border-color: #1ABC9C40; color: #1ABC9C;">
+                            <Icon Type="deployment-unit" Theme="IconThemeType.Outline" />
                         </Button>
                     </Tooltip>
                 </SpaceItem>
@@ -264,6 +272,143 @@
     }
 </Modal>
 
+<!-- Campaign Plots Management Modal -->
+<Modal Title="@($"Lotes de: {_plotsModalCampaign?.Name}")"
+       Visible="_plotsModalVisible"
+       OnCancel="ClosePlotsModal"
+       Footer="null"
+       Width="1100">
+    @if (_plotsModalLoading)
+    {
+        <div style="text-align: center; padding: 40px;">
+            <Spin />
+        </div>
+    }
+    else
+    {
+        @if (_plotsModalCampaign?.Status == CampaignStatus.Locked)
+        {
+            <Alert Type="@AlertType.Warning" Message="Esta campaña está bloqueada. No se pueden modificar los lotes." ShowIcon="true" Style="margin-bottom: 16px;" />
+        }
+
+        <div style="margin-bottom: 16px;">
+            <h4 style="color: rgba(255,255,255,0.7); margin: 0 0 12px;">Lotes asignados</h4>
+
+            @if (_plotRows.Count > 0)
+            {
+                <div style="overflow-x: auto;">
+                    <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+                        <thead>
+                            <tr style="border-bottom: 1px solid rgba(255,255,255,0.1);">
+                                <th style="padding: 8px; text-align: left; color: rgba(255,255,255,0.5); font-weight: 500;">Campo</th>
+                                <th style="padding: 8px; text-align: left; color: rgba(255,255,255,0.5); font-weight: 500;">Lote</th>
+                                <th style="padding: 8px; text-align: right; color: rgba(255,255,255,0.5); font-weight: 500;">Sup. Catastral (ha)</th>
+                                <th style="padding: 8px; text-align: right; color: rgba(255,255,255,0.5); font-weight: 500;">Sup. Productiva (ha)</th>
+                                <th style="padding: 8px; text-align: left; color: rgba(255,255,255,0.5); font-weight: 500;">Cultivo</th>
+                                <th style="padding: 8px; text-align: left; color: rgba(255,255,255,0.5); font-weight: 500;">Inicio Est.</th>
+                                <th style="padding: 8px; text-align: left; color: rgba(255,255,255,0.5); font-weight: 500;">Fin Est.</th>
+                                <th style="padding: 8px; width: 50px;"></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var row in _plotRows)
+                            {
+                                <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+                                    <td style="padding: 6px 8px; color: rgba(255,255,255,0.7);">@(row.FieldName ?? "—")</td>
+                                    <td style="padding: 6px 8px; font-weight: 600;">@(row.PlotName ?? "—")</td>
+                                    <td style="padding: 6px 8px; text-align: right; color: rgba(255,255,255,0.5);">@(row.CatastralSurfaceHa?.ToString("N2") ?? "—")</td>
+                                    <td style="padding: 6px 8px;">
+                                        <AntDesign.InputNumber TValue="decimal" @bind-Value="row.ProductiveSurfaceHa" Min="0m" Step="0.5m"
+                                                               Style="width: 110px;"
+                                                               Disabled="@(_plotsModalCampaign?.Status == CampaignStatus.Locked)" />
+                                    </td>
+                                    <td style="padding: 6px 8px;">
+                                        <Select TItemValue="Guid?" TItem="string" @bind-Value="row.CropId" Style="width: 140px;"
+                                                AllowClear Placeholder="Sin cultivo"
+                                                Disabled="@(_plotsModalCampaign?.Status == CampaignStatus.Locked)">
+                                            @foreach (var crop in _crops)
+                                            {
+                                                <SelectOption TItemValue="Guid?" TItem="string" Value="@((Guid?)crop.Id)" Label="@crop.Name" />
+                                            }
+                                        </Select>
+                                    </td>
+                                    <td style="padding: 6px 8px;">
+                                        <DatePicker @bind-Value="row.EstimatedStartDate" Style="width: 130px;" Format="dd/MM/yyyy"
+                                                    Disabled="@(_plotsModalCampaign?.Status == CampaignStatus.Locked)" />
+                                    </td>
+                                    <td style="padding: 6px 8px;">
+                                        <DatePicker @bind-Value="row.EstimatedEndDate" Style="width: 130px;" Format="dd/MM/yyyy"
+                                                    Disabled="@(_plotsModalCampaign?.Status == CampaignStatus.Locked)" />
+                                    </td>
+                                    <td style="padding: 6px 8px;">
+                                        @if (_plotsModalCampaign?.Status != CampaignStatus.Locked)
+                                        {
+                                            <Popconfirm Title="¿Quitar este lote?"
+                                                        OnConfirm="() => RemovePlotRow(row)"
+                                                        OkText="Quitar" CancelText="Cancelar">
+                                                <Button Danger Size="@ButtonSize.Small" Style="border-radius: 6px;">
+                                                    <Icon Type="close" Theme="IconThemeType.Outline" />
+                                                </Button>
+                                            </Popconfirm>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+            else
+            {
+                <div style="text-align: center; padding: 24px; color: rgba(255,255,255,0.35);">
+                    <Icon Type="inbox" Theme="IconThemeType.Outline" Style="font-size: 32px; display: block; margin-bottom: 8px;" />
+                    No hay lotes asignados a esta campaña
+                </div>
+            }
+        </div>
+
+        @if (_plotsModalCampaign?.Status != CampaignStatus.Locked)
+        {
+            <div style="border-top: 1px solid rgba(255,255,255,0.08); padding-top: 16px; margin-bottom: 16px;">
+                <h4 style="color: rgba(255,255,255,0.7); margin: 0 0 12px;">Agregar Lote</h4>
+                <AntDesign.Row Gutter="12">
+                    <AntDesign.Col Span="16">
+                        <Select @bind-Value="_addPlotId" Placeholder="Seleccionar lote" Style="width: 100%;"
+                                TItemValue="Guid" TItem="string"
+                                AllowClear
+                                EnableSearch>
+                            @foreach (var lot in _availableLots)
+                            {
+                                <SelectOption TItemValue="Guid" TItem="string" Value="lot.Id" Label="@($"{lot.FieldName} → {lot.Name}")" />
+                            }
+                        </Select>
+                    </AntDesign.Col>
+                    <AntDesign.Col Span="8">
+                        <Button Type="@ButtonType.Primary" OnClick="AddPlotRow"
+                                Style="background: #1ABC9C; border-color: #1ABC9C; border-radius: 8px; width: 100%;">
+                            <Icon Type="plus" Theme="IconThemeType.Outline" /> Agregar
+                        </Button>
+                    </AntDesign.Col>
+                </AntDesign.Row>
+            </div>
+
+            <div style="border-top: 1px solid rgba(255,255,255,0.08); padding-top: 16px; text-align: right;">
+                <Space>
+                    <SpaceItem>
+                        <Button OnClick="ClosePlotsModal" Style="border-radius: 8px;">Cancelar</Button>
+                    </SpaceItem>
+                    <SpaceItem>
+                        <Button Type="@ButtonType.Primary" OnClick="SavePlots" Loading="_savingPlots"
+                                Style="background: #E74C3C; border-color: #E74C3C; border-radius: 8px; font-weight: 600;">
+                            <Icon Type="save" Theme="IconThemeType.Outline" /> Guardar
+                        </Button>
+                    </SpaceItem>
+                </Space>
+            </div>
+        }
+    }
+</Modal>
+
 @code {
     private List<CampaignDto> _campaigns = new();
     private List<FieldDto> _allFields = new();
@@ -285,6 +430,34 @@
     private decimal _addAllocatedHa;
     private decimal _addTargetYield;
     private bool _addingField;
+
+    private bool _plotsModalVisible;
+    private bool _plotsModalLoading;
+    private bool _savingPlots;
+    private CampaignDto? _plotsModalCampaign;
+    private List<PlotAssignmentRow> _plotRows = new();
+    private List<CropDto> _crops = new();
+    private List<LotInfo> _availableLots = new();
+    private Guid _addPlotId;
+
+    public class PlotAssignmentRow
+    {
+        public Guid PlotId { get; set; }
+        public string? PlotName { get; set; }
+        public string? FieldName { get; set; }
+        public decimal? CatastralSurfaceHa { get; set; }
+        public decimal ProductiveSurfaceHa { get; set; }
+        public Guid? CropId { get; set; }
+        public DateTime? EstimatedStartDate { get; set; }
+        public DateTime? EstimatedEndDate { get; set; }
+    }
+
+    public class LotInfo
+    {
+        public Guid Id { get; set; }
+        public string Name { get; set; } = string.Empty;
+        public string? FieldName { get; set; }
+    }
 
     public class CampaignFormModel
     {
@@ -572,6 +745,148 @@
         catch (Exception ex)
         {
             Message.Error($"Error: {ex.Message}");
+        }
+    }
+
+    private async Task OpenPlotsModal(CampaignDto campaign)
+    {
+        _plotsModalCampaign = campaign;
+        _plotsModalVisible = true;
+        _plotsModalLoading = true;
+        _addPlotId = Guid.Empty;
+        _plotRows = new();
+        _crops = new();
+
+        try
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+            var plotsTask = Http.GetFromJsonAsync($"api/campaigns/{campaign.Id}/plots",
+                AppJsonSerializerContext.Default.ListCampaignPlotDto, cts.Token);
+            var cropsTask = Http.GetFromJsonAsync("api/crops",
+                AppJsonSerializerContext.Default.ListCropDto, cts.Token);
+
+            await Task.WhenAll(plotsTask, cropsTask);
+
+            var plots = plotsTask.Result ?? new();
+            _crops = cropsTask.Result ?? new();
+
+            _plotRows = plots.Select(p => new PlotAssignmentRow
+            {
+                PlotId = p.PlotId,
+                PlotName = p.PlotName,
+                FieldName = p.FieldName,
+                CatastralSurfaceHa = p.CatastralSurfaceHa,
+                ProductiveSurfaceHa = p.ProductiveSurfaceHa,
+                CropId = p.CropId,
+                EstimatedStartDate = p.EstimatedStartDate?.ToDateTime(TimeOnly.MinValue),
+                EstimatedEndDate = p.EstimatedEndDate?.ToDateTime(TimeOnly.MinValue)
+            }).ToList();
+
+            RefreshAvailableLots();
+        }
+        catch (Exception ex)
+        {
+            Message.Error($"Error al cargar lotes: {ex.Message}");
+        }
+        finally
+        {
+            _plotsModalLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private void ClosePlotsModal()
+    {
+        _plotsModalVisible = false;
+        _plotsModalCampaign = null;
+    }
+
+    private void RefreshAvailableLots()
+    {
+        var usedPlotIds = _plotRows.Select(r => r.PlotId).ToHashSet();
+        _availableLots = _allFields
+            .SelectMany(f => f.Lots.Select(l => new LotInfo
+            {
+                Id = l.Id,
+                Name = l.Name,
+                FieldName = f.Name
+            }))
+            .Where(l => !usedPlotIds.Contains(l.Id))
+            .OrderBy(l => l.FieldName).ThenBy(l => l.Name)
+            .ToList();
+    }
+
+    private void AddPlotRow()
+    {
+        if (_addPlotId == Guid.Empty)
+        {
+            Message.Warning("Seleccioná un lote para agregar.");
+            return;
+        }
+
+        var lotInfo = _availableLots.FirstOrDefault(l => l.Id == _addPlotId);
+        if (lotInfo == null) return;
+
+        _plotRows.Add(new PlotAssignmentRow
+        {
+            PlotId = lotInfo.Id,
+            PlotName = lotInfo.Name,
+            FieldName = lotInfo.FieldName,
+            CatastralSurfaceHa = null,
+            ProductiveSurfaceHa = 0,
+            CropId = null,
+            EstimatedStartDate = null,
+            EstimatedEndDate = null
+        });
+
+        _addPlotId = Guid.Empty;
+        RefreshAvailableLots();
+    }
+
+    private void RemovePlotRow(PlotAssignmentRow row)
+    {
+        _plotRows.Remove(row);
+        RefreshAvailableLots();
+    }
+
+    private async Task SavePlots()
+    {
+        if (_plotsModalCampaign == null) return;
+
+        _savingPlots = true;
+        try
+        {
+            var saveDtos = _plotRows.Select(r => new CampaignPlotSaveDto(
+                r.PlotId,
+                r.CropId,
+                r.ProductiveSurfaceHa,
+                r.EstimatedStartDate != null ? DateOnly.FromDateTime(r.EstimatedStartDate.Value) : null,
+                r.EstimatedEndDate != null ? DateOnly.FromDateTime(r.EstimatedEndDate.Value) : null
+            )).ToList();
+
+            var response = await Http.PostAsJsonAsync(
+                $"api/campaigns/{_plotsModalCampaign.Id}/plots",
+                saveDtos, AppJsonSerializerContext.Default.ListCampaignPlotSaveDto);
+
+            if (response.IsSuccessStatusCode)
+            {
+                Message.Success("Lotes guardados correctamente.");
+                _plotsModalVisible = false;
+                _plotsModalCampaign = null;
+            }
+            else
+            {
+                var body = await response.Content.ReadAsStringAsync();
+                Message.Error($"Error: {body}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Message.Error($"Error: {ex.Message}");
+        }
+        finally
+        {
+            _savingPlots = false;
         }
     }
 
