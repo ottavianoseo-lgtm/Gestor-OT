@@ -1,0 +1,84 @@
+Especificación Técnica: Optimización de Rendimiento con Native AOT (.NET 10)
+Objetivo: Implementar la compilación anticipada (Ahead-of-Time) y el recorte de código (Trimming) agresivo para reducir el tamaño de descarga de la aplicación y maximizar el rendimiento de arranque en dispositivos móviles de gama media utilizados en campo.
+Contexto: Aplicación GIS Agrícola (Módulo de Labores). Stack: .NET 10, Blazor WebAssembly.
+
+--------------------------------------------------------------------------------
+1. Configuración del Proyecto (.csproj)
+Se deben modificar las propiedades del proyecto para activar el toolchain de AOT y las optimizaciones específicas de WebAssembly en .NET 10.
+Instrucción para el Desarrollador: Actualizar el archivo .csproj del proyecto cliente (Client) con el siguiente bloque de configuración. Es crítico incluir WasmStripILAfterAOT para eliminar el código intermedio redundante, lo cual es una mejora clave de .NET 10 para reducir el peso de los binarios.
+<PropertyGroup>
+    <!-- Framework Objetivo -->
+    <TargetFramework>net10.0</TargetFramework>
+    
+    <!-- 1. Habilitar Compilación AOT (Ahead-of-Time) -->
+    <!-- Convierte el IL a WebAssembly nativo durante la publicación. -->
+    <RunAOTCompilation>true</RunAOTCompilation>
+    
+    <!-- 2. Optimización de Tamaño (Novedad .NET 10) -->
+    <!-- Elimina el código IL intermedio después de compilar a AOT para reducir el peso del DLL. -->
+    <WasmStripILAfterAOT>true</WasmStripILAfterAOT>
+    
+    <!-- 3. Aceleración Matemática (GIS) -->
+    <!-- Habilita instrucciones vectoriales (SIMD) para cálculos de coordenadas rápidos. -->
+    <WasmEnableSIMD>true</WasmEnableSIMD>
+    
+    <!-- 4. Trimming (Recorte de código no usado) -->
+    <PublishTrimmed>true</PublishTrimmed>
+    <TrimMode>link</TrimMode>
+    
+    <!-- Evitar errores de globalización en móviles reduciendo datos culturales si no son estrictamente necesarios -->
+    <InvariantGlobalization>false</InvariantGlobalization>
+</PropertyGroup>
+
+--------------------------------------------------------------------------------
+2. Serialización JSON Compatible con AOT (Source Generators)
+La compilación AOT elimina los metadatos necesarios para la reflexión (Reflection). El serializador JSON por defecto (System.Text.Json) fallará o será lento si no se utilizan Generadores de Código Fuente.
+Tarea: Crear un JsonSerializerContext para los DTOs del módulo de Labores.
+Archivo: AppJsonSerializerContext.cs
+using System.Text.Json.Serialization;
+using MiProyecto.Shared.DTOs; // Tus modelos
+
+namespace MiProyecto.Client;
+
+// Registra aquí TODOS los modelos que se envían/reciben de la API
+[JsonSerializable(typeof(List<LaborDTO>))]
+[JsonSerializable(typeof(LaborDTO))]
+[JsonSerializable(typeof(NuevaLaborRequest))]
+[JsonSerializable(typeof(ErrorResponse))]
+// Modo optimizado para rendimiento y tamaño
+[JsonSourceGenerationOptions(GenerationMode = JsonSourceGenerationMode.Serialization)]
+public partial class AppJsonSerializerContext : JsonSerializerContext
+{
+}
+Configuración en Program.cs (Cliente): Reemplazar la inyección del HttpClient estándar para usar este contexto explícito.
+builder.Services.AddHttpClient("API", client => client.BaseAddress = new Uri(builder.HostEnvironment.BaseAddress));
+
+// Configurar opciones globales de JSON para usar el generador
+builder.Services.Configure<JsonSerializerOptions>(options =>
+{
+    options.TypeInfoResolverChain.Insert(0, AppJsonSerializerContext.Default);
+});
+
+--------------------------------------------------------------------------------
+3. Requisitos del Entorno de Construcción
+Para que la compilación AOT funcione en el pipeline de CI/CD o en la máquina local, se requieren herramientas específicas de WebAssembly.
+Instrucción de Instalación: Ejecutar el siguiente comando en la terminal para instalar las herramientas de compilación AOT de .NET:
+dotnet workload install wasm-tools
+
+--------------------------------------------------------------------------------
+4. Manejo de Librerías de Terceros (Trimming)
+Algunas librerías antiguas pueden romperse con AOT si usan reflexión intensiva.
+Estrategia de Mitigación: Si alguna librería GIS (ej. una versión vieja de lector de Shapefiles) falla al publicar:
+1. Verificar si tiene una versión compatible con net8.0 o superior (generalmente ya son trim-compatible).
+2. Si no, excluirla del proceso de Trimming en el .csproj:
+<ItemGroup>
+    <TrimmerRootAssembly Include="NombreDeLaLibreriaProblematica" />
+</ItemGroup>
+
+--------------------------------------------------------------------------------
+5. Validación de Éxito (KPIs de la Mejora)
+Una vez implementado, verificar los siguientes indicadores en la versión de producción (dotnet publish -c Release):
+1. Tamaño de Descarga: La carpeta _framework comprimida (Brotli) debe ser significativamente menor gracias a WasmStripILAfterAOT.
+2. Tiempo de Arranque (First Contentful Paint): Debe ser casi instantáneo en móviles, eliminando la pantalla de "Cargando..." prolongada típica de Blazor.
+3. Rendimiento GIS: Al dibujar polígonos o calcular áreas en el mapa, la interfaz no debe congelarse (gracias a WasmEnableSIMD).
+Esta especificación prepara tu sistema ("Módulo de Labores") para ser robusto, rápido y utilizable en campo desde el día 1, dejando la base lista para futuras integraciones complejas.

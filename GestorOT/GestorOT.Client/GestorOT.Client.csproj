@@ -7,6 +7,15 @@
     <NoDefaultLaunchSettingsFile>true</NoDefaultLaunchSettingsFile>
     <StaticWebAssetProjectMode>Default</StaticWebAssetProjectMode>
     <BlazorDisableThrowNavigationException>true</BlazorDisableThrowNavigationException>
+    <InvariantGlobalization>false</InvariantGlobalization>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <RunAOTCompilation>true</RunAOTCompilation>
+    <WasmStripILAfterAOT>true</WasmStripILAfterAOT>
+    <WasmEnableSIMD>true</WasmEnableSIMD>
+    <PublishTrimmed>true</PublishTrimmed>
+    <TrimMode>link</TrimMode>
   </PropertyGroup>
 
   <ItemGroup>
@@ -17,6 +26,13 @@
 
   <ItemGroup>
     <ProjectReference Include="..\GestorOT.Shared\GestorOT.Shared.csproj" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(Configuration)' == 'Release'">
+    <TrimmerRootAssembly Include="AntDesign" />
+    <TrimmerRootAssembly Include="Microsoft.AspNetCore.Components.QuickGrid" />
+    <TrimmerRootAssembly Include="NetTopologySuite" />
+    <TrimmerRootAssembly Include="NetTopologySuite.IO.GeoJSON" />
   </ItemGroup>
 
 </Project>

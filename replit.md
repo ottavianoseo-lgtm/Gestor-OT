@@ -12,12 +12,23 @@ GestorOT es un sistema de gestión de órdenes de trabajo agrícola con capacida
 
 ### Key Technologies
 - .NET 10.0
-- Blazor WebAssembly (Interactive)
+- Blazor WebAssembly (Interactive) con Native AOT (Release)
 - AntDesign Blazor UI
 - Entity Framework Core 10 con Npgsql
 - NetTopologySuite para geometría GIS
 - Supabase/PostgreSQL con PostGIS
 - Leaflet.js + Leaflet.Draw para editor GIS
+
+## Native AOT & Performance (Release Only)
+- RunAOTCompilation: Compila IL a WebAssembly nativo (solo Release)
+- WasmStripILAfterAOT: Elimina IL redundante post-AOT para reducir tamaño
+- WasmEnableSIMD: Habilita instrucciones vectoriales para cálculos GIS rápidos
+- PublishTrimmed + TrimMode=link: Recorta código no usado
+- TrimmerRootAssembly: AntDesign, QuickGrid, NetTopologySuite excluidos del trimming
+- AppJsonSerializerContext: Source-generated JSON (GenerationMode.Default) para compatibilidad AOT
+- wasm-tools workload requerido: `dotnet workload install wasm-tools`
+- Publicar con AOT: `dotnet publish -c Release`
+- En desarrollo (Debug): AOT desactivado, compilación rápida normal
 
 ## Database Schema
 - **Fields** - Campos agrícolas (Id, Name, TotalArea, CreatedAt)
@@ -224,3 +235,6 @@ cd GestorOT/GestorOT && ASPNETCORE_ENVIRONMENT=Development dotnet run --urls "ht
 - 2026-02-18: QuickLaborCreator integrado en LaboresSueltas (modal de creación rápida)
 - 2026-02-18: Batch assign: selección múltiple → asignar a OT existente o crear nueva OT
 - 2026-02-18: Sidebar: badge con contador de labores sin asignar en menú "Labores Sueltas"
+- 2026-02-18: Native AOT: RunAOTCompilation, WasmStripILAfterAOT, WasmEnableSIMD (Release only)
+- 2026-02-18: Trimming: PublishTrimmed + TrimMode=link con TrimmerRootAssembly para libs de terceros
+- 2026-02-18: AppJsonSerializerContext: GenerationMode.Default explícito para compatibilidad AOT
