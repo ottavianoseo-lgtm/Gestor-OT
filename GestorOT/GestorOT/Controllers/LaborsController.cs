@@ -58,6 +58,7 @@ public class LaborsController : ControllerBase
             LaborType = dto.LaborType,
             Status = "Planned",
             ExecutionDate = dto.ExecutionDate,
+            PlannedDate = dto.PlannedDate,
             Hectares = dto.Hectares,
             Rate = dto.Rate,
             RateUnit = dto.RateUnit ?? "ha",
@@ -112,6 +113,7 @@ public class LaborsController : ControllerBase
         labor.LotId = dto.LotId;
         labor.LaborType = dto.LaborType;
         labor.ExecutionDate = dto.ExecutionDate;
+        labor.PlannedDate = dto.PlannedDate;
         labor.Hectares = dto.Hectares;
         labor.Rate = dto.Rate;
         labor.RateUnit = dto.RateUnit ?? "ha";
@@ -258,6 +260,35 @@ public class LaborsController : ControllerBase
         return NoContent();
     }
 
+    [HttpGet("calendar")]
+    public async Task<ActionResult<List<LaborCalendarDto>>> GetCalendarLabors(
+        [FromQuery] DateTime start, [FromQuery] DateTime end)
+    {
+        var labors = await _context.Labors
+            .AsNoTracking()
+            .Include(l => l.Lot)
+            .Include(l => l.WorkOrder)
+            .Where(l => (l.PlannedDate != null && l.PlannedDate >= start && l.PlannedDate <= end)
+                     || (l.PlannedDate == null && l.ExecutionDate != null && l.ExecutionDate >= start && l.ExecutionDate <= end)
+                     || (l.PlannedDate == null && l.ExecutionDate == null && l.CreatedAt >= start && l.CreatedAt <= end))
+            .OrderBy(l => l.PlannedDate ?? l.ExecutionDate ?? l.CreatedAt)
+            .Select(l => new LaborCalendarDto(
+                l.Id,
+                $"{l.LaborType} - {(l.Lot != null ? l.Lot.Name : "Sin lote")}",
+                l.PlannedDate ?? l.ExecutionDate ?? l.CreatedAt,
+                l.Status,
+                l.WorkOrderId == null ? "#FFA500" : "#4CAF50",
+                l.WorkOrderId != null,
+                l.LaborType,
+                l.Hectares,
+                l.Lot != null ? l.Lot.Name : null,
+                l.WorkOrder != null ? l.WorkOrder.Description : null
+            ))
+            .ToListAsync();
+
+        return labors;
+    }
+
     [HttpGet("unassigned")]
     public async Task<ActionResult<List<LaborDto>>> GetUnassignedLabors()
     {
@@ -342,7 +373,8 @@ public class LaborsController : ControllerBase
             labor.MachineryUsedId,
             labor.WeatherLogJson,
             labor.Notes,
-            labor.Lot?.Field?.Name
+            labor.Lot?.Field?.Name,
+            labor.PlannedDate
         );
     }
 }

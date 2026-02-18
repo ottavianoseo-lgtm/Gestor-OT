@@ -1,0 +1,162 @@
+Aquí tienes la especificación técnica para refactorizar el módulo hacia una visión centrada en Labores, aprovechando las capacidades de .NET 10.
+
+--------------------------------------------------------------------------------
+1. Backend: Endpoint de Consulta por Rango de Fechas
+Necesitamos un endpoint eficiente que alimente el calendario. En lugar de traer OTs, traeremos Labores filtradas por el rango de fechas visible en el calendario (mes actual).
+Optimización .NET 10: Usaremos una proyección (Select) directa a un record struct para minimizar la asignación de memoria y el tráfico de red.
+// LaborCalendarDTO.cs
+public record struct LaborCalendarDTO(
+    Guid Id, 
+    string Titulo,       // Ej: "Fertilización - Lote Norte"
+    DateTime Fecha, 
+    string Estado,       // "Pendiente", "Asignada", "Finalizada"
+    string ColorHex,     // Color visual para el calendario
+    bool TieneOT         // Para diferenciar visualmente
+);
+
+// LaboresEndpoints.cs
+app.MapGet("/api/planner/labores", async (DateTime inicio, DateTime fin, AppDbContext db) =>
+{
+    return await db.Labores
+        .AsNoTracking() // Vital para rendimiento en consultas de solo lectura
+        .Where(l => l.FechaPlanificada >= inicio && l.FechaPlanificada <= fin)
+        .Select(l => new LaborCalendarDTO(
+            l.Id,
+            $"{l.TipoLabor} - {l.Lote.Nombre}",
+            l.FechaPlanificada,
+            l.Estado,
+            l.OrdenTrabajoId == null ? "#FFA500" : "#4CAF50", // Naranja (Suelta) vs Verde (Con OT)
+            l.OrdenTrabajoId != null
+        ))
+        .ToListAsync();
+});
+
+--------------------------------------------------------------------------------
+2. Frontend: Componente WorkPlanner.razor Refactorizado
+El calendario ahora iterará sobre Labores en lugar de Ordenes.
+Mejora de UX solicitada:
+1. Visualización: Diferenciar labores "sueltas" (Naranja) de las que ya tienen OT (Verde).
+2. Creación: Al hacer clic en un día vacío o en el botón "+", se debe abrir el QuickTaskCreator con la fecha pre-seleccionada.
+@page "/work-planner"
+@inject HttpClient Http
+@inject NavigationManager Nav
+
+<div class="calendar-container">
+    <!-- Cabecera del Calendario (Mes/Año y Navegación) -->
+    <div class="calendar-header">
+        <button @onclick="PreviousMonth">◀</button>
+        <h3>@CurrentDate.ToString("MMMM yyyy")</h3>
+        <button @onclick="NextMonth">▶</button>
+    </div>
+
+    <!-- Grid del Calendario -->
+    <div class="calendar-grid">
+        @foreach (var day in DaysInMonth)
+        {
+            <div class="day-cell @(IsToday(day) ? "today" : "")" @onclick="() => OpenCreateModal(day)">
+                <span class="day-number">@day.Day</span>
+                
+                <!-- Botón flotante para crear labor este día específico -->
+                <button class="btn-add-labor-mini" @onclick:stopPropagation="true" @onclick="() => OpenCreateModal(day)">
+                    +
+                </button>
+
+                <!-- Listado de Labores del día -->
+                <div class="labores-list">
+                    @foreach (var labor in LaboresDelMes.Where(l => l.Fecha.Date == day.Date))
+                    {
+                        <div class="labor-chip" 
+                             style="background-color: @labor.ColorHex"
+                             @onclick:stopPropagation="true" 
+                             @onclick="() => EditLabor(labor.Id)">
+                            @labor.Titulo
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+    </div>
+</div>
+
+<!-- Modal o Componente de Creación Rápida -->
+@if (ShowCreateModal)
+{
+    <div class="modal-overlay">
+        <!-- Pasamos la fecha seleccionada al componente -->
+        <QuickTaskCreator FechaPreseleccionada="@SelectedDate" OnClose="CloseModal" />
+    </div>
+}
+
+@code {
+    // Nueva característica de .NET 10: Persistencia de estado automática
+    // Si el usuario navega fuera y vuelve, el mes y los datos se mantienen.
+    [PersistentState]
+    private DateTime CurrentDate { get; set; } = DateTime.Today;
+    
+    [PersistentState]
+    private List<LaborCalendarDTO> LaboresDelMes { get; set; } = new();
+
+    private bool ShowCreateModal = false;
+    private DateTime SelectedDate;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Solo cargamos si la lista está vacía (gracias a PersistentState)
+        if (!LaboresDelMes.Any())
+        {
+            await LoadData();
+        }
+    }
+
+    private async Task LoadData()
+    {
+        var inicio = new DateTime(CurrentDate.Year, CurrentDate.Month, 1);
+        var fin = inicio.AddMonths(1).AddDays(-1);
+        // Usamos el contexto JSON optimizado para AOT
+        LaboresDelMes = await Http.GetFromJsonAsync<List<LaborCalendarDTO>>(
+            $"api/planner/labores?inicio={inicio:yyyy-MM-dd}&fin={fin:yyyy-MM-dd}",
+            AppJsonSerializerContext.Default.ListLaborCalendarDTO
+        ) ?? new();
+    }
+
+    private void OpenCreateModal(DateTime date)
+    {
+        SelectedDate = date; // Capturamos la fecha del clic
+        ShowCreateModal = true;
+    }
+    
+    private async Task CloseModal(bool created)
+    {
+        ShowCreateModal = false;
+        if (created) await LoadData(); // Recargamos si se creó algo
+    }
+    
+    // ... Lógica auxiliar de calendario (NextMonth, PreviousMonth, DaysInMonth) ...
+}
+3. Adaptación del QuickTaskCreator.razor
+Para que la funcionalidad de "crear desde el día" funcione, este componente debe aceptar un parámetro.
+// QuickTaskCreator.razor
+@code {
+    [Parameter] 
+    public DateTime? FechaPreseleccionada { get; set; }
+
+    [Parameter]
+    public EventCallback<bool> OnClose { get; set; }
+
+    private LaborDTO NewLabor { get; set; } = new();
+
+    protected override void OnParametersSet()
+    {
+        if (FechaPreseleccionada.HasValue)
+        {
+            // Aquí está la magia: asignamos la fecha del clic al modelo
+            NewLabor.FechaPlanificada = FechaPreseleccionada.Value;
+        }
+    }
+    
+    // ... Resto del formulario ...
+}
+4. Beneficios de este cambio
+1. Visibilidad Real: El agrónomo ve la carga de trabajo real ("tengo 5 cosas que hacer el martes"), no solo los papeles administrativos (OTs).
+2. Flujo Natural: Ver un hueco en el calendario -> Clic -> Crear Labor. Es mucho más intuitivo que ir a un menú de "Nueva Labor" y seleccionar la fecha manualmente.
+3. Gestión de Pendientes: Las labores naranjas (sin OT) actuarán como alertas visuales en el calendario: "Atención, hay trabajo planeado para el viernes que aún no tiene orden de trabajo formalizada".

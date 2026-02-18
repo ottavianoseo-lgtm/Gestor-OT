@@ -64,6 +64,8 @@ namespace GestorOT.Shared;
 [JsonSerializable(typeof(List<CampaignFieldDto>))]
 [JsonSerializable(typeof(CampaignSummaryDto))]
 [JsonSerializable(typeof(List<CampaignSummaryDto>))]
+[JsonSerializable(typeof(LaborCalendarDto))]
+[JsonSerializable(typeof(List<LaborCalendarDto>))]
 [JsonSerializable(typeof(CampaignStatus))]
 [JsonSerializable(typeof(int))]
 [JsonSerializable(typeof(Dictionary<string, object>))]

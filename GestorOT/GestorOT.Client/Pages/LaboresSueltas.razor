@@ -388,11 +388,11 @@ else
                 _newLabor.LotId,
                 _newLabor.LaborType,
                 "Pending",
-                _newLabor.PlannedDate,
+                null,
                 _newLabor.Hectares > 0 ? _newLabor.Hectares : GetLotHectares(_newLabor.LotId),
                 DateTime.UtcNow,
                 0, "ha", null, null, null, null, null,
-                _newLabor.Notes
+                _newLabor.Notes, null, _newLabor.PlannedDate
             );
 
             var response = await Http.PostAsJsonAsync("api/labors", dto, AppJsonSerializerContext.Default.LaborDto);

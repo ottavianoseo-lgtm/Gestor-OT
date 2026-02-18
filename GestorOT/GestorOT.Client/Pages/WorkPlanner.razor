@@ -12,7 +12,7 @@
 <div class="page-header">
     <div>
         <h2 class="page-title">Work Planner</h2>
-        <span class="page-subtitle">Planificación visual de órdenes de trabajo</span>
+        <span class="page-subtitle">Planificacion visual de labores agricolas</span>
     </div>
     <div style="display: flex; gap: 8px; align-items: center;">
         <RadioGroup @bind-Value="_viewMode" ButtonStyle="RadioButtonStyle.Solid" Size="@InputSize.Small">
@@ -34,18 +34,23 @@
                 Style="border-radius: 6px; border-color: rgba(255,255,255,0.15); color: rgba(255,255,255,0.7);">
             <Icon Type="right" Theme="IconThemeType.Outline" />
         </Button>
-        <Select TItemValue="string" TItem="string" @bind-Value="_filterStatus" Placeholder="Filtrar estado" AllowClear
+        <Select TItemValue="string" TItem="string" @bind-Value="_filterType" Placeholder="Filtrar tipo" AllowClear
                 Style="width: 150px;" Size="@InputSize.Small">
             <SelectOption TItemValue="string" TItem="string" Value="@("all")" Label="Todos" />
-            <SelectOption TItemValue="string" TItem="string" Value="@("Draft")" Label="Borrador" />
-            <SelectOption TItemValue="string" TItem="string" Value="@("Pending")" Label="Pendiente" />
-            <SelectOption TItemValue="string" TItem="string" Value="@("Scheduled")" Label="Planificada" />
-            <SelectOption TItemValue="string" TItem="string" Value="@("InProgress")" Label="En Progreso" />
-            <SelectOption TItemValue="string" TItem="string" Value="@("Completed")" Label="Completada" />
+            <SelectOption TItemValue="string" TItem="string" Value="@("Fertilizacion")" Label="Fertilizacion" />
+            <SelectOption TItemValue="string" TItem="string" Value="@("Pulverizacion")" Label="Pulverizacion" />
+            <SelectOption TItemValue="string" TItem="string" Value="@("Siembra")" Label="Siembra" />
+            <SelectOption TItemValue="string" TItem="string" Value="@("Cosecha")" Label="Cosecha" />
+            <SelectOption TItemValue="string" TItem="string" Value="@("Monitoreo")" Label="Monitoreo" />
+            <SelectOption TItemValue="string" TItem="string" Value="@("Laboreo")" Label="Laboreo" />
         </Select>
-        <Button Type="@ButtonType.Primary" OnClick="GoToWorkOrders"
-                Style="background: #E74C3C; border-color: #E74C3C; border-radius: 8px; font-weight: 600;" Size="@ButtonSize.Small">
-            <Icon Type="unordered-list" Theme="IconThemeType.Outline" /> Vista Lista
+        <Button Type="@ButtonType.Primary" OnClick="() => OpenCreateModal(DateTime.Today)"
+                Style="background: #2ECC71; border-color: #2ECC71; border-radius: 8px; font-weight: 600;" Size="@ButtonSize.Small">
+            <Icon Type="plus" Theme="IconThemeType.Outline" /> Nueva Labor
+        </Button>
+        <Button OnClick="GoToLaboresSueltas" Size="@ButtonSize.Small"
+                Style="border-radius: 6px; border-color: rgba(255,165,0,0.4); color: #FFA500;">
+            <Icon Type="disconnect" Theme="IconThemeType.Outline" /> Sueltas
         </Button>
     </div>
 </div>
@@ -56,21 +61,23 @@
 }
 
 <div class="planner-legend" style="margin-bottom: 12px; display: flex; gap: 16px; align-items: center;">
-    <span class="legend-item"><span class="legend-dot" style="background: #9B59B6;"></span> Borrador</span>
-    <span class="legend-item"><span class="legend-dot" style="background: #E74C3C;"></span> Pendiente</span>
-    <span class="legend-item"><span class="legend-dot" style="background: #3498DB;"></span> Planificada</span>
-    <span class="legend-item"><span class="legend-dot" style="background: #F1C40F;"></span> En Progreso</span>
-    <span class="legend-item"><span class="legend-dot" style="background: #2ECC71;"></span> Completada</span>
-    <span class="legend-item"><span class="legend-dot" style="background: #95A5A6;"></span> Cancelada</span>
+    <span class="legend-item"><span class="legend-dot" style="background: #4CAF50;"></span> Con OT</span>
+    <span class="legend-item"><span class="legend-dot" style="background: #FFA500;"></span> Sin OT (Suelta)</span>
+    <span class="legend-sep">|</span>
+    <span class="legend-item"><span class="legend-dot" style="background: #27AE60;"></span> Fertilizacion</span>
+    <span class="legend-item"><span class="legend-dot" style="background: #2980B9;"></span> Pulverizacion</span>
+    <span class="legend-item"><span class="legend-dot" style="background: #8E44AD;"></span> Siembra</span>
+    <span class="legend-item"><span class="legend-dot" style="background: #D35400;"></span> Cosecha</span>
+    <span class="legend-item"><span class="legend-dot" style="background: #16A085;"></span> Monitoreo</span>
     <span style="margin-left: auto; color: rgba(255,255,255,0.4); font-size: 12px;">
-        @FilteredOrders.Count OTs visibles
+        @FilteredLabors.Count labores visibles
     </span>
 </div>
 
 @if (_loading)
 {
     <div style="text-align: center; padding: 60px;">
-        <Spin Size="@SpinSize.Large" Tip="Cargando planificación..." />
+        <Spin Size="@SpinSize.Large" Tip="Cargando labores..." />
     </div>
 }
 else if (_viewMode == "month")
@@ -89,20 +96,24 @@ else if (_viewMode == "month")
                 {
                     var isToday = day.Date == DateTime.Today;
                     var isCurrentMonth = day.Month == _currentDate.Month;
-                    var dayOrders = GetOrdersForDate(day);
+                    var dayLabors = GetLaborsForDate(day);
                     <div class="cal-day @(isToday ? "cal-today" : "") @(!isCurrentMonth ? "cal-other-month" : "")"
                          @onclick="() => OnDayClick(day)">
-                        <div class="cal-day-number">@day.Day</div>
-                        @foreach (var wo in dayOrders.Take(3))
+                        <div class="cal-day-top">
+                            <div class="cal-day-number">@day.Day</div>
+                            <button class="btn-add-mini" @onclick:stopPropagation="true" @onclick="() => OpenCreateModal(day)" title="Crear labor">+</button>
+                        </div>
+                        @foreach (var labor in dayLabors.Take(3))
                         {
-                            <div class="cal-event" style="background: @(GetStatusColor(wo.Status))20; border-left: 3px solid @(GetStatusColor(wo.Status)); cursor: pointer;"
-                                 @onclick:stopPropagation="true" @onclick="() => NavigateToOrder(wo.Id)">
-                                <span class="cal-event-text">@TruncateText(wo.Description, 18)</span>
+                            <div class="cal-event" style="background: @(labor.ColorHex)20; border-left: 3px solid @(labor.ColorHex); cursor: pointer;"
+                                 @onclick:stopPropagation="true" @onclick="() => EditLabor(labor.Id)">
+                                <span class="cal-event-icon" style="color: @GetTypeColor(labor.LaborType);">@GetTypeIcon(labor.LaborType)</span>
+                                <span class="cal-event-text">@TruncateText(labor.Title, 16)</span>
                             </div>
                         }
-                        @if (dayOrders.Count > 3)
+                        @if (dayLabors.Count > 3)
                         {
-                            <div class="cal-more">+@(dayOrders.Count - 3) más</div>
+                            <div class="cal-more">+@(dayLabors.Count - 3) mas</div>
                         }
                     </div>
                 }
@@ -128,53 +139,110 @@ else
             @foreach (var day in WeekDays)
             {
                 var isToday = day.Date == DateTime.Today;
-                var dayOrders = GetOrdersForDate(day);
+                var dayLabors = GetLaborsForDate(day);
                 <div class="week-day-col @(isToday ? "week-today-col" : "")">
-                    @if (dayOrders.Count == 0)
+                    @if (dayLabors.Count == 0)
                     {
-                        <div class="week-empty" @onclick="() => OnDayClick(day)">
+                        <div class="week-empty" @onclick="() => OpenCreateModal(day)">
                             <Icon Type="plus" Theme="IconThemeType.Outline" Style="font-size: 16px;" />
                         </div>
                     }
-                    @foreach (var wo in dayOrders)
+                    @foreach (var labor in dayLabors)
                     {
-                        <div class="week-card" style="border-left: 4px solid @(GetStatusColor(wo.Status));"
-                             @onclick="() => NavigateToOrder(wo.Id)">
-                            <div class="week-card-status" style="background: @(GetStatusColor(wo.Status));">
-                                @GetStatusLabel(wo.Status)
+                        <div class="week-card" style="border-left: 4px solid @(labor.ColorHex);"
+                             @onclick="() => EditLabor(labor.Id)">
+                            <div class="week-card-top">
+                                <div class="week-card-type" style="background: @GetTypeColor(labor.LaborType);">
+                                    @labor.LaborType
+                                </div>
+                                @if (labor.HasWorkOrder)
+                                {
+                                    <span class="week-card-ot-badge" title="Tiene OT asignada">OT</span>
+                                }
+                                else
+                                {
+                                    <span class="week-card-loose-badge" title="Sin OT asignada">Suelta</span>
+                                }
                             </div>
-                            <div class="week-card-title">@wo.Description</div>
-                            <div class="week-card-meta">
-                                <Icon Type="environment" Theme="IconThemeType.Outline" Style="font-size: 10px;" />
-                                @(wo.LotName ?? "—")
-                            </div>
-                            <div class="week-card-meta">
-                                <Icon Type="user" Theme="IconThemeType.Outline" Style="font-size: 10px;" />
-                                @(wo.AssignedTo)
-                            </div>
-                            @if (wo.EstimatedCostUSD > 0)
+                            <div class="week-card-title">@labor.Title</div>
+                            @if (!string.IsNullOrEmpty(labor.LotName))
                             {
-                                <div class="week-card-meta" style="color: #2ECC71;">
-                                    <Icon Type="dollar" Theme="IconThemeType.Outline" Style="font-size: 10px;" />
-                                    $@wo.EstimatedCostUSD.ToString("N0")
+                                <div class="week-card-meta">
+                                    <Icon Type="environment" Theme="IconThemeType.Outline" Style="font-size: 10px;" />
+                                    @labor.LotName
                                 </div>
                             }
-                            @if (!string.IsNullOrEmpty(wo.OTNumber))
+                            <div class="week-card-meta">
+                                <Icon Type="column-width" Theme="IconThemeType.Outline" Style="font-size: 10px;" />
+                                @labor.Hectares.ToString("N0") ha
+                            </div>
+                            @if (!string.IsNullOrEmpty(labor.WorkOrderDescription))
                             {
-                                <div class="week-card-ot">@wo.OTNumber</div>
+                                <div class="week-card-meta" style="color: rgba(255,255,255,0.3); font-size: 10px;">
+                                    <Icon Type="file-text" Theme="IconThemeType.Outline" Style="font-size: 9px;" />
+                                    @TruncateText(labor.WorkOrderDescription, 20)
+                                </div>
                             }
                         </div>
                     }
+                    <div class="week-add-btn" @onclick="() => OpenCreateModal(day)">
+                        <Icon Type="plus" Theme="IconThemeType.Outline" Style="font-size: 12px;" /> Agregar
+                    </div>
                 </div>
             }
         </div>
     </div>
 }
 
+<Modal Title="@($"Nueva Labor - {_selectedDate:dd/MM/yyyy}")" Visible="@_showCreateModal" OnCancel="() => _showCreateModal = false"
+       Footer="null" Width="480"
+       BodyStyle="background: #1E1E2E; padding: 24px;">
+    <Form Model="_newLabor" OnFinish="CreateLabor" Layout="@FormLayout.Vertical">
+        <FormItem Label="Lote">
+            <Select TItemValue="Guid" TItem="Guid" @bind-Value="_newLabor.LotId" Placeholder="Seleccionar lote"
+                    Style="width: 100%;">
+                @foreach (var lot in _lots)
+                {
+                    <SelectOption TItemValue="Guid" TItem="Guid" Value="@lot.Id"
+                                  Label="@($"{lot.Name} ({lot.FieldName})")" />
+                }
+            </Select>
+        </FormItem>
+        <FormItem Label="Tipo de Labor">
+            <Select TItemValue="string" TItem="string" @bind-Value="_newLabor.LaborType" Placeholder="Tipo"
+                    Style="width: 100%;">
+                <SelectOption TItemValue="string" TItem="string" Value="@("Fertilizacion")" Label="Fertilizacion" />
+                <SelectOption TItemValue="string" TItem="string" Value="@("Pulverizacion")" Label="Pulverizacion" />
+                <SelectOption TItemValue="string" TItem="string" Value="@("Siembra")" Label="Siembra" />
+                <SelectOption TItemValue="string" TItem="string" Value="@("Cosecha")" Label="Cosecha" />
+                <SelectOption TItemValue="string" TItem="string" Value="@("Monitoreo")" Label="Monitoreo" />
+                <SelectOption TItemValue="string" TItem="string" Value="@("Laboreo")" Label="Laboreo" />
+            </Select>
+        </FormItem>
+        <FormItem Label="Fecha Planificada">
+            <DatePicker @bind-Value="_newLabor.PlannedDate" Style="width: 100%;" />
+        </FormItem>
+        <FormItem Label="Hectareas">
+            <AntDesign.InputNumber TValue="decimal" @bind-Value="_newLabor.Hectares" Min="0m" Step="0.1m"
+                                   Style="width: 100%;" />
+        </FormItem>
+        <FormItem Label="Notas (opcional)">
+            <TextArea @bind-Value="_newLabor.Notes" Placeholder="Observaciones" Rows="2" />
+        </FormItem>
+        <FormItem>
+            <Button Type="@ButtonType.Primary" HtmlType="submit" Loading="_saving" Block
+                    Style="background: #2ECC71; border-color: #2ECC71; border-radius: 8px; font-weight: 600; height: 40px;">
+                <Icon Type="plus" Theme="IconThemeType.Outline" /> Crear Labor
+            </Button>
+        </FormItem>
+    </Form>
+</Modal>
+
 <style>
     .planner-legend { font-size: 12px; color: rgba(255,255,255,0.6); }
     .legend-item { display: flex; align-items: center; gap: 5px; }
     .legend-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+    .legend-sep { color: rgba(255,255,255,0.15); }
 
     .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); }
     .cal-header-cell {
@@ -195,16 +263,22 @@ else
         border-bottom: 1px solid rgba(255,255,255,0.04);
         cursor: pointer;
         transition: background 0.15s;
+        position: relative;
     }
     .cal-day:hover { background: rgba(255,255,255,0.03); }
     .cal-day:nth-child(7) { border-right: none; }
     .cal-today { background: rgba(231,76,60,0.06) !important; }
     .cal-other-month { opacity: 0.35; }
+    .cal-day-top {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 4px;
+    }
     .cal-day-number {
         font-size: 13px;
         font-weight: 600;
         color: rgba(255,255,255,0.7);
-        margin-bottom: 4px;
     }
     .cal-today .cal-day-number {
         color: #E74C3C;
@@ -216,6 +290,29 @@ else
         align-items: center;
         justify-content: center;
     }
+    .btn-add-mini {
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        border: 1px solid rgba(255,255,255,0.12);
+        background: rgba(255,255,255,0.05);
+        color: rgba(255,255,255,0.3);
+        font-size: 14px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.15s;
+        opacity: 0;
+        padding: 0;
+        line-height: 1;
+    }
+    .cal-day:hover .btn-add-mini { opacity: 1; }
+    .btn-add-mini:hover {
+        background: #2ECC71;
+        border-color: #2ECC71;
+        color: #fff;
+    }
     .cal-event {
         padding: 2px 6px;
         border-radius: 4px;
@@ -226,9 +323,13 @@ else
         overflow: hidden;
         text-overflow: ellipsis;
         transition: transform 0.1s;
+        display: flex;
+        align-items: center;
+        gap: 4px;
     }
     .cal-event:hover { transform: scale(1.02); }
-    .cal-event-text { font-weight: 500; }
+    .cal-event-icon { font-size: 10px; flex-shrink: 0; }
+    .cal-event-text { font-weight: 500; overflow: hidden; text-overflow: ellipsis; }
     .cal-more {
         font-size: 10px;
         color: rgba(255,255,255,0.4);
@@ -294,7 +395,13 @@ else
         background: rgba(255,255,255,0.1);
         transform: translateY(-1px);
     }
-    .week-card-status {
+    .week-card-top {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin-bottom: 6px;
+    }
+    .week-card-type {
         display: inline-block;
         padding: 1px 8px;
         border-radius: 10px;
@@ -303,7 +410,24 @@ else
         text-transform: uppercase;
         letter-spacing: 0.5px;
         color: #fff;
-        margin-bottom: 6px;
+    }
+    .week-card-ot-badge {
+        font-size: 9px;
+        font-weight: 700;
+        color: #4CAF50;
+        border: 1px solid rgba(76,175,80,0.3);
+        padding: 0 5px;
+        border-radius: 4px;
+        text-transform: uppercase;
+    }
+    .week-card-loose-badge {
+        font-size: 9px;
+        font-weight: 700;
+        color: #FFA500;
+        border: 1px solid rgba(255,165,0,0.3);
+        padding: 0 5px;
+        border-radius: 4px;
+        text-transform: uppercase;
     }
     .week-card-title {
         font-size: 13px;
@@ -320,11 +444,24 @@ else
         gap: 4px;
         margin-bottom: 2px;
     }
-    .week-card-ot {
-        font-size: 10px;
-        color: rgba(255,255,255,0.3);
-        font-family: monospace;
-        margin-top: 4px;
+    .week-add-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 4px;
+        padding: 6px;
+        border: 1px dashed rgba(255,255,255,0.08);
+        border-radius: 6px;
+        color: rgba(255,255,255,0.2);
+        font-size: 11px;
+        cursor: pointer;
+        transition: all 0.15s;
+        margin-top: auto;
+    }
+    .week-add-btn:hover {
+        border-color: #2ECC71;
+        color: #2ECC71;
+        background: rgba(46,204,113,0.05);
     }
 
     .ant-radio-group-solid .ant-radio-button-wrapper-checked {
@@ -339,18 +476,24 @@ else
 </style>
 
 @code {
-    private List<WorkOrderDto> _workOrders = new();
+    private List<LaborCalendarDto> _labors = new();
+    private List<LotDto> _lots = new();
     private bool _loading = true;
+    private bool _saving;
     private string? _errorMessage;
     private DateTime _currentDate = DateTime.Today;
     private string _viewMode = "month";
-    private string _filterStatus = "all";
+    private string _filterType = "all";
+    private bool _showCreateModal;
+    private DateTime _selectedDate = DateTime.Today;
 
-    private static readonly string[] _dayNames = { "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom" };
+    private NewLaborModel _newLabor = new();
 
-    private List<WorkOrderDto> FilteredOrders => string.IsNullOrEmpty(_filterStatus) || _filterStatus == "all"
-        ? _workOrders
-        : _workOrders.Where(w => w.Status == _filterStatus).ToList();
+    private static readonly string[] _dayNames = { "Lun", "Mar", "Mie", "Jue", "Vie", "Sab", "Dom" };
+
+    private List<LaborCalendarDto> FilteredLabors => string.IsNullOrEmpty(_filterType) || _filterType == "all"
+        ? _labors
+        : _labors.Where(l => l.LaborType == _filterType).ToList();
 
     private List<DateTime[]> MonthWeeks
     {
@@ -394,13 +537,29 @@ else
         {
             _loading = true;
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
-            _workOrders = await Http.GetFromJsonAsync("api/workorders",
-                AppJsonSerializerContext.Default.ListWorkOrderDto, cts.Token) ?? new();
+
+            var rangeStart = _viewMode == "month"
+                ? new DateTime(_currentDate.Year, _currentDate.Month, 1).AddDays(-7)
+                : _currentDate.AddDays(-((int)_currentDate.DayOfWeek + 6) % 7);
+            var rangeEnd = _viewMode == "month"
+                ? new DateTime(_currentDate.Year, _currentDate.Month, 1).AddMonths(1).AddDays(7)
+                : rangeStart.AddDays(7);
+
+            var laborsTask = Http.GetFromJsonAsync(
+                $"api/labors/calendar?start={rangeStart:yyyy-MM-dd}&end={rangeEnd:yyyy-MM-dd}",
+                AppJsonSerializerContext.Default.ListLaborCalendarDto, cts.Token);
+            var lotsTask = Http.GetFromJsonAsync("api/lots",
+                AppJsonSerializerContext.Default.ListLotDto, cts.Token);
+
+            await Task.WhenAll(laborsTask, lotsTask);
+
+            _labors = laborsTask.Result ?? new();
+            _lots = lotsTask.Result ?? new();
             _errorMessage = null;
         }
         catch (OperationCanceledException)
         {
-            _errorMessage = "La solicitud tardó demasiado tiempo.";
+            _errorMessage = "La solicitud tardo demasiado tiempo.";
         }
         catch (Exception ex)
         {
@@ -413,27 +572,80 @@ else
         }
     }
 
-    private List<WorkOrderDto> GetOrdersForDate(DateTime date)
+    private List<LaborCalendarDto> GetLaborsForDate(DateTime date)
     {
-        return FilteredOrders
-            .Where(w => (w.PlannedDate ?? w.DueDate).Date == date.Date)
-            .OrderBy(w => w.Status)
+        return FilteredLabors
+            .Where(l => l.Date.Date == date.Date)
             .ToList();
     }
 
-    private void GoToWorkOrders() { Nav.NavigateTo("/workorders"); }
-    private void GoToday() { _currentDate = DateTime.Today; }
-    private void GoPrev()
+    private void OpenCreateModal(DateTime date)
+    {
+        _selectedDate = date;
+        _newLabor = new NewLaborModel { PlannedDate = date };
+        _showCreateModal = true;
+    }
+
+    private async Task CreateLabor()
+    {
+        if (_newLabor.LotId == Guid.Empty || string.IsNullOrEmpty(_newLabor.LaborType))
+        {
+            Message.Warning("Completa el lote y tipo de labor.");
+            return;
+        }
+
+        try
+        {
+            _saving = true;
+            var lot = _lots.FirstOrDefault(l => l.Id == _newLabor.LotId);
+            var hectares = _newLabor.Hectares > 0 ? _newLabor.Hectares : (lot != null ? (decimal)lot.Area : 0);
+
+            var dto = new LaborDto(
+                Guid.Empty, null, _newLabor.LotId, _newLabor.LaborType,
+                "Pending", null, hectares, DateTime.UtcNow,
+                0, "ha", null, null, null, null, null,
+                _newLabor.Notes, null, _newLabor.PlannedDate
+            );
+
+            var response = await Http.PostAsJsonAsync("api/labors", dto, AppJsonSerializerContext.Default.LaborDto);
+            if (response.IsSuccessStatusCode)
+            {
+                Message.Success("Labor creada correctamente.");
+                _showCreateModal = false;
+                await LoadData();
+            }
+            else
+            {
+                Message.Error("Error al crear la labor.");
+            }
+        }
+        finally
+        {
+            _saving = false;
+            StateHasChanged();
+        }
+    }
+
+    private void EditLabor(Guid id)
+    {
+        Nav.NavigateTo($"/labores-sueltas?id={id}");
+    }
+
+    private void GoToLaboresSueltas() { Nav.NavigateTo("/labores-sueltas"); }
+    private void GoToday() { _currentDate = DateTime.Today; _ = LoadData(); }
+    private async void GoPrev()
     {
         _currentDate = _viewMode == "month"
             ? _currentDate.AddMonths(-1)
             : _currentDate.AddDays(-7);
+        await LoadData();
     }
-    private void GoNext()
+    private async void GoNext()
     {
         _currentDate = _viewMode == "month"
             ? _currentDate.AddMonths(1)
             : _currentDate.AddDays(7);
+        await LoadData();
     }
 
     private string GetHeaderLabel()
@@ -448,35 +660,43 @@ else
     {
         _currentDate = day;
         if (_viewMode == "month")
+        {
             _viewMode = "week";
+            _ = LoadData();
+        }
     }
 
-    private void NavigateToOrder(Guid id)
+    private static string GetTypeColor(string laborType) => laborType switch
     {
-        Nav.NavigateTo($"/workorders?id={id}");
-    }
-
-    private static string GetStatusColor(string status) => status switch
-    {
-        "Draft" => "#9B59B6",
-        "Scheduled" => "#3498DB",
-        "InProgress" => "#F1C40F",
-        "Completed" or "Done" or "Approved" => "#2ECC71",
-        "Cancelled" => "#95A5A6",
-        _ => "#E74C3C"
+        "Fertilizacion" => "#27AE60",
+        "Pulverizacion" => "#2980B9",
+        "Siembra" => "#8E44AD",
+        "Cosecha" => "#D35400",
+        "Monitoreo" => "#16A085",
+        "Laboreo" => "#7F8C8D",
+        _ => "#95A5A6"
     };
 
-    private static string GetStatusLabel(string status) => status switch
+    private static string GetTypeIcon(string laborType) => laborType switch
     {
-        "Draft" => "Borrador",
-        "Scheduled" => "Planificada",
-        "InProgress" => "En Progreso",
-        "Completed" or "Done" => "Completada",
-        "Approved" => "Aprobada",
-        "Cancelled" => "Cancelada",
-        _ => "Pendiente"
+        "Fertilizacion" => "F",
+        "Pulverizacion" => "P",
+        "Siembra" => "S",
+        "Cosecha" => "C",
+        "Monitoreo" => "M",
+        "Laboreo" => "L",
+        _ => "?"
     };
 
     private static string TruncateText(string text, int maxLen) =>
-        text.Length > maxLen ? text[..maxLen] + "…" : text;
+        text.Length > maxLen ? text[..maxLen] + "..." : text;
+
+    public class NewLaborModel
+    {
+        public Guid LotId { get; set; }
+        public string LaborType { get; set; } = string.Empty;
+        public DateTime? PlannedDate { get; set; } = DateTime.Today;
+        public decimal Hectares { get; set; }
+        public string? Notes { get; set; }
+    }
 }

@@ -17,10 +17,11 @@ public record LaborDto(
     string? MachineryUsedId = null,
     string? WeatherLogJson = null,
     string? Notes = null,
-    string? FieldName = null
+    string? FieldName = null,
+    DateTime? PlannedDate = null
 )
 {
-    public LaborDto() : this(Guid.Empty, null, Guid.Empty, string.Empty, "Planned", null, 0, DateTime.MinValue, 0, "ha", null, null, null, null, null, null, null) { }
+    public LaborDto() : this(Guid.Empty, null, Guid.Empty, string.Empty, "Planned", null, 0, DateTime.MinValue, 0, "ha", null, null, null, null, null, null, null, null) { }
 }
 
 public record LaborSupplyDto(
@@ -39,6 +40,22 @@ public record LaborSupplyDto(
 )
 {
     public LaborSupplyDto() : this(Guid.Empty, Guid.Empty, Guid.Empty, 0, null, 0, null, string.Empty, null, null, 0, false) { }
+}
+
+public record LaborCalendarDto(
+    Guid Id,
+    string Title,
+    DateTime Date,
+    string Status,
+    string ColorHex,
+    bool HasWorkOrder,
+    string LaborType,
+    decimal Hectares,
+    string? LotName = null,
+    string? WorkOrderDescription = null
+)
+{
+    public LaborCalendarDto() : this(Guid.Empty, string.Empty, DateTime.MinValue, string.Empty, string.Empty, false, string.Empty, 0, null, null) { }
 }
 
 public record WorkOrderDetailDto(

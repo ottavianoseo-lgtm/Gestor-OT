@@ -411,6 +411,7 @@ public class Labor : ITenantEntity
     public decimal Rate { get; set; }
     public string RateUnit { get; set; } = "ha";
     public DateTime CreatedAt { get; set; }
+    public DateTime? PlannedDate { get; set; }
     public string? Notes { get; set; }
     public string? PrescriptionMapUrl { get; set; }
     public string? MachineryUsedId { get; set; }
