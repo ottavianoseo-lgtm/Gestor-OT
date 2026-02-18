@@ -1,0 +1,548 @@
+@page "/crop-planning"
+@using GestorOT.Shared.Dtos
+@using GestorOT.Shared
+@using System.Net.Http.Json
+@using AntDesign
+@inject HttpClient Http
+@inject IMessageService Message
+@inject GestorOT.Client.Services.CropPlanningService CropService
+@inject GestorOT.Client.Services.CampaignState CampaignState
+
+<PageTitle>Planificación de Cultivos - GestorOT</PageTitle>
+
+<div class="page-header">
+    <div>
+        <h2 class="page-title">Planificación de Cultivos</h2>
+        <span class="page-subtitle">Asignación de cultivos por lote y campaña</span>
+    </div>
+</div>
+
+@if (!string.IsNullOrEmpty(_errorMessage))
+{
+    <Alert Type="@AlertType.Error" Message="@_errorMessage" ShowIcon="true" Closable="true" Style="margin-bottom: 16px;" />
+}
+
+<div class="glass-card" style="margin-bottom: 16px;">
+    <AntDesign.Row Gutter="16">
+        <AntDesign.Col Span="8">
+            <div style="margin-bottom: 4px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: rgba(255,255,255,0.4); font-weight: 600;">Campaña</div>
+            <Select TItemValue="Guid" TItem="string"
+                    Value="_selectedCampaignId"
+                    ValueChanged="OnCampaignChanged"
+                    Placeholder="Seleccionar campaña"
+                    Style="width: 100%;"
+                    AllowClear
+                    Loading="_loadingCampaigns">
+                @foreach (var c in _campaigns)
+                {
+                    <SelectOption TItemValue="Guid" TItem="string" Value="c.Id" Label="@c.Name" />
+                }
+            </Select>
+        </AntDesign.Col>
+        <AntDesign.Col Span="8">
+            <div style="margin-bottom: 4px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: rgba(255,255,255,0.4); font-weight: 600;">Campo</div>
+            <Select TItemValue="Guid" TItem="string"
+                    Value="_selectedFieldId"
+                    ValueChanged="OnFieldChanged"
+                    Placeholder="Seleccionar campo"
+                    Style="width: 100%;"
+                    AllowClear
+                    Disabled="@(_selectedCampaignId == Guid.Empty)">
+                @foreach (var f in _fields)
+                {
+                    <SelectOption TItemValue="Guid" TItem="string" Value="f.Id" Label="@f.Name" />
+                }
+            </Select>
+        </AntDesign.Col>
+        <AntDesign.Col Span="8" Style="display: flex; align-items: flex-end; gap: 8px; padding-top: 18px;">
+            @if (_selectedCampaignId != Guid.Empty && _selectedFieldId != Guid.Empty)
+            {
+                <Button Type="@ButtonType.Primary" OnClick="OpenAddModal"
+                        Style="background: #E74C3C; border-color: #E74C3C; border-radius: 8px; font-weight: 600;">
+                    <Icon Type="plus" Theme="IconThemeType.Outline" /> Asignar Cultivo
+                </Button>
+            }
+        </AntDesign.Col>
+    </AntDesign.Row>
+</div>
+
+@if (_loading)
+{
+    <div style="text-align: center; padding: 60px;">
+        <Spin Size="@SpinSize.Large" Tip="Cargando planificación..." />
+    </div>
+}
+else if (_selectedCampaignId != Guid.Empty && _selectedFieldId != Guid.Empty)
+{
+    <div class="glass-card">
+        @if (_filteredPlans.Count == 0)
+        {
+            <div style="text-align: center; padding: 40px; color: rgba(255,255,255,0.35);">
+                <Icon Type="inbox" Theme="IconThemeType.Outline" Style="font-size: 40px; display: block; margin-bottom: 12px;" />
+                <div style="font-size: 14px;">No hay cultivos asignados para este campo en la campaña seleccionada</div>
+                <div style="font-size: 12px; margin-top: 4px;">Usá el botón "Asignar Cultivo" para comenzar</div>
+            </div>
+        }
+        else
+        {
+            <Table TItem="PlanificacionCultivoDto"
+                   DataSource="@_filteredPlans"
+                   Loading="@_loading"
+                   Size="TableSize.Small"
+                   HidePagination
+                   ScrollX="900">
+                <PropertyColumn Property="p => p.LoteName" Title="Lote" Sortable>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span style="font-weight: 600;">@context.LoteName</span>
+                        <Tooltip Title="@("Ver rotación de cultivos")">
+                            <Button Size="@ButtonSize.Small" Shape="@ButtonShape.Circle"
+                                    OnClick="() => ShowRotation(context.LoteId, context.LoteName ?? string.Empty)"
+                                    Style="border: none; background: rgba(52,152,219,0.15); color: #3498DB; width: 24px; height: 24px; min-width: 24px; font-size: 12px;">
+                                <Icon Type="history" Theme="IconThemeType.Outline" />
+                            </Button>
+                        </Tooltip>
+                    </div>
+                </PropertyColumn>
+                <PropertyColumn Property="p => p.CultivoName" Title="Cultivo">
+                    <Tag Style="background: #2ECC7120; color: #2ECC71; border: 1px solid #2ECC7140; border-radius: 12px; font-size: 11px; padding: 2px 10px;">
+                        @(context.CultivoName ?? "—")
+                    </Tag>
+                </PropertyColumn>
+                <PropertyColumn Property="p => p.SuperficieGeometriaHa" Title="Sup. Geométrica (ha)">
+                    <span style="color: rgba(255,255,255,0.5);">@context.SuperficieGeometriaHa.ToString("N2") ha</span>
+                </PropertyColumn>
+                <PropertyColumn Property="p => p.SuperficieSembradaHa" Title="Sup. Sembrada (ha)">
+                    <span style="font-weight: 600; color: #F1C40F;">@context.SuperficieSembradaHa.ToString("N2") ha</span>
+                </PropertyColumn>
+                <Column TData="string" Title="Delta">
+                    @{
+                        var delta = context.SuperficieSembradaHa - context.SuperficieGeometriaHa;
+                        var deltaColor = delta == 0 ? "rgba(255,255,255,0.4)" : delta < 0 ? "#E74C3C" : "#2ECC71";
+                        var deltaSign = delta > 0 ? "+" : "";
+                    }
+                    <span style="@($"color: {deltaColor}; font-size: 12px;")">@deltaSign@delta.ToString("N2") ha</span>
+                </Column>
+                <ActionColumn Title="Acciones" Width="120">
+                    <Space>
+                        <SpaceItem>
+                            <Tooltip Title="@("Editar asignación")">
+                                <Button Size="@ButtonSize.Small" OnClick="() => OpenEditModal(context)"
+                                        Style="border-radius: 6px; border-color: rgba(255,255,255,0.15); color: rgba(255,255,255,0.7);">
+                                    <Icon Type="edit" Theme="IconThemeType.Outline" />
+                                </Button>
+                            </Tooltip>
+                        </SpaceItem>
+                        <SpaceItem>
+                            <Popconfirm Title="¿Quitar este cultivo del lote?"
+                                        OnConfirm="() => DeletePlan(context.Id)"
+                                        OkText="Quitar" CancelText="Cancelar">
+                                <Button Danger Size="@ButtonSize.Small" Style="border-radius: 6px;">
+                                    <Icon Type="delete" Theme="IconThemeType.Outline" />
+                                </Button>
+                            </Popconfirm>
+                        </SpaceItem>
+                    </Space>
+                </ActionColumn>
+            </Table>
+        }
+
+        <div style="margin-top: 16px; padding: 16px 20px; background: rgba(241,196,79,0.08); border: 1px solid rgba(241,196,79,0.2); border-radius: 12px; display: flex; justify-content: space-between; align-items: center;">
+            <div>
+                <span style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: rgba(255,255,255,0.4); font-weight: 600;">Superficie Total Sembrada</span>
+                <div style="font-size: 24px; font-weight: 700; color: #F1C40F;">
+                    @_filteredPlans.Sum(p => p.SuperficieSembradaHa).ToString("N2") ha
+                </div>
+            </div>
+            <div style="text-align: right;">
+                <span style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: rgba(255,255,255,0.4); font-weight: 600;">Superficie Geométrica</span>
+                <div style="font-size: 18px; font-weight: 600; color: rgba(255,255,255,0.6);">
+                    @_filteredPlans.Sum(p => p.SuperficieGeometriaHa).ToString("N2") ha
+                </div>
+            </div>
+            <div style="text-align: right;">
+                <span style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: rgba(255,255,255,0.4); font-weight: 600;">Lotes Planificados</span>
+                <div style="font-size: 18px; font-weight: 600; color: #3498DB;">
+                    @_filteredPlans.Count
+                </div>
+            </div>
+        </div>
+    </div>
+}
+else if (_selectedCampaignId == Guid.Empty)
+{
+    <div class="glass-card" style="text-align: center; padding: 60px; color: rgba(255,255,255,0.35);">
+        <Icon Type="calendar" Theme="IconThemeType.Outline" Style="font-size: 48px; display: block; margin-bottom: 12px;" />
+        <div style="font-size: 15px;">Seleccioná una campaña para comenzar</div>
+    </div>
+}
+
+<Modal Title="@(_isEditing ? "Editar Asignación" : "Asignar Cultivo a Lote")"
+       Visible="_modalVisible"
+       OnCancel="CloseModal"
+       OnOk="SavePlan"
+       OkText="@(_isEditing ? "Guardar" : "Asignar")"
+       ConfirmLoading="_saving"
+       Width="520">
+    <Form @ref="_form" Model="_formModel" Layout="@FormLayout.Vertical">
+        <FormItem Label="Lote">
+            <Select TItemValue="Guid" TItem="string"
+                    @bind-Value="_formModel.LoteId"
+                    Placeholder="Seleccionar lote"
+                    Style="width: 100%;"
+                    Disabled="@_isEditing">
+                @foreach (var l in _availableLots)
+                {
+                    <SelectOption TItemValue="Guid" TItem="string" Value="l.Id" Label="@l.Name" />
+                }
+            </Select>
+        </FormItem>
+        <FormItem Label="Cultivo">
+            <Select TItemValue="Guid" TItem="string"
+                    @bind-Value="_formModel.CultivoId"
+                    Placeholder="Seleccionar cultivo"
+                    Style="width: 100%;">
+                @foreach (var c in _cultivos)
+                {
+                    var label = string.IsNullOrEmpty(c.Variedad) ? c.Name : $"{c.Name} ({c.Variedad})";
+                    <SelectOption TItemValue="Guid" TItem="string" Value="c.Id" Label="@label" />
+                }
+            </Select>
+        </FormItem>
+        <FormItem Label="Superficie Sembrada (ha)">
+            <AntDesign.InputNumber TValue="decimal" @bind-Value="_formModel.SuperficieSembradaHa"
+                                   Min="0m" Step="0.5m" Style="width: 100%;" Placeholder="0.00" />
+        </FormItem>
+    </Form>
+</Modal>
+
+<Modal Title="@($"Rotación de Cultivos: {_rotacionLoteName}")"
+       Visible="_rotacionVisible"
+       OnCancel="() => _rotacionVisible = false"
+       Footer="null"
+       Width="560">
+    @if (_loadingRotacion)
+    {
+        <div style="text-align: center; padding: 24px;">
+            <Spin Tip="Cargando historial..." />
+        </div>
+    }
+    else if (_rotacionHistorial != null && _rotacionHistorial.Historial.Count > 0)
+    {
+        <Timeline>
+            @foreach (var entry in _rotacionHistorial.Historial)
+            {
+                <TimelineItem Color="@(entry.CampanaId == _selectedCampaignId ? "red" : "green")">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <span style="font-weight: 600; color: rgba(255,255,255,0.85);">@entry.CultivoName</span>
+                            <span style="color: rgba(255,255,255,0.4); font-size: 12px; margin-left: 8px;">@entry.CampanaName</span>
+                        </div>
+                        <Tag Style="background: rgba(241,196,79,0.15); color: #F1C40F; border: 1px solid rgba(241,196,79,0.3); border-radius: 12px; font-size: 11px; padding: 2px 10px;">
+                            @entry.SuperficieSembradaHa.ToString("N2") ha
+                        </Tag>
+                    </div>
+                    <div style="font-size: 11px; color: rgba(255,255,255,0.35); margin-top: 2px;">
+                        Inicio: @entry.CampanaInicio.ToString("dd/MM/yyyy")
+                    </div>
+                </TimelineItem>
+            }
+        </Timeline>
+    }
+    else
+    {
+        <div style="text-align: center; padding: 24px; color: rgba(255,255,255,0.35);">
+            <Icon Type="history" Theme="IconThemeType.Outline" Style="font-size: 32px; display: block; margin-bottom: 8px;" />
+            Sin historial de rotación para este lote
+        </div>
+    }
+</Modal>
+
+@code {
+    private List<CampaignDto> _campaigns = new();
+    private List<FieldDto> _fields = new();
+    private List<LotDto> _lots = new();
+    private List<CultivoDto> _cultivos = new();
+    private List<PlanificacionCultivoDto> _allPlans = new();
+    private List<PlanificacionCultivoDto> _filteredPlans = new();
+
+    private Guid _selectedCampaignId;
+    private Guid _selectedFieldId;
+    private bool _loading;
+    private bool _loadingCampaigns = true;
+    private string? _errorMessage;
+
+    private bool _modalVisible;
+    private bool _isEditing;
+    private bool _saving;
+    private Guid _editingId;
+    private PlanFormModel _formModel = new();
+    private Form<PlanFormModel>? _form;
+    private List<LotDto> _availableLots = new();
+
+    private bool _rotacionVisible;
+    private bool _loadingRotacion;
+    private string _rotacionLoteName = string.Empty;
+    private RotacionHistorialDto? _rotacionHistorial;
+
+    public class PlanFormModel
+    {
+        public Guid LoteId { get; set; }
+        public Guid CultivoId { get; set; }
+        public decimal SuperficieSembradaHa { get; set; }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+            var campaignsTask = Http.GetFromJsonAsync("api/campaigns",
+                AppJsonSerializerContext.Default.ListCampaignDto, cts.Token);
+            var fieldsTask = Http.GetFromJsonAsync("api/fields",
+                AppJsonSerializerContext.Default.ListFieldDto, cts.Token);
+            var cultivosTask = CropService.GetCultivos(cts.Token);
+
+            await Task.WhenAll(campaignsTask, fieldsTask, cultivosTask);
+
+            _campaigns = campaignsTask.Result ?? new();
+            _fields = fieldsTask.Result ?? new();
+            _cultivos = cultivosTask.Result;
+
+            if (CampaignState.IsSelected)
+            {
+                var match = _campaigns.FirstOrDefault(c => c.Id == CampaignState.CurrentCampaign!.Id);
+                if (match != null)
+                {
+                    _selectedCampaignId = match.Id;
+                    await LoadLots();
+                    await LoadPlanificacion();
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Error al cargar datos: {ex.Message}";
+        }
+        finally
+        {
+            _loadingCampaigns = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task OnCampaignChanged(Guid campaignId)
+    {
+        _selectedCampaignId = campaignId;
+        _selectedFieldId = Guid.Empty;
+        _filteredPlans = new();
+        _allPlans = new();
+
+        if (campaignId != Guid.Empty)
+        {
+            await LoadPlanificacion();
+        }
+
+        StateHasChanged();
+    }
+
+    private async Task OnFieldChanged(Guid fieldId)
+    {
+        _selectedFieldId = fieldId;
+        if (fieldId != Guid.Empty)
+        {
+            await LoadLots();
+            FilterPlans();
+        }
+        else
+        {
+            _filteredPlans = new();
+        }
+        StateHasChanged();
+    }
+
+    private async Task LoadLots()
+    {
+        try
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            _lots = await Http.GetFromJsonAsync("api/lots",
+                AppJsonSerializerContext.Default.ListLotDto, cts.Token) ?? new();
+        }
+        catch { }
+    }
+
+    private async Task LoadPlanificacion()
+    {
+        try
+        {
+            _loading = true;
+            StateHasChanged();
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            _allPlans = await CropService.GetPlanificacion(_selectedCampaignId, cts.Token);
+            FilterPlans();
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Error al cargar planificación: {ex.Message}";
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private void FilterPlans()
+    {
+        if (_selectedFieldId == Guid.Empty)
+        {
+            _filteredPlans = _allPlans;
+            return;
+        }
+
+        var fieldLotIds = _lots
+            .Where(l => l.FieldId == _selectedFieldId)
+            .Select(l => l.Id)
+            .ToHashSet();
+
+        _filteredPlans = _allPlans.Where(p => fieldLotIds.Contains(p.LoteId)).ToList();
+    }
+
+    private void OpenAddModal()
+    {
+        _isEditing = false;
+        var usedLoteIds = _filteredPlans.Select(p => p.LoteId).ToHashSet();
+        _availableLots = _lots
+            .Where(l => l.FieldId == _selectedFieldId && !usedLoteIds.Contains(l.Id))
+            .ToList();
+
+        if (_availableLots.Count == 0)
+        {
+            Message.Warning("Todos los lotes de este campo ya tienen cultivo asignado en esta campaña.");
+            return;
+        }
+
+        _formModel = new PlanFormModel();
+        _modalVisible = true;
+    }
+
+    private void OpenEditModal(PlanificacionCultivoDto plan)
+    {
+        _isEditing = true;
+        _editingId = plan.Id;
+        _availableLots = _lots.Where(l => l.Id == plan.LoteId).ToList();
+        _formModel = new PlanFormModel
+        {
+            LoteId = plan.LoteId,
+            CultivoId = plan.CultivoId,
+            SuperficieSembradaHa = plan.SuperficieSembradaHa
+        };
+        _modalVisible = true;
+    }
+
+    private void CloseModal()
+    {
+        _modalVisible = false;
+    }
+
+    private async Task SavePlan()
+    {
+        if (_formModel.LoteId == Guid.Empty)
+        {
+            Message.Warning("Seleccioná un lote.");
+            return;
+        }
+        if (_formModel.CultivoId == Guid.Empty)
+        {
+            Message.Warning("Seleccioná un cultivo.");
+            return;
+        }
+
+        _saving = true;
+        try
+        {
+            var dto = new PlanificacionCultivoDto(
+                _isEditing ? _editingId : Guid.Empty,
+                _formModel.LoteId,
+                _selectedCampaignId,
+                _formModel.CultivoId,
+                _formModel.SuperficieSembradaHa,
+                0
+            );
+
+            bool success;
+            if (_isEditing)
+            {
+                success = await CropService.UpdatePlanificacion(_editingId, dto);
+            }
+            else
+            {
+                var result = await CropService.CreatePlanificacion(dto);
+                success = result != null;
+            }
+
+            if (success)
+            {
+                Message.Success(_isEditing ? "Asignación actualizada." : "Cultivo asignado correctamente.");
+                _modalVisible = false;
+                await LoadPlanificacion();
+            }
+            else
+            {
+                Message.Error("Error al guardar. Verificá que el lote no tenga ya un cultivo en esta campaña.");
+            }
+        }
+        catch (Exception ex)
+        {
+            Message.Error($"Error: {ex.Message}");
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private async Task DeletePlan(Guid id)
+    {
+        try
+        {
+            var success = await CropService.DeletePlanificacion(id);
+            if (success)
+            {
+                Message.Success("Asignación eliminada.");
+                await LoadPlanificacion();
+            }
+            else
+            {
+                Message.Error("Error al eliminar.");
+            }
+        }
+        catch (Exception ex)
+        {
+            Message.Error($"Error: {ex.Message}");
+        }
+    }
+
+    private async Task ShowRotation(Guid loteId, string loteName)
+    {
+        _rotacionLoteName = loteName;
+        _rotacionVisible = true;
+        _loadingRotacion = true;
+        _rotacionHistorial = null;
+        StateHasChanged();
+
+        try
+        {
+            _rotacionHistorial = await CropService.GetRotacion(loteId);
+        }
+        catch (Exception ex)
+        {
+            Message.Error($"Error al cargar rotación: {ex.Message}");
+        }
+        finally
+        {
+            _loadingRotacion = false;
+            StateHasChanged();
+        }
+    }
+}

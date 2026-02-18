@@ -21,6 +21,7 @@ builder.Services.AddScoped(sp =>
     return new HttpClient(tenantHandler) { BaseAddress = new Uri(builder.HostEnvironment.BaseAddress) };
 });
 
+builder.Services.AddScoped<CropPlanningService>();
 builder.Services.AddAntDesign();
 
 await builder.Build().RunAsync();
