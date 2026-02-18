@@ -152,6 +152,7 @@ public class ApplicationDbContext : DbContext
             entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
 
             entity.Property(e => e.MetadataExterna).HasColumnType("jsonb");
+            entity.Property(e => e.Responsable).HasMaxLength(200);
 
             entity.HasOne(e => e.WorkOrder)
                 .WithMany(w => w.Labors)
@@ -459,6 +460,7 @@ public class Labor : ITenantEntity
     public string? WeatherLogJson { get; set; }
     public string? EvidencePhotosJson { get; set; }
     public string? MetadataExterna { get; set; }
+    public string? Responsable { get; set; }
     public WorkOrder? WorkOrder { get; set; }
     public Lot? Lot { get; set; }
     public CampaignPlot? CampaignPlot { get; set; }

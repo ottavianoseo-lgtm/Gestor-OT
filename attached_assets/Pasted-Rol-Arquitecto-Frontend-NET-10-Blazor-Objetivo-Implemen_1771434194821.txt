@@ -1,0 +1,87 @@
+Rol: Arquitecto Frontend .NET 10 / Blazor. Objetivo: Implementar un sistema de "Master-Detail" desacoplado usando un Panel Lateral (Offcanvas) que muestre resúmenes inteligentes al interactuar con Lotes (Mapas) o Labores (Calendario).
+1. Backend: DTOs de Resumen Agregado (Aggregated DTOs)
+Necesitamos endpoints que traigan la "foto completa" de una entidad para evitar múltiples llamadas desde el cliente.
+Archivo: DTOs/Resumenes.cs
+// Resumen de alto nivel para el Lote
+public record LoteResumenDto(
+    Guid LoteId,
+    string Nombre,
+    decimal SuperficieActualHa,
+    string CultivoActual, // Ej: "Maíz - Campaña 23/24"
+    int DiasDesdeSiembra,
+    LaborResumenDto? UltimaLabor,
+    LaborResumenDto? ProximaLabor,
+    string? ResponsableActual // Si hay alguien asignado hoy
+);
+
+// Detalle enriquecido para la Labor
+public record LaborDetalleDto(
+    Guid LaborId,
+    string TipoLabor,
+    string Estado,
+    DateTime FechaPlanificada,
+    string LoteNombre,
+    Guid LoteId, // Para linkear al mapa
+    string NombreResponsable, // Nuevo requerimiento
+    string Maquinaria,
+    List<string> Insumos, // Ej: ["Urea", "Glifosato"]
+    bool ClimaFavorable // Calculado en backend o null si no hay datos
+);
+Controladores (StatsController.cs):
+• GET /api/stats/lotes/{id}/resumen: Calcula los datos cruzando CampaignPlots y Labores.
+• GET /api/stats/labores/{id}/detalle: Obtiene la labor con Include(l => l.Lote) y Include(l => l.Responsable).
+2. Frontend: Gestión de Estado (State Container)
+Usaremos un servicio "Scoped" para manejar qué se está visualizando. Esto permite que el Mapa le "hable" al Panel Lateral sin conocerlo.
+Archivo: Client/Services/ContextState.cs
+public class ContextState
+{
+    // Eventos para notificar a la UI
+    public event Action? OnChange;
+
+    public LoteResumenDto? LoteSeleccionado { get; private set; }
+    public LaborDetalleDto? LaborSeleccionada { get; private set; }
+    public bool IsPanelOpen { get; private set; }
+
+    public void SeleccionarLote(LoteResumenDto lote)
+    {
+        LoteSeleccionado = lote;
+        LaborSeleccionada = null; // Limpiar selección anterior
+        IsPanelOpen = true;
+        Notify();
+    }
+
+    public void SeleccionarLabor(LaborDetalleDto labor)
+    {
+        LaborSeleccionada = labor;
+        LoteSeleccionado = null;
+        IsPanelOpen = true;
+        Notify();
+    }
+
+    public void CerrarPanel()
+    {
+        IsPanelOpen = false;
+        Notify();
+    }
+
+    private void Notify() => OnChange?.Invoke();
+}
+Registrar en Program.cs como builder.Services.AddScoped<ContextState>();
+3. Componentes de UI (Blazor)
+A. Componente ContextSidebar.razor
+Este componente vivirá en el MainLayout, siempre disponible pero oculto hasta que se seleccione algo.
+• Lógica: Se inyecta ContextState. Si IsPanelOpen es true, muestra el HTML del sidebar (clase CSS open).
+• Contenido Dinámico:
+    ◦ if (State.LoteSeleccionado != null) -> Renderiza componente LoteCard.razor (Info agronómica, botón "Ver Historial").
+    ◦ if (State.LaborSeleccionada != null) -> Renderiza componente LaborCard.razor (Info logística, botón "Ir al Lote").
+B. Integración en MapVisualizer.razor (Editor GIS)
+• Acción: En el evento OnClick del polígono (Leaflet):
+    1. Llamar al API: stats/lotes/{id}/resumen.
+    2. Llamar a ContextState.SeleccionarLote(dto). Resultado: El mapa no se recarga, pero el panel lateral aparece con la info del lote.
+C. Integración en WorkPlanner.razor (Calendario)
+• Acción: En el evento OnClick de la labor (Día del calendario):
+    1. Llamar al API: stats/labores/{id}/detalle.
+    2. Llamar a ContextState.SeleccionarLabor(dto). Resultado: Aparece el detalle con el responsable y los insumos sin salir del calendario.
+
+--------------------------------------------------------------------------------
+Nota para el Agente: Asegúrate de que la entidad Labor tenga una propiedad Responsable (string o relación con User) para cumplir con el requerimiento de visualización. Si no existe, agrégala en la migración. Utiliza QuickGrid dentro del ContextSidebar si necesitas listar historiales breves.

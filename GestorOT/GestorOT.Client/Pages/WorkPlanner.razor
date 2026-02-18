@@ -6,6 +6,7 @@
 @inject HttpClient Http
 @inject IMessageService Message
 @inject NavigationManager Nav
+@inject GestorOT.Client.Services.ContextState ContextState
 
 <PageTitle>Work Planner - GestorOT</PageTitle>
 
@@ -626,9 +627,22 @@ else
         }
     }
 
-    private void EditLabor(Guid id)
+    private async Task EditLabor(Guid id)
     {
-        Nav.NavigateTo($"/labores-sueltas?id={id}");
+        try
+        {
+            var detalle = await Http.GetFromJsonAsync<LaborDetalleDto>(
+                $"api/stats/labors/{id}",
+                AppJsonSerializerContext.Default.LaborDetalleDto);
+            if (detalle != null)
+            {
+                ContextState.SeleccionarLabor(detalle);
+            }
+        }
+        catch
+        {
+            Nav.NavigateTo($"/labores-sueltas?id={id}");
+        }
     }
 
     private void GoToLaboresSueltas() { Nav.NavigateTo("/labores-sueltas"); }

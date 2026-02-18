@@ -6,6 +6,7 @@
 @inject HttpClient Http
 @inject IJSRuntime JS
 @inject IMessageService Message
+@inject GestorOT.Client.Services.ContextState ContextState
 
 <PageTitle>Explorador GIS - GestorOT</PageTitle>
 
@@ -645,7 +646,7 @@
     }
 
     [JSInvokable]
-    public void OnLotSelected(string lotId)
+    public async Task OnLotSelected(string lotId)
     {
         var lot = _allLots.FirstOrDefault(l => l.Id.ToString() == lotId);
         if (lot != null)
@@ -653,6 +654,21 @@
             _selectedLot = lot;
             _drawnWkt = null;
             StateHasChanged();
+
+            try
+            {
+                var resumen = await Http.GetFromJsonAsync<LoteResumenDto>(
+                    $"api/stats/lots/{lot.Id}",
+                    AppJsonSerializerContext.Default.LoteResumenDto);
+                if (resumen != null)
+                {
+                    ContextState.SeleccionarLote(resumen);
+                }
+            }
+            catch (Exception)
+            {
+                // Sidebar detail fetch failed silently; lot rail still shows basic info
+            }
         }
     }
 

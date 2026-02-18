@@ -45,7 +45,8 @@ Do not make changes to files related to authentication without explicit approval
 - **UI Updates**: Explicit `StateHasChanged()` in `finally` blocks for reliable UI rendering.
 - **Modals**: AntDesign Modal + Form components for CRUD operations with client-side validation.
 - **JS Interop**: Uses global `window.mapInterop` object for Leaflet integration, invoked via `IJSRuntime.InvokeAsync`.
-- **State Management**: `PersistentComponentState` for persisting search/filter criteria.
+- **State Management**: `PersistentComponentState` for persisting search/filter criteria. `ContextState` (scoped) for master-detail sidebar panel communication.
+- **Context Sidebar**: Glassmorphic offcanvas panel (`ContextSidebar.razor`) in MainLayout. Shows `LoteResumenDto` (lot summary with crop, labor info) when clicking map polygons, or `LaborDetalleDto` (labor detail with supplies, responsible) when clicking calendar events. Uses `ContextState` event-based pattern for decoupled communication.
 
 ### Database Schema
 - **Fields**: Basic agricultural field information.
@@ -64,6 +65,7 @@ Do not make changes to files related to authentication without explicit approval
 - **Crops**: `GET /api/crops`, `POST /api/crops`, `PUT /api/crops/{id}`, `DELETE /api/crops/{id}`.
 - **Campaign Plots**: `GET /api/campaigns/{id}/plots`, `POST /api/campaigns/{id}/plots` (batch save).
 - **Lot History**: `GET /api/lots/{id}/history` (rotation timeline across campaigns).
+- **Stats**: `GET /api/stats/lots/{id}` (aggregated lot summary with crop, labors, responsable), `GET /api/stats/labors/{id}` (enriched labor detail with supplies).
 
 ## External Dependencies
 
