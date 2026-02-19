@@ -34,16 +34,6 @@
                 Style="border-radius: 6px; border-color: rgba(255,255,255,0.15); color: rgba(255,255,255,0.7);">
             <Icon Type="right" Theme="IconThemeType.Outline" />
         </Button>
-        <Select TItemValue="string" TItem="string" @bind-Value="_filterType" Placeholder="Filtrar tipo" AllowClear
-                Style="width: 150px;" Size="@InputSize.Small" OnSelectedItemChanged="_ => LoadData()">
-            <SelectOption TItemValue="string" TItem="string" Value="@("all")" Label="Todos" />
-            <SelectOption TItemValue="string" TItem="string" Value="@("Fertilizacion")" Label="Fertilizacion" />
-            <SelectOption TItemValue="string" TItem="string" Value="@("Pulverizacion")" Label="Pulverizacion" />
-            <SelectOption TItemValue="string" TItem="string" Value="@("Siembra")" Label="Siembra" />
-            <SelectOption TItemValue="string" TItem="string" Value="@("Cosecha")" Label="Cosecha" />
-            <SelectOption TItemValue="string" TItem="string" Value="@("Monitoreo")" Label="Monitoreo" />
-            <SelectOption TItemValue="string" TItem="string" Value="@("Laboreo")" Label="Laboreo" />
-        </Select>
         <Button Type="@ButtonType.Primary" OnClick="() => OpenCreateModal(DateTime.Today)"
                 Style="background: #2ECC71; border-color: #2ECC71; border-radius: 8px; font-weight: 600;" Size="@ButtonSize.Small">
             <Icon Type="plus" Theme="IconThemeType.Outline" /> Nueva Labor
@@ -60,18 +50,28 @@
     <Alert Type="@AlertType.Error" Message="@_errorMessage" ShowIcon="true" Closable="true" Style="margin-bottom: 16px;" />
 }
 
-<div class="planner-legend" style="margin-bottom: 12px; display: flex; gap: 16px; align-items: center;">
-    <span class="legend-item"><span class="legend-dot" style="background: #4CAF50;"></span> Con OT</span>
-    <span class="legend-item"><span class="legend-dot" style="background: #FFA500;"></span> Sin OT (Suelta)</span>
+<div class="planner-legend" style="margin-bottom: 12px; display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
+    @foreach (var ft in _filterTypes)
+    {
+        var isActive = _activeFilters.Contains(ft.Key);
+        var count = _labors.Count(l => l.LaborType == ft.Key);
+        <span class="filter-chip @(isActive ? "" : "filter-chip--off")" @onclick="() => ToggleFilter(ft.Key)"
+              style="--chip-color: @ft.Value;">
+            <span class="filter-chip-dot"></span>
+            @ft.Key
+            <span class="filter-chip-count">@count</span>
+        </span>
+    }
     <span class="legend-sep">|</span>
-    <span class="legend-item"><span class="legend-dot" style="background: #27AE60;"></span> Fertilizacion</span>
-    <span class="legend-item"><span class="legend-dot" style="background: #2980B9;"></span> Pulverizacion</span>
-    <span class="legend-item"><span class="legend-dot" style="background: #8E44AD;"></span> Siembra</span>
-    <span class="legend-item"><span class="legend-dot" style="background: #D35400;"></span> Cosecha</span>
-    <span class="legend-item"><span class="legend-dot" style="background: #16A085;"></span> Monitoreo</span>
+    <span class="legend-item" style="cursor: default;"><span class="legend-dot" style="background: #4CAF50;"></span> Con OT</span>
+    <span class="legend-item" style="cursor: default;"><span class="legend-dot" style="background: #FFA500;"></span> Suelta</span>
     <span style="margin-left: auto; color: rgba(255,255,255,0.4); font-size: 12px;">
-        @FilteredLabors.Count labores visibles
+        @FilteredLabors.Count / @_labors.Count labores
     </span>
+    @if (_activeFilters.Count < _filterTypes.Count)
+    {
+        <span class="filter-reset" @onclick="ResetFilters">Limpiar</span>
+    }
 </div>
 
 @if (_loading)
@@ -247,7 +247,49 @@ else
     .planner-legend { font-size: 12px; color: rgba(255,255,255,0.6); }
     .legend-item { display: flex; align-items: center; gap: 5px; }
     .legend-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
-    .legend-sep { color: rgba(255,255,255,0.15); }
+    .legend-sep { color: rgba(255,255,255,0.15); margin: 0 4px; }
+
+    .filter-chip {
+        display: inline-flex; align-items: center; gap: 5px;
+        padding: 3px 10px 3px 6px; border-radius: 14px; cursor: pointer;
+        background: color-mix(in srgb, var(--chip-color) 18%, transparent);
+        border: 1.5px solid color-mix(in srgb, var(--chip-color) 50%, transparent);
+        color: var(--chip-color); font-size: 11px; font-weight: 600;
+        transition: all 0.2s ease; user-select: none;
+    }
+    .filter-chip:hover { background: color-mix(in srgb, var(--chip-color) 28%, transparent); }
+    .filter-chip-dot {
+        width: 9px; height: 9px; border-radius: 50%;
+        background: var(--chip-color); flex-shrink: 0;
+        transition: all 0.2s ease;
+    }
+    .filter-chip-count {
+        background: color-mix(in srgb, var(--chip-color) 25%, transparent);
+        padding: 0 5px; border-radius: 8px; font-size: 10px; min-width: 16px; text-align: center;
+    }
+    .filter-chip--off {
+        background: transparent;
+        border-color: rgba(255,255,255,0.08);
+        color: rgba(255,255,255,0.25);
+    }
+    .filter-chip--off .filter-chip-dot {
+        background: rgba(255,255,255,0.15);
+    }
+    .filter-chip--off .filter-chip-count {
+        background: rgba(255,255,255,0.05);
+        color: rgba(255,255,255,0.2);
+    }
+    .filter-chip--off:hover {
+        border-color: rgba(255,255,255,0.15);
+        color: rgba(255,255,255,0.4);
+    }
+    .filter-reset {
+        font-size: 11px; color: rgba(255,255,255,0.35); cursor: pointer;
+        padding: 2px 8px; border-radius: 10px;
+        border: 1px solid rgba(255,255,255,0.1);
+        transition: all 0.15s;
+    }
+    .filter-reset:hover { color: rgba(255,255,255,0.6); border-color: rgba(255,255,255,0.2); }
 
     .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); }
     .cal-header-cell {
@@ -488,7 +530,16 @@ else
     private string? _errorMessage;
     private DateTime _currentDate = DateTime.Today;
     private string _viewMode = "month";
-    private string _filterType = "all";
+    private static readonly Dictionary<string, string> _filterTypes = new()
+    {
+        { "Fertilizacion", "#27AE60" },
+        { "Pulverizacion", "#2980B9" },
+        { "Siembra", "#8E44AD" },
+        { "Cosecha", "#D35400" },
+        { "Monitoreo", "#16A085" },
+        { "Laboreo", "#7F8C8D" }
+    };
+    private HashSet<string> _activeFilters = new(_filterTypes.Keys);
     private bool _showCreateModal;
     private DateTime _selectedDate = DateTime.Today;
 
@@ -496,9 +547,9 @@ else
 
     private static readonly string[] _dayNames = { "Lun", "Mar", "Mie", "Jue", "Vie", "Sab", "Dom" };
 
-    private List<LaborCalendarDto> FilteredLabors => string.IsNullOrEmpty(_filterType) || _filterType == "all"
+    private List<LaborCalendarDto> FilteredLabors => _activeFilters.Count == _filterTypes.Count
         ? _labors
-        : _labors.Where(l => l.LaborType == _filterType).ToList();
+        : _labors.Where(l => _activeFilters.Contains(l.LaborType)).ToList();
 
     private List<DateTime[]> MonthWeeks
     {
@@ -550,10 +601,8 @@ else
                 ? new DateTime(_currentDate.Year, _currentDate.Month, 1).AddMonths(1).AddDays(7)
                 : rangeStart.AddDays(7);
 
-            var typeParam = !string.IsNullOrEmpty(_filterType) && _filterType != "all"
-                ? $"&type={_filterType}" : "";
             var laborsTask = Http.GetFromJsonAsync(
-                $"api/labors/calendar?start={rangeStart:yyyy-MM-dd}&end={rangeEnd:yyyy-MM-dd}{typeParam}",
+                $"api/labors/calendar?start={rangeStart:yyyy-MM-dd}&end={rangeEnd:yyyy-MM-dd}",
                 AppJsonSerializerContext.Default.ListLaborCalendarDto, cts.Token);
             var lotsTask = Http.GetFromJsonAsync("api/lots",
                 AppJsonSerializerContext.Default.ListLotDto, cts.Token);
@@ -660,6 +709,19 @@ else
     {
         _selectedLaborDetail = null;
         Nav.NavigateTo($"/mapa?lot={lotId}");
+    }
+
+    private void ToggleFilter(string type)
+    {
+        if (_activeFilters.Contains(type))
+            _activeFilters.Remove(type);
+        else
+            _activeFilters.Add(type);
+    }
+
+    private void ResetFilters()
+    {
+        _activeFilters = new HashSet<string>(_filterTypes.Keys);
     }
 
     private void GoToLaboresSueltas() { Nav.NavigateTo("/labores-sueltas"); }
