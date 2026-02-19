@@ -35,7 +35,7 @@
             <Icon Type="right" Theme="IconThemeType.Outline" />
         </Button>
         <Select TItemValue="string" TItem="string" @bind-Value="_filterType" Placeholder="Filtrar tipo" AllowClear
-                Style="width: 150px;" Size="@InputSize.Small">
+                Style="width: 150px;" Size="@InputSize.Small" OnSelectedItemChanged="_ => LoadData()">
             <SelectOption TItemValue="string" TItem="string" Value="@("all")" Label="Todos" />
             <SelectOption TItemValue="string" TItem="string" Value="@("Fertilizacion")" Label="Fertilizacion" />
             <SelectOption TItemValue="string" TItem="string" Value="@("Pulverizacion")" Label="Pulverizacion" />
@@ -106,7 +106,7 @@ else if (_viewMode == "month")
                         @foreach (var labor in dayLabors.Take(3))
                         {
                             <div class="cal-event" style="background: @(labor.ColorHex)20; border-left: 3px solid @(labor.ColorHex); cursor: pointer;"
-                                 @onclick:stopPropagation="true" @onclick="() => EditLabor(labor.Id)">
+                                 @onclick:preventDefault="true" @onclick:stopPropagation="true" @onclick="() => EditLabor(labor.Id)">
                                 <span class="cal-event-icon" style="color: @GetTypeColor(labor.LaborType);">@GetTypeIcon(labor.LaborType)</span>
                                 <span class="cal-event-text">@TruncateText(labor.Title, 16)</span>
                             </div>
@@ -149,8 +149,8 @@ else
                     }
                     @foreach (var labor in dayLabors)
                     {
-                        <div class="week-card" style="border-left: 4px solid @(labor.ColorHex);"
-                             @onclick="() => EditLabor(labor.Id)">
+                        <div class="week-card" style="border-left: 4px solid @(labor.ColorHex); cursor: pointer;"
+                             @onclick:preventDefault="true" @onclick:stopPropagation="true" @onclick="() => EditLabor(labor.Id)">
                             <div class="week-card-top">
                                 <div class="week-card-type" style="background: @GetTypeColor(labor.LaborType);">
                                     @labor.LaborType
@@ -550,8 +550,10 @@ else
                 ? new DateTime(_currentDate.Year, _currentDate.Month, 1).AddMonths(1).AddDays(7)
                 : rangeStart.AddDays(7);
 
+            var typeParam = !string.IsNullOrEmpty(_filterType) && _filterType != "all"
+                ? $"&type={_filterType}" : "";
             var laborsTask = Http.GetFromJsonAsync(
-                $"api/labors/calendar?start={rangeStart:yyyy-MM-dd}&end={rangeEnd:yyyy-MM-dd}",
+                $"api/labors/calendar?start={rangeStart:yyyy-MM-dd}&end={rangeEnd:yyyy-MM-dd}{typeParam}",
                 AppJsonSerializerContext.Default.ListLaborCalendarDto, cts.Token);
             var lotsTask = Http.GetFromJsonAsync("api/lots",
                 AppJsonSerializerContext.Default.ListLotDto, cts.Token);

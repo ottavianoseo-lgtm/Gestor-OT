@@ -75,20 +75,11 @@ public class StatsController : ControllerBase
             ))
             .FirstOrDefaultAsync();
 
-        var responsable = await _context.Labors
-            .Where(l => l.LotId == id && l.Responsable != null && (l.Status == "InProgress" || l.Status == "Planned"))
-            .OrderByDescending(l => l.PlannedDate)
-            .Select(l => l.Responsable)
+        var responsable = await _context.WorkOrders
+            .Where(w => w.LotId == id && (w.Status == "InProgress" || w.Status == "Pending"))
+            .OrderByDescending(w => w.DueDate)
+            .Select(w => w.AssignedTo)
             .FirstOrDefaultAsync();
-
-        if (responsable == null)
-        {
-            responsable = await _context.WorkOrders
-                .Where(w => w.LotId == id && (w.Status == "InProgress" || w.Status == "Pending"))
-                .OrderByDescending(w => w.DueDate)
-                .Select(w => w.AssignedTo)
-                .FirstOrDefaultAsync();
-        }
 
         var superficieHa = campaignPlot?.ProductiveSurfaceHa ?? (lot.Geometry != null ? (decimal)(lot.Geometry.Area / 10000.0) : 0m);
 
@@ -128,8 +119,7 @@ public class StatsController : ControllerBase
                 .Select(s => s.Supply!.ItemName)
                 .ToList() ?? new List<string>();
 
-            var responsable = labor.Responsable
-                ?? labor.WorkOrder?.AssignedTo
+            var responsable = labor.WorkOrder?.AssignedTo
                 ?? "Sin Asignar";
 
             var detalle = new LaborDetalleDto(

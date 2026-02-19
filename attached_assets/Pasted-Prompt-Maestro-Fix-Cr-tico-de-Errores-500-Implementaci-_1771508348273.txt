@@ -1,0 +1,117 @@
+Prompt Maestro: Fix Crítico de Errores 500, Implementación de Modal y Filtros en Work Planner
+Contexto:
+1. Al hacer clic en una labor en el calendario, la app navega a /labors/unassigned en lugar de abrir el modal. Esto es un error de ruteo/eventos en el frontend.
+2. Los endpoints /api/stats/labors/{id} y /api/labors/unassigned arrojan error 500. Esto se debe a que los DTOs no están registrados en el contexto de serialización AOT de .NET 10, o hay excepciones por valores nulos (NullReferenceException) en las consultas de EF Core.
+3. Se requiere que el Work Planner permita filtrar las labores por su "Tipo".
+Por favor, aplica rigurosamente los siguientes pasos:
+Paso 1: Bloquear la Redirección y Mostrar el Modal (Frontend Blazor)
+El clic en la labor del calendario está disparando una navegación. Debemos interceptar el evento para mostrar el componente modal que creamos previamente.
+En WorkPlanner.razor:
+1. Corregir el evento del clic: Asegúrate de que el elemento visual de la labor (el "chip") no sea una etiqueta <a> con href, y bloquea la propagación del evento.
+<div class="labor-chip" 
+     style="background-color: @labor.ColorHex; cursor: pointer;"
+     @onclick:preventDefault="true"
+     @onclick:stopPropagation="true" 
+     @onclick="() => OpenLaborDetail(labor.Id)">
+    @labor.Title
+</div>
+2. Asegurar la existencia del Modal: Al final del archivo WorkPlanner.razor, debes incluir la etiqueta del componente modal. Si el agente no creó el archivo LaborDetailModal.razor en la iteración pasada, debe crearlo ahora (ver especificaciones anteriores).
+@if (SelectedLaborDetail != null)
+{
+    <LaborDetailModal Labor="SelectedLaborDetail" OnClose="() => SelectedLaborDetail = null" />
+}
+Paso 2: Fix Raíz de los Errores 500 (Serialización AOT)
+Los errores 500 se disparan al intentar enviar la respuesta JSON porque la compilación AOT eliminó los metadatos de los nuevos DTOs.
+En AppJsonSerializerContext.cs (o tu contexto de Source Generator): Debes registrar explícitamente TODOS los modelos que devuelven los endpoints que están fallando.
+[JsonSerializable(typeof(LaborDetailDto))]
+[JsonSerializable(typeof(LaborDto))]
+[JsonSerializable(typeof(List<LaborDto>))]
+[JsonSerializable(typeof(List<LaborCalendarDto>))]
+Si no haces esto, .NET 10 AOT siempre arrojará Error 500 al llamar a /api/stats/labors/{id} y /api/labors/unassigned.
+Paso 3: Fix de NullReferenceException en Endpoints (Backend)
+Debes reescribir los endpoints que fallan para evitar que EF Core explote al proyectar datos nulos (como lotes sin asignar).
+En tu Controlador/Minimal API para Labores:
+// Endpoint 1: Detalle de Labor (Fix 500)
+app.MapGet("/api/stats/labors/{id}", async (Guid id, AppDbContext db) =>
+{
+    var labor = await db.Labors
+        .AsNoTracking()
+        .Include(l => l.Lot) // Evita NullReferenceException
+        .FirstOrDefaultAsync(l => l.Id == id);
+
+    if (labor == null) return Results.NotFound();
+
+    // Mapeo seguro en memoria
+    var dto = new LaborDetailDto
+    {
+        LaborId = labor.Id,
+        Type = labor.Type,
+        Status = labor.Status,
+        PlannedDate = labor.PlannedDate,
+        LotName = labor.Lot?.Name ?? "Labor Suelta (Sin Lote)",
+        LotId = labor.LotId,
+        ResponsibleName = "Sin Asignar", // Mapear a responsable si existe en tu DB
+        Machinery = labor.Machinery ?? "N/A"
+    };
+    return Results.Ok(dto);
+});
+
+// Endpoint 2: Labores Sueltas (Fix 500)
+app.MapGet("/api/labors/unassigned", async (AppDbContext db) =>
+{
+    var unassignedLabors = await db.Labors
+        .AsNoTracking()
+        .Include(l => l.Lot)
+        .Where(l => l.WorkOrderId == null)
+        .Select(l => new LaborDto 
+        {
+            Id = l.Id,
+            Type = l.Type,
+            Status = l.Status,
+            PlannedDate = l.PlannedDate,
+            LotName = l.Lot != null ? l.Lot.Name : "Sin Lote" // Crítico
+        })
+        .ToListAsync();
+
+    return Results.Ok(unassignedLabors);
+});
+Paso 4: Implementar Filtros por Tipo en Work Planner
+Para agregar la capacidad de filtrar en el calendario:
+1. Backend (LaborsController o endpoint GetCalendarLabors): Modifica el endpoint para aceptar un parámetro type opcional.
+app.MapGet("/api/planner/labores", async (DateTime start, DateTime end, string? type, AppDbContext db) =>
+{
+    var startUtc = DateTime.SpecifyKind(start, DateTimeKind.Utc);
+    var endUtc = DateTime.SpecifyKind(end, DateTimeKind.Utc);
+
+    var query = db.Labors.AsNoTracking().Include(l => l.Lot)
+        .Where(l => l.PlannedDate >= startUtc && l.PlannedDate <= endUtc);
+
+    if (!string.IsNullOrEmpty(type))
+    {
+        query = query.Where(l => l.Type == type);
+    }
+
+    // ... seguir con el .Select(...) a LaborCalendarDto
+});
+2. Frontend (WorkPlanner.razor): Agrega un <select> simple en la parte superior y enlaza su valor al método de recarga.
+<!-- Agrega esto en el header del calendario -->
+<select @bind="SelectedType" class="form-select w-auto">
+    <option value="">Todos los Tipos</option>
+    <option value="Siembra">Siembra</option>
+    <option value="Fertilización">Fertilización</option>
+    <option value="Monitoreo">Monitoreo</option>
+</select>
+<button @onclick="LoadData" class="btn btn-primary">Filtrar</button>
+
+@code {
+    private string? SelectedType;
+    
+    private async Task LoadData()
+    {
+        // ... cálculos de fechas inicio y fin
+        var url = $"api/planner/labores?start={inicio:yyyy-MM-dd}&end={fin:yyyy-MM-dd}";
+        if (!string.IsNullOrEmpty(SelectedType)) url += $"&type={SelectedType}";
+        
+        LaboresDelMes = await Http.GetFromJsonAsync<List<LaborCalendarDto>>(url, AppJsonSerializerContext.Default.ListLaborCalendarDto) ?? new();
+    }
+}

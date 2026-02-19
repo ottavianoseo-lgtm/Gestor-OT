@@ -152,7 +152,7 @@ public class ApplicationDbContext : DbContext
             entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
 
             entity.Property(e => e.MetadataExterna).HasColumnType("jsonb");
-            entity.Property(e => e.Responsable).HasMaxLength(200);
+            entity.Ignore(e => e.Responsable);
 
             entity.HasOne(e => e.WorkOrder)
                 .WithMany(w => w.Labors)
