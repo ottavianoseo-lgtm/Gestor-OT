@@ -464,7 +464,7 @@ else
 
             var newOT = new WorkOrderDto(
                 Guid.Empty,
-                firstLabor.LotId,
+                firstLabor.LotId ?? Guid.Empty,
                 $"OT generada - {selectedLabors.Count} labores ({DateTime.Today:dd/MM/yyyy})",
                 "Pending",
                 string.Empty,

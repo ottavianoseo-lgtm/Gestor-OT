@@ -19,84 +19,101 @@ public class StatsController : ControllerBase
     [HttpGet("lots/{id:guid}")]
     public async Task<ActionResult<LoteResumenDto>> GetLoteResumen(Guid id)
     {
-        var lot = await _context.Lots
-            .Include(l => l.Field)
-            .FirstOrDefaultAsync(l => l.Id == id);
-
-        if (lot == null) return NotFound();
-
-        var now = DateTime.UtcNow;
-        var today = DateOnly.FromDateTime(DateTime.Today);
-
-        var campaignPlot = await _context.CampaignPlots
-            .Include(cp => cp.Campaign)
-            .Include(cp => cp.Crop)
-            .Where(cp => cp.PlotId == id)
-            .Where(cp => cp.Campaign != null && cp.Campaign.IsActive)
-            .OrderByDescending(cp => cp.Campaign!.StartDate)
-            .FirstOrDefaultAsync();
-
-        string? cultivoActual = null;
-        int diasDesdeSiembra = 0;
-        if (campaignPlot != null)
+        try
         {
-            var cropName = campaignPlot.Crop?.Name ?? "Sin cultivo";
-            var campaignName = campaignPlot.Campaign?.Name ?? "";
-            cultivoActual = $"{cropName} - {campaignName}";
+            var lot = await _context.Lots
+                .AsNoTracking()
+                .Include(l => l.Field)
+                .FirstOrDefaultAsync(l => l.Id == id);
 
-            if (campaignPlot.EstimatedStartDate.HasValue)
+            if (lot == null) return NotFound();
+
+            var today = DateOnly.FromDateTime(DateTime.Today);
+
+            var campaignPlot = await _context.CampaignPlots
+                .AsNoTracking()
+                .Include(cp => cp.Campaign)
+                .Include(cp => cp.Crop)
+                .Where(cp => cp.PlotId == id)
+                .Where(cp => cp.Campaign != null && cp.Campaign.IsActive)
+                .OrderByDescending(cp => cp.Campaign!.StartDate)
+                .FirstOrDefaultAsync();
+
+            string? cultivoActual = null;
+            int diasDesdeSiembra = 0;
+            if (campaignPlot != null)
             {
-                diasDesdeSiembra = (today.DayNumber - campaignPlot.EstimatedStartDate.Value.DayNumber);
-                if (diasDesdeSiembra < 0) diasDesdeSiembra = 0;
+                var cropName = campaignPlot.Crop?.Name ?? "Sin cultivo";
+                var campaignName = campaignPlot.Campaign?.Name ?? "";
+                cultivoActual = $"{cropName} - {campaignName}";
+
+                if (campaignPlot.EstimatedStartDate.HasValue)
+                {
+                    diasDesdeSiembra = today.DayNumber - campaignPlot.EstimatedStartDate.Value.DayNumber;
+                    if (diasDesdeSiembra < 0) diasDesdeSiembra = 0;
+                }
             }
+
+            var ultimaLabor = await _context.Labors
+                .AsNoTracking()
+                .Where(l => (l.CampaignPlotId != null && l.CampaignPlot!.PlotId == id)
+                         || (l.CampaignPlotId == null && l.LotId == id))
+                .Where(l => l.Status == "Completed" || l.Status == "Cerrada")
+                .OrderByDescending(l => l.ExecutionDate ?? l.PlannedDate ?? l.CreatedAt)
+                .Select(l => new LaborResumenDto(
+                    l.Id,
+                    l.LaborType,
+                    l.Status,
+                    l.ExecutionDate ?? l.PlannedDate,
+                    null
+                ))
+                .FirstOrDefaultAsync();
+
+            var proximaLabor = await _context.Labors
+                .AsNoTracking()
+                .Where(l => (l.CampaignPlotId != null && l.CampaignPlot!.PlotId == id)
+                         || (l.CampaignPlotId == null && l.LotId == id))
+                .Where(l => l.Status == "Planned" || l.Status == "Pendiente")
+                .OrderBy(l => l.PlannedDate ?? l.CreatedAt)
+                .Select(l => new LaborResumenDto(
+                    l.Id,
+                    l.LaborType,
+                    l.Status,
+                    l.PlannedDate,
+                    null
+                ))
+                .FirstOrDefaultAsync();
+
+            var responsable = await _context.WorkOrders
+                .AsNoTracking()
+                .Where(w => w.LotId == id && (w.Status == "InProgress" || w.Status == "Pending"))
+                .OrderByDescending(w => w.DueDate)
+                .Select(w => w.AssignedTo)
+                .FirstOrDefaultAsync();
+
+            var superficieHa = campaignPlot?.ProductiveSurfaceHa
+                ?? (lot.CadastralSurfaceHa > 0 ? lot.CadastralSurfaceHa
+                    : lot.Geometry != null ? (decimal)(lot.Geometry.Area / 10000.0) : 0m);
+
+            var resumen = new LoteResumenDto(
+                lot.Id,
+                lot.Name,
+                lot.Field?.Name,
+                superficieHa,
+                cultivoActual,
+                diasDesdeSiembra,
+                ultimaLabor,
+                proximaLabor,
+                responsable,
+                lot.Status
+            );
+
+            return Ok(resumen);
         }
-
-        var ultimaLabor = await _context.Labors
-            .Where(l => l.LotId == id && (l.Status == "Completed" || l.Status == "Cerrada"))
-            .OrderByDescending(l => l.ExecutionDate ?? l.PlannedDate ?? l.CreatedAt)
-            .Select(l => new LaborResumenDto(
-                l.Id,
-                l.LaborType,
-                l.Status,
-                l.ExecutionDate ?? l.PlannedDate,
-                null
-            ))
-            .FirstOrDefaultAsync();
-
-        var proximaLabor = await _context.Labors
-            .Where(l => l.LotId == id && (l.Status == "Planned" || l.Status == "Pendiente"))
-            .OrderBy(l => l.PlannedDate ?? l.CreatedAt)
-            .Select(l => new LaborResumenDto(
-                l.Id,
-                l.LaborType,
-                l.Status,
-                l.PlannedDate,
-                null
-            ))
-            .FirstOrDefaultAsync();
-
-        var responsable = await _context.WorkOrders
-            .Where(w => w.LotId == id && (w.Status == "InProgress" || w.Status == "Pending"))
-            .OrderByDescending(w => w.DueDate)
-            .Select(w => w.AssignedTo)
-            .FirstOrDefaultAsync();
-
-        var superficieHa = campaignPlot?.ProductiveSurfaceHa ?? (lot.Geometry != null ? (decimal)(lot.Geometry.Area / 10000.0) : 0m);
-
-        var resumen = new LoteResumenDto(
-            lot.Id,
-            lot.Name,
-            lot.Field?.Name,
-            (decimal)superficieHa,
-            cultivoActual,
-            diasDesdeSiembra,
-            ultimaLabor,
-            proximaLabor,
-            responsable,
-            lot.Status
-        );
-
-        return Ok(resumen);
+        catch (Exception)
+        {
+            return StatusCode(500, new { error = "Error al obtener resumen del lote" });
+        }
     }
 
     [HttpGet("labors/{id:guid}")]
@@ -106,29 +123,31 @@ public class StatsController : ControllerBase
         {
             var labor = await _context.Labors
                 .AsNoTracking()
+                .Include(l => l.CampaignPlot).ThenInclude(cp => cp!.Plot)
                 .Include(l => l.Lot)
-                .Include(l => l.Supplies)
-                    .ThenInclude(s => s.Supply)
+                .Include(l => l.Supplies).ThenInclude(s => s.Supply)
                 .Include(l => l.WorkOrder)
                 .FirstOrDefaultAsync(l => l.Id == id);
 
             if (labor == null) return NotFound();
+
+            var lotName = labor.CampaignPlot?.Plot?.Name ?? labor.Lot?.Name ?? "Sin Lote Asignado";
+            var lotId = labor.CampaignPlot?.PlotId ?? labor.LotId ?? Guid.Empty;
 
             var insumos = labor.Supplies?
                 .Where(s => s.Supply != null)
                 .Select(s => s.Supply!.ItemName)
                 .ToList() ?? new List<string>();
 
-            var responsable = labor.WorkOrder?.AssignedTo
-                ?? "Sin Asignar";
+            var responsable = labor.WorkOrder?.AssignedTo ?? "Sin Asignar";
 
             var detalle = new LaborDetalleDto(
                 labor.Id,
                 labor.LaborType ?? "—",
                 labor.Status ?? "—",
                 labor.PlannedDate ?? labor.ExecutionDate,
-                labor.Lot?.Name ?? "Sin Lote Asignado",
-                labor.LotId,
+                lotName,
+                lotId,
                 responsable,
                 labor.MachineryUsedId ?? "N/A",
                 insumos,

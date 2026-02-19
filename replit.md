@@ -50,12 +50,12 @@ Do not make changes to files related to authentication without explicit approval
 
 ### Database Schema
 - **Fields**: Basic agricultural field information.
-- **Lots**: Lots with PostGIS geometry.
+- **Lots**: Lots with PostGIS geometry and CadastralSurfaceHa (physical/cadastral reference). Has ICollection<CampaignPlot> for campaign linkage.
 - **WorkOrders**: Orders for agricultural tasks, linked to Lots.
 - **Inventories**: Inventory items with dual unit tracking.
-- **Labors**: Individual tasks, can be linked to WorkOrders or be "loose". Optional CampaignPlotId FK for cross-campaign cost tracking.
+- **Labors**: Individual tasks. Primary FK is CampaignPlotId (nullable, for campaign-linked labors). Secondary FK is LotId (nullable, for legacy/loose labors). CampaignPlot provides operational context (crop, productive surface). Resolution: CampaignPlot→Plot takes priority over direct Lot reference.
 - **Crops**: Crop catalog (Name, Type) for rotation tracking.
-- **CampaignPlots**: Links campaigns to lots with crop, productive surface, and estimated dates. Unique constraint on (CampaignId, PlotId).
+- **CampaignPlots**: Links campaigns to lots with crop, ProductiveSurfaceHa, and estimated dates. Unique constraint on (CampaignId, PlotId). Primary operational context for labors and dose calculations.
 
 ### API Endpoints
 - **Fields, Lots, Work Orders, Inventory**: Standard RESTful CRUD endpoints.
@@ -63,7 +63,7 @@ Do not make changes to files related to authentication without explicit approval
 - **Labors**: `GET /api/labors/calendar`, `POST validate-stock`, `POST reserve-stock`, `GET export-isoxml`.
 - **Unassigned Labors**: `GET /unassigned`, `GET /unassigned/count`, `PATCH /assign-bulk`, `PATCH /{id}/unassign`.
 - **Crops**: `GET /api/crops`, `POST /api/crops`, `PUT /api/crops/{id}`, `DELETE /api/crops/{id}`.
-- **Campaign Plots**: `GET /api/campaigns/{id}/plots`, `POST /api/campaigns/{id}/plots` (batch save).
+- **Campaign Plots**: `GET /api/campaigns/{id}/plots`, `POST /api/campaigns/{id}/plots` (batch save), `POST /api/campaigns/{id}/plots/import-lots` (bulk import lots from campaign fields).
 - **Lot History**: `GET /api/lots/{id}/history` (rotation timeline across campaigns).
 - **Stats**: `GET /api/stats/lots/{id}` (aggregated lot summary with crop, labors, responsable), `GET /api/stats/labors/{id}` (enriched labor detail with supplies).
 

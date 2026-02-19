@@ -270,7 +270,7 @@ public class CampaignsController : ControllerBase
                 cp.CropId,
                 cp.Crop != null ? cp.Crop.Name : null,
                 cp.ProductiveSurfaceHa,
-                null,
+                cp.Plot != null ? cp.Plot.CadastralSurfaceHa : null,
                 cp.EstimatedStartDate,
                 cp.EstimatedEndDate
             ))
@@ -324,6 +324,50 @@ public class CampaignsController : ControllerBase
 
         await _context.SaveChangesAsync();
         return NoContent();
+    }
+
+    [HttpPost("{id:guid}/plots/import-lots")]
+    public async Task<ActionResult<int>> ImportLotsFromFields(Guid id)
+    {
+        var campaign = await _context.Campaigns
+            .Include(c => c.CampaignFields)
+            .FirstOrDefaultAsync(c => c.Id == id);
+
+        if (campaign == null)
+            return NotFound();
+
+        if (campaign.Status == "Locked")
+            return BadRequest("No se pueden modificar lotes en una campaña cerrada.");
+
+        var fieldIds = campaign.CampaignFields.Select(cf => cf.FieldId).ToList();
+        if (fieldIds.Count == 0)
+            return BadRequest("La campaña no tiene campos asignados.");
+
+        var existingPlotIds = await _context.CampaignPlots
+            .Where(cp => cp.CampaignId == id)
+            .Select(cp => cp.PlotId)
+            .ToListAsync();
+
+        var lotsToImport = await _context.Lots
+            .AsNoTracking()
+            .Where(l => fieldIds.Contains(l.FieldId) && !existingPlotIds.Contains(l.Id))
+            .ToListAsync();
+
+        foreach (var lot in lotsToImport)
+        {
+            _context.CampaignPlots.Add(new CampaignPlot
+            {
+                Id = Guid.NewGuid(),
+                CampaignId = id,
+                PlotId = lot.Id,
+                ProductiveSurfaceHa = lot.CadastralSurfaceHa > 0
+                    ? lot.CadastralSurfaceHa
+                    : (lot.Geometry != null ? (decimal)(lot.Geometry.Area / 10000.0) : 0m)
+            });
+        }
+
+        await _context.SaveChangesAsync();
+        return Ok(lotsToImport.Count);
     }
 
     [HttpGet("{id:guid}/fields/{fieldId:guid}/surface")]

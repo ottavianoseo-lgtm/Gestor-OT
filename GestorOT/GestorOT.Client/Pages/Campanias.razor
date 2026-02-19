@@ -392,7 +392,11 @@
                 </AntDesign.Row>
             </div>
 
-            <div style="border-top: 1px solid rgba(255,255,255,0.08); padding-top: 16px; text-align: right;">
+            <div style="border-top: 1px solid rgba(255,255,255,0.08); padding-top: 16px; display: flex; justify-content: space-between; align-items: center;">
+                <Button OnClick="ImportLotsFromFields" Loading="_importingLots"
+                        Style="border-radius: 8px; border-color: rgba(155,89,182,0.4); color: #9B59B6;">
+                    <Icon Type="import" Theme="IconThemeType.Outline" /> Importar lotes de campos
+                </Button>
                 <Space>
                     <SpaceItem>
                         <Button OnClick="ClosePlotsModal" Style="border-radius: 8px;">Cancelar</Button>
@@ -434,6 +438,7 @@
     private bool _plotsModalVisible;
     private bool _plotsModalLoading;
     private bool _savingPlots;
+    private bool _importingLots;
     private CampaignDto? _plotsModalCampaign;
     private List<PlotAssignmentRow> _plotRows = new();
     private List<CropDto> _crops = new();
@@ -887,6 +892,46 @@
         finally
         {
             _savingPlots = false;
+        }
+    }
+
+    private async Task ImportLotsFromFields()
+    {
+        if (_plotsModalCampaign == null) return;
+
+        _importingLots = true;
+        try
+        {
+            var response = await Http.PostAsync(
+                $"api/campaigns/{_plotsModalCampaign.Id}/plots/import-lots", null);
+
+            if (response.IsSuccessStatusCode)
+            {
+                var count = await response.Content.ReadFromJsonAsync<int>();
+                if (count > 0)
+                {
+                    Message.Success($"{count} lotes importados correctamente.");
+                    await OpenPlotsModal(_plotsModalCampaign);
+                }
+                else
+                {
+                    Message.Info("No hay lotes nuevos para importar.");
+                }
+            }
+            else
+            {
+                var body = await response.Content.ReadAsStringAsync();
+                Message.Error($"Error: {body}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Message.Error($"Error: {ex.Message}");
+        }
+        finally
+        {
+            _importingLots = false;
+            StateHasChanged();
         }
     }
 

@@ -58,6 +58,8 @@ public class WorkOrdersController : ControllerBase
             .Include(w => w.Lot)
                 .ThenInclude(l => l!.Field)
             .Include(w => w.Labors)
+                .ThenInclude(l => l.CampaignPlot).ThenInclude(cp => cp!.Plot)
+            .Include(w => w.Labors)
                 .ThenInclude(l => l.Lot)
             .Include(w => w.Labors)
                 .ThenInclude(l => l.Supplies)
@@ -109,7 +111,7 @@ public class WorkOrdersController : ControllerBase
             workOrder.Labors.OrderBy(l => l.CreatedAt).Select(l => new LaborDto(
                 l.Id,
                 l.WorkOrderId,
-                l.LotId,
+                l.CampaignPlot != null ? l.CampaignPlot.PlotId : l.LotId,
                 l.LaborType,
                 l.Status,
                 l.ExecutionDate,
@@ -117,7 +119,7 @@ public class WorkOrdersController : ControllerBase
                 l.CreatedAt,
                 l.Rate,
                 l.RateUnit,
-                l.Lot?.Name,
+                l.CampaignPlot != null && l.CampaignPlot.Plot != null ? l.CampaignPlot.Plot.Name : l.Lot?.Name,
                 l.Supplies.OrderBy(s => s.TankMixOrder).Select(s => new LaborSupplyDto(
                     s.Id,
                     s.LaborId,
@@ -136,8 +138,10 @@ public class WorkOrdersController : ControllerBase
                 l.MachineryUsedId,
                 l.WeatherLogJson,
                 l.Notes,
-                l.Lot?.Field?.Name,
-                l.PlannedDate
+                l.CampaignPlot != null && l.CampaignPlot.Plot != null && l.CampaignPlot.Plot.Field != null ? l.CampaignPlot.Plot.Field.Name : l.Lot?.Field?.Name,
+                l.PlannedDate,
+                l.CampaignPlotId,
+                l.CampaignPlot != null ? l.CampaignPlot.ProductiveSurfaceHa : 0
             )).ToList(),
             settlementDto,
             workOrder.OTNumber,

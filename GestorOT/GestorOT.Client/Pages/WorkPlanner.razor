@@ -6,6 +6,7 @@
 @inject HttpClient Http
 @inject IMessageService Message
 @inject NavigationManager Nav
+@inject GestorOT.Client.Services.CampaignState CampaignState
 
 <PageTitle>Work Planner - GestorOT</PageTitle>
 
@@ -198,16 +199,34 @@ else
        Footer="null" Width="480"
        BodyStyle="background: #1E1E2E; padding: 24px;">
     <Form Model="_newLabor" OnFinish="CreateLabor" Layout="@FormLayout.Vertical">
-        <FormItem Label="Lote">
-            <Select TItemValue="Guid" TItem="Guid" @bind-Value="_newLabor.LotId" Placeholder="Seleccionar lote"
-                    Style="width: 100%;">
-                @foreach (var lot in _lots)
-                {
-                    <SelectOption TItemValue="Guid" TItem="Guid" Value="@lot.Id"
-                                  Label="@($"{lot.Name} ({lot.FieldName})")" />
-                }
-            </Select>
-        </FormItem>
+        @if (_campaignPlots.Count > 0)
+        {
+            <FormItem Label="Lote (Campaña)">
+                <Select TItemValue="Guid" TItem="Guid" Value="@_newLabor.CampaignPlotId"
+                        ValueChanged="OnCampaignPlotChanged"
+                        Placeholder="Seleccionar lote de campaña"
+                        Style="width: 100%;">
+                    @foreach (var cp in _campaignPlots)
+                    {
+                        <SelectOption TItemValue="Guid" TItem="Guid" Value="@cp.Id"
+                                      Label="@($"{cp.PlotName} ({cp.FieldName}) — {cp.CropName ?? "Sin cultivo"} [{cp.ProductiveSurfaceHa:F1} ha]")" />
+                    }
+                </Select>
+            </FormItem>
+        }
+        else
+        {
+            <FormItem Label="Lote">
+                <Select TItemValue="Guid" TItem="Guid" @bind-Value="_newLabor.LotId" Placeholder="Seleccionar lote"
+                        Style="width: 100%;">
+                    @foreach (var lot in _lots)
+                    {
+                        <SelectOption TItemValue="Guid" TItem="Guid" Value="@lot.Id"
+                                      Label="@($"{lot.Name} ({lot.FieldName})")" />
+                    }
+                </Select>
+            </FormItem>
+        }
         <FormItem Label="Tipo de Labor">
             <Select TItemValue="string" TItem="string" @bind-Value="_newLabor.LaborType" Placeholder="Tipo"
                     Style="width: 100%;">
@@ -222,9 +241,10 @@ else
         <FormItem Label="Fecha Planificada">
             <DatePicker @bind-Value="_newLabor.PlannedDate" Style="width: 100%;" />
         </FormItem>
-        <FormItem Label="Hectareas">
+        <FormItem Label="Hectáreas">
             <AntDesign.InputNumber TValue="decimal" @bind-Value="_newLabor.Hectares" Min="0m" Step="0.1m"
-                                   Style="width: 100%;" />
+                                   Style="width: 100%;"
+                                   Placeholder="@(_newLabor.CampaignPlotId != Guid.Empty ? "Auto desde campaña" : "")" />
         </FormItem>
         <FormItem Label="Notas (opcional)">
             <TextArea @bind-Value="_newLabor.Notes" Placeholder="Observaciones" Rows="2" />
@@ -525,6 +545,7 @@ else
 @code {
     private List<LaborCalendarDto> _labors = new();
     private List<LotDto> _lots = new();
+    private List<CampaignPlotDto> _campaignPlots = new();
     private bool _loading = true;
     private bool _saving;
     private string? _errorMessage;
@@ -607,10 +628,21 @@ else
             var lotsTask = Http.GetFromJsonAsync("api/lots",
                 AppJsonSerializerContext.Default.ListLotDto, cts.Token);
 
+            Task<List<CampaignPlotDto>?>? plotsTask = null;
+            if (CampaignState.CurrentCampaign != null)
+            {
+                plotsTask = Http.GetFromJsonAsync(
+                    $"api/campaigns/{CampaignState.CurrentCampaign.Id}/plots",
+                    AppJsonSerializerContext.Default.ListCampaignPlotDto, cts.Token);
+            }
+
             await Task.WhenAll(laborsTask, lotsTask);
+            if (plotsTask != null)
+                await plotsTask;
 
             _labors = laborsTask.Result ?? new();
             _lots = lotsTask.Result ?? new();
+            _campaignPlots = plotsTask?.Result ?? new();
             _errorMessage = null;
         }
         catch (OperationCanceledException)
@@ -642,9 +674,21 @@ else
         _showCreateModal = true;
     }
 
+    private void OnCampaignPlotChanged(Guid cpId)
+    {
+        _newLabor.CampaignPlotId = cpId;
+        var cp = _campaignPlots.FirstOrDefault(c => c.Id == cpId);
+        if (cp != null)
+        {
+            _newLabor.Hectares = cp.ProductiveSurfaceHa;
+            _newLabor.LotId = cp.PlotId;
+        }
+    }
+
     private async Task CreateLabor()
     {
-        if (_newLabor.LotId == Guid.Empty || string.IsNullOrEmpty(_newLabor.LaborType))
+        bool hasContext = _newLabor.CampaignPlotId != Guid.Empty || _newLabor.LotId != Guid.Empty;
+        if (!hasContext || string.IsNullOrEmpty(_newLabor.LaborType))
         {
             Message.Warning("Completa el lote y tipo de labor.");
             return;
@@ -653,14 +697,22 @@ else
         try
         {
             _saving = true;
-            var lot = _lots.FirstOrDefault(l => l.Id == _newLabor.LotId);
-            var hectares = _newLabor.Hectares > 0 ? _newLabor.Hectares : (lot != null ? (decimal)lot.Area : 0);
+            var hectares = _newLabor.Hectares;
+            if (hectares == 0 && _newLabor.CampaignPlotId == Guid.Empty)
+            {
+                var lot = _lots.FirstOrDefault(l => l.Id == _newLabor.LotId);
+                hectares = lot != null ? (decimal)lot.Area : 0;
+            }
+
+            Guid? campaignPlotId = _newLabor.CampaignPlotId != Guid.Empty ? _newLabor.CampaignPlotId : null;
+            Guid? lotId = _newLabor.LotId != Guid.Empty ? _newLabor.LotId : null;
 
             var dto = new LaborDto(
-                Guid.Empty, null, _newLabor.LotId, _newLabor.LaborType,
+                Guid.Empty, null, lotId, _newLabor.LaborType,
                 "Pending", null, hectares, DateTime.UtcNow,
                 0, "ha", null, null, null, null, null,
-                _newLabor.Notes, null, _newLabor.PlannedDate
+                _newLabor.Notes, null, _newLabor.PlannedDate,
+                campaignPlotId
             );
 
             var response = await Http.PostAsJsonAsync("api/labors", dto, AppJsonSerializerContext.Default.LaborDto);
@@ -787,6 +839,7 @@ else
     public class NewLaborModel
     {
         public Guid LotId { get; set; }
+        public Guid CampaignPlotId { get; set; }
         public string LaborType { get; set; } = string.Empty;
         public DateTime? PlannedDate { get; set; } = DateTime.Today;
         public decimal Hectares { get; set; }

@@ -99,6 +99,7 @@ public class ApplicationDbContext : DbContext
             entity.HasKey(e => e.Id);
             entity.Property(e => e.Name).IsRequired().HasMaxLength(200);
             entity.Property(e => e.Status).HasMaxLength(50);
+            entity.Property(e => e.CadastralSurfaceHa).HasPrecision(10, 2).HasDefaultValue(0m);
             entity.Property(e => e.Geometry).HasColumnType("geometry(Polygon, 4326)");
             entity.HasIndex(e => e.Geometry).HasMethod("GIST");
             
@@ -163,7 +164,8 @@ public class ApplicationDbContext : DbContext
             entity.HasOne(e => e.Lot)
                 .WithMany()
                 .HasForeignKey(e => e.LotId)
-                .OnDelete(DeleteBehavior.Restrict);
+                .IsRequired(false)
+                .OnDelete(DeleteBehavior.SetNull);
 
             entity.HasOne(e => e.CampaignPlot)
                 .WithMany(cp => cp.Labors)
@@ -340,7 +342,7 @@ public class ApplicationDbContext : DbContext
                 .OnDelete(DeleteBehavior.Cascade);
 
             entity.HasOne(e => e.Plot)
-                .WithMany()
+                .WithMany(l => l.CampaignPlots)
                 .HasForeignKey(e => e.PlotId)
                 .OnDelete(DeleteBehavior.Cascade);
 
@@ -399,9 +401,11 @@ public class Lot : ITenantEntity
     public Guid FieldId { get; set; }
     public string Name { get; set; } = string.Empty;
     public string Status { get; set; } = "Active";
+    public decimal CadastralSurfaceHa { get; set; }
     public Geometry? Geometry { get; set; }
     public Field? Field { get; set; }
     public ICollection<WorkOrder> WorkOrders { get; set; } = new List<WorkOrder>();
+    public ICollection<CampaignPlot> CampaignPlots { get; set; } = new List<CampaignPlot>();
 }
 
 public class WorkOrder : ITenantEntity
@@ -443,7 +447,7 @@ public class Labor : ITenantEntity
     public Guid Id { get; set; }
     public Guid TenantId { get; set; }
     public Guid? WorkOrderId { get; set; }
-    public Guid LotId { get; set; }
+    public Guid? LotId { get; set; }
     public Guid? CampaignPlotId { get; set; }
     public string LaborType { get; set; } = string.Empty;
     public string Status { get; set; } = "Planned";

@@ -3,7 +3,7 @@ namespace GestorOT.Shared.Dtos;
 public record LaborDto(
     Guid Id,
     Guid? WorkOrderId,
-    Guid LotId,
+    Guid? LotId,
     string LaborType,
     string Status,
     DateTime? ExecutionDate,
@@ -18,10 +18,12 @@ public record LaborDto(
     string? WeatherLogJson = null,
     string? Notes = null,
     string? FieldName = null,
-    DateTime? PlannedDate = null
+    DateTime? PlannedDate = null,
+    Guid? CampaignPlotId = null,
+    decimal ProductiveSurfaceHa = 0
 )
 {
-    public LaborDto() : this(Guid.Empty, null, Guid.Empty, string.Empty, "Planned", null, 0, DateTime.MinValue, 0, "ha", null, null, null, null, null, null, null, null) { }
+    public LaborDto() : this(Guid.Empty, null, null, string.Empty, "Planned", null, 0, DateTime.MinValue, 0, "ha", null, null, null, null, null, null, null, null, null, 0) { }
 }
 
 public record LaborSupplyDto(
