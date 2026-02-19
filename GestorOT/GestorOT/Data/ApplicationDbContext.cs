@@ -64,8 +64,6 @@ public class ApplicationDbContext : DbContext
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
     public DbSet<Campaign> Campaigns => Set<Campaign>();
     public DbSet<CampaignField> CampaignFields => Set<CampaignField>();
-    public DbSet<CampaignPlot> CampaignPlots => Set<CampaignPlot>();
-    public DbSet<Crop> Crops => Set<Crop>();
 
     private Guid CurrentTenantId => _tenantService?.TenantId ?? Guid.Empty;
     private Guid? CurrentCampaignId => _campaignContext?.CurrentCampaignId;
@@ -99,7 +97,6 @@ public class ApplicationDbContext : DbContext
             entity.HasKey(e => e.Id);
             entity.Property(e => e.Name).IsRequired().HasMaxLength(200);
             entity.Property(e => e.Status).HasMaxLength(50);
-            entity.Property(e => e.CadastralSurfaceHa).HasPrecision(10, 2).HasDefaultValue(0m);
             entity.Property(e => e.Geometry).HasColumnType("geometry(Polygon, 4326)");
             entity.HasIndex(e => e.Geometry).HasMethod("GIST");
             
@@ -153,7 +150,6 @@ public class ApplicationDbContext : DbContext
             entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
 
             entity.Property(e => e.MetadataExterna).HasColumnType("jsonb");
-            entity.Ignore(e => e.Responsable);
 
             entity.HasOne(e => e.WorkOrder)
                 .WithMany(w => w.Labors)
@@ -164,14 +160,7 @@ public class ApplicationDbContext : DbContext
             entity.HasOne(e => e.Lot)
                 .WithMany()
                 .HasForeignKey(e => e.LotId)
-                .IsRequired(false)
-                .OnDelete(DeleteBehavior.SetNull);
-
-            entity.HasOne(e => e.CampaignPlot)
-                .WithMany(cp => cp.Labors)
-                .HasForeignKey(e => e.CampaignPlotId)
-                .IsRequired(false)
-                .OnDelete(DeleteBehavior.SetNull);
+                .OnDelete(DeleteBehavior.Restrict);
         });
 
         modelBuilder.Entity<LaborSupply>(entity =>
@@ -319,38 +308,6 @@ public class ApplicationDbContext : DbContext
                 .HasForeignKey(e => e.FieldId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
-
-        modelBuilder.Entity<Crop>(entity =>
-        {
-            entity.ToTable("Crops", "public");
-            entity.HasKey(e => e.Id);
-            entity.Property(e => e.Name).HasMaxLength(200).IsRequired();
-            entity.Property(e => e.Type).HasMaxLength(100);
-            entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
-        });
-
-        modelBuilder.Entity<CampaignPlot>(entity =>
-        {
-            entity.ToTable("CampaignPlots", "public");
-            entity.HasKey(e => e.Id);
-            entity.Property(e => e.ProductiveSurfaceHa).HasPrecision(10, 2);
-            entity.HasIndex(e => new { e.CampaignId, e.PlotId }).IsUnique();
-
-            entity.HasOne(e => e.Campaign)
-                .WithMany(c => c.CampaignPlots)
-                .HasForeignKey(e => e.CampaignId)
-                .OnDelete(DeleteBehavior.Cascade);
-
-            entity.HasOne(e => e.Plot)
-                .WithMany(l => l.CampaignPlots)
-                .HasForeignKey(e => e.PlotId)
-                .OnDelete(DeleteBehavior.Cascade);
-
-            entity.HasOne(e => e.Crop)
-                .WithMany()
-                .HasForeignKey(e => e.CropId)
-                .OnDelete(DeleteBehavior.SetNull);
-        });
     }
 
     public override int SaveChanges()
@@ -401,11 +358,9 @@ public class Lot : ITenantEntity
     public Guid FieldId { get; set; }
     public string Name { get; set; } = string.Empty;
     public string Status { get; set; } = "Active";
-    public decimal CadastralSurfaceHa { get; set; }
     public Geometry? Geometry { get; set; }
     public Field? Field { get; set; }
     public ICollection<WorkOrder> WorkOrders { get; set; } = new List<WorkOrder>();
-    public ICollection<CampaignPlot> CampaignPlots { get; set; } = new List<CampaignPlot>();
 }
 
 public class WorkOrder : ITenantEntity
@@ -447,8 +402,7 @@ public class Labor : ITenantEntity
     public Guid Id { get; set; }
     public Guid TenantId { get; set; }
     public Guid? WorkOrderId { get; set; }
-    public Guid? LotId { get; set; }
-    public Guid? CampaignPlotId { get; set; }
+    public Guid LotId { get; set; }
     public string LaborType { get; set; } = string.Empty;
     public string Status { get; set; } = "Planned";
     public DateTime? ExecutionDate { get; set; }
@@ -464,10 +418,8 @@ public class Labor : ITenantEntity
     public string? WeatherLogJson { get; set; }
     public string? EvidencePhotosJson { get; set; }
     public string? MetadataExterna { get; set; }
-    public string? Responsable { get; set; }
     public WorkOrder? WorkOrder { get; set; }
     public Lot? Lot { get; set; }
-    public CampaignPlot? CampaignPlot { get; set; }
     public ICollection<LaborSupply> Supplies { get; set; } = new List<LaborSupply>();
 }
 
@@ -569,15 +521,6 @@ public class AuditLog : ITenantEntity
     public DateTime Timestamp { get; set; }
 }
 
-public class Crop : ITenantEntity
-{
-    public Guid Id { get; set; }
-    public Guid TenantId { get; set; }
-    public string Name { get; set; } = string.Empty;
-    public string? Type { get; set; }
-    public DateTime CreatedAt { get; set; }
-}
-
 public class Campaign : ITenantEntity
 {
     public Guid Id { get; set; }
@@ -591,7 +534,6 @@ public class Campaign : ITenantEntity
     public string? BusinessRulesJson { get; set; }
     public DateTime CreatedAt { get; set; }
     public ICollection<CampaignField> CampaignFields { get; set; } = new List<CampaignField>();
-    public ICollection<CampaignPlot> CampaignPlots { get; set; } = new List<CampaignPlot>();
     public ICollection<WorkOrder> WorkOrders { get; set; } = new List<WorkOrder>();
 }
 
@@ -605,20 +547,4 @@ public class CampaignField : ITenantEntity
     public decimal AllocatedHectares { get; set; }
     public Campaign? Campaign { get; set; }
     public Field? Field { get; set; }
-}
-
-public class CampaignPlot : ITenantEntity
-{
-    public Guid Id { get; set; }
-    public Guid TenantId { get; set; }
-    public Guid CampaignId { get; set; }
-    public Guid PlotId { get; set; }
-    public Guid? CropId { get; set; }
-    public decimal ProductiveSurfaceHa { get; set; }
-    public DateOnly? EstimatedStartDate { get; set; }
-    public DateOnly? EstimatedEndDate { get; set; }
-    public Campaign? Campaign { get; set; }
-    public Lot? Plot { get; set; }
-    public Crop? Crop { get; set; }
-    public ICollection<Labor> Labors { get; set; } = new List<Labor>();
 }

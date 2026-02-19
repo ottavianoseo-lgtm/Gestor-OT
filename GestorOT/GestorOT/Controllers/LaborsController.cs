@@ -21,9 +21,9 @@ public class LaborsController : ControllerBase
     {
         var labors = await _context.Labors
             .AsNoTracking()
-            .Include(l => l.CampaignPlot).ThenInclude(cp => cp!.Plot).ThenInclude(p => p!.Field)
-            .Include(l => l.Lot).ThenInclude(lot => lot!.Field)
-            .Include(l => l.Supplies).ThenInclude(s => s.Supply)
+            .Include(l => l.Lot)
+            .Include(l => l.Supplies)
+                .ThenInclude(s => s.Supply)
             .Where(l => l.WorkOrderId == workOrderId)
             .OrderBy(l => l.CreatedAt)
             .ToListAsync();
@@ -36,9 +36,9 @@ public class LaborsController : ControllerBase
     {
         var labor = await _context.Labors
             .AsNoTracking()
-            .Include(l => l.CampaignPlot).ThenInclude(cp => cp!.Plot).ThenInclude(p => p!.Field)
-            .Include(l => l.Lot).ThenInclude(lot => lot!.Field)
-            .Include(l => l.Supplies).ThenInclude(s => s.Supply)
+            .Include(l => l.Lot)
+            .Include(l => l.Supplies)
+                .ThenInclude(s => s.Supply)
             .FirstOrDefaultAsync(l => l.Id == id);
 
         if (labor == null)
@@ -50,34 +50,16 @@ public class LaborsController : ControllerBase
     [HttpPost]
     public async Task<ActionResult<LaborDto>> CreateLabor(LaborDto dto)
     {
-        CampaignPlot? campaignPlot = null;
-        Guid? resolvedLotId = dto.LotId;
-        decimal effectiveArea = dto.Hectares;
-
-        if (dto.CampaignPlotId != null)
-        {
-            campaignPlot = await _context.CampaignPlots
-                .Include(cp => cp.Plot)
-                .FirstOrDefaultAsync(cp => cp.Id == dto.CampaignPlotId);
-            if (campaignPlot == null)
-                return BadRequest("Contexto de campaña no válido.");
-            resolvedLotId = campaignPlot.PlotId;
-            if (effectiveArea == 0)
-                effectiveArea = campaignPlot.ProductiveSurfaceHa;
-        }
-
         var labor = new Labor
         {
             Id = Guid.NewGuid(),
             WorkOrderId = dto.WorkOrderId,
-            LotId = resolvedLotId,
-            CampaignPlotId = dto.CampaignPlotId,
+            LotId = dto.LotId,
             LaborType = dto.LaborType,
             Status = "Planned",
             ExecutionDate = dto.ExecutionDate,
             PlannedDate = dto.PlannedDate,
-            Hectares = effectiveArea,
-            EffectiveArea = effectiveArea,
+            Hectares = dto.Hectares,
             Rate = dto.Rate,
             RateUnit = dto.RateUnit ?? "ha",
             CreatedAt = DateTime.UtcNow,
@@ -97,7 +79,7 @@ public class LaborsController : ControllerBase
                     LaborId = labor.Id,
                     SupplyId = supplyDto.SupplyId,
                     PlannedDose = supplyDto.PlannedDose,
-                    PlannedTotal = supplyDto.PlannedDose * effectiveArea,
+                    PlannedTotal = supplyDto.PlannedDose * labor.Hectares,
                     DoseUnit = supplyDto.DoseUnit,
                     TankMixOrder = supplyDto.TankMixOrder,
                     IsSubstitute = supplyDto.IsSubstitute
@@ -110,9 +92,9 @@ public class LaborsController : ControllerBase
 
         var created = await _context.Labors
             .AsNoTracking()
-            .Include(l => l.CampaignPlot).ThenInclude(cp => cp!.Plot).ThenInclude(p => p!.Field)
-            .Include(l => l.Lot).ThenInclude(lot => lot!.Field)
-            .Include(l => l.Supplies).ThenInclude(s => s.Supply)
+            .Include(l => l.Lot)
+            .Include(l => l.Supplies)
+                .ThenInclude(s => s.Supply)
             .FirstAsync(l => l.Id == labor.Id);
 
         return CreatedAtAction(nameof(GetLabor), new { id = labor.Id }, MapToDto(created));
@@ -128,21 +110,7 @@ public class LaborsController : ControllerBase
         if (labor == null)
             return NotFound();
 
-        if (dto.CampaignPlotId != null)
-        {
-            var campaignPlot = await _context.CampaignPlots.FindAsync(dto.CampaignPlotId);
-            if (campaignPlot != null)
-            {
-                labor.CampaignPlotId = dto.CampaignPlotId;
-                labor.LotId = campaignPlot.PlotId;
-            }
-        }
-        else
-        {
-            labor.CampaignPlotId = null;
-            labor.LotId = dto.LotId;
-        }
-
+        labor.LotId = dto.LotId;
         labor.LaborType = dto.LaborType;
         labor.ExecutionDate = dto.ExecutionDate;
         labor.PlannedDate = dto.PlannedDate;
@@ -243,12 +211,10 @@ public class LaborsController : ControllerBase
             Id = Guid.NewGuid(),
             WorkOrderId = source.WorkOrderId,
             LotId = source.LotId,
-            CampaignPlotId = source.CampaignPlotId,
             LaborType = source.LaborType,
             Status = "Realized",
             ExecutionDate = DateTime.UtcNow,
             Hectares = source.Hectares,
-            EffectiveArea = source.EffectiveArea,
             Rate = source.Rate,
             RateUnit = source.RateUnit,
             CreatedAt = DateTime.UtcNow
@@ -274,9 +240,9 @@ public class LaborsController : ControllerBase
 
         var created = await _context.Labors
             .AsNoTracking()
-            .Include(l => l.CampaignPlot).ThenInclude(cp => cp!.Plot).ThenInclude(p => p!.Field)
-            .Include(l => l.Lot).ThenInclude(lot => lot!.Field)
-            .Include(l => l.Supplies).ThenInclude(su => su.Supply)
+            .Include(l => l.Lot)
+            .Include(l => l.Supplies)
+                .ThenInclude(su => su.Supply)
             .FirstAsync(l => l.Id == newLabor.Id);
 
         return CreatedAtAction(nameof(GetLabor), new { id = newLabor.Id }, MapToDto(created));
@@ -296,35 +262,26 @@ public class LaborsController : ControllerBase
 
     [HttpGet("calendar")]
     public async Task<ActionResult<List<LaborCalendarDto>>> GetCalendarLabors(
-        [FromQuery] DateTime start, [FromQuery] DateTime end, [FromQuery] string? type = null)
+        [FromQuery] DateTime start, [FromQuery] DateTime end)
     {
-        var startUtc = DateTime.SpecifyKind(start, DateTimeKind.Utc);
-        var endUtc = DateTime.SpecifyKind(end, DateTimeKind.Utc);
-
-        var query = _context.Labors
+        var labors = await _context.Labors
             .AsNoTracking()
-            .Include(l => l.CampaignPlot).ThenInclude(cp => cp!.Plot)
             .Include(l => l.Lot)
             .Include(l => l.WorkOrder)
-            .Where(l => (l.PlannedDate != null && l.PlannedDate >= startUtc && l.PlannedDate <= endUtc)
-                     || (l.PlannedDate == null && l.ExecutionDate != null && l.ExecutionDate >= startUtc && l.ExecutionDate <= endUtc)
-                     || (l.PlannedDate == null && l.ExecutionDate == null && l.CreatedAt >= startUtc && l.CreatedAt <= endUtc));
-
-        if (!string.IsNullOrEmpty(type))
-            query = query.Where(l => l.LaborType == type);
-
-        var labors = await query
+            .Where(l => (l.PlannedDate != null && l.PlannedDate >= start && l.PlannedDate <= end)
+                     || (l.PlannedDate == null && l.ExecutionDate != null && l.ExecutionDate >= start && l.ExecutionDate <= end)
+                     || (l.PlannedDate == null && l.ExecutionDate == null && l.CreatedAt >= start && l.CreatedAt <= end))
             .OrderBy(l => l.PlannedDate ?? l.ExecutionDate ?? l.CreatedAt)
             .Select(l => new LaborCalendarDto(
                 l.Id,
-                $"{l.LaborType} - {(l.CampaignPlot != null && l.CampaignPlot.Plot != null ? l.CampaignPlot.Plot.Name : l.Lot != null ? l.Lot.Name : "Sin lote")}",
+                $"{l.LaborType} - {(l.Lot != null ? l.Lot.Name : "Sin lote")}",
                 l.PlannedDate ?? l.ExecutionDate ?? l.CreatedAt,
                 l.Status,
                 l.WorkOrderId == null ? "#FFA500" : "#4CAF50",
                 l.WorkOrderId != null,
                 l.LaborType,
                 l.Hectares,
-                l.CampaignPlot != null && l.CampaignPlot.Plot != null ? l.CampaignPlot.Plot.Name : l.Lot != null ? l.Lot.Name : null,
+                l.Lot != null ? l.Lot.Name : null,
                 l.WorkOrder != null ? l.WorkOrder.Description : null
             ))
             .ToListAsync();
@@ -337,9 +294,10 @@ public class LaborsController : ControllerBase
     {
         var labors = await _context.Labors
             .AsNoTracking()
-            .Include(l => l.CampaignPlot).ThenInclude(cp => cp!.Plot).ThenInclude(p => p!.Field)
-            .Include(l => l.Lot).ThenInclude(l => l!.Field)
-            .Include(l => l.Supplies).ThenInclude(s => s.Supply)
+            .Include(l => l.Lot)
+                .ThenInclude(l => l!.Field)
+            .Include(l => l.Supplies)
+                .ThenInclude(s => s.Supply)
             .Where(l => l.WorkOrderId == null)
             .OrderByDescending(l => l.CreatedAt)
             .ToListAsync();
@@ -383,30 +341,12 @@ public class LaborsController : ControllerBase
         return NoContent();
     }
 
-    private static string? ResolveLotName(Labor labor)
-    {
-        if (labor.CampaignPlot?.Plot != null)
-            return labor.CampaignPlot.Plot.Name;
-        return labor.Lot?.Name;
-    }
-
-    private static string? ResolveFieldName(Labor labor)
-    {
-        if (labor.CampaignPlot?.Plot?.Field != null)
-            return labor.CampaignPlot.Plot.Field.Name;
-        return labor.Lot?.Field?.Name;
-    }
-
     private static LaborDto MapToDto(Labor labor)
     {
-        var lotName = ResolveLotName(labor);
-        var fieldName = ResolveFieldName(labor);
-        var productiveSurface = labor.CampaignPlot?.ProductiveSurfaceHa ?? 0;
-
         return new LaborDto(
             labor.Id,
             labor.WorkOrderId,
-            labor.CampaignPlot?.PlotId ?? labor.LotId,
+            labor.LotId,
             labor.LaborType,
             labor.Status,
             labor.ExecutionDate,
@@ -414,7 +354,7 @@ public class LaborsController : ControllerBase
             labor.CreatedAt,
             labor.Rate,
             labor.RateUnit,
-            lotName,
+            labor.Lot?.Name,
             labor.Supplies.OrderBy(s => s.TankMixOrder).Select(s => new LaborSupplyDto(
                 s.Id,
                 s.LaborId,
@@ -433,10 +373,8 @@ public class LaborsController : ControllerBase
             labor.MachineryUsedId,
             labor.WeatherLogJson,
             labor.Notes,
-            fieldName,
-            labor.PlannedDate,
-            labor.CampaignPlotId,
-            productiveSurface
+            labor.Lot?.Field?.Name,
+            labor.PlannedDate
         );
     }
 }

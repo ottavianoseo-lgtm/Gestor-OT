@@ -36,12 +36,12 @@ public record PublicLaborDto(
     string LaborType,
     string Status,
     decimal Hectares,
-    Guid? LotId,
+    Guid LotId,
     string? LotName = null,
     List<PublicLaborSupplyDto>? Supplies = null
 )
 {
-    public PublicLaborDto() : this(Guid.Empty, string.Empty, string.Empty, 0, null, null, null) { }
+    public PublicLaborDto() : this(Guid.Empty, string.Empty, string.Empty, 0, Guid.Empty, null, null) { }
 }
 
 public record PublicLaborSupplyDto(

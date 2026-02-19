@@ -34,7 +34,7 @@ Do not make changes to files related to authentication without explicit approval
 - **Work Order Workflow**: Status progression (Pending → InProgress → Completed) with quick-action buttons and KPI tracking. Supports "Loose Labors" (labors without assigned Work Orders) and batch assignment.
 - **Work Planner**: CSS Grid calendar (month/week views) displaying "Labores" (tasks) with color-coded statuses and types. Includes quick labor creation and detailed cards.
 - **Multi-tenancy**: Implemented via PostgreSQL Row-Level Security (RLS) and `TenantSessionInterceptor` to inject `app.current_tenant`.
-- **Campaigns Module**: Manages campaigns with associated fields and plots (lots), status workflows, field allocation, and crop rotation tracking. Uses `CampaignSelector`, `CampaignHttpHandler`, `CampaignPlot` for lot-level linkage with crops, and `PlotHistoryDto` for rotation timeline.
+- **Campaigns Module**: Manages campaigns with associated fields, status workflows, and field allocation. Uses `CampaignSelector` and `CampaignHttpHandler`.
 - **Admin Panel**: User and role management (RBAC), Tank Mix Rules for agrochemical compatibility, and Audit Log for tracking changes. Uses QuickGrid and Paginator.
 - **Agronomic Validation**: `AgronomicValidationService` for validating tank mixes with alerts.
 - **ISO XML Export**: `IsoXmlExporterService` for exporting ISO 11783 TaskData.xml in ZIP format.
@@ -45,27 +45,20 @@ Do not make changes to files related to authentication without explicit approval
 - **UI Updates**: Explicit `StateHasChanged()` in `finally` blocks for reliable UI rendering.
 - **Modals**: AntDesign Modal + Form components for CRUD operations with client-side validation.
 - **JS Interop**: Uses global `window.mapInterop` object for Leaflet integration, invoked via `IJSRuntime.InvokeAsync`.
-- **State Management**: `PersistentComponentState` for persisting search/filter criteria. `ContextState` (scoped) for master-detail sidebar panel communication.
-- **Context Sidebar**: Glassmorphic offcanvas panel (`ContextSidebar.razor`) in MainLayout. Shows `LoteResumenDto` (lot summary with crop, labor info) when clicking map polygons, or `LaborDetalleDto` (labor detail with supplies, responsible) when clicking calendar events. Uses `ContextState` event-based pattern for decoupled communication.
+- **State Management**: `PersistentComponentState` for persisting search/filter criteria.
 
 ### Database Schema
 - **Fields**: Basic agricultural field information.
-- **Lots**: Lots with PostGIS geometry and CadastralSurfaceHa (physical/cadastral reference). Has ICollection<CampaignPlot> for campaign linkage.
+- **Lots**: Lots with PostGIS geometry.
 - **WorkOrders**: Orders for agricultural tasks, linked to Lots.
 - **Inventories**: Inventory items with dual unit tracking.
-- **Labors**: Individual tasks. Primary FK is CampaignPlotId (nullable, for campaign-linked labors). Secondary FK is LotId (nullable, for legacy/loose labors). CampaignPlot provides operational context (crop, productive surface). Resolution: CampaignPlot→Plot takes priority over direct Lot reference.
-- **Crops**: Crop catalog (Name, Type) for rotation tracking.
-- **CampaignPlots**: Links campaigns to lots with crop, ProductiveSurfaceHa, and estimated dates. Unique constraint on (CampaignId, PlotId). Primary operational context for labors and dose calculations.
+- **Labors**: Individual tasks, can be linked to WorkOrders or be "loose".
 
 ### API Endpoints
 - **Fields, Lots, Work Orders, Inventory**: Standard RESTful CRUD endpoints.
 - **Dashboard**: `GET /api/dashboard/stats`, `GET /api/dashboard/recent-orders`.
 - **Labors**: `GET /api/labors/calendar`, `POST validate-stock`, `POST reserve-stock`, `GET export-isoxml`.
 - **Unassigned Labors**: `GET /unassigned`, `GET /unassigned/count`, `PATCH /assign-bulk`, `PATCH /{id}/unassign`.
-- **Crops**: `GET /api/crops`, `POST /api/crops`, `PUT /api/crops/{id}`, `DELETE /api/crops/{id}`.
-- **Campaign Plots**: `GET /api/campaigns/{id}/plots`, `POST /api/campaigns/{id}/plots` (batch save), `POST /api/campaigns/{id}/plots/import-lots` (bulk import lots from campaign fields).
-- **Lot History**: `GET /api/lots/{id}/history` (rotation timeline across campaigns).
-- **Stats**: `GET /api/stats/lots/{id}` (aggregated lot summary with crop, labors, responsable), `GET /api/stats/labors/{id}` (enriched labor detail with supplies).
 
 ## External Dependencies
 

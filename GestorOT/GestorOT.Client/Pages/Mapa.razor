@@ -6,8 +6,6 @@
 @inject HttpClient Http
 @inject IJSRuntime JS
 @inject IMessageService Message
-@inject GestorOT.Client.Services.ContextState ContextState
-@inject NavigationManager Nav
 
 <PageTitle>Explorador GIS - GestorOT</PageTitle>
 
@@ -596,38 +594,7 @@
                     }
                 }
 
-                var uri = Nav.ToAbsoluteUri(Nav.Uri);
-                string? queryLot = null;
-                var query = uri.Query;
-                if (!string.IsNullOrEmpty(query))
-                {
-                    var pairs = query.TrimStart('?').Split('&');
-                    foreach (var pair in pairs)
-                    {
-                        var kv = pair.Split('=', 2);
-                        if (kv.Length == 2 && kv[0] == "lot")
-                        { queryLot = Uri.UnescapeDataString(kv[1]); break; }
-                    }
-                }
-                if (!string.IsNullOrEmpty(queryLot) && Guid.TryParse(queryLot, out var targetLotId))
-                {
-                    var targetLot = _allLots.FirstOrDefault(l => l.Id == targetLotId);
-                    if (targetLot != null)
-                    {
-                        _selectedLot = targetLot;
-                        await JS.InvokeAsync<bool>("mapInterop.centerOnLot", targetLot.Id.ToString());
-                        try
-                        {
-                            var resumen = await Http.GetFromJsonAsync<LoteResumenDto>(
-                                $"api/stats/lots/{targetLot.Id}",
-                                AppJsonSerializerContext.Default.LoteResumenDto);
-                            if (resumen != null)
-                                ContextState.SeleccionarLote(resumen);
-                        }
-                        catch { }
-                    }
-                }
-                else if (_lotsCount > 0)
+                if (_lotsCount > 0)
                 {
                     await JS.InvokeAsync<bool>("mapInterop.fitAllLots");
                 }
@@ -678,7 +645,7 @@
     }
 
     [JSInvokable]
-    public async Task OnLotSelected(string lotId)
+    public void OnLotSelected(string lotId)
     {
         var lot = _allLots.FirstOrDefault(l => l.Id.ToString() == lotId);
         if (lot != null)
@@ -686,21 +653,6 @@
             _selectedLot = lot;
             _drawnWkt = null;
             StateHasChanged();
-
-            try
-            {
-                var resumen = await Http.GetFromJsonAsync<LoteResumenDto>(
-                    $"api/stats/lots/{lot.Id}",
-                    AppJsonSerializerContext.Default.LoteResumenDto);
-                if (resumen != null)
-                {
-                    ContextState.SeleccionarLote(resumen);
-                }
-            }
-            catch (Exception)
-            {
-                // Sidebar detail fetch failed silently; lot rail still shows basic info
-            }
         }
     }
 

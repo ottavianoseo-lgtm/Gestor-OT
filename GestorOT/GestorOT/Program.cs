@@ -278,50 +278,6 @@ using (var scope = app.Services.CreateScope())
                             OR ""TenantId"" = current_setting('app.current_tenant', true)::uuid
                         );
                 EXCEPTION WHEN OTHERS THEN NULL;
-                END $$",
-
-                @"CREATE TABLE IF NOT EXISTS public.""Crops"" (
-                    ""Id"" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-                    ""TenantId"" uuid NOT NULL DEFAULT '00000000-0000-0000-0000-000000000000',
-                    ""Name"" varchar(200) NOT NULL,
-                    ""Type"" varchar(100),
-                    ""CreatedAt"" timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
-                )",
-
-                @"CREATE TABLE IF NOT EXISTS public.""CampaignPlots"" (
-                    ""Id"" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-                    ""TenantId"" uuid NOT NULL DEFAULT '00000000-0000-0000-0000-000000000000',
-                    ""CampaignId"" uuid NOT NULL REFERENCES public.""Campaigns""(""Id"") ON DELETE CASCADE,
-                    ""PlotId"" uuid NOT NULL REFERENCES public.""Lots""(""Id"") ON DELETE CASCADE,
-                    ""CropId"" uuid REFERENCES public.""Crops""(""Id"") ON DELETE SET NULL,
-                    ""ProductiveSurfaceHa"" numeric(10,2) NOT NULL DEFAULT 0,
-                    ""EstimatedStartDate"" date,
-                    ""EstimatedEndDate"" date,
-                    CONSTRAINT ""UK_Campaign_Plot"" UNIQUE (""CampaignId"", ""PlotId"")
-                )",
-
-                @"ALTER TABLE public.""Labors"" ADD COLUMN IF NOT EXISTS ""CampaignPlotId"" uuid REFERENCES public.""CampaignPlots""(""Id"") ON DELETE SET NULL",
-
-                @"DO $$ BEGIN
-                    ALTER TABLE public.""Crops"" ENABLE ROW LEVEL SECURITY;
-                    DROP POLICY IF EXISTS tenant_isolation ON public.""Crops"";
-                    CREATE POLICY tenant_isolation ON public.""Crops""
-                        USING (
-                            NULLIF(current_setting('app.current_tenant', true), '') IS NULL
-                            OR ""TenantId"" = current_setting('app.current_tenant', true)::uuid
-                        );
-                EXCEPTION WHEN OTHERS THEN NULL;
-                END $$",
-
-                @"DO $$ BEGIN
-                    ALTER TABLE public.""CampaignPlots"" ENABLE ROW LEVEL SECURITY;
-                    DROP POLICY IF EXISTS tenant_isolation ON public.""CampaignPlots"";
-                    CREATE POLICY tenant_isolation ON public.""CampaignPlots""
-                        USING (
-                            NULLIF(current_setting('app.current_tenant', true), '') IS NULL
-                            OR ""TenantId"" = current_setting('app.current_tenant', true)::uuid
-                        );
-                EXCEPTION WHEN OTHERS THEN NULL;
                 END $$"
             };
 

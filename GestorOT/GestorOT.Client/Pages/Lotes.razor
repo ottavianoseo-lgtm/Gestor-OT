@@ -47,16 +47,8 @@
                 @(hasGeometry ? "Con geometría" : "Sin geometría")
             </Tag>
         </ActionColumn>
-        <ActionColumn Title="Acciones" Width="200">
+        <ActionColumn Title="Acciones" Width="160">
             <Space>
-                <SpaceItem>
-                    <Tooltip Title="@("Rotaciones")">
-                        <Button Size="@ButtonSize.Small" OnClick="() => OpenHistoryModal(context)"
-                                Style="border-radius: 6px; background: #8E44AD15; border-color: #8E44AD40; color: #8E44AD;">
-                            <Icon Type="history" Theme="IconThemeType.Outline" />
-                        </Button>
-                    </Tooltip>
-                </SpaceItem>
                 <SpaceItem>
                     <Button Size="@ButtonSize.Small" OnClick="() => OpenEditModal(context)"
                             Style="border-radius: 6px; border-color: rgba(255,255,255,0.15); color: rgba(255,255,255,0.7);">
@@ -108,62 +100,6 @@
     </Form>
 </Modal>
 
-<!-- Rotation History Modal -->
-<Modal Title="@($"Rotaciones de: {_historyLot?.Name}")"
-       Visible="_historyModalVisible"
-       OnCancel="CloseHistoryModal"
-       Footer="null"
-       Width="780">
-    @if (_loadingHistory)
-    {
-        <div style="text-align: center; padding: 32px;">
-            <Spin />
-        </div>
-    }
-    else if (_historyItems.Count == 0)
-    {
-        <div style="text-align: center; padding: 32px; color: rgba(255,255,255,0.35);">
-            <Icon Type="history" Theme="IconThemeType.Outline" Style="font-size: 36px; display: block; margin-bottom: 8px;" />
-            Este lote no tiene historial de rotaciones
-        </div>
-    }
-    else
-    {
-        <Timeline Mode="@TimelineMode.Left">
-            @foreach (var item in _historyItems)
-            {
-                var today = DateOnly.FromDateTime(DateTime.Today);
-                var isCurrent = item.CampaignStart <= today && (!item.CampaignEnd.HasValue || item.CampaignEnd.Value >= today);
-                var dotColor = isCurrent ? "#2ECC71" : "#8E44AD";
-                <TimelineItem Color="@dotColor">
-                    <div style="padding: 12px 16px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); border-radius: 10px; margin-bottom: 4px;">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                            <span style="font-weight: 600; color: rgba(255,255,255,0.9); font-size: 14px;">
-                                @item.CampaignName
-                            </span>
-                            @if (isCurrent)
-                            {
-                                <Tag Color="@("green")" Style="border-radius: 12px; font-size: 10px;">Actual</Tag>
-                            }
-                        </div>
-                        <div style="display: flex; gap: 16px; flex-wrap: wrap; font-size: 12px; color: rgba(255,255,255,0.55);">
-                            <span><Icon Type="experiment" Theme="IconThemeType.Outline" Style="margin-right: 4px;" />@(item.CropName ?? "Sin cultivo")</span>
-                            <span><Icon Type="column-width" Theme="IconThemeType.Outline" Style="margin-right: 4px;" />@item.ProductiveSurfaceHa.ToString("N2") ha</span>
-                            @if (item.EstimatedStartDate.HasValue || item.EstimatedEndDate.HasValue)
-                            {
-                                <span>
-                                    <Icon Type="calendar" Theme="IconThemeType.Outline" Style="margin-right: 4px;" />
-                                    @(item.EstimatedStartDate?.ToString("dd/MM/yyyy") ?? "—") → @(item.EstimatedEndDate?.ToString("dd/MM/yyyy") ?? "—")
-                                </span>
-                            }
-                        </div>
-                    </div>
-                </TimelineItem>
-            }
-        </Timeline>
-    }
-</Modal>
-
 @code {
     private List<LotDto> _lots = new();
     private List<FieldDto> _availableFields = new();
@@ -175,11 +111,6 @@
     private Guid _editingId;
     private LotFormModel _formModel = new();
     private Form<LotFormModel>? _form;
-
-    private bool _historyModalVisible;
-    private bool _loadingHistory;
-    private LotDto? _historyLot;
-    private List<PlotHistoryDto> _historyItems = new();
 
     public class LotFormModel
     {
@@ -326,36 +257,5 @@
         {
             Message.Error($"Error: {ex.Message}");
         }
-    }
-
-    private async Task OpenHistoryModal(LotDto lot)
-    {
-        _historyLot = lot;
-        _historyModalVisible = true;
-        _loadingHistory = true;
-        StateHasChanged();
-        try
-        {
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-            _historyItems = await Http.GetFromJsonAsync($"api/lots/{lot.Id}/history",
-                AppJsonSerializerContext.Default.ListPlotHistoryDto, cts.Token) ?? new();
-        }
-        catch (Exception ex)
-        {
-            Message.Error($"Error al cargar rotaciones: {ex.Message}");
-            _historyItems = new();
-        }
-        finally
-        {
-            _loadingHistory = false;
-            StateHasChanged();
-        }
-    }
-
-    private void CloseHistoryModal()
-    {
-        _historyModalVisible = false;
-        _historyLot = null;
-        _historyItems = new();
     }
 }

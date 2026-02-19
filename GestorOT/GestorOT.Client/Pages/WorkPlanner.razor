@@ -6,7 +6,6 @@
 @inject HttpClient Http
 @inject IMessageService Message
 @inject NavigationManager Nav
-@inject GestorOT.Client.Services.CampaignState CampaignState
 
 <PageTitle>Work Planner - GestorOT</PageTitle>
 
@@ -35,6 +34,16 @@
                 Style="border-radius: 6px; border-color: rgba(255,255,255,0.15); color: rgba(255,255,255,0.7);">
             <Icon Type="right" Theme="IconThemeType.Outline" />
         </Button>
+        <Select TItemValue="string" TItem="string" @bind-Value="_filterType" Placeholder="Filtrar tipo" AllowClear
+                Style="width: 150px;" Size="@InputSize.Small">
+            <SelectOption TItemValue="string" TItem="string" Value="@("all")" Label="Todos" />
+            <SelectOption TItemValue="string" TItem="string" Value="@("Fertilizacion")" Label="Fertilizacion" />
+            <SelectOption TItemValue="string" TItem="string" Value="@("Pulverizacion")" Label="Pulverizacion" />
+            <SelectOption TItemValue="string" TItem="string" Value="@("Siembra")" Label="Siembra" />
+            <SelectOption TItemValue="string" TItem="string" Value="@("Cosecha")" Label="Cosecha" />
+            <SelectOption TItemValue="string" TItem="string" Value="@("Monitoreo")" Label="Monitoreo" />
+            <SelectOption TItemValue="string" TItem="string" Value="@("Laboreo")" Label="Laboreo" />
+        </Select>
         <Button Type="@ButtonType.Primary" OnClick="() => OpenCreateModal(DateTime.Today)"
                 Style="background: #2ECC71; border-color: #2ECC71; border-radius: 8px; font-weight: 600;" Size="@ButtonSize.Small">
             <Icon Type="plus" Theme="IconThemeType.Outline" /> Nueva Labor
@@ -51,28 +60,18 @@
     <Alert Type="@AlertType.Error" Message="@_errorMessage" ShowIcon="true" Closable="true" Style="margin-bottom: 16px;" />
 }
 
-<div class="planner-legend" style="margin-bottom: 12px; display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
-    @foreach (var ft in _filterTypes)
-    {
-        var isActive = _activeFilters.Contains(ft.Key);
-        var count = _labors.Count(l => l.LaborType == ft.Key);
-        <span class="filter-chip @(isActive ? "" : "filter-chip--off")" @onclick="() => ToggleFilter(ft.Key)"
-              style="--chip-color: @ft.Value;">
-            <span class="filter-chip-dot"></span>
-            @ft.Key
-            <span class="filter-chip-count">@count</span>
-        </span>
-    }
+<div class="planner-legend" style="margin-bottom: 12px; display: flex; gap: 16px; align-items: center;">
+    <span class="legend-item"><span class="legend-dot" style="background: #4CAF50;"></span> Con OT</span>
+    <span class="legend-item"><span class="legend-dot" style="background: #FFA500;"></span> Sin OT (Suelta)</span>
     <span class="legend-sep">|</span>
-    <span class="legend-item" style="cursor: default;"><span class="legend-dot" style="background: #4CAF50;"></span> Con OT</span>
-    <span class="legend-item" style="cursor: default;"><span class="legend-dot" style="background: #FFA500;"></span> Suelta</span>
+    <span class="legend-item"><span class="legend-dot" style="background: #27AE60;"></span> Fertilizacion</span>
+    <span class="legend-item"><span class="legend-dot" style="background: #2980B9;"></span> Pulverizacion</span>
+    <span class="legend-item"><span class="legend-dot" style="background: #8E44AD;"></span> Siembra</span>
+    <span class="legend-item"><span class="legend-dot" style="background: #D35400;"></span> Cosecha</span>
+    <span class="legend-item"><span class="legend-dot" style="background: #16A085;"></span> Monitoreo</span>
     <span style="margin-left: auto; color: rgba(255,255,255,0.4); font-size: 12px;">
-        @FilteredLabors.Count / @_labors.Count labores
+        @FilteredLabors.Count labores visibles
     </span>
-    @if (_activeFilters.Count < _filterTypes.Count)
-    {
-        <span class="filter-reset" @onclick="ResetFilters">Limpiar</span>
-    }
 </div>
 
 @if (_loading)
@@ -107,7 +106,7 @@ else if (_viewMode == "month")
                         @foreach (var labor in dayLabors.Take(3))
                         {
                             <div class="cal-event" style="background: @(labor.ColorHex)20; border-left: 3px solid @(labor.ColorHex); cursor: pointer;"
-                                 @onclick:preventDefault="true" @onclick:stopPropagation="true" @onclick="() => EditLabor(labor.Id)">
+                                 @onclick:stopPropagation="true" @onclick="() => EditLabor(labor.Id)">
                                 <span class="cal-event-icon" style="color: @GetTypeColor(labor.LaborType);">@GetTypeIcon(labor.LaborType)</span>
                                 <span class="cal-event-text">@TruncateText(labor.Title, 16)</span>
                             </div>
@@ -150,8 +149,8 @@ else
                     }
                     @foreach (var labor in dayLabors)
                     {
-                        <div class="week-card" style="border-left: 4px solid @(labor.ColorHex); cursor: pointer;"
-                             @onclick:preventDefault="true" @onclick:stopPropagation="true" @onclick="() => EditLabor(labor.Id)">
+                        <div class="week-card" style="border-left: 4px solid @(labor.ColorHex);"
+                             @onclick="() => EditLabor(labor.Id)">
                             <div class="week-card-top">
                                 <div class="week-card-type" style="background: @GetTypeColor(labor.LaborType);">
                                     @labor.LaborType
@@ -199,34 +198,16 @@ else
        Footer="null" Width="480"
        BodyStyle="background: #1E1E2E; padding: 24px;">
     <Form Model="_newLabor" OnFinish="CreateLabor" Layout="@FormLayout.Vertical">
-        @if (_campaignPlots.Count > 0)
-        {
-            <FormItem Label="Lote (Campaña)">
-                <Select TItemValue="Guid" TItem="Guid" Value="@_newLabor.CampaignPlotId"
-                        ValueChanged="OnCampaignPlotChanged"
-                        Placeholder="Seleccionar lote de campaña"
-                        Style="width: 100%;">
-                    @foreach (var cp in _campaignPlots)
-                    {
-                        <SelectOption TItemValue="Guid" TItem="Guid" Value="@cp.Id"
-                                      Label="@($"{cp.PlotName} ({cp.FieldName}) — {cp.CropName ?? "Sin cultivo"} [{cp.ProductiveSurfaceHa:F1} ha]")" />
-                    }
-                </Select>
-            </FormItem>
-        }
-        else
-        {
-            <FormItem Label="Lote">
-                <Select TItemValue="Guid" TItem="Guid" @bind-Value="_newLabor.LotId" Placeholder="Seleccionar lote"
-                        Style="width: 100%;">
-                    @foreach (var lot in _lots)
-                    {
-                        <SelectOption TItemValue="Guid" TItem="Guid" Value="@lot.Id"
-                                      Label="@($"{lot.Name} ({lot.FieldName})")" />
-                    }
-                </Select>
-            </FormItem>
-        }
+        <FormItem Label="Lote">
+            <Select TItemValue="Guid" TItem="Guid" @bind-Value="_newLabor.LotId" Placeholder="Seleccionar lote"
+                    Style="width: 100%;">
+                @foreach (var lot in _lots)
+                {
+                    <SelectOption TItemValue="Guid" TItem="Guid" Value="@lot.Id"
+                                  Label="@($"{lot.Name} ({lot.FieldName})")" />
+                }
+            </Select>
+        </FormItem>
         <FormItem Label="Tipo de Labor">
             <Select TItemValue="string" TItem="string" @bind-Value="_newLabor.LaborType" Placeholder="Tipo"
                     Style="width: 100%;">
@@ -241,10 +222,9 @@ else
         <FormItem Label="Fecha Planificada">
             <DatePicker @bind-Value="_newLabor.PlannedDate" Style="width: 100%;" />
         </FormItem>
-        <FormItem Label="Hectáreas">
+        <FormItem Label="Hectareas">
             <AntDesign.InputNumber TValue="decimal" @bind-Value="_newLabor.Hectares" Min="0m" Step="0.1m"
-                                   Style="width: 100%;"
-                                   Placeholder="@(_newLabor.CampaignPlotId != Guid.Empty ? "Auto desde campaña" : "")" />
+                                   Style="width: 100%;" />
         </FormItem>
         <FormItem Label="Notas (opcional)">
             <TextArea @bind-Value="_newLabor.Notes" Placeholder="Observaciones" Rows="2" />
@@ -258,58 +238,11 @@ else
     </Form>
 </Modal>
 
-<GestorOT.Client.Components.LaborDetailModal
-    Labor="_selectedLaborDetail"
-    OnClose="CloseLaborDetail"
-    OnGoToLot="GoToLotFromModal" />
-
 <style>
     .planner-legend { font-size: 12px; color: rgba(255,255,255,0.6); }
     .legend-item { display: flex; align-items: center; gap: 5px; }
     .legend-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
-    .legend-sep { color: rgba(255,255,255,0.15); margin: 0 4px; }
-
-    .filter-chip {
-        display: inline-flex; align-items: center; gap: 5px;
-        padding: 3px 10px 3px 6px; border-radius: 14px; cursor: pointer;
-        background: color-mix(in srgb, var(--chip-color) 18%, transparent);
-        border: 1.5px solid color-mix(in srgb, var(--chip-color) 50%, transparent);
-        color: var(--chip-color); font-size: 11px; font-weight: 600;
-        transition: all 0.2s ease; user-select: none;
-    }
-    .filter-chip:hover { background: color-mix(in srgb, var(--chip-color) 28%, transparent); }
-    .filter-chip-dot {
-        width: 9px; height: 9px; border-radius: 50%;
-        background: var(--chip-color); flex-shrink: 0;
-        transition: all 0.2s ease;
-    }
-    .filter-chip-count {
-        background: color-mix(in srgb, var(--chip-color) 25%, transparent);
-        padding: 0 5px; border-radius: 8px; font-size: 10px; min-width: 16px; text-align: center;
-    }
-    .filter-chip--off {
-        background: transparent;
-        border-color: rgba(255,255,255,0.08);
-        color: rgba(255,255,255,0.25);
-    }
-    .filter-chip--off .filter-chip-dot {
-        background: rgba(255,255,255,0.15);
-    }
-    .filter-chip--off .filter-chip-count {
-        background: rgba(255,255,255,0.05);
-        color: rgba(255,255,255,0.2);
-    }
-    .filter-chip--off:hover {
-        border-color: rgba(255,255,255,0.15);
-        color: rgba(255,255,255,0.4);
-    }
-    .filter-reset {
-        font-size: 11px; color: rgba(255,255,255,0.35); cursor: pointer;
-        padding: 2px 8px; border-radius: 10px;
-        border: 1px solid rgba(255,255,255,0.1);
-        transition: all 0.15s;
-    }
-    .filter-reset:hover { color: rgba(255,255,255,0.6); border-color: rgba(255,255,255,0.2); }
+    .legend-sep { color: rgba(255,255,255,0.15); }
 
     .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); }
     .cal-header-cell {
@@ -545,22 +478,12 @@ else
 @code {
     private List<LaborCalendarDto> _labors = new();
     private List<LotDto> _lots = new();
-    private List<CampaignPlotDto> _campaignPlots = new();
     private bool _loading = true;
     private bool _saving;
     private string? _errorMessage;
     private DateTime _currentDate = DateTime.Today;
     private string _viewMode = "month";
-    private static readonly Dictionary<string, string> _filterTypes = new()
-    {
-        { "Fertilizacion", "#27AE60" },
-        { "Pulverizacion", "#2980B9" },
-        { "Siembra", "#8E44AD" },
-        { "Cosecha", "#D35400" },
-        { "Monitoreo", "#16A085" },
-        { "Laboreo", "#7F8C8D" }
-    };
-    private HashSet<string> _activeFilters = new(_filterTypes.Keys);
+    private string _filterType = "all";
     private bool _showCreateModal;
     private DateTime _selectedDate = DateTime.Today;
 
@@ -568,9 +491,9 @@ else
 
     private static readonly string[] _dayNames = { "Lun", "Mar", "Mie", "Jue", "Vie", "Sab", "Dom" };
 
-    private List<LaborCalendarDto> FilteredLabors => _activeFilters.Count == _filterTypes.Count
+    private List<LaborCalendarDto> FilteredLabors => string.IsNullOrEmpty(_filterType) || _filterType == "all"
         ? _labors
-        : _labors.Where(l => _activeFilters.Contains(l.LaborType)).ToList();
+        : _labors.Where(l => l.LaborType == _filterType).ToList();
 
     private List<DateTime[]> MonthWeeks
     {
@@ -628,21 +551,10 @@ else
             var lotsTask = Http.GetFromJsonAsync("api/lots",
                 AppJsonSerializerContext.Default.ListLotDto, cts.Token);
 
-            Task<List<CampaignPlotDto>?>? plotsTask = null;
-            if (CampaignState.CurrentCampaign != null)
-            {
-                plotsTask = Http.GetFromJsonAsync(
-                    $"api/campaigns/{CampaignState.CurrentCampaign.Id}/plots",
-                    AppJsonSerializerContext.Default.ListCampaignPlotDto, cts.Token);
-            }
-
             await Task.WhenAll(laborsTask, lotsTask);
-            if (plotsTask != null)
-                await plotsTask;
 
             _labors = laborsTask.Result ?? new();
             _lots = lotsTask.Result ?? new();
-            _campaignPlots = plotsTask?.Result ?? new();
             _errorMessage = null;
         }
         catch (OperationCanceledException)
@@ -674,21 +586,9 @@ else
         _showCreateModal = true;
     }
 
-    private void OnCampaignPlotChanged(Guid cpId)
-    {
-        _newLabor.CampaignPlotId = cpId;
-        var cp = _campaignPlots.FirstOrDefault(c => c.Id == cpId);
-        if (cp != null)
-        {
-            _newLabor.Hectares = cp.ProductiveSurfaceHa;
-            _newLabor.LotId = cp.PlotId;
-        }
-    }
-
     private async Task CreateLabor()
     {
-        bool hasContext = _newLabor.CampaignPlotId != Guid.Empty || _newLabor.LotId != Guid.Empty;
-        if (!hasContext || string.IsNullOrEmpty(_newLabor.LaborType))
+        if (_newLabor.LotId == Guid.Empty || string.IsNullOrEmpty(_newLabor.LaborType))
         {
             Message.Warning("Completa el lote y tipo de labor.");
             return;
@@ -697,22 +597,14 @@ else
         try
         {
             _saving = true;
-            var hectares = _newLabor.Hectares;
-            if (hectares == 0 && _newLabor.CampaignPlotId == Guid.Empty)
-            {
-                var lot = _lots.FirstOrDefault(l => l.Id == _newLabor.LotId);
-                hectares = lot != null ? (decimal)lot.Area : 0;
-            }
-
-            Guid? campaignPlotId = _newLabor.CampaignPlotId != Guid.Empty ? _newLabor.CampaignPlotId : null;
-            Guid? lotId = _newLabor.LotId != Guid.Empty ? _newLabor.LotId : null;
+            var lot = _lots.FirstOrDefault(l => l.Id == _newLabor.LotId);
+            var hectares = _newLabor.Hectares > 0 ? _newLabor.Hectares : (lot != null ? (decimal)lot.Area : 0);
 
             var dto = new LaborDto(
-                Guid.Empty, null, lotId, _newLabor.LaborType,
+                Guid.Empty, null, _newLabor.LotId, _newLabor.LaborType,
                 "Pending", null, hectares, DateTime.UtcNow,
                 0, "ha", null, null, null, null, null,
-                _newLabor.Notes, null, _newLabor.PlannedDate,
-                campaignPlotId
+                _newLabor.Notes, null, _newLabor.PlannedDate
             );
 
             var response = await Http.PostAsJsonAsync("api/labors", dto, AppJsonSerializerContext.Default.LaborDto);
@@ -734,46 +626,9 @@ else
         }
     }
 
-    private LaborDetalleDto? _selectedLaborDetail;
-
-    private async Task EditLabor(Guid id)
+    private void EditLabor(Guid id)
     {
-        try
-        {
-            _selectedLaborDetail = await Http.GetFromJsonAsync<LaborDetalleDto>(
-                $"api/stats/labors/{id}",
-                AppJsonSerializerContext.Default.LaborDetalleDto);
-            StateHasChanged();
-        }
-        catch
-        {
-            Nav.NavigateTo($"/labores-sueltas?id={id}");
-        }
-    }
-
-    private void CloseLaborDetail()
-    {
-        _selectedLaborDetail = null;
-        StateHasChanged();
-    }
-
-    private void GoToLotFromModal(Guid lotId)
-    {
-        _selectedLaborDetail = null;
-        Nav.NavigateTo($"/mapa?lot={lotId}");
-    }
-
-    private void ToggleFilter(string type)
-    {
-        if (_activeFilters.Contains(type))
-            _activeFilters.Remove(type);
-        else
-            _activeFilters.Add(type);
-    }
-
-    private void ResetFilters()
-    {
-        _activeFilters = new HashSet<string>(_filterTypes.Keys);
+        Nav.NavigateTo($"/labores-sueltas?id={id}");
     }
 
     private void GoToLaboresSueltas() { Nav.NavigateTo("/labores-sueltas"); }
@@ -839,7 +694,6 @@ else
     public class NewLaborModel
     {
         public Guid LotId { get; set; }
-        public Guid CampaignPlotId { get; set; }
         public string LaborType { get; set; } = string.Empty;
         public DateTime? PlannedDate { get; set; } = DateTime.Today;
         public decimal Hectares { get; set; }

@@ -74,8 +74,6 @@ public class ShareController : ControllerBase
             .Include(w => w.Lot)
                 .ThenInclude(l => l!.Field)
             .Include(w => w.Labors)
-                .ThenInclude(l => l.CampaignPlot).ThenInclude(cp => cp!.Plot)
-            .Include(w => w.Labors)
                 .ThenInclude(l => l.Lot)
             .Include(w => w.Labors)
                 .ThenInclude(l => l.Supplies)
@@ -90,8 +88,8 @@ public class ShareController : ControllerBase
             l.LaborType,
             l.Status,
             l.Hectares,
-            l.CampaignPlot != null ? l.CampaignPlot.PlotId : l.LotId,
-            l.CampaignPlot?.Plot?.Name ?? l.Lot?.Name,
+            l.LotId,
+            l.Lot?.Name,
             l.Supplies.Select(s => new PublicLaborSupplyDto(
                 s.Id,
                 s.SupplyId,
