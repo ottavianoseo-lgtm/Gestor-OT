@@ -111,37 +111,46 @@ public class StatsController : ControllerBase
     [HttpGet("labors/{id:guid}")]
     public async Task<ActionResult<LaborDetalleDto>> GetLaborDetalle(Guid id)
     {
-        var labor = await _context.Labors
-            .Include(l => l.Lot)
-            .Include(l => l.Supplies)
-                .ThenInclude(s => s.Supply)
-            .Include(l => l.WorkOrder)
-            .FirstOrDefaultAsync(l => l.Id == id);
+        try
+        {
+            var labor = await _context.Labors
+                .AsNoTracking()
+                .Include(l => l.Lot)
+                .Include(l => l.Supplies)
+                    .ThenInclude(s => s.Supply)
+                .Include(l => l.WorkOrder)
+                .FirstOrDefaultAsync(l => l.Id == id);
 
-        if (labor == null) return NotFound();
+            if (labor == null) return NotFound();
 
-        var insumos = labor.Supplies?
-            .Where(s => s.Supply != null)
-            .Select(s => s.Supply!.ItemName)
-            .ToList() ?? new List<string>();
+            var insumos = labor.Supplies?
+                .Where(s => s.Supply != null)
+                .Select(s => s.Supply!.ItemName)
+                .ToList() ?? new List<string>();
 
-        var responsable = labor.Responsable
-            ?? labor.WorkOrder?.AssignedTo;
+            var responsable = labor.Responsable
+                ?? labor.WorkOrder?.AssignedTo
+                ?? "Sin Asignar";
 
-        var detalle = new LaborDetalleDto(
-            labor.Id,
-            labor.LaborType,
-            labor.Status,
-            labor.PlannedDate ?? labor.ExecutionDate,
-            labor.Lot?.Name ?? "—",
-            labor.LotId,
-            responsable,
-            labor.MachineryUsedId,
-            insumos,
-            labor.Hectares,
-            labor.Notes
-        );
+            var detalle = new LaborDetalleDto(
+                labor.Id,
+                labor.LaborType ?? "—",
+                labor.Status ?? "—",
+                labor.PlannedDate ?? labor.ExecutionDate,
+                labor.Lot?.Name ?? "Sin Lote Asignado",
+                labor.LotId,
+                responsable,
+                labor.MachineryUsedId ?? "N/A",
+                insumos,
+                labor.Hectares,
+                labor.Notes
+            );
 
-        return Ok(detalle);
+            return Ok(detalle);
+        }
+        catch (Exception)
+        {
+            return StatusCode(500, new { error = "Error al obtener detalle de labor" });
+        }
     }
 }

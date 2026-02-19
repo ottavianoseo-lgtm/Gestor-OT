@@ -6,7 +6,6 @@
 @inject HttpClient Http
 @inject IMessageService Message
 @inject NavigationManager Nav
-@inject GestorOT.Client.Services.ContextState ContextState
 
 <PageTitle>Work Planner - GestorOT</PageTitle>
 
@@ -238,6 +237,11 @@ else
         </FormItem>
     </Form>
 </Modal>
+
+<GestorOT.Client.Components.LaborDetailModal
+    Labor="_selectedLaborDetail"
+    OnClose="CloseLaborDetail"
+    OnGoToLot="GoToLotFromModal" />
 
 <style>
     .planner-legend { font-size: 12px; color: rgba(255,255,255,0.6); }
@@ -627,22 +631,33 @@ else
         }
     }
 
+    private LaborDetalleDto? _selectedLaborDetail;
+
     private async Task EditLabor(Guid id)
     {
         try
         {
-            var detalle = await Http.GetFromJsonAsync<LaborDetalleDto>(
+            _selectedLaborDetail = await Http.GetFromJsonAsync<LaborDetalleDto>(
                 $"api/stats/labors/{id}",
                 AppJsonSerializerContext.Default.LaborDetalleDto);
-            if (detalle != null)
-            {
-                ContextState.SeleccionarLabor(detalle);
-            }
+            StateHasChanged();
         }
         catch
         {
             Nav.NavigateTo($"/labores-sueltas?id={id}");
         }
+    }
+
+    private void CloseLaborDetail()
+    {
+        _selectedLaborDetail = null;
+        StateHasChanged();
+    }
+
+    private void GoToLotFromModal(Guid lotId)
+    {
+        _selectedLaborDetail = null;
+        Nav.NavigateTo($"/mapa?lot={lotId}");
     }
 
     private void GoToLaboresSueltas() { Nav.NavigateTo("/labores-sueltas"); }

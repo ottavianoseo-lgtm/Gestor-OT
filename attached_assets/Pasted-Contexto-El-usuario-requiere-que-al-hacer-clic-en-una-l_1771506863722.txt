@@ -1,0 +1,130 @@
+Contexto: El usuario requiere que al hacer clic en una labor dentro del calendario (WorkPlanner), se abra un modal flotante con la información detallada de dicha labor (tipo, lote, responsable, insumos, etc.). Además, los endpoints actuales de detalle están arrojando un error 500 que debe ser mitigado mediante un mapeo seguro en memoria.
+Tarea 1: Fix Definitivo del Error 500 (Backend)
+Para evitar excepciones de referencia nula en la proyección LINQ o problemas de reflexión con Native AOT, vamos a obtener la entidad de la base de datos primero y mapearla a DTO en memoria.
+Archivo: StatsController.cs o el archivo de Minimal APIs correspondiente. Acción: Reemplaza el endpoint GET /api/stats/labors/{id} con esta versión a prueba de fallos:
+app.MapGet("/api/stats/labors/{id}", async (Guid id, AppDbContext db) =>
+{
+    // 1. Traer la entidad a memoria con sus relaciones (sin proyecciones LINQ complejas)
+    var labor = await db.Labors
+        .AsNoTracking()
+        .Include(l => l.Lot)
+        // .Include(l => l.Responsible) // Descomentar si existe la relación de Responsable
+        .FirstOrDefaultAsync(l => l.Id == id);
+
+    if (labor == null) return Results.NotFound();
+
+    // 2. Mapear a DTO en memoria (C# puro, evita fallos de traducción SQL)
+    var dto = new LaborDetailDto
+    {
+        LaborId = labor.Id,
+        Type = labor.Type,
+        Status = labor.Status,
+        PlannedDate = labor.PlannedDate,
+        LotName = labor.Lot?.Name ?? "Sin Lote Asignado",
+        LotId = labor.LotId,
+        // Ajustar según el modelo exacto de tu BD:
+        ResponsibleName = "Sin Asignar", // Reemplazar con labor.Responsible?.Name si existe
+        Machinery = labor.Machinery ?? "N/A",
+        Inputs = new List<string>() // Rellenar si existe tabla de insumos
+    };
+
+    return Results.Ok(dto);
+});
+Nota para el agente: Asegúrate de que LaborDetailDto esté registrado en AppJsonSerializerContext para la compilación AOT.
+Tarea 2: Crear el Componente Modal (LaborDetailModal.razor)
+Objetivo: Crear un componente de UI reutilizable que muestre la información detallada y se superponga a la pantalla actual.
+Archivo: Client/Components/LaborDetailModal.razor Código:
+@using TuProyecto.Shared.DTOs <!-- Ajustar namespace -->
+
+@if (Labor != null)
+{
+    <div class="modal-backdrop" @onclick="Close">
+        <div class="modal-content" @onclick:stopPropagation="true">
+            <div class="modal-header">
+                <h2>Detalle de la Labor</h2>
+                <button class="close-btn" @onclick="Close">X</button>
+            </div>
+            
+            <div class="modal-body">
+                <div class="detail-row">
+                    <strong>Tipo de Labor:</strong> <span>@Labor.Type</span>
+                </div>
+                <div class="detail-row">
+                    <strong>Estado:</strong> 
+                    <span class="badge @(Labor.Status.ToLower())">@Labor.Status</span>
+                </div>
+                <div class="detail-row">
+                    <strong>Fecha:</strong> <span>@Labor.PlannedDate?.ToString("dd/MM/yyyy")</span>
+                </div>
+                <div class="detail-row">
+                    <strong>Lote / Ubicación:</strong> <span>@Labor.LotName</span>
+                </div>
+                <div class="detail-row">
+                    <strong>Responsable:</strong> <span>@Labor.ResponsibleName</span>
+                </div>
+                <div class="detail-row">
+                    <strong>Maquinaria:</strong> <span>@Labor.Machinery</span>
+                </div>
+                
+                @if (Labor.Inputs != null && Labor.Inputs.Any())
+                {
+                    <div class="detail-row inputs-section">
+                        <strong>Insumos:</strong>
+                        <ul>
+                            @foreach(var insumo in Labor.Inputs)
+                            {
+                                <li>@insumo</li>
+                            }
+                        </ul>
+                    </div>
+                }
+            </div>
+            
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="Close">Cerrar</button>
+                <!-- Futuro: Botón para editar o ir al mapa -->
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public LaborDetailDto? Labor { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    private async Task Close()
+    {
+        await OnClose.InvokeAsync();
+    }
+}
+(Agrega estilos CSS básicos para .modal-backdrop con position: fixed, z-index: 1000, background: rgba(0,0,0,0.5) y centrado del .modal-content).
+Tarea 3: Integrar el Modal en el Calendario (WorkPlanner.razor)
+Objetivo: Al hacer clic en la "pastilla" (chip) de una labor en el calendario, se debe hacer el fetch del detalle y mostrar el modal.
+Archivo: Client/Pages/WorkPlanner.razor Acciones:
+1. Añadir el estado para almacenar el detalle cargado: private LaborDetailDto? SelectedLaborDetail;
+2. Crear la función para abrir el detalle:
+private async Task OpenLaborDetail(Guid laborId)
+{
+    try
+    {
+        // Llamada al endpoint corregido
+        SelectedLaborDetail = await Http.GetFromJsonAsync<LaborDetailDto>(
+            $"api/stats/labors/{laborId}", 
+            AppJsonSerializerContext.Default.LaborDetailDto
+        );
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"Error cargando detalle: {ex.Message}");
+    }
+}
+3. En el bloque HTML del calendario, actualizar el evento @onclick de la labor para que llame a esta nueva función:
+<!-- Reemplazar el @onclick previo por la nueva función -->
+<div class="labor-chip" 
+     style="background-color: @labor.ColorHex"
+     @onclick:stopPropagation="true" 
+     @onclick="() => OpenLaborDetail(labor.Id)">
+    @labor.Titulo
+</div>
+4. Al final del archivo HTML de WorkPlanner.razor, incluir el modal:
+<LaborDetailModal Labor="SelectedLaborDetail" OnClose="() => SelectedLaborDetail = null" />
