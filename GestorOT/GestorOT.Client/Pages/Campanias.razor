@@ -5,6 +5,7 @@
 @using AntDesign
 @inject HttpClient Http
 @inject IMessageService Message
+@inject NavigationManager Nav
 
 <PageTitle>Campañas - GestorOT</PageTitle>
 
@@ -99,6 +100,14 @@
                         </Popconfirm>
                     </SpaceItem>
                 }
+                <SpaceItem>
+                    <Tooltip Title="@("Gestionar lotes")">
+                        <Button Size="@ButtonSize.Small" OnClick='() => Nav.NavigateTo($"/campaigns/{context.Id}/lots")'
+                                Style="border-radius: 6px; border-color: #2ECC7140; color: #2ECC71;">
+                            <Icon Type="block" Theme="IconThemeType.Outline" />
+                        </Button>
+                    </Tooltip>
+                </SpaceItem>
                 <SpaceItem>
                     <Tooltip Title="@("Gestionar campos")">
                         <Button Size="@ButtonSize.Small" OnClick="() => OpenFieldsModal(context)"

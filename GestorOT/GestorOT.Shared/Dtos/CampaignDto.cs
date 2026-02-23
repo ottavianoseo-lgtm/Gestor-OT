@@ -43,3 +43,25 @@ public record CampaignSummaryDto(
 {
     public CampaignSummaryDto() : this(Guid.Empty, string.Empty, CampaignStatus.Planning, true) { }
 }
+
+public record CampaignLotDto(
+    Guid Id,
+    Guid CampaignId,
+    Guid LotId,
+    string? LotName,
+    string? FieldName,
+    decimal CadastralArea,
+    decimal ProductiveArea,
+    Guid? CropId
+)
+{
+    public CampaignLotDto() : this(Guid.Empty, Guid.Empty, Guid.Empty, null, null, 0, 0, null) { }
+}
+
+public record ImportLotsRequest(
+    Guid PreviousCampaignId,
+    bool UseProductiveAreaFromPrevious = false
+)
+{
+    public ImportLotsRequest() : this(Guid.Empty, false) { }
+}

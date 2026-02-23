@@ -1,0 +1,78 @@
+Especificación Técnica: Módulo de Gestión de Campañas y Superficies Dinámicas
+Rol del Agente: Arquitecto de Software .NET 10 & Especialista en Domain-Driven Design Agrícola. Objetivo: Implementar la entidad Campaña como el contexto aislante del sistema. Una campaña debe permitir planificar el futuro sin afectar el presente, manejando una tabla pivote para los Lotes que separe la superficie física (Catastral) de la superficie utilizable (Productiva) para esa campaña específica.
+1. Modelo de Datos (Entity Framework Core)
+El agente debe crear/modificar las siguientes entidades asegurando la inyección del TenantId para la seguridad RLS de Supabase.
+// 1. Entidad Maestra: El Lote Físico (Inmutable entre campañas)
+public class Lot
+{
+    public Guid Id { get; set; }
+    public Guid TenantId { get; set; } // Seguridad RLS
+    public Guid FarmId { get; set; } // El Campo al que pertenece
+    
+    public string Name { get; set; }
+    public string BoundaryGeoJson { get; set; } // Polígono estático
+    
+    // LA SUPERFICIE CATASTRAL: El tamaño real del límite geográfico
+    public decimal CadastralArea { get; set; } 
+    
+    public ICollection<CampaignLot> CampaignLots { get; set; }
+}
+
+// 2. Entidad Contextual: La Campaña
+public class Campaign
+{
+    public Guid Id { get; set; }
+    public Guid TenantId { get; set; } // Seguridad RLS
+    
+    public string Name { get; set; } // Ej: "Soja 2025/2026"
+    public DateOnly StartDate { get; set; }
+    public DateOnly EndDate { get; set; }
+    public CampaignStatus Status { get; set; } // Planning, Active, Closed
+    
+    public ICollection<CampaignLot> CampaignLots { get; set; }
+}
+
+// 3. Entidad Pivote: La asignación del Lote a la Campaña (El Diferenciador)
+public class CampaignLot
+{
+    public Guid CampaignId { get; set; }
+    public Campaign Campaign { get; set; }
+    
+    public Guid LotId { get; set; }
+    public Lot Lot { get; set; }
+    
+    // LA SUPERFICIE PRODUCTIVA: Lo que realmente se va a sembrar/trabajar ESTE año.
+    // Por defecto se copia de CadastralArea, pero es editable por el usuario.
+    public decimal ProductiveArea { get; set; } 
+    
+    // Cultivo asignado para este lote en esta campaña
+    public Guid? CropId { get; set; } 
+}
+2. Lógica de Negocio (Backend / Servicios)
+El agente debe implementar un servicio CampaignManagerService que maneje el flujo crítico de creación de campañas.
+Flujo "Importar Lotes a Nueva Campaña": Cuando el usuario crea la campaña "25/26" en estado Planning, debe existir un método que permita "Traer lotes de la campaña anterior".
+Regla de Negocio: El sistema debe insertar registros en la tabla CampaignLot. Al hacerlo, debe asignar el valor de ProductiveArea copiando por defecto la CadastralArea de la entidad Lot maestra (o la ProductiveArea del año pasado, según configuración).
+Impacto en OTs: Todas las Órdenes de Trabajo y Labores creadas bajo esta nueva campaña deben multiplicar las dosis de insumos (L/Ha) única y exclusivamente por la ProductiveArea de CampaignLot, NUNCA por la superficie del Lot maestro.
+3. Interfaz de Usuario (Blazor PWA .NET 10)
+A. Selector de Contexto Global
+En el MainLayout.razor, implementar un CampaignContextSwitcher.
+Usar [PersistentState] para almacenar el CampaignId activo.
+Si el usuario cambia el selector de "Activa 24/25" a "Planificación 25/26", toda la UI (Listado de OTs, Calendario, Dashboard) debe recargarse filtrando por el nuevo CampaignId.
+B. Gestor de Lotes de la Campaña (CampaignLotsManager.razor)
+Una vista dedicada donde el administrador configura la campaña.
+Usar QuickGrid de .NET 10 para listar los lotes asignados a la campaña seleccionada.
+Columnas: Nombre del Lote, Cultivo Asignado, Superficie Catastral (Solo Lectura), Superficie Productiva (Editable).
+UX: Si el lote "Norte" tiene 100 Has catastrales, pero este año está inundado en un 10%, el ingeniero edita la celda "Superficie Productiva" a 90 Has. Guardar este cambio actualiza solo el registro CampaignLot.
+
+--------------------------------------------------------------------------------
+4. Prompt Directo para el Agente de Replit
+Copia y pega este bloque en el chat de tu agente para que ejecute la especificación:
+Contexto: Lee el documento CAMPAIGN_MANAGEMENT_SPECS.md (o la especificación provista) para entender el modelo de negocio. Estamos trabajando en Blazor Web App (.NET 10) con Supabase (EF Core).
+Tareas a ejecutar:
+Crea las clases de modelo Lot, Campaign y CampaignLot tal como se definen en la especificación, asegurando la configuración Many-to-Many en el DbContext mediante CampaignLot.
+Implementa en CampaignLot la propiedad ProductiveArea (decimal) y en Lot la propiedad CadastralArea (decimal).
+Crea el servicio ICampaignService con un método Task ImportLotsFromPreviousCampaignAsync(Guid newCampaignId, Guid previousCampaignId). Este método debe copiar los registros CampaignLot de la campaña vieja a la nueva, manteniendo o reseteando la ProductiveArea igual a la CadastralArea.
+En el Frontend (Blazor), crea un componente CampaignLotEditor.razor usando QuickGrid que permita al usuario listar los lotes de una campaña y modificar inline el valor de ProductiveArea.
+Asegúrate de inyectar validaciones para que ProductiveArea nunca pueda ser mayor que CadastralArea.
+
+--------------------------------------------------------------------------------

@@ -63,6 +63,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<TankMixRule> TankMixRules => Set<TankMixRule>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
     public DbSet<Campaign> Campaigns => Set<Campaign>();
+    public DbSet<CampaignLot> CampaignLots => Set<CampaignLot>();
     public DbSet<CampaignField> CampaignFields => Set<CampaignField>();
 
     private Guid CurrentTenantId => _tenantService?.TenantId ?? Guid.Empty;
@@ -100,9 +101,29 @@ public class ApplicationDbContext : DbContext
             entity.Property(e => e.Geometry).HasColumnType("geometry(Polygon, 4326)");
             entity.HasIndex(e => e.Geometry).HasMethod("GIST");
             
+            entity.Property(e => e.CadastralArea).HasPrecision(18, 4);
+
             entity.HasOne(e => e.Field)
                 .WithMany(f => f.Lots)
                 .HasForeignKey(e => e.FieldId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<CampaignLot>(entity =>
+        {
+            entity.ToTable("CampaignLots", "public");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.ProductiveArea).HasPrecision(18, 4);
+            entity.HasIndex(e => new { e.CampaignId, e.LotId }).IsUnique();
+
+            entity.HasOne(e => e.Campaign)
+                .WithMany(c => c.CampaignLots)
+                .HasForeignKey(e => e.CampaignId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(e => e.Lot)
+                .WithMany(l => l.CampaignLots)
+                .HasForeignKey(e => e.LotId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
 
@@ -359,8 +380,10 @@ public class Lot : ITenantEntity
     public string Name { get; set; } = string.Empty;
     public string Status { get; set; } = "Active";
     public Geometry? Geometry { get; set; }
+    public decimal CadastralArea { get; set; }
     public Field? Field { get; set; }
     public ICollection<WorkOrder> WorkOrders { get; set; } = new List<WorkOrder>();
+    public ICollection<CampaignLot> CampaignLots { get; set; } = new List<CampaignLot>();
 }
 
 public class WorkOrder : ITenantEntity
@@ -534,7 +557,20 @@ public class Campaign : ITenantEntity
     public string? BusinessRulesJson { get; set; }
     public DateTime CreatedAt { get; set; }
     public ICollection<CampaignField> CampaignFields { get; set; } = new List<CampaignField>();
+    public ICollection<CampaignLot> CampaignLots { get; set; } = new List<CampaignLot>();
     public ICollection<WorkOrder> WorkOrders { get; set; } = new List<WorkOrder>();
+}
+
+public class CampaignLot : ITenantEntity
+{
+    public Guid Id { get; set; }
+    public Guid TenantId { get; set; }
+    public Guid CampaignId { get; set; }
+    public Guid LotId { get; set; }
+    public decimal ProductiveArea { get; set; }
+    public Guid? CropId { get; set; }
+    public Campaign? Campaign { get; set; }
+    public Lot? Lot { get; set; }
 }
 
 public class CampaignField : ITenantEntity

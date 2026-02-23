@@ -1,4 +1,5 @@
 using GestorOT.Data;
+using GestorOT.Services;
 using GestorOT.Shared.Dtos;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -10,10 +11,12 @@ namespace GestorOT.Controllers;
 public class CampaignsController : ControllerBase
 {
     private readonly ApplicationDbContext _context;
+    private readonly CampaignManagerService _campaignManager;
 
-    public CampaignsController(ApplicationDbContext context)
+    public CampaignsController(ApplicationDbContext context, CampaignManagerService campaignManager)
     {
         _context = context;
+        _campaignManager = campaignManager;
     }
 
     [HttpGet]
@@ -244,5 +247,125 @@ public class CampaignsController : ControllerBase
         _context.CampaignFields.Remove(cf);
         await _context.SaveChangesAsync();
         return NoContent();
+    }
+
+    [HttpGet("{id:guid}/lots")]
+    public async Task<ActionResult<List<CampaignLotDto>>> GetCampaignLots(Guid id)
+    {
+        var lots = await _context.CampaignLots
+            .AsNoTracking()
+            .Where(cl => cl.CampaignId == id)
+            .Include(cl => cl.Lot)
+                .ThenInclude(l => l!.Field)
+            .OrderBy(cl => cl.Lot!.Name)
+            .Select(cl => new CampaignLotDto(
+                cl.Id,
+                cl.CampaignId,
+                cl.LotId,
+                cl.Lot!.Name,
+                cl.Lot.Field != null ? cl.Lot.Field.Name : null,
+                cl.Lot.CadastralArea,
+                cl.ProductiveArea,
+                cl.CropId
+            ))
+            .ToListAsync();
+
+        return lots;
+    }
+
+    [HttpPost("{id:guid}/lots")]
+    public async Task<IActionResult> AddLot(Guid id, CampaignLotDto dto)
+    {
+        var campaign = await _context.Campaigns.FindAsync(id);
+        if (campaign == null)
+            return NotFound();
+
+        if (campaign.Status == "Locked")
+            return BadRequest("No se pueden modificar lotes en una campaña bloqueada.");
+
+        var exists = await _context.CampaignLots
+            .AnyAsync(cl => cl.CampaignId == id && cl.LotId == dto.LotId);
+
+        if (exists)
+            return BadRequest("El lote ya está asignado a esta campaña.");
+
+        var lot = await _context.Lots.FindAsync(dto.LotId);
+        if (lot == null)
+            return BadRequest("El lote no existe.");
+
+        if (dto.ProductiveArea > lot.CadastralArea && lot.CadastralArea > 0)
+            return BadRequest($"La superficie productiva ({dto.ProductiveArea:N2}) no puede superar la catastral ({lot.CadastralArea:N2}).");
+
+        var productiveArea = dto.ProductiveArea > 0 ? dto.ProductiveArea : lot.CadastralArea;
+
+        _context.CampaignLots.Add(new CampaignLot
+        {
+            Id = Guid.NewGuid(),
+            CampaignId = id,
+            LotId = dto.LotId,
+            ProductiveArea = productiveArea,
+            CropId = dto.CropId
+        });
+
+        await _context.SaveChangesAsync();
+        return NoContent();
+    }
+
+    [HttpPut("{campaignId:guid}/lots/{lotId:guid}")]
+    public async Task<IActionResult> UpdateCampaignLot(Guid campaignId, Guid lotId, CampaignLotDto dto)
+    {
+        var cl = await _context.CampaignLots
+            .Include(x => x.Lot)
+            .FirstOrDefaultAsync(x => x.CampaignId == campaignId && x.LotId == lotId);
+
+        if (cl == null)
+            return NotFound();
+
+        var campaign = await _context.Campaigns.FindAsync(campaignId);
+        if (campaign?.Status == "Locked")
+            return BadRequest("No se pueden modificar lotes en una campaña bloqueada.");
+
+        if (cl.Lot != null && cl.Lot.CadastralArea > 0 && dto.ProductiveArea > cl.Lot.CadastralArea)
+            return BadRequest($"La superficie productiva ({dto.ProductiveArea:N2}) no puede superar la catastral ({cl.Lot.CadastralArea:N2}).");
+
+        cl.ProductiveArea = dto.ProductiveArea;
+        cl.CropId = dto.CropId;
+
+        await _context.SaveChangesAsync();
+        return NoContent();
+    }
+
+    [HttpDelete("{campaignId:guid}/lots/{lotId:guid}")]
+    public async Task<IActionResult> RemoveLot(Guid campaignId, Guid lotId)
+    {
+        var cl = await _context.CampaignLots
+            .FirstOrDefaultAsync(x => x.CampaignId == campaignId && x.LotId == lotId);
+
+        if (cl == null)
+            return NotFound();
+
+        var campaign = await _context.Campaigns.FindAsync(campaignId);
+        if (campaign?.Status == "Locked")
+            return BadRequest("No se pueden modificar lotes en una campaña bloqueada.");
+
+        _context.CampaignLots.Remove(cl);
+        await _context.SaveChangesAsync();
+        return NoContent();
+    }
+
+    [HttpPost("{id:guid}/lots/import")]
+    public async Task<IActionResult> ImportLotsFromPrevious(Guid id, ImportLotsRequest request)
+    {
+        try
+        {
+            var imported = await _campaignManager.ImportLotsFromPreviousCampaignAsync(
+                id, request.PreviousCampaignId, request.UseProductiveAreaFromPrevious);
+
+            return Ok(new { imported, message = $"Se importaron {imported} lotes correctamente." });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
     }
 }

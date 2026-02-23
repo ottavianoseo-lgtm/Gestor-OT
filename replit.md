@@ -34,7 +34,7 @@ Do not make changes to files related to authentication without explicit approval
 - **Work Order Workflow**: Status progression (Pending → InProgress → Completed) with quick-action buttons and KPI tracking. Supports "Loose Labors" (labors without assigned Work Orders) and batch assignment.
 - **Work Planner**: CSS Grid calendar (month/week views) displaying "Labores" (tasks) with color-coded statuses and types. Includes quick labor creation and detailed cards.
 - **Multi-tenancy**: Implemented via PostgreSQL Row-Level Security (RLS) and `TenantSessionInterceptor` to inject `app.current_tenant`.
-- **Campaigns Module**: Manages campaigns with associated fields, status workflows, and field allocation. Uses `CampaignSelector` and `CampaignHttpHandler`.
+- **Campaigns Module**: Manages campaigns with associated fields and lots, status workflows (Planning→Active→Locked), and field/lot allocation. Uses `CampaignSelector` and `CampaignHttpHandler`. Includes `CampaignLot` pivot table separating CadastralArea (physical) from ProductiveArea (editable per campaign). `CampaignManagerService` handles lot import from previous campaigns. `CampaignLotEditor.razor` provides inline ProductiveArea editing with validation (ProductiveArea ≤ CadastralArea).
 - **Admin Panel**: User and role management (RBAC), Tank Mix Rules for agrochemical compatibility, and Audit Log for tracking changes. Uses QuickGrid and Paginator.
 - **Agronomic Validation**: `AgronomicValidationService` for validating tank mixes with alerts.
 - **ISO XML Export**: `IsoXmlExporterService` for exporting ISO 11783 TaskData.xml in ZIP format.
@@ -49,16 +49,20 @@ Do not make changes to files related to authentication without explicit approval
 
 ### Database Schema
 - **Fields**: Basic agricultural field information.
-- **Lots**: Lots with PostGIS geometry.
-- **WorkOrders**: Orders for agricultural tasks, linked to Lots.
+- **Lots**: Lots with PostGIS geometry and CadastralArea (physical surface).
+- **WorkOrders**: Orders for agricultural tasks, linked to Lots and Campaigns.
 - **Inventories**: Inventory items with dual unit tracking.
 - **Labors**: Individual tasks, can be linked to WorkOrders or be "loose".
+- **Campaigns**: Campaign entities with status workflow (Planning→Active→Locked).
+- **CampaignFields**: Pivot table for Campaign↔Field with TargetYieldTonHa, AllocatedHectares.
+- **CampaignLots**: Pivot table for Campaign↔Lot with ProductiveArea (editable per campaign), CropId.
 
 ### API Endpoints
 - **Fields, Lots, Work Orders, Inventory**: Standard RESTful CRUD endpoints.
 - **Dashboard**: `GET /api/dashboard/stats`, `GET /api/dashboard/recent-orders`.
 - **Labors**: `GET /api/labors/calendar`, `POST validate-stock`, `POST reserve-stock`, `GET export-isoxml`.
 - **Unassigned Labors**: `GET /unassigned`, `GET /unassigned/count`, `PATCH /assign-bulk`, `PATCH /{id}/unassign`.
+- **Campaign Lots**: `GET /api/campaigns/{id}/lots`, `POST lots`, `PUT lots/{lotId}`, `DELETE lots/{lotId}`, `POST lots/import`.
 
 ## External Dependencies
 

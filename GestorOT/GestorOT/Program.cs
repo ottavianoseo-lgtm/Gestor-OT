@@ -53,6 +53,7 @@ builder.Services.AddScoped<GestorOT.Services.AgronomicValidationService>();
 builder.Services.AddScoped<GestorOT.Services.AuditInterceptor>();
 builder.Services.AddScoped<GestorOT.Services.StockValidatorService>();
 builder.Services.AddScoped<GestorOT.Services.IsoXmlExporterService>();
+builder.Services.AddScoped<GestorOT.Services.CampaignManagerService>();
 builder.Services.AddSingleton<GestorOT.Shared.Services.ITenantService, GestorOT.Services.MockTenantService>();
 
 builder.Services.AddValidation();
@@ -253,6 +254,30 @@ using (var scope = app.Services.CreateScope())
                 @"ALTER TABLE public.""LaborSupplies"" ADD COLUMN IF NOT EXISTS ""IsSubstitute"" boolean NOT NULL DEFAULT false",
 
                 @"ALTER TABLE public.""Labors"" ADD COLUMN IF NOT EXISTS ""PlannedDate"" timestamp",
+
+                @"ALTER TABLE public.""Lots"" ADD COLUMN IF NOT EXISTS ""CadastralArea"" numeric(18,4) NOT NULL DEFAULT 0",
+
+                @"CREATE TABLE IF NOT EXISTS public.""CampaignLots"" (
+                    ""Id"" uuid PRIMARY KEY,
+                    ""TenantId"" uuid NOT NULL DEFAULT '00000000-0000-0000-0000-000000000000',
+                    ""CampaignId"" uuid NOT NULL REFERENCES public.""Campaigns""(""Id"") ON DELETE CASCADE,
+                    ""LotId"" uuid NOT NULL REFERENCES public.""Lots""(""Id"") ON DELETE CASCADE,
+                    ""ProductiveArea"" numeric(18,4) NOT NULL DEFAULT 0,
+                    ""CropId"" uuid
+                )",
+
+                @"CREATE UNIQUE INDEX IF NOT EXISTS ""IX_CampaignLots_CampaignId_LotId"" ON public.""CampaignLots"" (""CampaignId"", ""LotId"")",
+
+                @"DO $$ BEGIN
+                    ALTER TABLE public.""CampaignLots"" ENABLE ROW LEVEL SECURITY;
+                    DROP POLICY IF EXISTS tenant_isolation ON public.""CampaignLots"";
+                    CREATE POLICY tenant_isolation ON public.""CampaignLots""
+                        USING (
+                            NULLIF(current_setting('app.current_tenant', true), '') IS NULL
+                            OR ""TenantId"" = current_setting('app.current_tenant', true)::uuid
+                        );
+                EXCEPTION WHEN OTHERS THEN NULL;
+                END $$",
 
                 @"ALTER TABLE public.""Labors"" DROP CONSTRAINT IF EXISTS ""FK_Labors_WorkOrders_WorkOrderId""",
                 @"ALTER TABLE public.""Labors"" ADD CONSTRAINT ""FK_Labors_WorkOrders_WorkOrderId""
