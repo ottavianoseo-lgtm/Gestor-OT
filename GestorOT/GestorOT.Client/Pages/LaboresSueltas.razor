@@ -9,6 +9,7 @@
 @inject IMessageService Message
 @inject NavigationManager Nav
 @inject GestorOT.Client.Services.CampaignState CampaignState
+@inject GestorOT.Client.Services.TenantState TenantState
 @implements IDisposable
 
 <PageTitle>Labores Pendientes - GestorOT</PageTitle>
@@ -318,6 +319,7 @@ else
     protected override async Task OnInitializedAsync()
     {
         CampaignState.OnChange += OnCampaignChanged;
+        TenantState.OnChange += OnCampaignChanged;
         await LoadData();
     }
 
@@ -329,6 +331,7 @@ else
     public void Dispose()
     {
         CampaignState.OnChange -= OnCampaignChanged;
+        TenantState.OnChange -= OnCampaignChanged;
     }
 
     private async Task LoadData()

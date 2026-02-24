@@ -7,6 +7,7 @@
 @inject IJSRuntime JS
 @inject IMessageService Message
 @inject GestorOT.Client.Services.CampaignState CampaignState
+@inject GestorOT.Client.Services.TenantState TenantState
 @implements IDisposable
 
 <PageTitle>Explorador GIS - GestorOT</PageTitle>
@@ -536,6 +537,7 @@
     protected override void OnInitialized()
     {
         CampaignState.OnChange += OnCampaignChanged;
+        TenantState.OnChange += OnCampaignChanged;
     }
 
     private void OnCampaignChanged()
@@ -546,6 +548,7 @@
     public void Dispose()
     {
         CampaignState.OnChange -= OnCampaignChanged;
+        TenantState.OnChange -= OnCampaignChanged;
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
