@@ -90,6 +90,7 @@ public class ApplicationDbContext : DbContext
             entity.Property(e => e.Name).IsRequired().HasMaxLength(200);
             entity.Property(e => e.HectareasTotales);
             entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
+            entity.HasQueryFilter(e => CurrentTenantId == Guid.Empty || e.TenantId == CurrentTenantId);
         });
 
         modelBuilder.Entity<Lot>(entity =>
@@ -102,6 +103,7 @@ public class ApplicationDbContext : DbContext
             entity.HasIndex(e => e.Geometry).HasMethod("GIST");
             
             entity.Property(e => e.CadastralArea).HasPrecision(18, 4);
+            entity.HasQueryFilter(e => CurrentTenantId == Guid.Empty || e.TenantId == CurrentTenantId);
 
             entity.HasOne(e => e.Field)
                 .WithMany(f => f.Lots)
@@ -115,6 +117,7 @@ public class ApplicationDbContext : DbContext
             entity.HasKey(e => e.Id);
             entity.Property(e => e.SuperficieProductiva).HasPrecision(18, 4);
             entity.HasIndex(e => new { e.CampaignId, e.LotId }).IsUnique();
+            entity.HasQueryFilter(e => CurrentTenantId == Guid.Empty || e.TenantId == CurrentTenantId);
 
             entity.HasOne(e => e.Campaign)
                 .WithMany(c => c.CampaignLots)
@@ -134,7 +137,9 @@ public class ApplicationDbContext : DbContext
             entity.Property(e => e.Description).HasMaxLength(1000);
             entity.Property(e => e.Status).HasMaxLength(50);
             entity.Property(e => e.AssignedTo).HasMaxLength(200);
-            entity.HasQueryFilter(e => CurrentCampaignId == null || e.CampaignId == CurrentCampaignId);
+            entity.HasQueryFilter(e =>
+                (CurrentTenantId == Guid.Empty || e.TenantId == CurrentTenantId) &&
+                (CurrentCampaignId == null || e.CampaignId == CurrentCampaignId));
             entity.HasOne(e => e.Lot)
                 .WithMany(l => l.WorkOrders)
                 .HasForeignKey(e => e.LotId)
@@ -156,6 +161,7 @@ public class ApplicationDbContext : DbContext
             entity.Property(e => e.UnitA).HasMaxLength(50);
             entity.Property(e => e.UnitB).HasMaxLength(50);
             entity.Property(e => e.ConversionFactor).HasPrecision(18, 6).HasDefaultValue(1);
+            entity.HasQueryFilter(e => CurrentTenantId == Guid.Empty || e.TenantId == CurrentTenantId);
         });
 
         modelBuilder.Entity<Labor>(entity =>
@@ -169,6 +175,7 @@ public class ApplicationDbContext : DbContext
             entity.Property(e => e.Rate).HasPrecision(18, 4).HasDefaultValue(0m);
             entity.Property(e => e.RateUnit).HasMaxLength(50).HasDefaultValue("ha");
             entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
+            entity.HasQueryFilter(e => CurrentTenantId == Guid.Empty || e.TenantId == CurrentTenantId);
 
             entity.Property(e => e.MetadataExterna).HasColumnType("jsonb");
 
@@ -212,6 +219,7 @@ public class ApplicationDbContext : DbContext
             entity.Property(e => e.Name).IsRequired().HasMaxLength(200);
             entity.Property(e => e.CropType).HasMaxLength(100);
             entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
+            entity.HasQueryFilter(e => CurrentTenantId == Guid.Empty || e.TenantId == CurrentTenantId);
         });
 
         modelBuilder.Entity<StrategyItem>(entity =>
@@ -235,6 +243,7 @@ public class ApplicationDbContext : DbContext
             entity.Property(e => e.TotalAmount).HasPrecision(18, 4);
             entity.Property(e => e.GeneratedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
             entity.Property(e => e.ErpSyncStatus).HasMaxLength(50).HasDefaultValue("Pending");
+            entity.HasQueryFilter(e => CurrentTenantId == Guid.Empty || e.TenantId == CurrentTenantId);
 
             entity.HasOne(e => e.WorkOrder)
                 .WithMany()
@@ -266,6 +275,7 @@ public class ApplicationDbContext : DbContext
             entity.Property(e => e.Role).IsRequired().HasMaxLength(50).HasDefaultValue("Agronomist");
             entity.Property(e => e.IsActive).HasDefaultValue(true);
             entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
+            entity.HasQueryFilter(e => CurrentTenantId == Guid.Empty || e.TenantId == CurrentTenantId);
         });
 
         modelBuilder.Entity<TankMixRule>(entity =>
@@ -275,6 +285,7 @@ public class ApplicationDbContext : DbContext
             entity.Property(e => e.Severity).IsRequired().HasMaxLength(50).HasDefaultValue("Warning");
             entity.Property(e => e.WarningMessage).IsRequired().HasMaxLength(500);
             entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
+            entity.HasQueryFilter(e => CurrentTenantId == Guid.Empty || e.TenantId == CurrentTenantId);
 
             entity.HasOne(e => e.ProductA)
                 .WithMany()
@@ -297,6 +308,7 @@ public class ApplicationDbContext : DbContext
             entity.Property(e => e.UserId).HasMaxLength(200);
             entity.Property(e => e.UserEmail).HasMaxLength(200);
             entity.Property(e => e.Timestamp).HasDefaultValueSql("CURRENT_TIMESTAMP");
+            entity.HasQueryFilter(e => CurrentTenantId == Guid.Empty || e.TenantId == CurrentTenantId);
         });
 
         modelBuilder.Entity<Campaign>(entity =>
@@ -309,6 +321,7 @@ public class ApplicationDbContext : DbContext
             entity.Property(e => e.BusinessRulesJson).HasColumnName("BusinessRules").HasColumnType("jsonb");
             entity.Property(e => e.IsActive).HasDefaultValue(true);
             entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
+            entity.HasQueryFilter(e => CurrentTenantId == Guid.Empty || e.TenantId == CurrentTenantId);
         });
 
         modelBuilder.Entity<CampaignField>(entity =>
@@ -318,6 +331,7 @@ public class ApplicationDbContext : DbContext
             entity.Property(e => e.TargetYieldTonHa).HasPrecision(18, 4).HasDefaultValue(0m);
             entity.Property(e => e.AllocatedHectares).HasPrecision(18, 4).HasDefaultValue(0m);
             entity.HasIndex(e => new { e.CampaignId, e.FieldId }).IsUnique();
+            entity.HasQueryFilter(e => CurrentTenantId == Guid.Empty || e.TenantId == CurrentTenantId);
 
             entity.HasOne(e => e.Campaign)
                 .WithMany(c => c.CampaignFields)
