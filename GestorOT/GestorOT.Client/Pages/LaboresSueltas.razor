@@ -8,6 +8,8 @@
 @inject HttpClient Http
 @inject IMessageService Message
 @inject NavigationManager Nav
+@inject GestorOT.Client.Services.CampaignState CampaignState
+@implements IDisposable
 
 <PageTitle>Labores Pendientes - GestorOT</PageTitle>
 
@@ -315,7 +317,18 @@ else
 
     protected override async Task OnInitializedAsync()
     {
+        CampaignState.OnChange += OnCampaignChanged;
         await LoadData();
+    }
+
+    private void OnCampaignChanged()
+    {
+        InvokeAsync(async () => { await LoadData(); StateHasChanged(); });
+    }
+
+    public void Dispose()
+    {
+        CampaignState.OnChange -= OnCampaignChanged;
     }
 
     private async Task LoadData()

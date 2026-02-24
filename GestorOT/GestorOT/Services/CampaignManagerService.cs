@@ -15,7 +15,7 @@ public class CampaignManagerService
     public async Task<int> ImportLotsFromPreviousCampaignAsync(
         Guid newCampaignId,
         Guid previousCampaignId,
-        bool useProductiveAreaFromPrevious = false)
+        bool useSuperficieFromPrevious = false)
     {
         var newCampaign = await _context.Campaigns.FindAsync(newCampaignId);
         if (newCampaign == null)
@@ -44,16 +44,16 @@ public class CampaignManagerService
             if (existingLotIds.Contains(prev.LotId))
                 continue;
 
-            var productiveArea = useProductiveAreaFromPrevious
-                ? prev.ProductiveArea
-                : prev.Lot?.CadastralArea ?? prev.ProductiveArea;
+            var superficie = useSuperficieFromPrevious
+                ? prev.SuperficieProductiva
+                : prev.Lot?.CadastralArea ?? prev.SuperficieProductiva;
 
             _context.CampaignLots.Add(new CampaignLot
             {
                 Id = Guid.NewGuid(),
                 CampaignId = newCampaignId,
                 LotId = prev.LotId,
-                ProductiveArea = productiveArea,
+                SuperficieProductiva = superficie,
                 CropId = prev.CropId
             });
 

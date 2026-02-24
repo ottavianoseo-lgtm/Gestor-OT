@@ -51,7 +51,7 @@ public record CampaignLotDto(
     string? LotName,
     string? FieldName,
     decimal CadastralArea,
-    decimal ProductiveArea,
+    decimal SuperficieProductiva,
     Guid? CropId
 )
 {
@@ -60,7 +60,7 @@ public record CampaignLotDto(
 
 public record ImportLotsRequest(
     Guid PreviousCampaignId,
-    bool UseProductiveAreaFromPrevious = false
+    bool UseSuperficieFromPrevious = false
 )
 {
     public ImportLotsRequest() : this(Guid.Empty, false) { }

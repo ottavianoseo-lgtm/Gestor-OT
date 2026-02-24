@@ -6,6 +6,8 @@
 @inject HttpClient Http
 @inject IJSRuntime JS
 @inject IMessageService Message
+@inject GestorOT.Client.Services.CampaignState CampaignState
+@implements IDisposable
 
 <PageTitle>Explorador GIS - GestorOT</PageTitle>
 
@@ -175,11 +177,11 @@
                     var field = _allFields.FirstOrDefault(f => f.Id == _selectedLot.FieldId);
                     if (field != null)
                     {
-                        var delta = _selectedLot.Area - field.TotalArea;
-                        var pct = field.TotalArea > 0 ? (delta / field.TotalArea * 100) : 0;
+                        var delta = _selectedLot.Area - field.HectareasTotales;
+                        var pct = field.HectareasTotales > 0 ? (delta / field.HectareasTotales * 100) : 0;
                         <div class="rail-section">
                             <span class="rail-label">Área Fiscal</span>
-                            <span class="rail-value">@field.TotalArea.ToString("N2") ha</span>
+                            <span class="rail-value">@field.HectareasTotales.ToString("N2") ha</span>
                         </div>
                         <div class="surface-comparison">
                             <div style="font-size: 11px; color: rgba(255,255,255,0.5); margin-bottom: 6px;">Diferencia Superficie</div>
@@ -529,6 +531,21 @@
     {
         public string Wkt { get; set; } = "";
         public string Name { get; set; } = "";
+    }
+
+    protected override void OnInitialized()
+    {
+        CampaignState.OnChange += OnCampaignChanged;
+    }
+
+    private void OnCampaignChanged()
+    {
+        InvokeAsync(async () => { await ReloadMap(); StateHasChanged(); });
+    }
+
+    public void Dispose()
+    {
+        CampaignState.OnChange -= OnCampaignChanged;
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)

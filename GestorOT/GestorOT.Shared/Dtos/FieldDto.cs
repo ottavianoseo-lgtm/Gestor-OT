@@ -3,7 +3,7 @@ namespace GestorOT.Shared.Dtos;
 public record FieldDto(
     Guid Id,
     string Name,
-    double TotalArea,
+    double HectareasTotales,
     DateTime CreatedAt,
     List<LotSummaryDto> Lots
 )

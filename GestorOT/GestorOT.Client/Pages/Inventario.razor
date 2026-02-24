@@ -5,6 +5,8 @@
 @using AntDesign
 @inject HttpClient Http
 @inject IMessageService Message
+@inject GestorOT.Client.Services.CampaignState CampaignState
+@implements IDisposable
 
 <PageTitle>Inventario - GestorOT</PageTitle>
 
@@ -228,7 +230,18 @@
 
     protected override async Task OnInitializedAsync()
     {
+        CampaignState.OnChange += OnCampaignChanged;
         await LoadData();
+    }
+
+    private void OnCampaignChanged()
+    {
+        InvokeAsync(async () => { await LoadData(); StateHasChanged(); });
+    }
+
+    public void Dispose()
+    {
+        CampaignState.OnChange -= OnCampaignChanged;
     }
 
     private async Task LoadData()

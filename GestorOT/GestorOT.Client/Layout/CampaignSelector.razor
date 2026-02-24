@@ -1,6 +1,6 @@
+@implements IDisposable
 @inject HttpClient Http
 @inject GestorOT.Client.Services.CampaignState CampaignState
-@inject NavigationManager Nav
 @using GestorOT.Shared
 @using GestorOT.Shared.Dtos
 @using AntDesign
@@ -266,13 +266,16 @@
     {
         CampaignState.SetCampaign(campaign);
         _modalVisible = false;
-        Nav.Refresh(forceReload: false);
     }
 
     private void ClearCampaign()
     {
         CampaignState.Clear();
         _modalVisible = false;
-        Nav.Refresh(forceReload: false);
+    }
+
+    public void Dispose()
+    {
+        CampaignState.OnChange -= StateHasChanged;
     }
 }

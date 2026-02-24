@@ -88,7 +88,7 @@ public class ApplicationDbContext : DbContext
             entity.ToTable("Fields", "public");
             entity.HasKey(e => e.Id);
             entity.Property(e => e.Name).IsRequired().HasMaxLength(200);
-            entity.Property(e => e.TotalArea).HasPrecision(18, 4);
+            entity.Property(e => e.HectareasTotales);
             entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
         });
 
@@ -113,7 +113,7 @@ public class ApplicationDbContext : DbContext
         {
             entity.ToTable("CampaignLots", "public");
             entity.HasKey(e => e.Id);
-            entity.Property(e => e.ProductiveArea).HasPrecision(18, 4);
+            entity.Property(e => e.SuperficieProductiva).HasPrecision(18, 4);
             entity.HasIndex(e => new { e.CampaignId, e.LotId }).IsUnique();
 
             entity.HasOne(e => e.Campaign)
@@ -367,7 +367,7 @@ public class Field : ITenantEntity
     public Guid Id { get; set; }
     public Guid TenantId { get; set; }
     public string Name { get; set; } = string.Empty;
-    public double TotalArea { get; set; }
+    public double HectareasTotales { get; set; }
     public DateTime CreatedAt { get; set; }
     public ICollection<Lot> Lots { get; set; } = new List<Lot>();
 }
@@ -567,7 +567,7 @@ public class CampaignLot : ITenantEntity
     public Guid TenantId { get; set; }
     public Guid CampaignId { get; set; }
     public Guid LotId { get; set; }
-    public decimal ProductiveArea { get; set; }
+    public decimal SuperficieProductiva { get; set; }
     public Guid? CropId { get; set; }
     public Campaign? Campaign { get; set; }
     public Lot? Lot { get; set; }

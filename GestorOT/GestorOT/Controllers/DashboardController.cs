@@ -25,7 +25,7 @@ public class DashboardController : ControllerBase
         var pendingOrders = await _context.WorkOrders.AsNoTracking().CountAsync(w => w.Status == "Pending");
         var inProgressOrders = await _context.WorkOrders.AsNoTracking().CountAsync(w => w.Status == "InProgress");
         var completedOrders = await _context.WorkOrders.AsNoTracking().CountAsync(w => w.Status == "Completed");
-        var totalArea = await _context.Fields.AsNoTracking().SumAsync(f => f.TotalArea);
+        var totalArea = await _context.Fields.AsNoTracking().SumAsync(f => f.HectareasTotales);
 
         return new DashboardStatsDto(fieldsCount, lotsCount, activeLotsCount, pendingOrders, inProgressOrders, completedOrders, totalArea);
     }

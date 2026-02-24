@@ -81,12 +81,12 @@
             </div>
             <div class="summary-item">
                 <span class="summary-label">Total Productiva</span>
-                <span class="summary-value" style="color: #2ECC71;">@_lots.Sum(l => l.ProductiveArea).ToString("N2") ha</span>
+                <span class="summary-value" style="color: #2ECC71;">@_lots.Sum(l => l.SuperficieProductiva).ToString("N2") ha</span>
             </div>
             <div class="summary-item">
                 <span class="summary-label">Diferencia</span>
                 @{
-                    var diff = _lots.Sum(l => l.CadastralArea) - _lots.Sum(l => l.ProductiveArea);
+                    var diff = _lots.Sum(l => l.CadastralArea) - _lots.Sum(l => l.SuperficieProductiva);
                 }
                 <span class="summary-value" style="color: @(diff > 0 ? "#F1C40F" : "#2ECC71");">
                     @(diff > 0 ? "-" : "")@diff.ToString("N2") ha
@@ -115,11 +115,11 @@
                 @if (_editingLotId == context.LotId && _campaign?.Status != CampaignStatus.Locked)
                 {
                     <div style="display: flex; align-items: center; gap: 6px;">
-                        <AntDesign.InputNumber TValue="decimal" @bind-Value="_editProductiveArea"
+                        <AntDesign.InputNumber TValue="decimal" @bind-Value="_editSuperficie"
                                                Min="0m" Max="@context.CadastralArea"
                                                Step="0.5m"
                                                Style="width: 120px;" />
-                        <Button Size="@ButtonSize.Small" OnClick="() => SaveProductiveArea(context)"
+                        <Button Size="@ButtonSize.Small" OnClick="() => SaveSuperficieProductiva(context)"
                                 Loading="_savingArea"
                                 Style="border-radius: 6px; background: #2ECC7115; border-color: #2ECC7140; color: #2ECC71;">
                             <Icon Type="check" Theme="IconThemeType.Outline" />
@@ -133,10 +133,10 @@
                 else
                 {
                     <div style="display: flex; align-items: center; gap: 8px;">
-                        <span style="font-weight: 600; color: #2ECC71;">@context.ProductiveArea.ToString("N2")</span>
-                        @if (context.CadastralArea > 0 && context.ProductiveArea < context.CadastralArea)
+                        <span style="font-weight: 600; color: #2ECC71;">@context.SuperficieProductiva.ToString("N2")</span>
+                        @if (context.CadastralArea > 0 && context.SuperficieProductiva < context.CadastralArea)
                         {
-                            var delta = context.CadastralArea - context.ProductiveArea;
+                            var delta = context.CadastralArea - context.SuperficieProductiva;
                             var pct = (delta / context.CadastralArea * 100);
                             <Tag Style="background: #F1C40F20; color: #F1C40F; border: 1px solid #F1C40F40; border-radius: 10px; font-size: 10px; padding: 0 6px;">
                                 -@pct.ToString("N1")%
@@ -192,7 +192,7 @@
         </div>
         <div style="margin-bottom: 16px;">
             <label style="display: block; color: rgba(255,255,255,0.7); font-size: 12px; font-weight: 600; margin-bottom: 6px;">Superficie Productiva (ha)</label>
-            <AntDesign.InputNumber TValue="decimal" @bind-Value="_addProductiveArea" Min="0m" Step="0.5m"
+            <AntDesign.InputNumber TValue="decimal" @bind-Value="_addSuperficie" Min="0m" Step="0.5m"
                                    Style="width: 100%;" Placeholder="Dejar en 0 para usar la catastral" />
             <div style="color: rgba(255,255,255,0.4); font-size: 11px; margin-top: 4px;">
                 Si se deja en 0, se usará la superficie catastral del lote.
@@ -224,7 +224,7 @@
         </div>
         <div style="margin-bottom: 16px;">
             <label style="display: block; color: rgba(255,255,255,0.7); font-size: 12px; font-weight: 600; margin-bottom: 6px;">Superficie Productiva</label>
-            <RadioGroup @bind-Value="_useProductiveFromPrevious">
+            <RadioGroup @bind-Value="_useSuperficieFromPrevious">
                 <Radio Value="false">Usar superficie catastral (resetear)</Radio>
                 <Radio Value="true">Mantener superficie productiva anterior</Radio>
             </RadioGroup>
@@ -280,17 +280,17 @@
     private string? _errorMessage;
 
     private Guid? _editingLotId;
-    private decimal _editProductiveArea;
+    private decimal _editSuperficie;
     private bool _savingArea;
 
     private bool _addModalVisible;
     private Guid _addLotId;
-    private decimal _addProductiveArea;
+    private decimal _addSuperficie;
     private bool _addingLot;
 
     private bool _importModalVisible;
     private Guid _importFromCampaignId;
-    private bool _useProductiveFromPrevious;
+    private bool _useSuperficieFromPrevious;
     private bool _importing;
 
     protected override async Task OnInitializedAsync()
@@ -349,7 +349,7 @@
     private void StartEdit(CampaignLotDto lot)
     {
         _editingLotId = lot.LotId;
-        _editProductiveArea = lot.ProductiveArea;
+        _editSuperficie = lot.SuperficieProductiva;
     }
 
     private void CancelEdit()
@@ -357,9 +357,9 @@
         _editingLotId = null;
     }
 
-    private async Task SaveProductiveArea(CampaignLotDto lot)
+    private async Task SaveSuperficieProductiva(CampaignLotDto lot)
     {
-        if (_editProductiveArea > lot.CadastralArea && lot.CadastralArea > 0)
+        if (_editSuperficie > lot.CadastralArea && lot.CadastralArea > 0)
         {
             Message.Warning($"La superficie productiva no puede superar la catastral ({lot.CadastralArea:N2} ha).");
             return;
@@ -371,7 +371,7 @@
             var dto = new CampaignLotDto(
                 lot.Id, lot.CampaignId, lot.LotId,
                 lot.LotName, lot.FieldName,
-                lot.CadastralArea, _editProductiveArea, lot.CropId);
+                lot.CadastralArea, _editSuperficie, lot.CropId);
 
             var response = await Http.PutAsJsonAsync(
                 $"api/campaigns/{CampaignId}/lots/{lot.LotId}",
@@ -402,7 +402,7 @@
     private void OpenAddModal()
     {
         _addLotId = Guid.Empty;
-        _addProductiveArea = 0;
+        _addSuperficie = 0;
         RefreshAvailableLots();
         _addModalVisible = true;
     }
@@ -425,7 +425,7 @@
         {
             var dto = new CampaignLotDto(
                 Guid.Empty, CampaignId, _addLotId,
-                null, null, 0, _addProductiveArea, null);
+                null, null, 0, _addSuperficie, null);
 
             var response = await Http.PostAsJsonAsync(
                 $"api/campaigns/{CampaignId}/lots",
@@ -478,7 +478,7 @@
     private void OpenImportModal()
     {
         _importFromCampaignId = Guid.Empty;
-        _useProductiveFromPrevious = false;
+        _useSuperficieFromPrevious = false;
         _importModalVisible = true;
     }
 
@@ -498,7 +498,7 @@
         _importing = true;
         try
         {
-            var request = new ImportLotsRequest(_importFromCampaignId, _useProductiveFromPrevious);
+            var request = new ImportLotsRequest(_importFromCampaignId, _useSuperficieFromPrevious);
             var response = await Http.PostAsJsonAsync(
                 $"api/campaigns/{CampaignId}/lots/import",
                 request, AppJsonSerializerContext.Default.ImportLotsRequest);

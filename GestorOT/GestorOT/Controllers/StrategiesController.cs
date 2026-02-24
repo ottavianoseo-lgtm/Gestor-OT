@@ -176,8 +176,8 @@ public class StrategiesController : ControllerBase
                     LaborType = item.LaborType,
                     Status = "Planned",
                     ExecutionDate = request.StartDate.AddDays(item.DayOffset),
-                    Hectares = (decimal)(lot.Field?.TotalArea ?? 0),
-                    EffectiveArea = (decimal)(lot.Field?.TotalArea ?? 0),
+                    Hectares = (decimal)(lot.Field?.HectareasTotales ?? 0),
+                    EffectiveArea = (decimal)(lot.Field?.HectareasTotales ?? 0),
                     CreatedAt = DateTime.UtcNow
                 };
 

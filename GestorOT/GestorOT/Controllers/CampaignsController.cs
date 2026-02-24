@@ -265,7 +265,7 @@ public class CampaignsController : ControllerBase
                 cl.Lot!.Name,
                 cl.Lot.Field != null ? cl.Lot.Field.Name : null,
                 cl.Lot.CadastralArea,
-                cl.ProductiveArea,
+                cl.SuperficieProductiva,
                 cl.CropId
             ))
             .ToListAsync();
@@ -293,17 +293,17 @@ public class CampaignsController : ControllerBase
         if (lot == null)
             return BadRequest("El lote no existe.");
 
-        if (dto.ProductiveArea > lot.CadastralArea && lot.CadastralArea > 0)
-            return BadRequest($"La superficie productiva ({dto.ProductiveArea:N2}) no puede superar la catastral ({lot.CadastralArea:N2}).");
+        if (dto.SuperficieProductiva > lot.CadastralArea && lot.CadastralArea > 0)
+            return BadRequest($"La superficie productiva ({dto.SuperficieProductiva:N2}) no puede superar la catastral ({lot.CadastralArea:N2}).");
 
-        var productiveArea = dto.ProductiveArea > 0 ? dto.ProductiveArea : lot.CadastralArea;
+        var superficieProductiva = dto.SuperficieProductiva > 0 ? dto.SuperficieProductiva : lot.CadastralArea;
 
         _context.CampaignLots.Add(new CampaignLot
         {
             Id = Guid.NewGuid(),
             CampaignId = id,
             LotId = dto.LotId,
-            ProductiveArea = productiveArea,
+            SuperficieProductiva = superficieProductiva,
             CropId = dto.CropId
         });
 
@@ -325,10 +325,10 @@ public class CampaignsController : ControllerBase
         if (campaign?.Status == "Locked")
             return BadRequest("No se pueden modificar lotes en una campaña bloqueada.");
 
-        if (cl.Lot != null && cl.Lot.CadastralArea > 0 && dto.ProductiveArea > cl.Lot.CadastralArea)
-            return BadRequest($"La superficie productiva ({dto.ProductiveArea:N2}) no puede superar la catastral ({cl.Lot.CadastralArea:N2}).");
+        if (cl.Lot != null && cl.Lot.CadastralArea > 0 && dto.SuperficieProductiva > cl.Lot.CadastralArea)
+            return BadRequest($"La superficie productiva ({dto.SuperficieProductiva:N2}) no puede superar la catastral ({cl.Lot.CadastralArea:N2}).");
 
-        cl.ProductiveArea = dto.ProductiveArea;
+        cl.SuperficieProductiva = dto.SuperficieProductiva;
         cl.CropId = dto.CropId;
 
         await _context.SaveChangesAsync();
@@ -359,7 +359,7 @@ public class CampaignsController : ControllerBase
         try
         {
             var imported = await _campaignManager.ImportLotsFromPreviousCampaignAsync(
-                id, request.PreviousCampaignId, request.UseProductiveAreaFromPrevious);
+                id, request.PreviousCampaignId, request.UseSuperficieFromPrevious);
 
             return Ok(new { imported, message = $"Se importaron {imported} lotes correctamente." });
         }

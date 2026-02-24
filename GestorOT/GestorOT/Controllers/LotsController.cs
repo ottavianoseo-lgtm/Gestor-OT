@@ -18,9 +18,30 @@ public class LotsController : ControllerBase
         _context = context;
     }
 
+    private async Task<Dictionary<Guid, double>> GetLotAreasAsync()
+    {
+        var areas = await _context.Database
+            .SqlQueryRaw<LotAreaResult>(
+                @"SELECT ""Id"", COALESCE(ST_Area(""Geometry""::geography) / 10000.0, 0) AS ""AreaHa"" FROM public.""Lots"" WHERE ""Geometry"" IS NOT NULL")
+            .ToListAsync();
+        return areas.ToDictionary(x => x.Id, x => Math.Round(x.AreaHa, 4));
+    }
+
+    private async Task<double> GetLotAreaAsync(Guid lotId)
+    {
+        var result = await _context.Database
+            .SqlQueryRaw<double>(
+                @"SELECT COALESCE(ST_Area(""Geometry""::geography) / 10000.0, 0) AS ""Value"" FROM public.""Lots"" WHERE ""Id"" = {0} AND ""Geometry"" IS NOT NULL",
+                lotId)
+            .FirstOrDefaultAsync();
+        return Math.Round(result, 4);
+    }
+
     [HttpGet]
     public async Task<ActionResult<List<LotDto>>> GetLots()
     {
+        var areaMap = await GetLotAreasAsync();
+
         var lots = await _context.Lots
             .AsNoTracking()
             .Include(l => l.Field)
@@ -35,7 +56,7 @@ public class LotsController : ControllerBase
             l.Status,
             l.Geometry != null ? writer.Write(l.Geometry) : null,
             l.Field?.Name,
-            l.Geometry != null ? l.Geometry.Area * 10000 : 0
+            areaMap.GetValueOrDefault(l.Id, 0)
         )).ToList();
     }
 
@@ -50,6 +71,8 @@ public class LotsController : ControllerBase
         if (lot == null)
             return NotFound();
 
+        double areaHa = lot.Geometry != null ? await GetLotAreaAsync(id) : 0;
+
         var writer = new WKTWriter();
         return new LotDto(
             lot.Id,
@@ -58,13 +81,15 @@ public class LotsController : ControllerBase
             lot.Status,
             lot.Geometry != null ? writer.Write(lot.Geometry) : null,
             lot.Field?.Name,
-            lot.Geometry != null ? lot.Geometry.Area * 10000 : 0
+            areaHa
         );
     }
 
     [HttpGet("geojson")]
     public async Task<ActionResult<GeoJsonFeatureCollection>> GetLotsGeoJson()
     {
+        var areaMap = await GetLotAreasAsync();
+
         var lots = await _context.Lots
             .AsNoTracking()
             .Include(l => l.Field)
@@ -79,7 +104,7 @@ public class LotsController : ControllerBase
                 ["name"] = l.Name,
                 ["status"] = l.Status,
                 ["fieldName"] = l.Field?.Name ?? "",
-                ["area"] = Math.Round(l.Geometry!.Area * 10000, 2)
+                ["area"] = areaMap.GetValueOrDefault(l.Id, 0)
             },
             l.Geometry != null ? ParseGeometry((Polygon)l.Geometry) : null
         )).ToList();
@@ -110,6 +135,8 @@ public class LotsController : ControllerBase
         _context.Lots.Add(lot);
         await _context.SaveChangesAsync();
 
+        double areaHa = geometry != null ? await GetLotAreaAsync(lot.Id) : 0;
+
         var result = new LotDto(
             lot.Id,
             lot.FieldId,
@@ -117,7 +144,7 @@ public class LotsController : ControllerBase
             lot.Status,
             dto.WktGeometry,
             null,
-            geometry != null ? geometry.Area * 10000 : 0
+            areaHa
         );
 
         return CreatedAtAction(nameof(GetLot), new { id = lot.Id }, result);
@@ -162,4 +189,10 @@ public class LotsController : ControllerBase
         var ring = coords.Select(c => new double[] { c.X, c.Y }).ToArray();
         return new GeoJsonGeometry("Polygon", new double[][][] { ring });
     }
+}
+
+public class LotAreaResult
+{
+    public Guid Id { get; set; }
+    public double AreaHa { get; set; }
 }

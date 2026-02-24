@@ -303,7 +303,23 @@ using (var scope = app.Services.CreateScope())
                             OR ""TenantId"" = current_setting('app.current_tenant', true)::uuid
                         );
                 EXCEPTION WHEN OTHERS THEN NULL;
-                END $$"
+                END $$",
+
+                @"DO $$ BEGIN
+                    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='Fields' AND column_name='TotalArea') THEN
+                        ALTER TABLE public.""Fields"" RENAME COLUMN ""TotalArea"" TO ""HectareasTotales"";
+                    END IF;
+                END $$",
+
+                @"ALTER TABLE public.""Fields"" ADD COLUMN IF NOT EXISTS ""HectareasTotales"" double precision NOT NULL DEFAULT 0",
+
+                @"DO $$ BEGIN
+                    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='CampaignLots' AND column_name='ProductiveArea') THEN
+                        ALTER TABLE public.""CampaignLots"" RENAME COLUMN ""ProductiveArea"" TO ""SuperficieProductiva"";
+                    END IF;
+                END $$",
+
+                @"ALTER TABLE public.""CampaignLots"" ADD COLUMN IF NOT EXISTS ""SuperficieProductiva"" numeric(18,4) NOT NULL DEFAULT 0"
             };
 
             foreach (var sql in migrationSql)

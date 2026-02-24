@@ -6,7 +6,9 @@
 @using AntDesign
 @inject HttpClient Http
 @inject IJSRuntime JS
+@inject GestorOT.Client.Services.CampaignState CampaignState
 @implements IAsyncDisposable
+@implements IDisposable
 
 <PageTitle>Command Center - GestorOT</PageTitle>
 
@@ -577,6 +579,12 @@
 
     protected override async Task OnInitializedAsync()
     {
+        CampaignState.OnChange += OnCampaignChanged;
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
         try
         {
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
@@ -645,6 +653,16 @@
             {
             }
         }
+    }
+
+    private void OnCampaignChanged()
+    {
+        InvokeAsync(async () => { await LoadData(); StateHasChanged(); });
+    }
+
+    public void Dispose()
+    {
+        CampaignState.OnChange -= OnCampaignChanged;
     }
 
     public async ValueTask DisposeAsync()
