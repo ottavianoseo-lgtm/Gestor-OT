@@ -1,0 +1,93 @@
+@inherits LayoutComponentBase
+@using AntDesign
+@inject NavigationManager Nav
+@inject GestorOT.Client.Services.TenantState TenantState
+
+<Layout Style="min-height: 100vh; background: transparent;">
+    <Sider
+        Width="240"
+        CollapsedWidth="72"
+        Collapsible
+        @bind-Collapsed="@_collapsed"
+        Style="background: rgba(30, 30, 46, 0.20); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border-right: 1px solid rgba(255,255,255,0.08); z-index: 10;">
+
+        <div style="height: 64px; display: flex; align-items: center; justify-content: center; padding: 0 16px; border-bottom: 1px solid rgba(255,255,255,0.06);">
+            @if (!_collapsed)
+            {
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <Icon Type="setting" Theme="IconThemeType.Outline" Style="font-size: 20px; color: #E74C3C;" />
+                    <span style="color: #fff; font-size: 16px; font-weight: 700; letter-spacing: -0.5px;">Admin Panel</span>
+                </div>
+            }
+            else
+            {
+                <Icon Type="setting" Theme="IconThemeType.Outline" Style="font-size: 20px; color: #E74C3C;" />
+            }
+        </div>
+
+        @if (!_collapsed)
+        {
+            <div style="padding: 16px 20px 8px; font-size: 10px; text-transform: uppercase; letter-spacing: 1.5px; color: rgba(255,255,255,0.3); font-weight: 600;">
+                Gestión
+            </div>
+        }
+
+        <Menu Theme="MenuTheme.Dark" Mode="MenuMode.Inline" DefaultSelectedKeys="@(new[] { _activeKey })"
+              Style="background: transparent; border-right: none;">
+            <MenuItem Key="1" RouterLink="/admin" Style="font-size: 13px;">
+                <Icon Type="user" Theme="IconThemeType.Outline" />
+                <span>Usuarios</span>
+            </MenuItem>
+            <MenuItem Key="2" RouterLink="/admin/tankmix" Style="font-size: 13px;">
+                <Icon Type="experiment" Theme="IconThemeType.Outline" />
+                <span>Reglas de Mezcla</span>
+            </MenuItem>
+            <MenuItem Key="3" RouterLink="/admin/audit" Style="font-size: 13px;">
+                <Icon Type="audit" Theme="IconThemeType.Outline" />
+                <span>Auditoría</span>
+            </MenuItem>
+        </Menu>
+
+        @if (!_collapsed)
+        {
+            <div style="padding: 16px 20px 8px; font-size: 10px; text-transform: uppercase; letter-spacing: 1.5px; color: rgba(255,255,255,0.3); font-weight: 600;">
+                Navegación
+            </div>
+        }
+
+        <Menu Theme="MenuTheme.Dark" Mode="MenuMode.Inline"
+              Style="background: transparent; border-right: none;">
+            <MenuItem Key="back" RouterLink="/" Style="font-size: 13px;">
+                <Icon Type="arrow-left" Theme="IconThemeType.Outline" />
+                <span>Volver al Sistema</span>
+            </MenuItem>
+        </Menu>
+    </Sider>
+
+    <Layout Style="background: transparent;">
+        <Content Style="min-height: 280px; position: relative; margin: 20px;">
+            @Body
+        </Content>
+    </Layout>
+</Layout>
+
+<TenantSelector />
+@code {
+    private bool _collapsed = false;
+    private string _activeKey = "1";
+
+    protected override void OnInitialized()
+    {
+        TenantState.OnChange += StateHasChanged;
+        UpdateActiveKey();
+        Nav.LocationChanged += (_, _) => { UpdateActiveKey(); StateHasChanged(); };
+    }
+
+    private void UpdateActiveKey()
+    {
+        var uri = Nav.Uri;
+        if (uri.Contains("/admin/audit")) _activeKey = "3";
+        else if (uri.Contains("/admin/tankmix")) _activeKey = "2";
+        else _activeKey = "1";
+    }
+}

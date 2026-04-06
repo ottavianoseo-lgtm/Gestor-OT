@@ -1,0 +1,484 @@
+@page "/labores-sueltas"
+@using GestorOT.Shared.Dtos
+@using GestorOT.Shared
+@using GestorOT.Client.Components
+@using System.Net.Http.Json
+@using System.Text
+@using System.Text.Json
+@using AntDesign
+@inject HttpClient Http
+@inject IMessageService Message
+@inject NavigationManager Nav
+@inject GestorOT.Client.Services.CampaignState CampaignState
+@inject GestorOT.Client.Services.TenantState TenantState
+@implements IDisposable
+
+<PageTitle>Labores Pendientes - GestorOT</PageTitle>
+
+<div class="page-header">
+    <div>
+        <h2 class="page-title">Labores Pendientes de Asignar</h2>
+        <span class="page-subtitle">Labores registradas sin Orden de Trabajo asignada</span>
+    </div>
+    <div style="display: flex; gap: 8px; align-items: center;">
+        <Button Type="@ButtonType.Primary" OnClick="() => OpenQuickCreator()"
+                Style="background: #2ECC71; border-color: #2ECC71; border-radius: 8px; font-weight: 600;">
+            <Icon Type="plus" Theme="IconThemeType.Outline" /> Labor Rapida
+        </Button>
+        @if (_selectedIds.Count > 0)
+        {
+            <Button Type="@ButtonType.Primary" OnClick="OpenAssignModal"
+                    Style="background: #3498DB; border-color: #3498DB; border-radius: 8px; font-weight: 600;">
+                <Icon Type="link" Theme="IconThemeType.Outline" /> Asignar @_selectedIds.Count a OT
+            </Button>
+            <Button Type="@ButtonType.Primary" OnClick="CreateOTFromSelected"
+                    Style="background: #E74C3C; border-color: #E74C3C; border-radius: 8px; font-weight: 600;">
+                <Icon Type="file-add" Theme="IconThemeType.Outline" /> Crear OT con @_selectedIds.Count seleccionadas
+            </Button>
+        }
+    </div>
+</div>
+
+@if (!string.IsNullOrEmpty(_errorMessage))
+{
+    <Alert Type="@AlertType.Error" Message="@_errorMessage" ShowIcon="true" Closable="true" Style="margin-bottom: 16px;" />
+}
+
+<div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 20px;">
+    <div class="kpi-card">
+        <div class="kpi-value">@_labors.Count</div>
+        <div class="kpi-label">Labores Sin OT</div>
+    </div>
+    <div class="kpi-card">
+        <div class="kpi-value">@_labors.Count(l => l.LaborTypeName == "Fertilizacion")</div>
+        <div class="kpi-label">Fertilizacion</div>
+    </div>
+    <div class="kpi-card">
+        <div class="kpi-value">@_labors.Count(l => l.LaborTypeName == "Pulverizacion")</div>
+        <div class="kpi-label">Pulverizacion</div>
+    </div>
+    <div class="kpi-card">
+        <div class="kpi-value">@_labors.Sum(l => l.Hectares).ToString("N0") ha</div>
+        <div class="kpi-label">Hectareas Totales</div>
+    </div>
+</div>
+
+@if (_loading)
+{
+    <div style="text-align: center; padding: 60px;">
+        <Spin Size="@SpinSize.Large" Tip="Cargando labores" />
+    </div>
+}
+else if (_labors.Count == 0)
+{
+    <div class="glass-card" style="text-align: center; padding: 60px;">
+        <Icon Type="check-circle" Theme="IconThemeType.Outline" Style="font-size: 48px; color: #2ECC71; margin-bottom: 16px;" />
+        <div style="color: rgba(255,255,255,0.7); font-size: 16px; margin-bottom: 8px;">No hay labores pendientes de asignar</div>
+        <div style="color: rgba(255,255,255,0.4); font-size: 13px;">Crea una labor rapida con el boton de arriba</div>
+    </div>
+}
+else
+{
+    <div class="pool-list-container">
+        <div class="pool-header">
+            <Checkbox Checked="@_allSelected" CheckedChanged="ToggleSelectAll"
+                      Style="color: rgba(255,255,255,0.6); font-size: 12px;">
+                Seleccionar todas
+            </Checkbox>
+            <Select TItemValue="Guid?" TItem="LaborTypeDto" @bind-Value="_filterTypeId" Placeholder="Filtrar actividad" AllowClear
+                    Style="width: 200px;">
+                <SelectOption TItemValue="Guid?" TItem="LaborTypeDto" Value="@((Guid?)null)" Label="Todas las actividades" />
+                @foreach (var type in _laborTypes)
+                {
+                    <SelectOption TItemValue="Guid?" TItem="LaborTypeDto" Value="@type.Id" Label="@type.Name" />
+                }
+            </Select>
+        </div>
+
+        <div class="pool-list">
+        @foreach (var labor in FilteredLabors)
+        {
+            var isSelected = _selectedIds.Contains(labor.Id);
+            <div class="labor-row @(isSelected ? "labor-selected" : "")" @onclick="() => EditLabor(labor.Id)">
+                <Checkbox Checked="@isSelected" CheckedChanged="(bool v) => ToggleSelect(labor.Id, v)" @onclick:stopPropagation="true" />
+                <div class="labor-type-badge" style="background: @(GetTypeBgColor(labor.LaborTypeName ?? "Labor"));">
+                    @labor.LaborTypeName
+                </div>
+                <div class="labor-info">
+                    <div class="labor-lot">
+                        <Icon Type="environment" Theme="IconThemeType.Outline" Style="font-size: 11px;" />
+                        @(labor.LotName ?? "—")
+                        @if (!string.IsNullOrEmpty(labor.FieldName))
+                        {
+                            <span style="color: rgba(255,255,255,0.3);"> / @labor.FieldName</span>
+                        }
+                    </div>
+                    @if (!string.IsNullOrEmpty(labor.Notes))
+                    {
+                        <div class="labor-notes">@labor.Notes</div>
+                    }
+                </div>
+                <div class="labor-ha">
+                    @labor.Hectares.ToString("N1") ha
+                </div>
+                <div class="labor-date">
+                    <Icon Type="calendar" Theme="IconThemeType.Outline" Style="font-size: 11px;" />
+                    @(labor.ExecutionDate?.ToString("dd/MM") ?? labor.EstimatedDate?.ToString("dd/MM") ?? labor.CreatedAt.ToString("dd/MM"))
+                </div>
+                <div class="labor-status">
+                    <Tag Color="@(labor.Status == "Pending" ? "orange" : "blue")">@labor.Status</Tag>
+                </div>
+                <div class="labor-actions" @onclick:stopPropagation="true">
+                    <Tooltip Title="@("Eliminar")">
+                        <Popconfirm Title="Eliminar esta labor?" OnConfirm="() => DeleteLabor(labor.Id)"
+                                    OkText="Si" CancelText="No">
+                            <Button Type="@ButtonType.Text" Danger Size="@ButtonSize.Small">
+                                <Icon Type="delete" Theme="IconThemeType.Outline" />
+                            </Button>
+                        </Popconfirm>
+                    </Tooltip>
+                </div>
+            </div>
+        }
+        </div>
+    </div>
+}
+
+<Drawer Title="@(_editingLaborId == Guid.Empty ? "Nueva Labor Suelta" : "Editar Labor")"
+        Visible="@_drawerVisible" OnClose="() => _drawerVisible = false" Width="550">
+    <LaborEditorForm LaborId="@_editingLaborId" OnSaved="OnLaborSaved" />
+</Drawer>
+
+<Modal Title="@("Asignar Labores a Orden de Trabajo")" Visible="@_assignModalOpen"
+       OnCancel="() => _assignModalOpen = false" Footer="null" Width="480"
+       BodyStyle="background: #1E1E2E; padding: 24px;">
+    <div style="margin-bottom: 16px; color: rgba(255,255,255,0.6); font-size: 13px;">
+        @_selectedIds.Count labores seleccionadas para asignar
+    </div>
+    <Select TItemValue="Guid" TItem="Guid" @bind-Value="_assignTargetOT" Placeholder="Seleccionar OT existente"
+            Style="width: 100%; margin-bottom: 16px;">
+        @foreach (var wo in _workOrders)
+        {
+            <SelectOption TItemValue="Guid" TItem="Guid" Value="@wo.Id"
+                          Label="@($"{wo.Description} ({wo.LotName})")" />
+        }
+    </Select>
+    <Button Type="@ButtonType.Primary" OnClick="AssignToExistingOT" Loading="_saving" Block
+            Style="background: #3498DB; border-color: #3498DB; border-radius: 8px; font-weight: 600; height: 40px;"
+            Disabled="@(_assignTargetOT == Guid.Empty)">
+        <Icon Type="link" Theme="IconThemeType.Outline" /> Asignar a OT
+    </Button>
+</Modal>
+
+<style>
+    .kpi-card {
+        background: rgba(255,255,255,0.04);
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(255,255,255,0.08);
+        border-radius: 12px;
+        padding: 20px;
+        text-align: center;
+    }
+    .kpi-value {
+        font-size: 28px;
+        font-weight: 700;
+        color: #fff;
+    }
+    .kpi-label {
+        font-size: 11px;
+        color: rgba(255,255,255,0.4);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-top: 4px;
+    }
+    .pool-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 12px 16px;
+        background: rgba(255,255,255,0.04);
+        border-bottom: 1px solid rgba(255,255,255,0.06);
+    }
+    .labor-row {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 12px 16px;
+        border-bottom: 1px solid rgba(255,255,255,0.04);
+        transition: background 0.15s;
+        cursor: pointer;
+    }
+    .labor-row:hover { background: rgba(255,255,255,0.03); }
+    .labor-selected { background: rgba(52,152,219,0.08) !important; }
+    .labor-type-badge {
+        padding: 3px 10px;
+        border-radius: 6px;
+        font-size: 11px;
+        font-weight: 600;
+        color: #fff;
+        white-space: nowrap;
+        min-width: 90px;
+        text-align: center;
+    }
+    .labor-info {
+        flex: 1;
+        min-width: 0;
+    }
+    .labor-lot {
+        font-size: 13px;
+        color: rgba(255,255,255,0.8);
+        display: flex;
+        align-items: center;
+        gap: 4px;
+    }
+    .labor-notes {
+        font-size: 11px;
+        color: rgba(255,255,255,0.4);
+        margin-top: 2px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .labor-ha {
+        font-size: 13px;
+        font-weight: 600;
+        color: rgba(255,255,255,0.7);
+        min-width: 70px;
+        text-align: right;
+    }
+    .labor-date {
+        font-size: 12px;
+        color: rgba(255,255,255,0.45);
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        min-width: 60px;
+    }
+    .labor-status { min-width: 80px; }
+    .labor-actions { min-width: 40px; }
+</style>
+
+@code {
+    private List<LaborDto> _labors = new();
+    private List<LotDto> _lots = new();
+    private List<WorkOrderDto> _workOrders = new();
+    private List<LaborTypeDto> _laborTypes = new();
+    private bool _loading = true;
+    private string? _errorMessage;
+    private bool _saving;
+    private HashSet<Guid> _selectedIds = new();
+    private Guid? _filterTypeId;
+    private bool _drawerVisible;
+    private Guid _editingLaborId = Guid.Empty;
+    private bool _assignModalOpen;
+    private Guid _assignTargetOT;
+
+    private bool _allSelected => _labors.Count > 0 && _selectedIds.Count == _labors.Count;
+
+    private List<LaborDto> FilteredLabors => _filterTypeId == null
+        ? _labors
+        : _labors.Where(l => l.LaborTypeId == _filterTypeId).ToList();
+
+    protected override async Task OnInitializedAsync()
+    {
+        CampaignState.OnChange += OnCampaignChanged;
+        TenantState.OnChange += OnCampaignChanged;
+        await LoadData();
+    }
+
+    private void OnCampaignChanged()
+    {
+        InvokeAsync(async () => { await LoadData(); StateHasChanged(); });
+    }
+
+    public void Dispose()
+    {
+        CampaignState.OnChange -= OnCampaignChanged;
+        TenantState.OnChange -= OnCampaignChanged;
+    }
+
+    private async Task LoadData()
+    {
+        try
+        {
+            _loading = true;
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+
+            var laborsTask = Http.GetFromJsonAsync("api/labors/unassigned",
+                AppJsonSerializerContext.Default.ListLaborDto, cts.Token);
+            var lotsTask = Http.GetFromJsonAsync("api/lots",
+                AppJsonSerializerContext.Default.ListLotDto, cts.Token);
+            var woTask = Http.GetFromJsonAsync("api/workorders",
+                AppJsonSerializerContext.Default.ListWorkOrderDto, cts.Token);
+            var typesTask = Http.GetFromJsonAsync("api/catalogs/labor-types",
+                AppJsonSerializerContext.Default.ListLaborTypeDto, cts.Token);
+            
+            await Task.WhenAll(laborsTask, lotsTask, woTask, typesTask);
+
+            _labors = laborsTask.Result ?? new();
+            _lots = lotsTask.Result ?? new();
+            _workOrders = woTask.Result ?? new();
+            _laborTypes = typesTask.Result ?? new();
+            _errorMessage = null;
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Error: {ex.Message}";
+        }
+        finally
+        {
+            _loading = false;
+            _selectedIds.Clear();
+            StateHasChanged();
+        }
+    }
+
+    private void ToggleSelect(Guid id, bool selected)
+    {
+        if (selected) _selectedIds.Add(id);
+        else _selectedIds.Remove(id);
+    }
+
+    private void ToggleSelectAll(bool selected)
+    {
+        if (selected)
+            _selectedIds = new HashSet<Guid>(_labors.Select(l => l.Id));
+        else
+            _selectedIds.Clear();
+    }
+
+    private void OpenQuickCreator()
+    {
+        _editingLaborId = Guid.Empty;
+        _drawerVisible = true;
+    }
+
+    private void EditLabor(Guid id)
+    {
+        _editingLaborId = id;
+        _drawerVisible = true;
+    }
+
+    private async Task OnLaborSaved()
+    {
+        _drawerVisible = false;
+        await LoadData();
+    }
+
+    private decimal GetLotHectares(Guid lotId)
+    {
+        var lot = _lots.FirstOrDefault(l => l.Id == lotId);
+        return lot != null ? (decimal)lot.Area : 0;
+    }
+
+    private void OpenAssignModal()
+    {
+        _assignTargetOT = Guid.Empty;
+        _assignModalOpen = true;
+    }
+
+    private async Task AssignToExistingOT()
+    {
+        if (_assignTargetOT == Guid.Empty) return;
+        try
+        {
+            _saving = true;
+            var body = JsonSerializer.Serialize(new { LaborIds = _selectedIds.ToList(), WorkOrderId = _assignTargetOT });
+            var content = new StringContent(body, Encoding.UTF8, "application/json");
+            var request = new HttpRequestMessage(HttpMethod.Patch, "api/labors/assign-bulk") { Content = content };
+            var response = await Http.SendAsync(request);
+            if (response.IsSuccessStatusCode)
+            {
+                Message.Success($"{_selectedIds.Count} labores asignadas correctamente.");
+                _assignModalOpen = false;
+                await LoadData();
+            }
+            else
+            {
+                Message.Error("Error al asignar labores.");
+            }
+        }
+        finally
+        {
+            _saving = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task CreateOTFromSelected()
+    {
+        try
+        {
+            _saving = true;
+            var selectedLabors = _labors.Where(l => _selectedIds.Contains(l.Id)).ToList();
+            var firstLabor = selectedLabors.First();
+
+            var newOT = new WorkOrderDto
+            {
+                LotId = firstLabor.LotId,
+                Description = $"OT generada - {selectedLabors.Count} labores ({DateTime.Today:dd/MM/yyyy})",
+                Status = "Pending",
+                AssignedTo = string.Empty,
+                DueDate = DateTime.Today.AddDays(7),
+                PlannedDate = DateTime.Today,
+                ExpirationDate = DateTime.Today.AddDays(14)
+            };
+
+            var otResponse = await Http.PostAsJsonAsync("api/workorders", newOT, AppJsonSerializerContext.Default.WorkOrderDto);
+            if (!otResponse.IsSuccessStatusCode)
+            {
+                Message.Error("Error al crear la OT.");
+                return;
+            }
+
+            var createdOT = await otResponse.Content.ReadFromJsonAsync(AppJsonSerializerContext.Default.WorkOrderDto);
+            if (createdOT == null) return;
+
+            var body = JsonSerializer.Serialize(new { LaborIds = _selectedIds.ToList(), WorkOrderId = createdOT.Id });
+            var content = new StringContent(body, Encoding.UTF8, "application/json");
+            var req = new HttpRequestMessage(HttpMethod.Patch, "api/labors/assign-bulk") { Content = content };
+            var assignResponse = await Http.SendAsync(req);
+            if (assignResponse.IsSuccessStatusCode)
+            {
+                Message.Success($"OT creada y {_selectedIds.Count} labores asignadas.");
+                await LoadData();
+            }
+        }
+        catch (Exception ex)
+        {
+            Message.Error($"Error: {ex.Message}");
+        }
+        finally
+        {
+            _saving = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task DeleteLabor(Guid id)
+    {
+        var response = await Http.DeleteAsync($"api/labors/{id}");
+        if (response.IsSuccessStatusCode)
+        {
+            Message.Success("Labor eliminada.");
+            await LoadData();
+        }
+        else
+        {
+            Message.Error("Error al eliminar.");
+        }
+    }
+
+    private static string GetTypeBgColor(string laborType) => laborType switch
+    {
+        "Fertilizacion" => "#27AE60",
+        "Pulverizacion" => "#2980B9",
+        "Siembra" => "#8E44AD",
+        "Cosecha" => "#D35400",
+        "Monitoreo" => "#16A085",
+        "Laboreo" => "#7F8C8D",
+        _ => "#95A5A6"
+    };
+
+// Cleaned up obsolete models
+}

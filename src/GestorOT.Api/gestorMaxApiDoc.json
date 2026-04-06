@@ -1,0 +1,155 @@
+{
+    "/v3/Gestor/Empresas": {
+        "get": {
+            "tags": [
+                "Gestor"
+            ],
+            "parameters": [
+                {
+                    "name": "databaseId",
+                    "in": "query",
+                    "schema": {
+                        "type": "integer",
+                        "format": "int32"
+                    }
+                }
+            ],
+            "responses": {
+                "200": {
+                    "description": "OK"
+                }
+            }
+        }
+    },
+    "/v3/Gestor/Personas": {
+        "get": {
+            "tags": [
+                "Gestor"
+            ],
+            "parameters": [
+                {
+                    "name": "databaseId",
+                    "in": "query",
+                    "schema": {
+                        "type": "integer",
+                        "format": "int32"
+                    }
+                }
+            ],
+            "responses": {
+                "200": {
+                    "description": "OK"
+                }
+            }
+        }
+    },
+    "/v3/Gestor/Productos": {
+        "get": {
+            "tags": [
+                "Gestor"
+            ],
+            "parameters": [
+                {
+                    "name": "databaseId",
+                    "in": "query",
+                    "schema": {
+                        "type": "integer",
+                        "format": "int32"
+                    }
+                }
+            ],
+            "responses": {
+                "200": {
+                    "description": "OK"
+                }
+            }
+        }
+    },
+    "/v3/GestorG4/ListActividades": {
+        "get": {
+            "tags": [
+                "GestorG4"
+            ],
+            "summary": "Lista las Actividades",
+            "parameters": [
+                {
+                    "name": "databaseId",
+                    "in": "query",
+                    "description": "Id de la Base de Datos",
+                    "schema": {
+                        "type": "integer",
+                        "format": "int32"
+                    }
+                },
+                {
+                    "name": "codActividadPerfilImputacion",
+                    "in": "query",
+                    "description": "Perfiles de Imputación - Actividades - codActividadPerfilImputacion",
+                    "schema": {
+                        "type": "integer",
+                        "format": "int64"
+                    }
+                },
+                {
+                    "name": "soloHabilitados",
+                    "in": "query",
+                    "description": "Muestra sólo los Registros Habilitados",
+                    "schema": {
+                        "type": "boolean"
+                    }
+                }
+            ],
+            "responses": {
+                "200": {
+                    "description": "OK"
+                }
+            }
+        }
+    },
+    "/v3/GestorG4/ListUnidades": {
+        "get": {
+            "tags": [
+                "GestorG4"
+            ],
+            "summary": "Lista las Unidades",
+            "parameters": [
+                {
+                    "name": "databaseId",
+                    "in": "query",
+                    "description": "Id de la Base de Datos",
+                    "schema": {
+                        "type": "integer",
+                        "format": "int32"
+                    }
+                }
+            ],
+            "responses": {
+                "200": {
+                    "description": "OK"
+                }
+            }
+        }
+    },
+    "/v3/Gestor/ListTiposInsumos": {
+        "get": {
+            "tags": [
+                "Gestor"
+            ],
+            "parameters": [
+                {
+                    "name": "databaseId",
+                    "in": "query",
+                    "schema": {
+                        "type": "integer",
+                        "format": "int32"
+                    }
+                }
+            ],
+            "responses": {
+                "200": {
+                    "description": "OK"
+                }
+            }
+        }
+    }
+}
