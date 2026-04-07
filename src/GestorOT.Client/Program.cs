@@ -12,6 +12,8 @@ builder.Services.AddSingleton(campaignState);
 var loadingService = new LoadingService();
 builder.Services.AddSingleton(loadingService);
 
+builder.Services.AddScoped<DashboardState>();
+
 builder.Services.AddScoped<TenantHttpHandler>();
 builder.Services.AddScoped<CampaignHttpHandler>();
 builder.Services.AddScoped<ErrorHandlingHttpHandler>();

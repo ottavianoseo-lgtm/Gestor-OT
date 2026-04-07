@@ -15,7 +15,7 @@ public class ErpSyncService : IErpSyncService
     private readonly IEncryptionService _encryptionService;
     private readonly ICurrentTenantService _currentTenantService;
     private readonly IHttpClientFactory _httpClientFactory;
-    private const string BaseUrl = "https://api.gestormax.com"; // TODO: Mover a configuracion si es variable
+    private const string BaseUrl = "https://api.gestormax.com";
 
     public ErpSyncService(
         IApplicationDbContext context, 

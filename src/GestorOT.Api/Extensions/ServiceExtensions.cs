@@ -27,13 +27,18 @@ public static class ServiceExtensions
         {
             var dataSourceBuilder = new NpgsqlDataSourceBuilder(connectionString);
             dataSourceBuilder.UseNetTopologySuite();
+            dataSourceBuilder.ConnectionStringBuilder.KeepAlive = 30;
+            dataSourceBuilder.ConnectionStringBuilder.TcpKeepAlive = true;
+            // MinPoolSize prevents Supabase from destroying all pool connections
+            dataSourceBuilder.ConnectionStringBuilder.MinPoolSize = 1;
+
             var dataSource = dataSourceBuilder.Build();
 
             services.AddScoped<TenantSessionInterceptor>();
 
             services.AddDbContext<ApplicationDbContext>((serviceProvider, options) =>
             {
-                options.UseNpgsql(connectionString, npgsqlOptions =>
+                options.UseNpgsql(dataSource, npgsqlOptions =>
                 {
                     npgsqlOptions.UseNetTopologySuite();
                     npgsqlOptions.EnableRetryOnFailure(5, TimeSpan.FromSeconds(30), null);

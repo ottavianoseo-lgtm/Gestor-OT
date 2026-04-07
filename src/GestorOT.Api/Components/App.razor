@@ -12,12 +12,12 @@
     <link rel="stylesheet" href="css/main-layout.css" />
     <link rel="stylesheet" href="css/admin.css" />
     <link rel="stylesheet" href="GestorOT.Api.styles.css" />
-    <link rel="icon" type="image/png" href="favicon.png" />
-    <HeadOutlet />
+    <link rel="icon" type="image/svg+xml" href="images/Maxsolotrebol.svg" />
+    <HeadOutlet @rendermode="@(new InteractiveWebAssemblyRenderMode(prerender: false))" />
 </head>
 
 <body>
-    <Routes @rendermode="@InteractiveWebAssembly" />
+    <Routes @rendermode="@(new InteractiveWebAssemblyRenderMode(prerender: false))" />
     <script src="_framework/blazor.web.js"></script>
     <script src="_content/AntDesign/js/ant-design-blazor.js"></script>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>

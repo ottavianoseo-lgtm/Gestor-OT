@@ -18,13 +18,13 @@ public class LotQueryService : ILotQueryService
 
     public async Task<List<LotDto>> GetAllAsync(CancellationToken ct = default)
     {
-        var areaMap = await GetLotAreasAsync(ct);
+        var areaMap = await GetLotAreasAsync(CancellationToken.None);
 
         var lots = await _context.Lots
             .AsNoTracking()
             .Include(l => l.Field)
             .OrderBy(l => l.Name)
-            .ToListAsync(ct);
+            .ToListAsync(CancellationToken.None);
 
         var writer = new WKTWriter();
         return lots.Select(l => new LotDto(
@@ -43,12 +43,12 @@ public class LotQueryService : ILotQueryService
         var lot = await _context.Lots
             .AsNoTracking()
             .Include(l => l.Field)
-            .FirstOrDefaultAsync(l => l.Id == id, ct);
+            .FirstOrDefaultAsync(l => l.Id == id, CancellationToken.None);
 
         if (lot == null)
             return null;
 
-        double areaHa = lot.Geometry != null ? await GetLotAreaAsync(id, ct) : 0;
+        double areaHa = lot.Geometry != null ? await GetLotAreaAsync(id, CancellationToken.None) : 0;
 
         var writer = new WKTWriter();
         return new LotDto(
@@ -64,13 +64,13 @@ public class LotQueryService : ILotQueryService
 
     public async Task<GeoJsonFeatureCollection> GetGeoJsonAsync(CancellationToken ct = default)
     {
-        var areaMap = await GetLotAreasAsync(ct);
+        var areaMap = await GetLotAreasAsync(CancellationToken.None);
 
         var lots = await _context.Lots
             .AsNoTracking()
             .Include(l => l.Field)
             .Where(l => l.Geometry != null)
-            .ToListAsync(ct);
+            .ToListAsync(CancellationToken.None);
 
         var features = lots.Select(l => new GeoJsonFeature(
             "Feature",
@@ -93,7 +93,7 @@ public class LotQueryService : ILotQueryService
         var areas = await _context.Database
             .SqlQueryRaw<LotAreaResult>(
                 @"SELECT ""Id"", COALESCE(ST_Area(""Geometry""::geography) / 10000.0, 0) AS ""AreaHa"" FROM public.""Lots"" WHERE ""Geometry"" IS NOT NULL")
-            .ToListAsync(ct);
+            .ToListAsync(CancellationToken.None);
         return areas.ToDictionary(x => x.Id, x => Math.Round(x.AreaHa, 4));
     }
 
@@ -103,7 +103,7 @@ public class LotQueryService : ILotQueryService
             .SqlQueryRaw<double>(
                 @"SELECT COALESCE(ST_Area(""Geometry""::geography) / 10000.0, 0) AS ""Value"" FROM public.""Lots"" WHERE ""Id"" = {0} AND ""Geometry"" IS NOT NULL",
                 lotId)
-            .FirstOrDefaultAsync(ct);
+            .FirstOrDefaultAsync(CancellationToken.None);
         return Math.Round(result, 4);
     }
 

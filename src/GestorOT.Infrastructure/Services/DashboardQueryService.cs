@@ -16,15 +16,39 @@ public class DashboardQueryService : IDashboardQueryService
 
     public async Task<DashboardStatsDto> GetStatsAsync(CancellationToken ct = default)
     {
-        var fieldsCount = await _context.Fields.AsNoTracking().CountAsync(ct);
-        var lotsCount = await _context.Lots.AsNoTracking().CountAsync(ct);
-        var activeLotsCount = await _context.Lots.AsNoTracking().CountAsync(l => l.Status == "Active", ct);
-        var pendingOrders = await _context.WorkOrders.AsNoTracking().CountAsync(w => w.Status == "Pending", ct);
-        var inProgressOrders = await _context.WorkOrders.AsNoTracking().CountAsync(w => w.Status == "InProgress", ct);
-        var completedOrders = await _context.WorkOrders.AsNoTracking().CountAsync(w => w.Status == "Completed", ct);
-        var totalArea = await _context.Fields.AsNoTracking().SumAsync(f => f.HectareasTotales, ct);
+        // 1 query: Fields count + total area
+        var fieldStats = await _context.Fields
+            .AsNoTracking()
+            .GroupBy(_ => 1)
+            .Select(g => new { Count = g.Count(), TotalArea = g.Sum(f => f.HectareasTotales) })
+            .FirstOrDefaultAsync(CancellationToken.None);
 
-        return new DashboardStatsDto(fieldsCount, lotsCount, activeLotsCount, pendingOrders, inProgressOrders, completedOrders, totalArea);
+        // 1 query: Lots total + active
+        var lotStats = await _context.Lots
+            .AsNoTracking()
+            .GroupBy(_ => 1)
+            .Select(g => new { Total = g.Count(), Active = g.Count(l => l.Status == "Active") })
+            .FirstOrDefaultAsync(CancellationToken.None);
+
+        // 1 query: WorkOrders grouped by status
+        var workOrderCounts = await _context.WorkOrders
+            .AsNoTracking()
+            .GroupBy(w => w.Status)
+            .Select(g => new { Status = g.Key, Count = g.Count() })
+            .ToListAsync(CancellationToken.None);
+
+        var pendingOrders    = workOrderCounts.FirstOrDefault(x => x.Status == "Pending")?.Count ?? 0;
+        var inProgressOrders = workOrderCounts.FirstOrDefault(x => x.Status == "InProgress")?.Count ?? 0;
+        var completedOrders  = workOrderCounts.FirstOrDefault(x => x.Status == "Completed")?.Count ?? 0;
+
+        return new DashboardStatsDto(
+            fieldStats?.Count ?? 0,
+            lotStats?.Total ?? 0,
+            lotStats?.Active ?? 0,
+            pendingOrders,
+            inProgressOrders,
+            completedOrders,
+            fieldStats?.TotalArea ?? 0);
     }
 
     public async Task<List<RecentWorkOrderDto>> GetRecentOrdersAsync(int count = 10, CancellationToken ct = default)
@@ -44,6 +68,6 @@ public class DashboardQueryService : IDashboardQueryService
                 w.Lot != null ? w.Lot.Name : null,
                 w.Lot != null && w.Lot.Field != null ? w.Lot.Field.Name : null
             ))
-            .ToListAsync(ct);
+            .ToListAsync(CancellationToken.None);
     }
 }

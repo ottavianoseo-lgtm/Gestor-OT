@@ -1,13 +1,15 @@
 {
-    "/v3/Gestor/Empresas": {
+    "/v3/GestorG4/ListEmpresas": {
         "get": {
             "tags": [
-                "Gestor"
+                "GestorG4"
             ],
+            "summary": "Lista las Empresas",
             "parameters": [
                 {
                     "name": "databaseId",
                     "in": "query",
+                    "description": "Id de la Base de Datos",
                     "schema": {
                         "type": "integer",
                         "format": "int32"
@@ -21,37 +23,17 @@
             }
         }
     },
-    "/v3/Gestor/Personas": {
+    "/v3/GestorG4/ListPersonas": {
         "get": {
             "tags": [
-                "Gestor"
+                "GestorG4"
             ],
+            "summary": "Lista las Personas",
             "parameters": [
                 {
                     "name": "databaseId",
                     "in": "query",
-                    "schema": {
-                        "type": "integer",
-                        "format": "int32"
-                    }
-                }
-            ],
-            "responses": {
-                "200": {
-                    "description": "OK"
-                }
-            }
-        }
-    },
-    "/v3/Gestor/Productos": {
-        "get": {
-            "tags": [
-                "Gestor"
-            ],
-            "parameters": [
-                {
-                    "name": "databaseId",
-                    "in": "query",
+                    "description": "Id de la Base de Datos",
                     "schema": {
                         "type": "integer",
                         "format": "int32"
@@ -130,18 +112,28 @@
             }
         }
     },
-    "/v3/Gestor/ListTiposInsumos": {
+    "/v3/GestorG4/ListConceptos": {
         "get": {
             "tags": [
-                "Gestor"
+                "GestorG4"
             ],
+            "summary": "Lista los Conceptos (incluyendo o no Grupos, Subgrupos...)",
             "parameters": [
                 {
                     "name": "databaseId",
                     "in": "query",
+                    "description": "Id de la Base de Datos",
                     "schema": {
                         "type": "integer",
                         "format": "int32"
+                    }
+                },
+                {
+                    "name": "soloFisicos",
+                    "in": "query",
+                    "description": "Mostrar sólo Conceptos Físicos",
+                    "schema": {
+                        "type": "boolean"
                     }
                 }
             ],

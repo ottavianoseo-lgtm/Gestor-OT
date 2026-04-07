@@ -8,6 +8,7 @@
 @inject IJSRuntime JS
 @inject GestorOT.Client.Services.CampaignState CampaignState
 @inject GestorOT.Client.Services.TenantState TenantState
+@inject GestorOT.Client.Services.DashboardState DashboardState
 @implements IAsyncDisposable
 @implements IDisposable
 
@@ -24,6 +25,7 @@
                 <div class="sync-indicator @(_isConnected ? "sync-online" : "sync-offline")"></div>
                 <span class="sync-text">@(_isConnected ? "En Vivo" : "Sin conexión")</span>
                 <span class="sync-time">@_lastSync</span>
+                <Button Type="@ButtonType.Text" Icon="sync" Size="@ButtonSize.Small" OnClick="ForceSync" Loading="_isFetching" Style="color: rgba(255,255,255,0.7); margin-left: 8px;" title="Forzar Sincronización" />
             </div>
         </div>
 
@@ -82,38 +84,6 @@
             </div>
 
             <div class="widgets-column widgets-column-right">
-                <div class="widget-glass kpi-row-widget">
-                    <div class="kpi-mini">
-                        <div class="kpi-mini-icon" style="background: linear-gradient(135deg, #E74C3C, #C0392B);">
-                            <Icon Type="environment" Theme="IconThemeType.Fill" Style="font-size: 16px; color: #fff;" />
-                        </div>
-                        <div class="kpi-mini-data">
-                            <span class="kpi-mini-value">@_stats.FieldsCount</span>
-                            <span class="kpi-mini-label">Campos</span>
-                        </div>
-                    </div>
-                    <div class="kpi-mini-divider"></div>
-                    <div class="kpi-mini">
-                        <div class="kpi-mini-icon" style="background: linear-gradient(135deg, #F1C40F, #E67E22);">
-                            <Icon Type="clock-circle" Theme="IconThemeType.Fill" Style="font-size: 16px; color: #fff;" />
-                        </div>
-                        <div class="kpi-mini-data">
-                            <span class="kpi-mini-value">@_stats.PendingWorkOrders</span>
-                            <span class="kpi-mini-label">Pendientes</span>
-                        </div>
-                    </div>
-                    <div class="kpi-mini-divider"></div>
-                    <div class="kpi-mini">
-                        <div class="kpi-mini-icon" style="background: linear-gradient(135deg, #2ECC71, #27AE60);">
-                            <Icon Type="check-circle" Theme="IconThemeType.Fill" Style="font-size: 16px; color: #fff;" />
-                        </div>
-                        <div class="kpi-mini-data">
-                            <span class="kpi-mini-value">@_stats.CompletedWorkOrders</span>
-                            <span class="kpi-mini-label">Completadas</span>
-                        </div>
-                    </div>
-                </div>
-
                 @if (_recentOrders.Any())
                 {
                     <div class="widget-glass widget-orders">
@@ -572,7 +542,6 @@
 @code {
     private DashboardStatsDto _stats = new();
     private List<RecentWorkOrderDto> _recentOrders = new();
-    private bool _loading = true;
     private bool _isConnected = false;
     private string _lastSync = "Cargando...";
     private string? _errorMessage;
@@ -582,27 +551,58 @@
     {
         CampaignState.OnChange += OnCampaignChanged;
         TenantState.OnChange += OnCampaignChanged;
+        
+        if (DashboardState.Initialized)
+        {
+            _stats = DashboardState.Stats!;
+            _recentOrders = DashboardState.RecentOrders!;
+            _isConnected = true;
+            _lastSync = DashboardState.LastSync?.ToString("HH:mm:ss") ?? "Reciente";
+        }
+        else
+        {
+            await LoadData();
+        }
+    }
+
+    private bool _isFetching = false;
+
+    private async Task ForceSync()
+    {
+        DashboardState.Clear();
         await LoadData();
     }
 
     private async Task LoadData()
     {
+        if (_isFetching) return;
+        _isFetching = true;
+
         try
         {
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(45));
 
-            _stats = await Http.GetFromJsonAsync("api/dashboard/stats",
-                AppJsonSerializerContext.Default.DashboardStatsDto, cts.Token) ?? new();
+            var statsTask = Http.GetFromJsonAsync("api/dashboard/stats",
+                AppJsonSerializerContext.Default.DashboardStatsDto, cts.Token);
+            var ordersTask = Http.GetFromJsonAsync("api/dashboard/recent-orders",
+                AppJsonSerializerContext.Default.ListRecentWorkOrderDto, cts.Token);
+            var geoJsonTask = Http.GetFromJsonAsync("api/lots/geojson",
+                AppJsonSerializerContext.Default.GeoJsonFeatureCollection, cts.Token);
 
-            _recentOrders = await Http.GetFromJsonAsync("api/dashboard/recent-orders",
-                AppJsonSerializerContext.Default.ListRecentWorkOrderDto, cts.Token) ?? new();
+            await Task.WhenAll(statsTask, ordersTask, geoJsonTask);
+
+            _stats = statsTask.Result ?? new();
+            _recentOrders = ordersTask.Result ?? new();
+            var geoJson = geoJsonTask.Result;
+
+            DashboardState.SetData(_stats, _recentOrders, geoJson);
 
             _isConnected = true;
             _lastSync = DateTime.Now.ToString("HH:mm:ss");
         }
         catch (OperationCanceledException)
         {
-            _errorMessage = "Timeout de conexión.";
+            _errorMessage = "Timeout de conexión al obtener datos.";
             _isConnected = false;
         }
         catch (Exception ex)
@@ -613,7 +613,7 @@
         }
         finally
         {
-            _loading = false;
+            _isFetching = false;
             StateHasChanged();
         }
     }
@@ -628,9 +628,7 @@
                 await Task.Delay(200);
                 await JS.InvokeVoidAsync("mapInterop.initDashboardMap", "dashboardMap", -34.6, -58.4, 6);
 
-                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-                var geojson = await Http.GetFromJsonAsync("api/lots/geojson",
-                    AppJsonSerializerContext.Default.GeoJsonFeatureCollection, cts.Token);
+                var geojson = DashboardState.CachedGeoJson;
 
                 if (geojson?.Features != null)
                 {
