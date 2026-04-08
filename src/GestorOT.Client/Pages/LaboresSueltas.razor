@@ -160,7 +160,7 @@ else
         @foreach (var wo in _workOrders)
         {
             <SelectOption TItemValue="Guid" TItem="Guid" Value="@wo.Id"
-                          Label="@($"{wo.Description} ({wo.LotName})")" />
+                          Label="@($"{wo.Description} ({wo.FieldName})")" />
         }
     </Select>
     <Button Type="@ButtonType.Primary" OnClick="AssignToExistingOT" Loading="_saving" Block
@@ -413,9 +413,16 @@ else
             var selectedLabors = _labors.Where(l => _selectedIds.Contains(l.Id)).ToList();
             var firstLabor = selectedLabors.First();
 
+            var targetLot = _lots.FirstOrDefault(l => l.Id == firstLabor.LotId);
+            if (targetLot == null)
+            {
+                Message.Error("Error: No se pudo identificar el campo del lote seleccionado.");
+                return;
+            }
+
             var newOT = new WorkOrderDto
             {
-                LotId = firstLabor.LotId,
+                FieldId = targetLot.FieldId,
                 Description = $"OT generada - {selectedLabors.Count} labores ({DateTime.Today:dd/MM/yyyy})",
                 Status = "Pending",
                 AssignedTo = string.Empty,

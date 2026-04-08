@@ -6,6 +6,8 @@ public class Labor : TenantEntity
     public Guid LotId { get; set; }
     public Guid CampaignLotId { get; set; }
     public Guid LaborTypeId { get; set; }
+    public Guid? ContactId { get; set; } // The actual Responsible
+    public bool IsExternalBilling { get; set; } // Specific to this labor
     public string Status { get; set; } = "Planned";
     public DateTime? ExecutionDate { get; set; }
     public DateTime? EstimatedDate { get; set; }
@@ -26,5 +28,6 @@ public class Labor : TenantEntity
     public Lot? Lot { get; set; }
     public CampaignLot? CampaignLot { get; set; }
     public LaborType? Type { get; set; }
+    public Contact? Contact { get; set; } // Navigation to responsible
     public ICollection<LaborSupply> Supplies { get; set; } = new List<LaborSupply>();
 }

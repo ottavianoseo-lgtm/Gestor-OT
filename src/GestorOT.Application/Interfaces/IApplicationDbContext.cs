@@ -16,7 +16,7 @@ public interface IApplicationDbContext
     DbSet<CropStrategy> CropStrategies { get; }
     DbSet<StrategyItem> StrategyItems { get; }
     DbSet<LaborType> LaborTypes { get; }
-    DbSet<Employee> Employees { get; }
+    DbSet<Contact> Contacts { get; }
     DbSet<SharedToken> SharedTokens { get; }
     DbSet<UserProfile> UserProfiles { get; }
     DbSet<TankMixRule> TankMixRules { get; }
@@ -24,6 +24,7 @@ public interface IApplicationDbContext
     DbSet<Campaign> Campaigns { get; }
     DbSet<CampaignLot> CampaignLots { get; }
     DbSet<CampaignField> CampaignFields { get; }
+    DbSet<ErpPerson> ErpPeople { get; }
     DatabaseFacade Database { get; }
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 }

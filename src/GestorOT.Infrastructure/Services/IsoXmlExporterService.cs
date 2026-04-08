@@ -21,8 +21,9 @@ public class IsoXmlExporterService : IIsoXmlExporterService
     {
         var workOrder = await _context.WorkOrders
             .AsNoTracking()
-            .Include(w => w.Lot)
-                .ThenInclude(l => l!.Field)
+            .Include(w => w.Field)
+            .Include(w => w.Labors)
+                .ThenInclude(l => l.Lot)
             .Include(w => w.Labors)
                 .ThenInclude(l => l.Type)
             .Include(w => w.Labors)
@@ -54,21 +55,27 @@ public class IsoXmlExporterService : IIsoXmlExporterService
             new XAttribute("G", ((int)MapStatus(workOrder.Status)).ToString())
         );
 
-        if (workOrder.Lot?.Field != null)
+        if (workOrder.Field != null)
         {
             var farmElement = new XElement("FRM",
-                new XAttribute("A", workOrder.Lot.Field.Id.ToString("N")[..8].ToUpper()),
-                new XAttribute("B", workOrder.Lot.Field.Name)
+                new XAttribute("A", workOrder.Field.Id.ToString("N")[..8].ToUpper()),
+                new XAttribute("B", workOrder.Field.Name)
             );
             taskElement.AddFirst(farmElement);
         }
 
-        if (workOrder.Lot != null)
+        // Add Partfields (PFD) for each unique lot in the labors
+        var uniqueLots = workOrder.Labors
+            .Select(l => l.Lot)
+            .Where(l => l != null)
+            .DistinctBy(l => l!.Id);
+
+        foreach (var lot in uniqueLots)
         {
             var fieldElement = new XElement("PFD",
-                new XAttribute("A", workOrder.Lot.Id.ToString("N")[..8].ToUpper()),
-                new XAttribute("C", workOrder.Lot.Name),
-                new XAttribute("D", workOrder.Lot.Status == "Active" ? "1" : "0")
+                new XAttribute("A", lot!.Id.ToString("N")[..8].ToUpper()),
+                new XAttribute("C", lot.Name),
+                new XAttribute("D", lot.Status == "Active" ? "1" : "0")
             );
             taskElement.Add(fieldElement);
         }

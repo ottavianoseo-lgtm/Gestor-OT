@@ -77,12 +77,11 @@ public record LaborCalendarDto
 public record WorkOrderDetailDto
 {
     public Guid Id { get; set; }
-    public Guid LotId { get; set; }
+    public Guid FieldId { get; set; } // Header level Field
     public string Description { get; set; } = string.Empty;
     public string Status { get; set; } = "Draft";
     public string AssignedTo { get; set; } = string.Empty;
     public DateTime DueDate { get; set; }
-    public string? LotName { get; set; }
     public string? FieldName { get; set; }
     public List<LaborDto> Labors { get; set; } = new();
     public string? OTNumber { get; set; }
@@ -93,11 +92,11 @@ public record WorkOrderDetailDto
     public bool StockReserved { get; set; }
     public Guid? CampaignId { get; set; }
     public Guid? ContractorId { get; set; }
-    public Guid? EmployeeId { get; set; }
+    public Guid? ContactId { get; set; }
 
     public WorkOrderDetailDto() { }
-    public WorkOrderDetailDto(Guid id, Guid lotId, string description, string status, string assignedTo, DateTime dueDate, string? lotName, string? fieldName, List<LaborDto> labors, string? otNumber, DateTime? plannedDate, DateTime? expirationDate, decimal estimatedCost, decimal agreedRate, bool stockReserved, Guid? campaignId, Guid? contractorId, Guid? employeeId)
+    public WorkOrderDetailDto(Guid id, Guid fieldId, string description, string status, string assignedTo, DateTime dueDate, string? fieldName, List<LaborDto> labors, string? otNumber, DateTime? plannedDate, DateTime? expirationDate, decimal estimatedCost, decimal agreedRate, bool stockReserved, Guid? campaignId, Guid? contractorId, Guid? contactId)
     {
-        Id = id; LotId = lotId; Description = description; Status = status; AssignedTo = assignedTo; DueDate = dueDate; LotName = lotName; FieldName = fieldName; Labors = labors; OTNumber = otNumber; PlannedDate = plannedDate; ExpirationDate = expirationDate; EstimatedCostUSD = estimatedCost; AgreedRate = agreedRate; StockReserved = stockReserved; CampaignId = campaignId; ContractorId = contractorId; EmployeeId = employeeId;
+        Id = id; FieldId = fieldId; Description = description; Status = status; AssignedTo = assignedTo; DueDate = dueDate; FieldName = fieldName; Labors = labors; OTNumber = otNumber; PlannedDate = plannedDate; ExpirationDate = expirationDate; EstimatedCostUSD = estimatedCost; AgreedRate = agreedRate; StockReserved = stockReserved; CampaignId = campaignId; ContractorId = contractorId; ContactId = contactId;
     }
 }

@@ -55,8 +55,7 @@ public class DashboardQueryService : IDashboardQueryService
     {
         return await _context.WorkOrders
             .AsNoTracking()
-            .Include(w => w.Lot)
-            .ThenInclude(l => l!.Field)
+            .Include(w => w.Field)
             .OrderByDescending(w => w.DueDate)
             .Take(count)
             .Select(w => new RecentWorkOrderDto(
@@ -65,8 +64,7 @@ public class DashboardQueryService : IDashboardQueryService
                 w.Status,
                 w.AssignedTo,
                 w.DueDate,
-                w.Lot != null ? w.Lot.Name : null,
-                w.Lot != null && w.Lot.Field != null ? w.Lot.Field.Name : null
+                w.Field != null ? w.Field.Name : null
             ))
             .ToListAsync(CancellationToken.None);
     }

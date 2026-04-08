@@ -41,8 +41,8 @@ public class TenantService : ITenantService
         {
             Id = Guid.NewGuid(),
             Name = name,
-            GestorMaxApiKeyEncrypted = gestorMaxApiKey != null ? _encryptionService.Encrypt(gestorMaxApiKey) : null,
-            GestorMaxDatabaseId = gestorMaxDatabaseId,
+            GestorMaxApiKeyEncrypted = !string.IsNullOrWhiteSpace(gestorMaxApiKey) ? _encryptionService.Encrypt(gestorMaxApiKey.Trim()) : null,
+            GestorMaxDatabaseId = gestorMaxDatabaseId?.Trim(),
             CreatedAt = DateTime.UtcNow
         };
 
@@ -56,9 +56,10 @@ public class TenantService : ITenantService
         if (tenant == null) return;
 
         tenant.Name = name;
-        if (gestorMaxApiKey != null)
-            tenant.GestorMaxApiKeyEncrypted = _encryptionService.Encrypt(gestorMaxApiKey);
-        tenant.GestorMaxDatabaseId = gestorMaxDatabaseId;
+        if (!string.IsNullOrWhiteSpace(gestorMaxApiKey))
+            tenant.GestorMaxApiKeyEncrypted = _encryptionService.Encrypt(gestorMaxApiKey.Trim());
+            
+        tenant.GestorMaxDatabaseId = gestorMaxDatabaseId?.Trim();
 
         await _context.SaveChangesAsync();
     }

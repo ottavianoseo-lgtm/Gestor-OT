@@ -8,4 +8,5 @@ public class Field : TenantEntity
     public double HectareasTotales { get; set; }
     public DateTime CreatedAt { get; set; }
     public ICollection<Lot> Lots { get; set; } = new List<Lot>();
+    public ICollection<WorkOrder> WorkOrders { get; set; } = new List<WorkOrder>();
 }

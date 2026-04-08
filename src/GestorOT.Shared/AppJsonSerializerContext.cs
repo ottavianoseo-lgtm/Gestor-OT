@@ -34,8 +34,8 @@ namespace GestorOT.Shared;
 [JsonSerializable(typeof(List<StrategySupplyDefault>))]
 [JsonSerializable(typeof(ApplyStrategyRequest))]
 [JsonSerializable(typeof(ApplyStrategyResult))]
-[JsonSerializable(typeof(EmployeeDto))]
-[JsonSerializable(typeof(List<EmployeeDto>))]
+[JsonSerializable(typeof(ContactDto))]
+[JsonSerializable(typeof(List<ContactDto>))]
 [JsonSerializable(typeof(LaborTypeDto))]
 [JsonSerializable(typeof(List<LaborTypeDto>))]
 [JsonSerializable(typeof(DiscrepancyReportDto))]
@@ -74,6 +74,9 @@ namespace GestorOT.Shared;
 [JsonSerializable(typeof(CampaignStatus))]
 [JsonSerializable(typeof(int))]
 [JsonSerializable(typeof(Dictionary<string, object>))]
+[JsonSerializable(typeof(ErpPersonDto))]
+[JsonSerializable(typeof(List<ErpPersonDto>))]
+[JsonSerializable(typeof(ActivateContactRequest))]
 [JsonSourceGenerationOptions(
     PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,
     WriteIndented = false,

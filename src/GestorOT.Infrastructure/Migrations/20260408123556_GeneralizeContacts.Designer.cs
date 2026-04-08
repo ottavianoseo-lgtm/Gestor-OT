@@ -3,6 +3,7 @@ using System;
 using GestorOT.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using NetTopologySuite.Geometries;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
@@ -12,9 +13,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace GestorOT.Infrastructure.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260408123556_GeneralizeContacts")]
+    partial class GeneralizeContacts
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -201,9 +204,6 @@ namespace GestorOT.Infrastructure.Migrations
                     b.Property<string>("Email")
                         .HasColumnType("text");
 
-                    b.Property<Guid?>("ErpPersonId")
-                        .HasColumnType("uuid");
-
                     b.Property<string>("ExternalErpId")
                         .HasColumnType("text");
 
@@ -227,8 +227,6 @@ namespace GestorOT.Infrastructure.Migrations
                         .HasColumnType("text");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("ErpPersonId");
 
                     b.ToTable("Contacts");
                 });
@@ -260,61 +258,6 @@ namespace GestorOT.Infrastructure.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("CropStrategies", "public");
-                });
-
-            modelBuilder.Entity("GestorOT.Domain.Entities.ErpPerson", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("Alias")
-                        .HasColumnType("text");
-
-                    b.Property<string>("Country")
-                        .HasColumnType("text");
-
-                    b.Property<string>("DocumentType")
-                        .HasColumnType("text");
-
-                    b.Property<bool>("Enabled")
-                        .HasColumnType("boolean");
-
-                    b.Property<string>("ExternalErpId")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("FullName")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("Group")
-                        .HasColumnType("text");
-
-                    b.Property<bool>("IsActivated")
-                        .HasColumnType("boolean");
-
-                    b.Property<DateTime>("LastSyncDate")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid?>("LinkedContactId")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("PersonType")
-                        .HasColumnType("text");
-
-                    b.Property<string>("ResponsibleTax")
-                        .HasColumnType("text");
-
-                    b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("VatNumber")
-                        .HasColumnType("text");
-
-                    b.HasKey("Id");
-
-                    b.ToTable("ErpPeople");
                 });
 
             modelBuilder.Entity("GestorOT.Domain.Entities.Field", b =>
@@ -405,9 +348,6 @@ namespace GestorOT.Infrastructure.Migrations
                     b.Property<Guid>("CampaignLotId")
                         .HasColumnType("uuid");
 
-                    b.Property<Guid?>("ContactId")
-                        .HasColumnType("uuid");
-
                     b.Property<DateTime>("CreatedAt")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("timestamp with time zone")
@@ -429,9 +369,6 @@ namespace GestorOT.Infrastructure.Migrations
                     b.Property<decimal>("Hectares")
                         .HasPrecision(18, 4)
                         .HasColumnType("numeric(18,4)");
-
-                    b.Property<bool>("IsExternalBilling")
-                        .HasColumnType("boolean");
 
                     b.Property<Guid>("LaborTypeId")
                         .HasColumnType("uuid");
@@ -489,8 +426,6 @@ namespace GestorOT.Infrastructure.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("CampaignLotId");
-
-                    b.HasIndex("ContactId");
 
                     b.HasIndex("LaborTypeId");
 
@@ -831,13 +766,7 @@ namespace GestorOT.Infrastructure.Migrations
                     b.Property<DateTime>("ExpirationDate")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<Guid>("FieldId")
-                        .HasColumnType("uuid");
-
-                    b.Property<bool>("IsExternalBilling")
-                        .HasColumnType("boolean");
-
-                    b.Property<Guid?>("LotId")
+                    b.Property<Guid>("LotId")
                         .HasColumnType("uuid");
 
                     b.Property<string>("OTNumber")
@@ -863,8 +792,6 @@ namespace GestorOT.Infrastructure.Migrations
                     b.HasIndex("CampaignId");
 
                     b.HasIndex("ContactId");
-
-                    b.HasIndex("FieldId");
 
                     b.HasIndex("LotId");
 
@@ -909,15 +836,6 @@ namespace GestorOT.Infrastructure.Migrations
                     b.Navigation("Lot");
                 });
 
-            modelBuilder.Entity("GestorOT.Domain.Entities.Contact", b =>
-                {
-                    b.HasOne("GestorOT.Domain.Entities.ErpPerson", "ErpPerson")
-                        .WithMany()
-                        .HasForeignKey("ErpPersonId");
-
-                    b.Navigation("ErpPerson");
-                });
-
             modelBuilder.Entity("GestorOT.Domain.Entities.Labor", b =>
                 {
                     b.HasOne("GestorOT.Domain.Entities.CampaignLot", "CampaignLot")
@@ -925,10 +843,6 @@ namespace GestorOT.Infrastructure.Migrations
                         .HasForeignKey("CampaignLotId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
-
-                    b.HasOne("GestorOT.Domain.Entities.Contact", "Contact")
-                        .WithMany()
-                        .HasForeignKey("ContactId");
 
                     b.HasOne("GestorOT.Domain.Entities.LaborType", "Type")
                         .WithMany()
@@ -948,8 +862,6 @@ namespace GestorOT.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.SetNull);
 
                     b.Navigation("CampaignLot");
-
-                    b.Navigation("Contact");
 
                     b.Navigation("Lot");
 
@@ -1040,21 +952,17 @@ namespace GestorOT.Infrastructure.Migrations
                         .WithMany()
                         .HasForeignKey("ContactId");
 
-                    b.HasOne("GestorOT.Domain.Entities.Field", "Field")
+                    b.HasOne("GestorOT.Domain.Entities.Lot", "Lot")
                         .WithMany("WorkOrders")
-                        .HasForeignKey("FieldId")
+                        .HasForeignKey("LotId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
-
-                    b.HasOne("GestorOT.Domain.Entities.Lot", null)
-                        .WithMany("WorkOrders")
-                        .HasForeignKey("LotId");
 
                     b.Navigation("Campaign");
 
                     b.Navigation("Contact");
 
-                    b.Navigation("Field");
+                    b.Navigation("Lot");
                 });
 
             modelBuilder.Entity("GestorOT.Domain.Entities.Campaign", b =>
@@ -1074,8 +982,6 @@ namespace GestorOT.Infrastructure.Migrations
             modelBuilder.Entity("GestorOT.Domain.Entities.Field", b =>
                 {
                     b.Navigation("Lots");
-
-                    b.Navigation("WorkOrders");
                 });
 
             modelBuilder.Entity("GestorOT.Domain.Entities.Labor", b =>

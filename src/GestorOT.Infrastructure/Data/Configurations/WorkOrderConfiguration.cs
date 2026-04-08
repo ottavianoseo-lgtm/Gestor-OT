@@ -14,9 +14,9 @@ public class WorkOrderConfiguration : IEntityTypeConfiguration<WorkOrder>
         builder.Property(e => e.Status).HasMaxLength(50);
         builder.Property(e => e.AssignedTo).HasMaxLength(200);
 
-        builder.HasOne(e => e.Lot)
-            .WithMany(l => l.WorkOrders)
-            .HasForeignKey(e => e.LotId)
+        builder.HasOne(e => e.Field)
+            .WithMany(f => f.WorkOrders)
+            .HasForeignKey(e => e.FieldId)
             .OnDelete(DeleteBehavior.Cascade);
 
         builder.HasOne(e => e.Campaign)

@@ -64,7 +64,7 @@
             <PropertyColumn Property="c => c.Description" Title="Descripción">
                 <span style="font-weight: 600;">@context.Description</span>
             </PropertyColumn>
-            <PropertyColumn Property="c => c.LotName" Title="Lote" Sortable />
+            <PropertyColumn Property="c => c.FieldName" Title="Campo" Sortable />
             <Column TData="string" Title="Estado">
                 @{
                     var (color, label) = context.Status switch
@@ -122,7 +122,7 @@ else
             </Button>
             <div>
                 <h2 class="page-title">@_selectedOrder.Description</h2>
-                <span class="page-subtitle">@_selectedOrder.FieldName — @_selectedOrder.LotName</span>
+                <span class="page-subtitle">@_selectedOrder.FieldName</span>
             </div>
         </div>
         <div style="display: flex; gap: 8px; align-items: center;">
@@ -364,14 +364,14 @@ else
             <TextArea @bind-Value="_formModel.Description" Placeholder="Descripción de la orden"
                       Rows="3" />
         </FormItem>
-        <FormItem Label="Lote">
-            <Select TItem="LotDto"
+        <FormItem Label="Campo">
+            <Select TItem="FieldDto"
                     TItemValue="Guid"
-                    DataSource="_availableLots"
-                    @bind-Value="_formModel.LotId"
-                    LabelName="@nameof(LotDto.Name)"
-                    ValueName="@nameof(LotDto.Id)"
-                    Placeholder="Seleccionar lote"
+                    DataSource="_availableFields"
+                    @bind-Value="_formModel.FieldId"
+                    LabelName="@nameof(FieldDto.Name)"
+                    ValueName="@nameof(FieldDto.Id)"
+                    Placeholder="Seleccionar campo"
                     Style="width: 100%;"
                     EnableSearch />
         </FormItem>
@@ -531,7 +531,7 @@ else
 
 @code {
     private List<WorkOrderDto> _workOrders = new();
-    private List<LotDto> _availableLots = new();
+    private List<FieldDto> _availableFields = new();
     private List<InventoryDto> _availableSupplies = new();
     private bool _loading;
     private string? _errorMessage;
@@ -564,7 +564,7 @@ else
     public class WoFormModel
     {
         public string Description { get; set; } = string.Empty;
-        public Guid LotId { get; set; }
+        public Guid FieldId { get; set; }
         public string AssignedTo { get; set; } = string.Empty;
         public DateTime DueDate { get; set; } = DateTime.Today.AddDays(7);
         public string Status { get; set; } = "Draft";
@@ -625,13 +625,13 @@ else
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
             var ordersTask = Http.GetFromJsonAsync("api/workorders",
                 AppJsonSerializerContext.Default.ListWorkOrderDto, cts.Token);
-            var lotsTask = Http.GetFromJsonAsync("api/lots",
-                AppJsonSerializerContext.Default.ListLotDto, cts.Token);
+            var fieldsTask = Http.GetFromJsonAsync("api/fields",
+                AppJsonSerializerContext.Default.ListFieldDto, cts.Token);
             var suppliesTask = Http.GetFromJsonAsync("api/inventory",
                 AppJsonSerializerContext.Default.ListInventoryDto, cts.Token);
 
             _workOrders = await ordersTask ?? new();
-            _availableLots = await lotsTask ?? new();
+            _availableFields = await fieldsTask ?? new();
             _availableSupplies = await suppliesTask ?? new();
             _errorMessage = null;
         }
@@ -684,8 +684,8 @@ else
     {
         _isEditing = false;
         _formModel = new WoFormModel();
-        if (_availableLots.Count > 0)
-            _formModel.LotId = _availableLots[0].Id;
+        if (_availableFields.Count > 0)
+            _formModel.FieldId = _availableFields[0].Id;
         _modalVisible = true;
     }
 
@@ -696,7 +696,7 @@ else
         _formModel = new WoFormModel
         {
             Description = wo.Description,
-            LotId = wo.LotId,
+            FieldId = wo.FieldId,
             AssignedTo = wo.AssignedTo,
             DueDate = wo.DueDate,
             Status = wo.Status
@@ -716,9 +716,9 @@ else
             Message.Warning("La descripción es obligatoria.");
             return;
         }
-        if (_formModel.LotId == Guid.Empty)
+        if (_formModel.FieldId == Guid.Empty)
         {
-            Message.Warning("Debe seleccionar un lote.");
+            Message.Warning("Debe seleccionar un campo.");
             return;
         }
 
@@ -728,7 +728,7 @@ else
             var dto = new WorkOrderDto
             {
                 Id = _isEditing ? _editingId : Guid.Empty,
-                LotId = _formModel.LotId,
+                FieldId = _formModel.FieldId,
                 Description = _formModel.Description,
                 Status = _formModel.Status,
                 AssignedTo = _formModel.AssignedTo,

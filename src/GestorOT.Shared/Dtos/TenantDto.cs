@@ -39,12 +39,11 @@ public record PublicWorkOrderDto(
     string Status,
     string AssignedTo,
     DateTime DueDate,
-    string? LotName,
     string? FieldName,
     List<PublicLaborDto>? Labors = null
 )
 {
-    public PublicWorkOrderDto() : this(Guid.Empty, string.Empty, string.Empty, string.Empty, DateTime.MinValue, null, null, null) { }
+    public PublicWorkOrderDto() : this(Guid.Empty, string.Empty, string.Empty, string.Empty, DateTime.MinValue, null, null) { }
 }
 
 public record PublicLaborDto(

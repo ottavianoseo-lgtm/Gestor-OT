@@ -3,6 +3,7 @@ using System;
 using GestorOT.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using NetTopologySuite.Geometries;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
@@ -12,9 +13,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace GestorOT.Infrastructure.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260408143040_FieldCentricRefactor")]
+    partial class FieldCentricRefactor
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -296,9 +299,6 @@ namespace GestorOT.Infrastructure.Migrations
 
                     b.Property<DateTime>("LastSyncDate")
                         .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid?>("LinkedContactId")
-                        .HasColumnType("uuid");
 
                     b.Property<string>("PersonType")
                         .HasColumnType("text");

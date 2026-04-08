@@ -30,7 +30,7 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
     public DbSet<CropStrategy> CropStrategies => Set<CropStrategy>();
     public DbSet<StrategyItem> StrategyItems => Set<StrategyItem>();
     public DbSet<LaborType> LaborTypes => Set<LaborType>();
-    public DbSet<Employee> Employees => Set<Employee>();
+    public DbSet<Contact> Contacts => Set<Contact>();
     public DbSet<SharedToken> SharedTokens => Set<SharedToken>();
     public DbSet<UserProfile> UserProfiles => Set<UserProfile>();
     public DbSet<TankMixRule> TankMixRules => Set<TankMixRule>();
@@ -38,6 +38,7 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
     public DbSet<Campaign> Campaigns => Set<Campaign>();
     public DbSet<CampaignLot> CampaignLots => Set<CampaignLot>();
     public DbSet<CampaignField> CampaignFields => Set<CampaignField>();
+    public DbSet<ErpPerson> ErpPeople => Set<ErpPerson>();
 
     private Guid CurrentTenantId
     {
@@ -91,7 +92,7 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
             entity.HasQueryFilter(e => CurrentTenantId == Guid.Empty || e.TenantId == CurrentTenantId);
         });
 
-        modelBuilder.Entity<Employee>(entity =>
+        modelBuilder.Entity<Contact>(entity =>
         {
             entity.HasQueryFilter(e => CurrentTenantId == Guid.Empty || e.TenantId == CurrentTenantId);
         });
@@ -131,6 +132,11 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
             entity.HasQueryFilter(e => CurrentTenantId == Guid.Empty || e.TenantId == CurrentTenantId);
         });
 
+        modelBuilder.Entity<ErpPerson>(entity =>
+        {
+            entity.HasQueryFilter(e => CurrentTenantId == Guid.Empty || e.TenantId == CurrentTenantId);
+        });
+
         modelBuilder.Entity<LaborSupply>(entity =>
         {
             entity.HasQueryFilter(e => CurrentTenantId == Guid.Empty || e.TenantId == CurrentTenantId);
@@ -140,6 +146,30 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
         {
             entity.HasQueryFilter(e => CurrentTenantId == Guid.Empty || e.TenantId == CurrentTenantId);
         });
+
+        // Global DateTime UTC Converter for Npgsql 6.0+
+        var dateTimeConverter = new Microsoft.EntityFrameworkCore.Storage.ValueConversion.ValueConverter<DateTime, DateTime>(
+            v => v.Kind == DateTimeKind.Utc ? v : v.ToUniversalTime(),
+            v => DateTime.SpecifyKind(v, DateTimeKind.Utc));
+
+        var nullableDateTimeConverter = new Microsoft.EntityFrameworkCore.Storage.ValueConversion.ValueConverter<DateTime?, DateTime?>(
+            v => !v.HasValue ? v : (v.Value.Kind == DateTimeKind.Utc ? v : v.Value.ToUniversalTime()),
+            v => v.HasValue ? DateTime.SpecifyKind(v.Value, DateTimeKind.Utc) : v);
+
+        foreach (var entityType in modelBuilder.Model.GetEntityTypes())
+        {
+            foreach (var property in entityType.GetProperties())
+            {
+                if (property.ClrType == typeof(DateTime))
+                {
+                    property.SetValueConverter(dateTimeConverter);
+                }
+                else if (property.ClrType == typeof(DateTime?))
+                {
+                    property.SetValueConverter(nullableDateTimeConverter);
+                }
+            }
+        }
     }
 
     public override int SaveChanges()

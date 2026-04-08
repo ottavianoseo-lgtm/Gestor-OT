@@ -27,7 +27,7 @@
             <div>
                 <h1 style="color: #fff; margin: 0 0 4px; font-size: 20px; font-weight: 700;">@_workOrder.Description</h1>
                 <p style="color: rgba(255,255,255,0.5); margin: 0; font-size: 13px;">
-                    @(_workOrder.FieldName ?? "Campo") &mdash; @(_workOrder.LotName ?? "Lote") &bull; Responsable: @_workOrder.AssignedTo
+                    @(_workOrder.FieldName ?? "Campo") &bull; Responsable: @_workOrder.AssignedTo
                 </p>
             </div>
             <Tag Color="@GetStatusColor(_workOrder.Status)">@_workOrder.Status</Tag>

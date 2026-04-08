@@ -16,12 +16,12 @@ public record LotDto(
 public record WorkOrderDto
 {
     public Guid Id { get; set; }
-    public Guid LotId { get; set; }
+    public Guid FieldId { get; set; } // OTs now target a Field
     public string Description { get; set; } = string.Empty;
     public string Status { get; set; } = "Draft";
     public string AssignedTo { get; set; } = string.Empty;
     public DateTime DueDate { get; set; }
-    public string? LotName { get; set; }
+    public string? FieldName { get; set; }
     public string? OTNumber { get; set; }
     public DateTime? PlannedDate { get; set; }
     public DateTime? ExpirationDate { get; set; }
@@ -29,13 +29,13 @@ public record WorkOrderDto
     public decimal AgreedRate { get; set; }
     public bool StockReserved { get; set; }
     public Guid? ContractorId { get; set; }
-    public Guid? EmployeeId { get; set; }
+    public Guid? ContactId { get; set; }
     public Guid? CampaignId { get; set; }
 
     public WorkOrderDto() { }
-    public WorkOrderDto(Guid id, Guid lotId, string description, string status, string assignedTo, DateTime dueDate, string? lotName, string? otNumber, DateTime? plannedDate, DateTime? expirationDate, decimal estimatedCost, decimal agreedRate, bool stockReserved, Guid? contractorId, Guid? employeeId, Guid? campaignId)
+    public WorkOrderDto(Guid id, Guid fieldId, string description, string status, string assignedTo, DateTime dueDate, string? fieldName, string? otNumber, DateTime? plannedDate, DateTime? expirationDate, decimal estimatedCost, decimal agreedRate, bool stockReserved, Guid? contractorId, Guid? contactId, Guid? campaignId)
     {
-        Id = id; LotId = lotId; Description = description; Status = status; AssignedTo = assignedTo; DueDate = dueDate; LotName = lotName; OTNumber = otNumber; PlannedDate = plannedDate; ExpirationDate = expirationDate; EstimatedCostUSD = estimatedCost; AgreedRate = agreedRate; StockReserved = stockReserved; ContractorId = contractorId; EmployeeId = employeeId; CampaignId = campaignId;
+        Id = id; FieldId = fieldId; Description = description; Status = status; AssignedTo = assignedTo; DueDate = dueDate; FieldName = fieldName; OTNumber = otNumber; PlannedDate = plannedDate; ExpirationDate = expirationDate; EstimatedCostUSD = estimatedCost; AgreedRate = agreedRate; StockReserved = stockReserved; ContractorId = contractorId; ContactId = contactId; CampaignId = campaignId;
     }
 }
 
@@ -83,11 +83,10 @@ public record RecentWorkOrderDto(
     string Status,
     string AssignedTo,
     DateTime DueDate,
-    string? LotName = null,
-    string? FieldName = null
+    string? FieldName = null // Changed from LotName
 )
 {
-    public RecentWorkOrderDto() : this(Guid.Empty, string.Empty, "Pending", string.Empty, DateTime.MinValue, null, null) { }
+    public RecentWorkOrderDto() : this(Guid.Empty, string.Empty, "Pending", string.Empty, DateTime.MinValue, null) { }
 }
 
 public class LotAreaResult

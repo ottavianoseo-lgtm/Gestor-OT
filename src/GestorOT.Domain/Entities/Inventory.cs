@@ -1,6 +1,6 @@
 namespace GestorOT.Domain.Entities;
 
-public class Inventory : TenantEntity
+public class Inventory : TenantEntity, IExternalErpEntity
 {
     public string Category { get; set; } = string.Empty;
     public string ItemName { get; set; } = string.Empty;
@@ -8,5 +8,7 @@ public class Inventory : TenantEntity
     public double ReorderLevel { get; set; }
     public string? UnitA { get; set; }
     public string? UnitB { get; set; }
+    public string? Unit { get; set; }
     public double ConversionFactor { get; set; } = 1;
+    public string? ExternalErpId { get; set; }
 }

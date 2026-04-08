@@ -18,18 +18,18 @@ public class WorkOrderQueryService : IWorkOrderQueryService
     {
         var workOrders = await _context.WorkOrders
             .AsNoTracking()
-            .Include(w => w.Lot)
+            .Include(w => w.Field)
             .OrderByDescending(w => w.DueDate)
             .ToListAsync(ct);
 
         return workOrders.Select(w => new WorkOrderDto(
             w.Id,
-            w.LotId,
+            w.FieldId,
             w.Description,
             w.Status,
             w.AssignedTo,
             w.DueDate,
-            w.Lot?.Name,
+            w.Field?.Name,
             w.OTNumber,
             w.PlannedDate,
             w.ExpirationDate,
@@ -37,7 +37,7 @@ public class WorkOrderQueryService : IWorkOrderQueryService
             w.AgreedRate,
             w.StockReserved,
             w.ContractorId,
-            w.EmployeeId,
+            w.ContactId,
             w.CampaignId
         )).ToList();
     }
@@ -46,10 +46,10 @@ public class WorkOrderQueryService : IWorkOrderQueryService
     {
         var workOrder = await _context.WorkOrders
             .AsNoTracking()
-            .Include(w => w.Lot)
-                .ThenInclude(l => l!.Field)
+            .Include(w => w.Field)
             .Include(w => w.Labors)
                 .ThenInclude(l => l.Lot)
+                    .ThenInclude(lot => lot!.Field)
             .Include(w => w.Labors)
                 .ThenInclude(l => l.Type)
             .Include(w => w.Labors)
@@ -62,13 +62,12 @@ public class WorkOrderQueryService : IWorkOrderQueryService
 
         return new WorkOrderDetailDto(
             workOrder.Id,
-            workOrder.LotId,
+            workOrder.FieldId,
             workOrder.Description,
             workOrder.Status,
             workOrder.AssignedTo,
             workOrder.DueDate,
-            workOrder.Lot?.Name,
-            workOrder.Lot?.Field?.Name,
+            workOrder.Field?.Name,
             workOrder.Labors.OrderBy(l => l.CreatedAt).Select(l => new LaborDto(
                 l.Id,
                 l.WorkOrderId,
@@ -114,7 +113,7 @@ public class WorkOrderQueryService : IWorkOrderQueryService
             workOrder.StockReserved,
             workOrder.CampaignId,
             workOrder.ContractorId,
-            workOrder.EmployeeId
+            workOrder.ContactId
         );
     }
 }
