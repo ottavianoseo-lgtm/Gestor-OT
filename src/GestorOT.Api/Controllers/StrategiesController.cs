@@ -160,7 +160,7 @@ public class StrategiesController : ControllerBase
             var wo = new WorkOrder
             {
                 Id = Guid.NewGuid(),
-                LotId = lot.Id,
+                FieldId = lot.FieldId,
                 Description = $"{strategy.Name} — {lot.Name}",
                 Status = "Pending",
                 AssignedTo = request.AssignedTo,

@@ -46,19 +46,18 @@ public class TenantsController : ControllerBase
         return Ok();
     }
 
-    [HttpPost("{id}/sync-employees")]
-    public async Task<IActionResult> SyncEmployees(Guid id)
+    [HttpPost("{id}/sync-contacts")]
+    public async Task<IActionResult> SyncContacts(Guid id)
     {
-        // En un sistema real, nos aseguraríamos de que el ITenantService.CurrentTenantId 
-        // esté seteado correctamente para esta llamada (vía Header X-Tenant-Id)
-        await _erpSyncService.SyncEmployeesAsync();
-        return Ok(new { Message = "Sincronización de empleados completada." });
+        await _erpSyncService.SyncContactsAsync(id);
+        return Ok(new { Message = "Sincronización de contactos completada." });
     }
 
     [HttpPost("{id}/sync-labors")]
     public async Task<IActionResult> SyncLabors(Guid id)
     {
-        await _erpSyncService.SyncLaborTypesAsync();
+        await _erpSyncService.SyncLaborTypesAsync(id);
         return Ok(new { Message = "Sincronización de labores completada." });
     }
 }
+

@@ -95,9 +95,9 @@ public class LotsController : ControllerBase
         var lot = await _context.Lots.FindAsync(id);
         if (lot == null) return NotFound();
 
-        var hasWorkOrders = await _context.WorkOrders.AnyAsync(w => w.LotId == id);
+        var hasWorkOrders = await _context.Labors.AnyAsync(l => l.LotId == id);
         if (hasWorkOrders)
-            return BadRequest("No se puede eliminar un lote con órdenes de trabajo asociadas.");
+            return BadRequest("No se puede eliminar un lote con labores asociadas.");
 
         _context.Lots.Remove(lot);
         await _context.SaveChangesAsync();

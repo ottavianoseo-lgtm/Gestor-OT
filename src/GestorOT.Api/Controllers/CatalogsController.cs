@@ -27,13 +27,13 @@ public class CatalogsController : ControllerBase
             .ToListAsync(ct);
     }
 
-    [HttpGet("employees")]
-    public async Task<ActionResult<List<EmployeeDto>>> GetEmployees(CancellationToken ct)
+    [HttpGet("contacts")]
+    public async Task<ActionResult<List<ContactDto>>> GetContacts(CancellationToken ct)
     {
-        return await _context.Employees
+        return await _context.Contacts
             .AsNoTracking()
-            .Select(e => new EmployeeDto(
-                e.Id, e.FullName, e.ExternalErpId, e.Email, e.Position))
+            .Select(c => new ContactDto(
+                c.Id, c.FullName, c.ExternalErpId, c.Email, c.Position, c.LegalName, c.VatNumber, c.Role))
             .ToListAsync(ct);
     }
 }

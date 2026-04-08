@@ -189,6 +189,27 @@ aside.ant-layout-sider {
     border-top: 1px solid rgba(255,255,255,0.08) !important;
 }
 
+/* --- Drawers --- */
+
+.ant-drawer-content, .ant-drawer-wrapper-body, .ant-drawer-body {
+    background: #1A1A2E !important;
+    color: rgba(255,255,255,0.85) !important;
+}
+
+.ant-drawer-header {
+    background: #1A1A2E !important;
+    border-bottom: 1px solid rgba(255,255,255,0.08) !important;
+}
+
+.ant-drawer-title {
+    color: #fff !important;
+    font-weight: 700 !important;
+}
+
+.ant-drawer-close {
+    color: rgba(255,255,255,0.5) !important;
+}
+
 /* --- Forms --- */
 
 .ant-form-item-label > label {
@@ -215,6 +236,20 @@ aside.ant-layout-sider {
 
 .ant-input-number-input {
     color: rgba(255,255,255,0.85) !important;
+}
+
+select option {
+    background-color: #1E1E2E !important;
+    color: #ffffff !important;
+}
+
+/* For browsers that don't respect background on option, we style the select itself on focus */
+select:focus option {
+    background-color: #1E1E2E !important;
+}
+
+input::placeholder, textarea::placeholder {
+    color: rgba(255,255,255,0.3) !important;
 }
 
 /* --- Select / Dropdown --- */

@@ -72,8 +72,7 @@ public class ShareController : ControllerBase
         var wo = await _context.WorkOrders
             .AsNoTracking()
             .IgnoreQueryFilters()
-            .Include(w => w.Lot)
-                .ThenInclude(l => l!.Field)
+            .Include(w => w.Field)
             .Include(w => w.Labors)
                 .ThenInclude(l => l.Type)
             .Include(w => w.Labors)
@@ -112,8 +111,7 @@ public class ShareController : ControllerBase
             wo.Status,
             wo.AssignedTo,
             wo.DueDate,
-            wo.Lot?.Name,
-            wo.Lot?.Field?.Name,
+            wo.Field?.Name,
             labors
         );
     }

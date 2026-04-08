@@ -48,7 +48,7 @@ public class WorkOrdersController : ControllerBase
         var workOrder = new WorkOrder
         {
             Id = Guid.NewGuid(),
-            LotId = dto.LotId,
+            FieldId = dto.FieldId,
             Description = dto.Description,
             Status = dto.Status,
             AssignedTo = dto.AssignedTo,
@@ -59,7 +59,7 @@ public class WorkOrdersController : ControllerBase
             EstimatedCostUSD = dto.EstimatedCostUSD,
             StockReserved = dto.StockReserved,
             ContractorId = dto.ContractorId,
-            EmployeeId = dto.EmployeeId,
+            ContactId = dto.ContactId,
             AgreedRate = dto.AgreedRate,
             CampaignId = dto.CampaignId
         };
@@ -68,11 +68,11 @@ public class WorkOrdersController : ControllerBase
         await _context.SaveChangesAsync();
 
         var result = new WorkOrderDto(
-            workOrder.Id, workOrder.LotId, workOrder.Description, workOrder.Status,
+            workOrder.Id, workOrder.FieldId, workOrder.Description, workOrder.Status,
             workOrder.AssignedTo, workOrder.DueDate, null, workOrder.OTNumber,
             workOrder.PlannedDate, workOrder.ExpirationDate, workOrder.EstimatedCostUSD,
             workOrder.AgreedRate,
-            workOrder.StockReserved, workOrder.ContractorId, workOrder.EmployeeId, workOrder.CampaignId);
+            workOrder.StockReserved, workOrder.ContractorId, workOrder.ContactId, workOrder.CampaignId);
 
         return CreatedAtAction(nameof(GetWorkOrder), new { id = workOrder.Id }, result);
     }
@@ -87,14 +87,14 @@ public class WorkOrdersController : ControllerBase
         workOrder.Status = dto.Status;
         workOrder.AssignedTo = dto.AssignedTo;
         workOrder.DueDate = dto.DueDate;
-        workOrder.LotId = dto.LotId;
+        workOrder.FieldId = dto.FieldId;
         workOrder.OTNumber = dto.OTNumber ?? workOrder.OTNumber;
         workOrder.PlannedDate = dto.PlannedDate ?? workOrder.PlannedDate;
         workOrder.ExpirationDate = dto.ExpirationDate ?? workOrder.ExpirationDate;
         workOrder.EstimatedCostUSD = dto.EstimatedCostUSD;
         workOrder.StockReserved = dto.StockReserved;
         workOrder.ContractorId = dto.ContractorId;
-        workOrder.EmployeeId = dto.EmployeeId;
+        workOrder.ContactId = dto.ContactId;
         workOrder.AgreedRate = dto.AgreedRate;
         workOrder.CampaignId = dto.CampaignId;
 
