@@ -4,11 +4,10 @@ WORKDIR /app
 
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
-# Copia todo desde la raíz (incluyendo la carpeta src/)
 COPY . .
 
-# Entramos a la ruta donde está el proyecto API
-# La ruta es /src (workdir) + /src (carpeta del repo) + /GestorOT.Api
+RUN dotnet workload install wasm-tools
+
 WORKDIR "/src/src/GestorOT.Api"
 RUN dotnet restore "GestorOT.Api.csproj"
 RUN dotnet build "GestorOT.Api.csproj" -c Release -o /app/build
