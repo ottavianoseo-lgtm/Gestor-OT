@@ -84,9 +84,10 @@ else
             </p>
             <div style="margin-bottom: 8px; color: #fff;">Rol del contacto:</div>
             <Select TItemValue="ContactRole" TItem="ContactRole" @bind-Value="_selectedRole" Style="width: 100%;">
-                <SelectOption TItemValue="ContactRole" TItem="ContactRole" Value="@ContactRole.InternalStaff" Label="Staff Interno" />
-                <SelectOption TItemValue="ContactRole" TItem="ContactRole" Value="@ContactRole.Contractor" Label="Contratista" />
-                <SelectOption TItemValue="ContactRole" TItem="ContactRole" Value="@ContactRole.Agronomist" Label="Agrónomo" />
+                @foreach (ContactRole role in Enum.GetValues(typeof(ContactRole)))
+                {
+                    <SelectOption TItemValue="ContactRole" TItem="ContactRole" Value="@role" Label="@role.GetDisplayName()" />
+                }
             </Select>
         </div>
         <div style="text-align: right;">

@@ -42,6 +42,17 @@ public class ErpSyncWorker : BackgroundService
                     {
                         try
                         {
+                            // Verificamos si el tenant ya tiene datos para evitar sync innecesaria
+                            var hasData = await context.LaborTypes.AnyAsync(lt => lt.TenantId == tenant.Id, stoppingToken) ||
+                                          await context.ErpPeople.AnyAsync(ep => ep.TenantId == tenant.Id, stoppingToken);
+
+                            if (hasData)
+                            {
+                                _logger.LogInformation("Tenant {TenantId} already has data, skipping initial sync or performing light sync.", tenant.Id);
+                                // Opcional: Aquí podrías llamar a una sync ligera o simplemente continuar
+                                continue; 
+                            }
+
                             _logger.LogInformation("Syncing data for tenant {TenantId} ({TenantName})...", tenant.Id, tenant.Name);
                             
                             await syncService.SyncLaborTypesAsync(tenant.Id, stoppingToken);

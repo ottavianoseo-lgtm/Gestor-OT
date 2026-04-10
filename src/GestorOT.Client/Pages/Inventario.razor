@@ -49,7 +49,13 @@
 </Row>
 
 <div class="glass-card">
-    <Table TItem="InventoryDto" DataSource="_items" Loading="_loading" Size="@TableSize.Small"
+    <div style="margin-bottom: 16px; width: 300px;">
+        <Input TValue="string" Value="@_inputValue" OnInput="OnInputChanged" ValueChanged="OnValueChanged" Placeholder="Buscar por nombre..." AllowClear>
+            <Prefix><Icon Type="search" Style="color: rgba(255,255,255,0.3);" /></Prefix>
+        </Input>
+    </div>
+
+    <Table TItem="InventoryDto" DataSource="FilteredItems" Loading="_loading" Size="@TableSize.Small"
            ScrollX="1100">
         <PropertyColumn Property="c => c.ItemName" Title="Insumo" Sortable>
             <span style="font-weight: 600;">@context.ItemName</span>
@@ -216,7 +222,32 @@
     private bool _saving;
     private Guid _editingId;
     private InvFormModel _formModel = new();
+    private System.Timers.Timer? _debounceTimer;
     private Form<InvFormModel>? _form;
+    private string _inputValue = string.Empty;
+    private string _searchQuery = string.Empty;
+
+    private IEnumerable<InventoryDto> FilteredItems => string.IsNullOrWhiteSpace(_searchQuery)
+        ? _items
+        : _items.Where(i => i.ItemName.Contains(_searchQuery, StringComparison.OrdinalIgnoreCase));
+
+    private void OnInputChanged(ChangeEventArgs e)
+    {
+        _inputValue = e.Value?.ToString() ?? string.Empty;
+        _debounceTimer?.Stop();
+        _debounceTimer?.Start();
+    }
+
+    private void OnValueChanged(string value)
+    {
+        _inputValue = value ?? string.Empty;
+        if (string.IsNullOrEmpty(_inputValue))
+        {
+            _searchQuery = string.Empty;
+            _debounceTimer?.Stop();
+            InvokeAsync(StateHasChanged);
+        }
+    }
 
     public class InvFormModel
     {
@@ -231,6 +262,14 @@
 
     protected override async Task OnInitializedAsync()
     {
+        _debounceTimer = new System.Timers.Timer(500);
+        _debounceTimer.AutoReset = false;
+        _debounceTimer.Elapsed += (s, e) => 
+        {
+            _searchQuery = _inputValue;
+            InvokeAsync(StateHasChanged);
+        };
+
         CampaignState.OnChange += OnCampaignChanged;
         TenantState.OnChange += OnCampaignChanged;
         await LoadData();
@@ -243,6 +282,7 @@
 
     public void Dispose()
     {
+        _debounceTimer?.Dispose();
         CampaignState.OnChange -= OnCampaignChanged;
         TenantState.OnChange -= OnCampaignChanged;
     }

@@ -196,10 +196,13 @@ else if (_viewMode == "month")
         </div>
     }
 
-<Drawer Title="@(_editingLaborId == Guid.Empty ? "Planificar Nueva Labor" : "Detalle de Labor")"
-        Visible="@_drawerVisible" OnClose="() => _drawerVisible = false" Width="550" Closable="true">
-    <LaborEditorForm LaborId="@_editingLaborId" OnSaved="OnLaborSaved" />
-</Drawer>
+<Modal Title="@(_editingLaborId == Guid.Empty ? "Planificar Nueva Labor" : "Detalle de Labor")"
+       Visible="@_drawerVisible"
+       OnCancel="() => _drawerVisible = false"
+       Footer="null"
+       Width="800">
+    <LaborEditorForm LaborId="@_editingLaborId" DefaultDate="@_drawerDate" OnSaved="OnLaborSaved" />
+</Modal>
 
 <style>
     .planner-legend { font-size: 12px; color: rgba(255,255,255,0.6); }
@@ -440,7 +443,7 @@ else if (_viewMode == "month")
 
 @code {
     private List<LaborCalendarDto> _labors = new();
-    private List<LotDto> _lots = new();
+    private List<CampaignLotDto> _lots = new();
     private List<LaborTypeDto> _laborTypes = new();
     private bool _loading = true;
     private DateTime _currentDate = DateTime.Today;
@@ -522,16 +525,22 @@ else if (_viewMode == "month")
             var laborsTask = Http.GetFromJsonAsync(
                 $"api/labors/calendar?start={rangeStart:yyyy-MM-dd}&end={rangeEnd:yyyy-MM-dd}",
                 AppJsonSerializerContext.Default.ListLaborCalendarDto, cts.Token);
-            var lotsTask = Http.GetFromJsonAsync("api/lots",
-                AppJsonSerializerContext.Default.ListLotDto, cts.Token);
             var typesTask = Http.GetFromJsonAsync("api/catalogs/labor-types",
                 AppJsonSerializerContext.Default.ListLaborTypeDto, cts.Token);
 
-            await Task.WhenAll(laborsTask, lotsTask, typesTask);
+            Task<List<CampaignLotDto>>? lotsTask = null;
+            if (CampaignState.CurrentCampaign != null)
+            {
+                lotsTask = Http.GetFromJsonAsync(
+                    $"api/campaigns/{CampaignState.CurrentCampaign.Id}/lots",
+                    AppJsonSerializerContext.Default.ListCampaignLotDto, cts.Token);
+            }
 
+            await Task.WhenAll(laborsTask, typesTask);
             _labors = laborsTask.Result ?? new();
-            _lots = lotsTask.Result ?? new();
             _laborTypes = typesTask.Result ?? new();
+            if (lotsTask != null)
+                _lots = lotsTask.Result ?? new();
             _errorMessage = null;
         }
         catch (OperationCanceledException)
@@ -556,9 +565,12 @@ else if (_viewMode == "month")
             .ToList();
     }
 
+    private DateTime _drawerDate = DateTime.Today;
+
     private void OpenCreateDrawer(DateTime date)
     {
         _editingLaborId = Guid.Empty;
+        _drawerDate = date;
         _drawerVisible = true;
     }
 

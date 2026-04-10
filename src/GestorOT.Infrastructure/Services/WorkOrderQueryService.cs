@@ -72,7 +72,7 @@ public class WorkOrderQueryService : IWorkOrderQueryService
                 l.Id,
                 l.WorkOrderId,
                 l.LotId,
-                l.CampaignLotId,
+                l.CampaignLotId ?? Guid.Empty,
                 l.LaborTypeId,
                 l.Status,
                 l.ExecutionDate,
@@ -103,7 +103,8 @@ public class WorkOrderQueryService : IWorkOrderQueryService
                 l.Notes,
                 l.Lot?.Field?.Name,
                 l.PlannedDose,
-                l.RealizedDose
+                l.RealizedDose,
+                l.ContactId
             )).ToList(),
             workOrder.OTNumber,
             workOrder.PlannedDate,

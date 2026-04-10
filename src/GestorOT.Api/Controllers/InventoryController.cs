@@ -18,12 +18,23 @@ public class InventoryController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<ActionResult<List<InventoryDto>>> GetInventory()
+    public async Task<ActionResult<List<InventoryDto>>> GetInventory(
+        [FromQuery] string? search, 
+        [FromQuery] int page = 1, 
+        [FromQuery] int pageSize = 100)
     {
-        var items = await _context.Inventories
-            .AsNoTracking()
+        var query = _context.Inventories.AsNoTracking();
+
+        if (!string.IsNullOrEmpty(search))
+        {
+            query = query.Where(i => i.ItemName.Contains(search) || i.Category.Contains(search));
+        }
+
+        var items = await query
             .OrderBy(i => i.Category)
             .ThenBy(i => i.ItemName)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
             .Select(i => new InventoryDto(
                 i.Id, i.Category, i.ItemName, i.CurrentStock, i.ReorderLevel,
                 i.UnitA ?? "", i.UnitB ?? "", i.ConversionFactor

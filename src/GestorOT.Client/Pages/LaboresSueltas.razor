@@ -144,10 +144,13 @@ else
     </div>
 }
 
-<Drawer Title="@(_editingLaborId == Guid.Empty ? "Nueva Labor Suelta" : "Editar Labor")"
-        Visible="@_drawerVisible" OnClose="() => _drawerVisible = false" Width="550">
-    <LaborEditorForm LaborId="@_editingLaborId" OnSaved="OnLaborSaved" />
-</Drawer>
+<Modal Title="@(_editingLaborId == Guid.Empty ? "Nueva Labor Suelta" : "Editar Labor")"
+       Visible="@_drawerVisible"
+       OnCancel="() => _drawerVisible = false"
+       Footer="null"
+       Width="800">
+    <LaborEditorForm LaborId="@_editingLaborId" OnSaved="OnSaved" />
+</Modal>
 
 <Modal Title="@("Asignar Labores a Orden de Trabajo")" Visible="@_assignModalOpen"
        OnCancel="() => _assignModalOpen = false" Footer="null" Width="480"
@@ -260,7 +263,7 @@ else
 
 @code {
     private List<LaborDto> _labors = new();
-    private List<LotDto> _lots = new();
+    private List<CampaignLotDto> _lots = new();
     private List<WorkOrderDto> _workOrders = new();
     private List<LaborTypeDto> _laborTypes = new();
     private bool _loading = true;
@@ -306,17 +309,24 @@ else
 
             var laborsTask = Http.GetFromJsonAsync("api/labors/unassigned",
                 AppJsonSerializerContext.Default.ListLaborDto, cts.Token);
-            var lotsTask = Http.GetFromJsonAsync("api/lots",
-                AppJsonSerializerContext.Default.ListLotDto, cts.Token);
             var woTask = Http.GetFromJsonAsync("api/workorders",
                 AppJsonSerializerContext.Default.ListWorkOrderDto, cts.Token);
             var typesTask = Http.GetFromJsonAsync("api/catalogs/labor-types",
                 AppJsonSerializerContext.Default.ListLaborTypeDto, cts.Token);
             
-            await Task.WhenAll(laborsTask, lotsTask, woTask, typesTask);
+            Task<List<CampaignLotDto>>? lotsTask = null;
+            if (CampaignState.CurrentCampaign != null)
+            {
+                lotsTask = Http.GetFromJsonAsync(
+                    $"api/campaigns/{CampaignState.CurrentCampaign.Id}/lots",
+                    AppJsonSerializerContext.Default.ListCampaignLotDto, cts.Token);
+            }
+
+            await Task.WhenAll(laborsTask, woTask, typesTask);
 
             _labors = laborsTask.Result ?? new();
-            _lots = lotsTask.Result ?? new();
+            if (lotsTask != null)
+                _lots = lotsTask.Result ?? new();
             _workOrders = woTask.Result ?? new();
             _laborTypes = typesTask.Result ?? new();
             _errorMessage = null;
@@ -367,8 +377,8 @@ else
 
     private decimal GetLotHectares(Guid lotId)
     {
-        var lot = _lots.FirstOrDefault(l => l.Id == lotId);
-        return lot != null ? (decimal)lot.Area : 0;
+        var lot = _lots.FirstOrDefault(l => l.LotId == lotId);
+        return lot != null ? (lot.ProductiveArea > 0 ? lot.ProductiveArea : lot.CadastralArea) : 0;
     }
 
     private void OpenAssignModal()
@@ -413,16 +423,15 @@ else
             var selectedLabors = _labors.Where(l => _selectedIds.Contains(l.Id)).ToList();
             var firstLabor = selectedLabors.First();
 
-            var targetLot = _lots.FirstOrDefault(l => l.Id == firstLabor.LotId);
-            if (targetLot == null)
+            if (CampaignState.CurrentCampaign == null)
             {
-                Message.Error("Error: No se pudo identificar el campo del lote seleccionado.");
+                Message.Error("No hay una campaña activa seleccionada.");
                 return;
             }
 
             var newOT = new WorkOrderDto
             {
-                FieldId = targetLot.FieldId,
+                CampaignId = CampaignState.CurrentCampaign.Id,
                 Description = $"OT generada - {selectedLabors.Count} labores ({DateTime.Today:dd/MM/yyyy})",
                 Status = "Pending",
                 AssignedTo = string.Empty,
@@ -487,5 +496,10 @@ else
         _ => "#95A5A6"
     };
 
-// Cleaned up obsolete models
+    private async Task OnSaved()
+    {
+        _drawerVisible = false;
+        await LoadData();
+    }
 }
+

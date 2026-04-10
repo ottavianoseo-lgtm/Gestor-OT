@@ -217,7 +217,7 @@ public class CampaignsController : ControllerBase
             .AnyAsync(cf => cf.CampaignId == id && cf.FieldId == dto.FieldId);
 
         if (exists)
-            return BadRequest("El campo ya está asociado a esta campaña.");
+            return NoContent(); // idempotente: el campo ya estaba, la operación es exitosa
 
         _context.CampaignFields.Add(new CampaignField
         {

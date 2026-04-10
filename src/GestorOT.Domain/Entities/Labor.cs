@@ -4,7 +4,7 @@ public class Labor : TenantEntity
 {
     public Guid? WorkOrderId { get; set; }
     public Guid LotId { get; set; }
-    public Guid CampaignLotId { get; set; }
+    public Guid? CampaignLotId { get; set; }
     public Guid LaborTypeId { get; set; }
     public Guid? ContactId { get; set; } // The actual Responsible
     public bool IsExternalBilling { get; set; } // Specific to this labor

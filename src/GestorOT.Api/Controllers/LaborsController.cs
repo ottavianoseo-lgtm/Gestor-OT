@@ -51,13 +51,47 @@ public class LaborsController : ControllerBase
     [HttpPost]
     public async Task<ActionResult<LaborDto>> CreateLabor(LaborDto dto)
     {
+        // Debug
+        Console.WriteLine($"CreateLabor: CampaignLotId={dto.CampaignLotId}, LotId={dto.LotId}");
+
+        var lotId = dto.LotId;
+        var campaignLotId = dto.CampaignLotId;
+
+        // Si mandan CampaignLotId pero no LotId, recuperamos el LotId
+        if (campaignLotId != null && campaignLotId != Guid.Empty && lotId == Guid.Empty)
+        {
+            var campaignLot = await _context.CampaignLots
+                .FirstOrDefaultAsync(cl => cl.Id == campaignLotId);
+            
+            if (campaignLot != null)
+                lotId = campaignLot.LotId;
+            else
+                return BadRequest("El CampaignLotId proporcionado no existe.");
+        }
+        // Si mandan LotId pero no CampaignLotId (fallback original)
+        else if ((campaignLotId == null || campaignLotId == Guid.Empty) && lotId != Guid.Empty)
+        {
+            var campaignLot = await _context.CampaignLots
+                .FirstOrDefaultAsync(cl => cl.LotId == lotId);
+            
+            if (campaignLot != null)
+                campaignLotId = campaignLot.Id;
+            else
+                return BadRequest("No se encontró CampaignLotId y no pudo ser inferido a partir del LotId.");
+        }
+        else if (lotId == Guid.Empty && (campaignLotId == null || campaignLotId == Guid.Empty))
+        {
+            return BadRequest("Debe proporcionar al menos un LotId o un CampaignLotId.");
+        }
+
         var labor = new Labor
         {
             Id = Guid.NewGuid(),
             WorkOrderId = dto.WorkOrderId,
-            LotId = dto.LotId,
-            CampaignLotId = dto.CampaignLotId,
+            LotId = lotId,
+            CampaignLotId = campaignLotId,
             LaborTypeId = dto.LaborTypeId,
+            ContactId = dto.ContactId,
             Status = "Planned",
             ExecutionDate = dto.ExecutionDate,
             EstimatedDate = dto.EstimatedDate,
@@ -115,7 +149,17 @@ public class LaborsController : ControllerBase
             return NotFound();
 
         labor.LotId = dto.LotId;
-        labor.CampaignLotId = dto.CampaignLotId;
+        
+        var campaignLotId = dto.CampaignLotId;
+        if (campaignLotId == null || campaignLotId == Guid.Empty)
+        {
+            var campaignLot = await _context.CampaignLots
+                .FirstOrDefaultAsync(cl => cl.LotId == dto.LotId);
+            if (campaignLot != null)
+                campaignLotId = campaignLot.Id;
+        }
+        
+        labor.CampaignLotId = campaignLotId;
         labor.LaborTypeId = dto.LaborTypeId;
         labor.ExecutionDate = dto.ExecutionDate;
         labor.EstimatedDate = dto.EstimatedDate;
@@ -149,6 +193,20 @@ public class LaborsController : ControllerBase
                         existing.UnitOfMeasure = supplyDto.UnitOfMeasure;
                         existing.TankMixOrder = supplyDto.TankMixOrder;
                         existing.IsSubstitute = supplyDto.IsSubstitute;
+                    }
+                    else
+                    {
+                        labor.Supplies.Add(new LaborSupply
+                        {
+                            Id = Guid.NewGuid(),
+                            LaborId = labor.Id,
+                            SupplyId = supplyDto.SupplyId,
+                            PlannedDose = supplyDto.PlannedDose,
+                            PlannedTotal = supplyDto.PlannedTotal > 0 ? supplyDto.PlannedTotal : supplyDto.PlannedDose * labor.Hectares,
+                            UnitOfMeasure = supplyDto.UnitOfMeasure,
+                            TankMixOrder = supplyDto.TankMixOrder,
+                            IsSubstitute = supplyDto.IsSubstitute
+                        });
                     }
                 }
                 else
@@ -220,6 +278,7 @@ public class LaborsController : ControllerBase
             LotId = source.LotId,
             CampaignLotId = source.CampaignLotId,
             LaborTypeId = source.LaborTypeId,
+            ContactId = source.ContactId,
             Status = "Realized",
             ExecutionDate = DateTime.UtcNow,
             Hectares = source.Hectares,
@@ -362,7 +421,7 @@ public class LaborsController : ControllerBase
             labor.Id,
             labor.WorkOrderId,
             labor.LotId,
-            labor.CampaignLotId,
+            labor.CampaignLotId ?? Guid.Empty,
             labor.LaborTypeId,
             labor.Status,
             labor.ExecutionDate,
@@ -373,27 +432,15 @@ public class LaborsController : ControllerBase
             labor.RateUnit,
             labor.Lot?.Name,
             labor.Type?.Name,
-            labor.Supplies.OrderBy(s => s.TankMixOrder).Select(s => new LaborSupplyDto(
-                s.Id,
-                s.LaborId,
-                s.SupplyId,
-                s.PlannedDose,
-                s.RealDose,
-                s.PlannedTotal,
-                s.RealTotal,
-                s.UnitOfMeasure,
-                s.Supply?.ItemName,
-                s.Supply?.UnitB,
-                s.TankMixOrder,
-                s.IsSubstitute
-            )).ToList(),
+            labor.Supplies.Select(s => new LaborSupplyDto(s.Id, s.LaborId, s.SupplyId, s.PlannedDose, s.RealDose, s.PlannedTotal, s.RealTotal, s.UnitOfMeasure, s.Supply?.ItemName, s.Supply?.UnitA, s.TankMixOrder, s.IsSubstitute)).ToList(),
             labor.PrescriptionMapUrl,
             labor.MachineryUsedId,
             labor.WeatherLogJson,
             labor.Notes,
             labor.Lot?.Field?.Name,
             labor.PlannedDose,
-            labor.RealizedDose
+            labor.RealizedDose,
+            labor.ContactId
         );
     }
 }

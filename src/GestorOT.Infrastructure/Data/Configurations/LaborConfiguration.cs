@@ -33,5 +33,11 @@ public class LaborConfiguration : IEntityTypeConfiguration<Labor>
             .WithMany()
             .HasForeignKey(e => e.LotId)
             .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasOne(e => e.CampaignLot)
+            .WithMany()
+            .HasForeignKey(e => e.CampaignLotId)
+            .IsRequired(false)
+            .OnDelete(DeleteBehavior.SetNull);
     }
 }

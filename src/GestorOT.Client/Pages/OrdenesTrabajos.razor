@@ -364,6 +364,17 @@ else
             <TextArea @bind-Value="_formModel.Description" Placeholder="Descripción de la orden"
                       Rows="3" />
         </FormItem>
+        <FormItem Label="Campaña">
+            <Select TItem="CampaignSummaryDto"
+                    TItemValue="Guid"
+                    DataSource="_availableCampaigns"
+                    @bind-Value="_formModel.CampaignId"
+                    LabelName="@nameof(CampaignSummaryDto.Name)"
+                    ValueName="@nameof(CampaignSummaryDto.Id)"
+                    Placeholder="Seleccionar campaña"
+                    Style="width: 100%;"
+                    EnableSearch />
+        </FormItem>
         <FormItem Label="Campo">
             <Select TItem="FieldDto"
                     TItemValue="Guid"
@@ -376,32 +387,52 @@ else
                     EnableSearch />
         </FormItem>
         <AntDesign.Row Gutter="16">
-            <AntDesign.Col Span="8">
-                <FormItem Label="Asignado a">
-                    <Input @bind-Value="_formModel.AssignedTo" Placeholder="Nombre del responsable" />
+            <AntDesign.Col Span="12">
+                <FormItem Label="Responsable (Contacto)">
+                    <Select TItem="ContactDto"
+                            TItemValue="Guid"
+                            DataSource="_availableContacts"
+                            @bind-Value="_formModel.ContactId"
+                            LabelName="@nameof(ContactDto.FullName)"
+                            ValueName="@nameof(ContactDto.Id)"
+                            Placeholder="Seleccionar contacto"
+                            Style="width: 100%;"
+                            EnableSearch />
                 </FormItem>
             </AntDesign.Col>
-            <AntDesign.Col Span="8">
+            <AntDesign.Col Span="12">
+                <FormItem Label="Costo Estimado (USD)">
+                    <AntDesign.InputNumber TValue="decimal" @bind-Value="_formModel.EstimatedCostUSD" Min="0" Style="width: 100%;" />
+                </FormItem>
+            </AntDesign.Col>
+        </AntDesign.Row>
+        <AntDesign.Row Gutter="16">
+            <AntDesign.Col Span="12">
                 <FormItem Label="Fecha Límite">
                     <DatePicker @bind-Value="_formModel.DueDate" Style="width: 100%;"
                                 Format="dd/MM/yyyy" />
                 </FormItem>
             </AntDesign.Col>
+            <AntDesign.Col Span="12">
+                <FormItem Label="Estado">
+                    <Select TItem="string" TItemValue="string" @bind-Value="_formModel.Status" Style="width: 100%;">
+                        <SelectOption Value="@("Draft")" Label="Borrador" />
+                        <SelectOption Value="@("Pending")" Label="Pendiente" />
+                        <SelectOption Value="@("InProgress")" Label="En Progreso" />
+                    </Select>
+                </FormItem>
+            </AntDesign.Col>
         </AntDesign.Row>
-        <FormItem Label="Estado">
-            <RadioGroup @bind-Value="_formModel.Status">
-                <Radio Value="@("Draft")">Borrador</Radio>
-                <Radio Value="@("Pending")">Pendiente</Radio>
-                <Radio Value="@("InProgress")">En Progreso</Radio>
-            </RadioGroup>
-        </FormItem>
     </Form>
 </Modal>
 
-<Drawer Title="@(_editingLaborId == Guid.Empty ? "Nueva Labor" : "Detalle de Labor")"
-        Visible="@_laborDrawerVisible" OnClose="() => _laborDrawerVisible = false" Width="550" Closable="true">
+<Modal Title="@(_editingLaborId == Guid.Empty ? "Nueva Labor" : "Detalle de Labor")"
+       Visible="@_laborDrawerVisible"
+       OnCancel="() => _laborDrawerVisible = false"
+       Footer="null"
+       Width="800">
     <LaborEditorForm WorkOrderId="@(_selectedOrder?.Id)" LaborId="@_editingLaborId" OnSaved="OnLaborSaved" />
-</Drawer>
+</Modal>
 
 <Modal Title="Ejecutar Labor — Confirmar Dosis Real"
        Visible="_realizeModalVisible"
@@ -527,12 +558,17 @@ else
         flex-direction: column;
         gap: 2px;
     }
+    .ant-picker-input > input {
+        color: white !important;
+    }
 </style>
 
 @code {
     private List<WorkOrderDto> _workOrders = new();
     private List<FieldDto> _availableFields = new();
     private List<InventoryDto> _availableSupplies = new();
+    private List<CampaignSummaryDto> _availableCampaigns = new();
+    private List<ContactDto> _availableContacts = new();
     private bool _loading;
     private string? _errorMessage;
 
@@ -564,8 +600,11 @@ else
     public class WoFormModel
     {
         public string Description { get; set; } = string.Empty;
+        public Guid CampaignId { get; set; }
+        public Guid? LotId { get; set; }
         public Guid FieldId { get; set; }
-        public string AssignedTo { get; set; } = string.Empty;
+        public Guid ContactId { get; set; }
+        public decimal EstimatedCostUSD { get; set; }
         public DateTime DueDate { get; set; } = DateTime.Today.AddDays(7);
         public string Status { get; set; } = "Draft";
     }
@@ -629,10 +668,18 @@ else
                 AppJsonSerializerContext.Default.ListFieldDto, cts.Token);
             var suppliesTask = Http.GetFromJsonAsync("api/inventory",
                 AppJsonSerializerContext.Default.ListInventoryDto, cts.Token);
+            var campaignsTask = Http.GetFromJsonAsync("api/campaigns",
+                AppJsonSerializerContext.Default.ListCampaignSummaryDto, cts.Token);
+            var contactsTask = Http.GetFromJsonAsync("api/catalogs/contacts",
+                AppJsonSerializerContext.Default.ListContactDto, cts.Token);
+
+            await Task.WhenAll(ordersTask, fieldsTask, suppliesTask, campaignsTask, contactsTask);
 
             _workOrders = await ordersTask ?? new();
             _availableFields = await fieldsTask ?? new();
             _availableSupplies = await suppliesTask ?? new();
+            _availableCampaigns = await campaignsTask ?? new();
+            _availableContacts = await contactsTask ?? new();
             _errorMessage = null;
         }
         catch (Exception ex)
@@ -684,8 +731,8 @@ else
     {
         _isEditing = false;
         _formModel = new WoFormModel();
-        if (_availableFields.Count > 0)
-            _formModel.FieldId = _availableFields[0].Id;
+        if (_availableCampaigns.Count > 0)
+            _formModel.CampaignId = _availableCampaigns[0].Id;
         _modalVisible = true;
     }
 
@@ -696,8 +743,10 @@ else
         _formModel = new WoFormModel
         {
             Description = wo.Description,
+            CampaignId = wo.CampaignId ?? Guid.Empty,
             FieldId = wo.FieldId,
-            AssignedTo = wo.AssignedTo,
+            ContactId = wo.ContactId ?? Guid.Empty,
+            EstimatedCostUSD = wo.EstimatedCostUSD,
             DueDate = wo.DueDate,
             Status = wo.Status
         };
@@ -728,10 +777,13 @@ else
             var dto = new WorkOrderDto
             {
                 Id = _isEditing ? _editingId : Guid.Empty,
+                CampaignId = _formModel.CampaignId,
                 FieldId = _formModel.FieldId,
                 Description = _formModel.Description,
                 Status = _formModel.Status,
-                AssignedTo = _formModel.AssignedTo,
+                ContactId = _formModel.ContactId,
+                EstimatedCostUSD = _formModel.EstimatedCostUSD,
+                OTNumber = _isEditing ? null : $"OT_{Guid.NewGuid().ToString().Substring(0, 5).ToUpper()}",
                 DueDate = _formModel.DueDate
             };
 

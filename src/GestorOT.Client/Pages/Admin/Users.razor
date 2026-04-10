@@ -2,6 +2,7 @@
 @page "/admin"
 @layout GestorOT.Client.Layout.AdminDashboardLayout
 @using Microsoft.AspNetCore.Components.QuickGrid
+@using GestorOT.Domain.Enums
 @inject HttpClient Http
 @inject PersistentComponentState PersistentState
 
@@ -47,10 +48,10 @@
         <select class="search-input" style="width: 180px; padding-left: 14px;"
                 @bind="_roleFilter">
             <option value="">Todos los roles</option>
-            <option value="Admin">Admin</option>
-            <option value="TenantAdmin">TenantAdmin</option>
-            <option value="Agronomist">Agronomist</option>
-            <option value="Contractor">Contractor</option>
+            @foreach (ContactRole role in Enum.GetValues(typeof(ContactRole)))
+            {
+                <option value="@role.ToString()">@role.GetDisplayName()</option>
+            }
         </select>
     </div>
 
@@ -146,13 +147,15 @@
                     <ValidationMessage For="() => _formModel.Email" />
                 </div>
 
+@using GestorOT.Domain.Enums
+...
                 <div style="margin-bottom: 14px;">
                     <label style="display: block; color: rgba(255,255,255,0.5); font-size: 12px; margin-bottom: 4px;">Rol</label>
                     <InputSelect @bind-Value="_formModel.Role" class="search-input" style="width: 100%; box-sizing: border-box; padding-left: 14px;">
-                        <option value="Admin">Admin</option>
-                        <option value="TenantAdmin">TenantAdmin</option>
-                        <option value="Agronomist">Agronomist</option>
-                        <option value="Contractor">Contractor</option>
+                        @foreach (ContactRole role in Enum.GetValues(typeof(ContactRole)))
+                        {
+                            <option value="@role.ToString()">@role.GetDisplayName()</option>
+                        }
                     </InputSelect>
                     <ValidationMessage For="() => _formModel.Role" />
                 </div>

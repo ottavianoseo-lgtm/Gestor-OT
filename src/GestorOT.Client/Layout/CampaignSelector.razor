@@ -241,6 +241,15 @@
                 AppJsonSerializerContext.Default.ListCampaignDto, cts.Token);
 
             _campaigns = allCampaigns?.Select(c => new CampaignSummaryDto(c.Id, c.Name, c.Status, c.IsActive)).ToList() ?? new();
+
+            if (_campaigns.Count == 1 && !CampaignState.IsSelected)
+            {
+                CampaignState.SetCampaign(_campaigns[0]);
+            }
+            else if (_campaigns.Count > 1 && !CampaignState.IsSelected)
+            {
+                _modalVisible = true;
+            }
         }
         catch
         {
