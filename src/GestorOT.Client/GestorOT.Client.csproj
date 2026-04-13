@@ -34,5 +34,13 @@
     <TrimmerRootAssembly Include="NetTopologySuite" />
     <TrimmerRootAssembly Include="NetTopologySuite.IO.GeoJSON" />
   </ItemGroup>
+  <ItemGroup Condition="'$(Configuration)' == 'Release'">
+  <TrimmerRootAssembly Include="GestorOT.Client" />
+  
+  <TrimmerRootAssembly Include="AntDesign" />
+  <TrimmerRootAssembly Include="Microsoft.AspNetCore.Components.QuickGrid" />
+  <TrimmerRootAssembly Include="NetTopologySuite" />
+  <TrimmerRootAssembly Include="NetTopologySuite.IO.GeoJSON" />
+</ItemGroup>
 
 </Project>
