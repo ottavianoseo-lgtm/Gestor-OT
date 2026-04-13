@@ -1,0 +1,215 @@
+@page "/admin/tenants"
+@layout GestorOT.Client.Layout.AdminDashboardLayout
+@using Microsoft.AspNetCore.Components.QuickGrid
+@using GestorOT.Shared.Dtos
+@using GestorOT.Shared.Validation
+@inject HttpClient Http
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Gestión de Empresas</h1>
+        <span class="page-subtitle">@_tenants.Count empresas registradas</span>
+    </div>
+    <button class="btn-admin btn-admin-primary" @onclick="OpenCreateModal">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>
+        </svg>
+        Nueva Empresa
+    </button>
+</div>
+
+<div class="glass-card">
+    @if (_loading)
+    {
+        <div style="text-align: center; padding: 40px; color: rgba(255,255,255,0.4);">
+            <div style="margin-bottom: 8px;">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation: spin 1s linear infinite;"><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"/><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"/><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"/></svg>
+            </div>
+            Cargando empresas...
+        </div>
+    }
+    else if (_error != null)
+    {
+        <div style="background: rgba(231,76,60,0.1); border: 1px solid rgba(231,76,60,0.2); border-radius: 8px; padding: 14px; color: rgba(231,76,60,0.9); font-size: 13px;">
+            @_error
+        </div>
+    }
+    else
+    {
+        <QuickGrid Items="@_tenants.AsQueryable()" Pagination="@_pagination" Class="admin-quickgrid">
+            <TemplateColumn Title="Empresa" Sortable="true" SortBy="@(GridSort<TenantDto>.ByAscending(t => t.Name))">
+                <div style="font-weight: 600; color: rgba(255,255,255,0.9);">@context.Name</div>
+            </TemplateColumn>
+            <TemplateColumn Title="Gestor Max Integration">
+                <div style="display: flex; flex-direction: column; gap: 4px;">
+                    <div style="display: flex; align-items: center; gap: 6px; font-size: 11px;">
+                        <span style="color: rgba(255,255,255,0.4);">API Key:</span>
+                        @if (!string.IsNullOrEmpty(context.GestorMaxApiKeyEncrypted))
+                        {
+                            <span class="badge badge-active" style="padding: 1px 6px;">Configurada</span>
+                        }
+                        else
+                        {
+                            <span class="badge badge-locked" style="padding: 1px 6px;">No configurada</span>
+                        }
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 6px; font-size: 11px;">
+                        <span style="color: rgba(255,255,255,0.4);">DB ID:</span>
+                        <span style="color: rgba(255,255,255,0.7); font-family: monospace;">@(context.GestorMaxDatabaseId ?? "—")</span>
+                    </div>
+                </div>
+            </TemplateColumn>
+            <PropertyColumn Property="@(t => t.CreatedAt)" Title="Fecha Alta" Format="dd/MM/yyyy" Sortable="true" />
+            <TemplateColumn Title="Acciones">
+                <div style="display: flex; gap: 4px;">
+                    <button class="btn-icon" title="Editar" @onclick="() => OpenEditModal(context)">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                    </button>
+                </div>
+            </TemplateColumn>
+        </QuickGrid>
+
+        <div class="admin-paginator">
+            <Paginator State="@_pagination" />
+        </div>
+    }
+</div>
+
+@if (_modalVisible)
+{
+    <div style="position: fixed; inset: 0; z-index: 1000; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.6); backdrop-filter: blur(4px);" @onclick="CloseModal">
+        <div style="background: #1e1e2e; border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 28px; width: 480px; max-width: 90vw;" @onclick:stopPropagation>
+            <h3 style="color: rgba(255,255,255,0.9); font-size: 16px; font-weight: 600; margin: 0 0 20px;">
+                @(_editingTenant != null ? "Editar Empresa" : "Nueva Empresa")
+            </h3>
+
+            <EditForm Model="_formModel" OnValidSubmit="SaveTenant">
+                <DataAnnotationsValidator />
+
+                <div style="margin-bottom: 14px;">
+                    <label style="display: block; color: rgba(255,255,255,0.5); font-size: 12px; margin-bottom: 4px;">Nombre Empresa</label>
+                    <InputText @bind-Value="_formModel.Name" class="search-input" style="width: 100%; box-sizing: border-box; padding-left: 14px;" placeholder="Ej: Agro S.A." />
+                    <ValidationMessage For="() => _formModel.Name" />
+                </div>
+
+                <div style="margin-top: 24px; padding-top: 16px; border-top: 1px solid rgba(255,255,255,0.06);">
+                    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#E74C3C" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+                        <h4 style="color: rgba(255,255,255,0.8); font-size: 13px; font-weight: 600; margin: 0;">Configuración Gestor Max ERP</h4>
+                    </div>
+
+                    <div style="margin-bottom: 14px;">
+                        <label style="display: block; color: rgba(255,255,255,0.5); font-size: 12px; margin-bottom: 4px;">Gestor Max API Key</label>
+                        <InputText @bind-Value="_formModel.GestorMaxApiKey" class="search-input" style="width: 100%; box-sizing: border-box; padding-left: 14px;" type="password" placeholder="@(_editingTenant != null ? "Dejar vacío para no cambiar" : "Ingrese API Key")" />
+                        <ValidationMessage For="() => _formModel.GestorMaxApiKey" />
+                    </div>
+
+                    <div style="margin-bottom: 14px;">
+                        <label style="display: block; color: rgba(255,255,255,0.5); font-size: 12px; margin-bottom: 4px;">Gestor Max Database ID</label>
+                        <InputText @bind-Value="_formModel.GestorMaxDatabaseId" class="search-input" style="width: 100%; box-sizing: border-box; padding-left: 14px;" placeholder="Ej: 12345" />
+                        <ValidationMessage For="() => _formModel.GestorMaxDatabaseId" />
+                    </div>
+                </div>
+
+                <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 24px;">
+                    <button type="button" class="btn-admin btn-admin-ghost" @onclick="CloseModal">Cancelar</button>
+                    <button type="submit" class="btn-admin btn-admin-primary">Guardar</button>
+                </div>
+            </EditForm>
+        </div>
+    </div>
+}
+
+<style>
+    @@keyframes spin {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
+    }
+</style>
+
+@code {
+    private List<TenantDto> _tenants = new();
+    private bool _loading = true;
+    private string? _error;
+
+    private PaginationState _pagination = new PaginationState { ItemsPerPage = 15 };
+
+    private bool _modalVisible;
+    private TenantDto? _editingTenant;
+    private TenantFormDto _formModel = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadTenants();
+    }
+
+    private async Task LoadTenants()
+    {
+        _loading = true;
+        _error = null;
+        try
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+            _tenants = await Http.GetFromJsonAsync("api/tenants",
+                AppJsonSerializerContext.Default.ListTenantDto, cts.Token) ?? new();
+        }
+        catch (Exception ex)
+        {
+            _error = $"Error al cargar empresas: {ex.Message}";
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private void OpenCreateModal()
+    {
+        _editingTenant = null;
+        _formModel = new TenantFormDto();
+        _modalVisible = true;
+    }
+
+    private void OpenEditModal(TenantDto tenant)
+    {
+        _editingTenant = tenant;
+        _formModel = new TenantFormDto
+        {
+            Name = tenant.Name,
+            GestorMaxDatabaseId = tenant.GestorMaxDatabaseId,
+            GestorMaxApiKey = null // No mostramos la API Key existente por seguridad
+        };
+        _modalVisible = true;
+    }
+
+    private void CloseModal()
+    {
+        _modalVisible = false;
+        _editingTenant = null;
+    }
+
+    private async Task SaveTenant()
+    {
+        try
+        {
+            if (_editingTenant != null)
+            {
+                var request = new UpdateTenantRequest(_formModel.Name, _formModel.GestorMaxApiKey, _formModel.GestorMaxDatabaseId);
+                await Http.PutAsJsonAsync($"api/tenants/{_editingTenant.Id}", request, AppJsonSerializerContext.Default.UpdateTenantRequest);
+            }
+            else
+            {
+                var request = new CreateTenantRequest(_formModel.Name, _formModel.GestorMaxApiKey, _formModel.GestorMaxDatabaseId);
+                await Http.PostAsJsonAsync("api/tenants", request, AppJsonSerializerContext.Default.CreateTenantRequest);
+            }
+
+            CloseModal();
+            await LoadTenants();
+        }
+        catch (Exception ex)
+        {
+            _error = $"Error al guardar: {ex.Message}";
+        }
+    }
+}

@@ -1,0 +1,8 @@
+<Solution>
+  <Project Path="src/GestorOT.Domain/GestorOT.Domain.csproj" />
+  <Project Path="src/GestorOT.Application/GestorOT.Application.csproj" />
+  <Project Path="src/GestorOT.Infrastructure/GestorOT.Infrastructure.csproj" />
+  <Project Path="src/GestorOT.Shared/GestorOT.Shared.csproj" />
+  <Project Path="src/GestorOT.Client/GestorOT.Client.csproj" />
+  <Project Path="src/GestorOT.Api/GestorOT.Api.csproj" />
+</Solution>

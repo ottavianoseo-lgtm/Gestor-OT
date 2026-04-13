@@ -1,0 +1,461 @@
+/* ============================================================
+   GestorOT - Main Layout Styles
+   ============================================================ */
+
+/* --- Ant Design Overrides --- */
+
+.ant-layout {
+    background: transparent !important;
+}
+
+.ant-layout-sider,
+.ant-layout-sider-dark,
+.ant-layout-sider-has-trigger,
+aside.ant-layout-sider {
+    background: rgba(30, 30, 46, 0.20) !important;
+    backdrop-filter: blur(20px) !important;
+    -webkit-backdrop-filter: blur(20px) !important;
+}
+
+.ant-layout-sider-children {
+    background: transparent !important;
+}
+
+.ant-layout-sider-trigger {
+    background: rgba(255,255,255,0.04) !important;
+    border-top: 1px solid rgba(255,255,255,0.06) !important;
+}
+
+.ant-layout-content {
+    background: transparent !important;
+}
+
+/* --- Menu --- */
+
+.ant-menu-dark,
+.ant-menu-dark .ant-menu-sub,
+.ant-menu.ant-menu-dark,
+.ant-menu.ant-menu-dark .ant-menu-sub,
+.ant-menu-dark .ant-menu-inline.ant-menu-sub,
+.ant-menu.ant-menu-dark .ant-menu-item-group-title {
+    background: transparent !important;
+    background-color: transparent !important;
+}
+
+.ant-menu-dark .ant-menu-item {
+    color: rgba(255,255,255,0.55) !important;
+    margin: 2px 0 !important;
+    border-radius: 0 !important;
+    height: 42px !important;
+    line-height: 42px !important;
+}
+
+.ant-menu-dark .ant-menu-item .anticon {
+    color: rgba(255,255,255,0.4) !important;
+    font-size: 16px !important;
+}
+
+.ant-menu-dark .ant-menu-item:hover {
+    background: rgba(255,255,255,0.04) !important;
+}
+
+.ant-menu-dark .ant-menu-item:hover .anticon,
+.ant-menu-dark .ant-menu-item:hover span {
+    color: rgba(255,255,255,0.85) !important;
+}
+
+.ant-menu-dark .ant-menu-item-selected {
+    background: linear-gradient(90deg, rgba(231,76,60,0.2), rgba(231,76,60,0.05)) !important;
+    border-right: 3px solid #E74C3C !important;
+    border-radius: 0 !important;
+}
+
+.ant-menu-dark .ant-menu-item-selected .anticon,
+.ant-menu-dark .ant-menu-item-selected span {
+    color: #E74C3C !important;
+}
+
+/* --- Tables --- */
+
+.ant-table {
+    background: transparent !important;
+    color: rgba(255,255,255,0.85) !important;
+}
+
+.ant-table-thead > tr > th {
+    background: rgba(255,255,255,0.06) !important;
+    color: rgba(255,255,255,0.5) !important;
+    font-size: 11px !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.5px !important;
+    font-weight: 600 !important;
+    border-bottom: 1px solid rgba(255,255,255,0.06) !important;
+    padding: 10px 16px !important;
+}
+
+.ant-table-tbody > tr > td {
+    border-bottom: 1px solid rgba(255,255,255,0.04) !important;
+    color: rgba(255,255,255,0.8) !important;
+    padding: 12px 16px !important;
+}
+
+.ant-table-tbody > tr:hover > td {
+    background: rgba(255,255,255,0.04) !important;
+}
+
+.ant-table-tbody > tr {
+    background: transparent !important;
+}
+
+.ant-table-column-sorter {
+    color: rgba(255,255,255,0.3) !important;
+}
+
+/* --- Pagination --- */
+
+.ant-pagination .ant-pagination-item {
+    background: rgba(255,255,255,0.06) !important;
+    border: 1px solid rgba(255,255,255,0.1) !important;
+}
+
+.ant-pagination .ant-pagination-item a {
+    color: rgba(255,255,255,0.7) !important;
+}
+
+.ant-pagination .ant-pagination-item-active {
+    background: #E74C3C !important;
+    border-color: #E74C3C !important;
+}
+
+.ant-pagination .ant-pagination-item-active a {
+    color: #fff !important;
+}
+
+/* --- Cards --- */
+
+.ant-card {
+    background: rgba(255,255,255,0.04) !important;
+    border: 1px solid rgba(255,255,255,0.08) !important;
+    border-radius: 14px !important;
+    color: rgba(255,255,255,0.85) !important;
+}
+
+.ant-card-head {
+    border-bottom: 1px solid rgba(255,255,255,0.06) !important;
+    color: rgba(255,255,255,0.85) !important;
+}
+
+.ant-card-head-title {
+    color: rgba(255,255,255,0.85) !important;
+}
+
+/* --- Statistics --- */
+
+.ant-statistic-title {
+    color: rgba(255,255,255,0.45) !important;
+}
+
+.ant-statistic-content {
+    color: #FFFFFF !important;
+}
+
+/* --- Modals --- */
+
+.ant-modal-content {
+    background: #1E1E2E !important;
+    border: 1px solid rgba(255,255,255,0.1) !important;
+    border-radius: 14px !important;
+}
+
+.ant-modal-header {
+    background: transparent !important;
+    border-bottom: 1px solid rgba(255,255,255,0.08) !important;
+}
+
+.ant-modal-title {
+    color: #fff !important;
+    font-weight: 700 !important;
+}
+
+.ant-modal-close-x {
+    color: rgba(255,255,255,0.5) !important;
+}
+
+.ant-modal-body {
+    color: rgba(255,255,255,0.85) !important;
+}
+
+.ant-modal-footer {
+    border-top: 1px solid rgba(255,255,255,0.08) !important;
+}
+
+/* --- Drawers --- */
+
+.ant-drawer-content, .ant-drawer-wrapper-body, .ant-drawer-body {
+    background: #1A1A2E !important;
+    color: rgba(255,255,255,0.85) !important;
+}
+
+.ant-drawer-header {
+    background: #1A1A2E !important;
+    border-bottom: 1px solid rgba(255,255,255,0.08) !important;
+}
+
+.ant-drawer-title {
+    color: #fff !important;
+    font-weight: 700 !important;
+}
+
+.ant-drawer-close {
+    color: rgba(255,255,255,0.5) !important;
+}
+
+/* --- Forms --- */
+
+.ant-form-item-label > label {
+    color: rgba(255,255,255,0.7) !important;
+    font-size: 12px !important;
+    font-weight: 600 !important;
+}
+
+.ant-input, .ant-input-affix-wrapper, .ant-select-selector, .ant-picker, .ant-input-number {
+    background: rgba(255,255,255,0.06) !important;
+    border-color: rgba(255,255,255,0.12) !important;
+    color: rgba(255,255,255,0.85) !important;
+    border-radius: 8px !important;
+}
+
+.ant-input::placeholder, .ant-select-selection-placeholder {
+    color: rgba(255,255,255,0.3) !important;
+}
+
+.ant-input:hover, .ant-input:focus, .ant-input-affix-wrapper:hover, .ant-input-affix-wrapper:focus,
+.ant-select-selector:hover, .ant-picker:hover {
+    border-color: #E74C3C !important;
+}
+
+.ant-input-number-input {
+    color: rgba(255,255,255,0.85) !important;
+}
+
+select option {
+    background-color: #1E1E2E !important;
+    color: #ffffff !important;
+}
+
+/* For browsers that don't respect background on option, we style the select itself on focus */
+select:focus option {
+    background-color: #1E1E2E !important;
+}
+
+input::placeholder, textarea::placeholder {
+    color: rgba(255,255,255,0.3) !important;
+}
+
+/* --- Select / Dropdown --- */
+
+.ant-select-dropdown {
+    background: #1E1E2E !important;
+    border: 1px solid rgba(255,255,255,0.1) !important;
+}
+
+.ant-select-item {
+    color: rgba(255,255,255,0.7) !important;
+}
+
+.ant-select-item-option-active,
+.ant-select-item-option-selected {
+    background: rgba(231,76,60,0.15) !important;
+    color: #E74C3C !important;
+}
+
+/* --- Radio --- */
+
+.ant-radio-wrapper {
+    color: rgba(255,255,255,0.7) !important;
+}
+
+.ant-radio-checked .ant-radio-inner {
+    border-color: #E74C3C !important;
+    background: #E74C3C !important;
+}
+
+/* --- Picker --- */
+
+.ant-picker-panel-container {
+    background: #1E1E2E !important;
+}
+
+.ant-picker-header, .ant-picker-content th {
+    color: rgba(255,255,255,0.7) !important;
+}
+
+.ant-picker-cell-in-view .ant-picker-cell-inner {
+    color: rgba(255,255,255,0.85) !important;
+}
+
+.ant-picker-cell-selected .ant-picker-cell-inner {
+    background: #E74C3C !important;
+}
+
+/* --- Popover / Popconfirm --- */
+
+.ant-popover-inner {
+    background: #1E1E2E !important;
+    border: 1px solid rgba(255,255,255,0.1) !important;
+}
+
+.ant-popover-message-title {
+    color: rgba(255,255,255,0.85) !important;
+}
+
+/* --- Buttons --- */
+
+.ant-btn-default {
+    background: rgba(255,255,255,0.06) !important;
+    border-color: rgba(255,255,255,0.15) !important;
+    color: rgba(255,255,255,0.7) !important;
+}
+
+/* --- Messages --- */
+
+.ant-message-notice-content {
+    background: #1E1E2E !important;
+    border: 1px solid rgba(255,255,255,0.1) !important;
+    color: rgba(255,255,255,0.85) !important;
+    border-radius: 10px !important;
+}
+
+/* --- Upload --- */
+
+.ant-upload {
+    background: rgba(255,255,255,0.04) !important;
+    border-color: rgba(255,255,255,0.12) !important;
+    border-radius: 8px !important;
+}
+
+.ant-upload-text {
+    color: rgba(255,255,255,0.7) !important;
+}
+
+/* --- Misc Components --- */
+
+.ant-alert {
+    border-radius: 10px !important;
+}
+
+.ant-spin-text {
+    color: rgba(255,255,255,0.6) !important;
+}
+
+.ant-empty-description {
+    color: rgba(255,255,255,0.4) !important;
+}
+
+/* ============================================================
+   GestorOT - Layout Components
+   ============================================================ */
+
+/* --- Page Structure --- */
+
+.page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 20px;
+}
+
+.page-title {
+    margin: 0;
+    color: #FFFFFF;
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+}
+
+.page-subtitle {
+    color: rgba(255,255,255,0.4);
+    font-size: 13px;
+}
+
+.glass-card {
+    background: rgba(255,255,255,0.04);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 14px;
+    padding: 20px;
+    margin-bottom: 20px;
+}
+
+/* --- Tenant Badge --- */
+
+.tenant-badge {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 10px 14px;
+    padding: 8px 12px;
+    border-radius: 10px;
+    background: rgba(231,76,60,0.08);
+    border: 1px solid rgba(231,76,60,0.15);
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.tenant-badge:hover {
+    background: rgba(231,76,60,0.15);
+    border-color: rgba(231,76,60,0.3);
+}
+
+/* ============================================================
+   Global Loading Indicator
+   ============================================================ */
+
+.global-loading-bar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, #E74C3C, #C0392B, #E74C3C);
+    background-size: 200% 100%;
+    animation: loading-bar 1.5s ease-in-out infinite;
+    z-index: 9999;
+}
+
+@keyframes loading-bar {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+}
+
+.global-toast {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    z-index: 9998;
+    max-width: 400px;
+    padding: 12px 20px;
+    border-radius: 10px;
+    font-size: 13px;
+    font-weight: 500;
+    backdrop-filter: blur(10px);
+    animation: toast-in 0.3s ease;
+}
+
+.global-toast.toast-error {
+    background: rgba(231, 76, 60, 0.15);
+    border: 1px solid rgba(231, 76, 60, 0.4);
+    color: #E74C3C;
+}
+
+.global-toast.toast-success {
+    background: rgba(46, 204, 113, 0.15);
+    border: 1px solid rgba(46, 204, 113, 0.4);
+    color: #2ECC71;
+}
+
+@keyframes toast-in {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}

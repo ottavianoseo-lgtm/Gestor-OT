@@ -1,0 +1,233 @@
+@inherits LayoutComponentBase
+@using AntDesign
+@inject NavigationManager Nav
+@inject GestorOT.Client.Services.TenantState TenantState
+@inject GestorOT.Client.Services.CampaignState CampaignState
+@inject GestorOT.Client.Services.LoadingService Loading
+@inject HttpClient Http
+@using System.Net.Http.Json
+
+@if (Loading.IsLoading)
+{
+    <div class="global-loading-bar"></div>
+}
+
+@if (!string.IsNullOrEmpty(Loading.ErrorMessage))
+{
+    <div class="global-toast toast-error">@Loading.ErrorMessage</div>
+}
+else if (!string.IsNullOrEmpty(Loading.SuccessMessage))
+{
+    <div class="global-toast toast-success">@Loading.SuccessMessage</div>
+}
+
+<Layout Style="min-height: 100vh; background: transparent;">
+    <Sider
+        Width="260"
+        CollapsedWidth="72"
+        Collapsible
+        @bind-Collapsed="@_collapsed"
+        Style="background: rgba(30, 30, 46, 0.20); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border-right: 1px solid rgba(255,255,255,0.08); z-index: 10; height: 100vh; position: sticky; top: 0;">
+
+        <div style="height: calc(100vh - 48px); overflow-y: auto; overflow-x: hidden;">
+            <div style="height: 64px; display: flex; align-items: center; justify-content: center; padding: 0 16px; border-bottom: 1px solid rgba(255,255,255,0.06);">
+                <img src="images/logo.svg" alt="Gestor OT" style="width: 200px; object-fit: contain;" />
+            </div>
+
+            @if (TenantState.IsSelected && !_collapsed)
+            {
+                <div class="tenant-badge" @onclick="SwitchTenant">
+                    <div style="width: 28px; height: 28px; border-radius: 7px; background: linear-gradient(135deg, #E74C3C, #C0392B); display: flex; align-items: center; justify-content: center; font-weight: 700; color: #fff; font-size: 12px; flex-shrink: 0;">
+                        @TenantState.CurrentTenant!.Name[0]
+                    </div>
+                    <div style="flex: 1; min-width: 0;">
+                        <div style="color: rgba(255,255,255,0.7); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">@TenantState.CurrentTenant.Name</div>
+                    </div>
+                    <Icon Type="swap" Theme="IconThemeType.Outline" Style="color: rgba(255,255,255,0.3); font-size: 12px; cursor: pointer;" />
+                </div>
+            }
+
+            @if (!_collapsed)
+            {
+                <CampaignSelector />
+            }
+
+            @if (!_collapsed)
+            {
+                <div style="padding: 16px 20px 8px; font-size: 10px; text-transform: uppercase; letter-spacing: 1.5px; color: rgba(255,255,255,0.3); font-weight: 600;">
+                    Principal
+                </div>
+            }
+
+            <Menu Theme="MenuTheme.Dark" Mode="MenuMode.Inline" DefaultSelectedKeys="@(new[] { _activeKey })"
+                  Style="background: transparent; border-right: none;">
+                <MenuItem Key="1" RouterLink="/" Style="@MenuItemStyle">
+                    <Icon Type="dashboard" Theme="IconThemeType.Outline" />
+                    <span>Dashboard</span>
+                </MenuItem>
+            </Menu>
+
+            @if (!_collapsed)
+            {
+                <div style="padding: 16px 20px 8px; font-size: 10px; text-transform: uppercase; letter-spacing: 1.5px; color: rgba(255,255,255,0.3); font-weight: 600;">
+                    Operaciones
+                </div>
+            }
+
+            <Menu Theme="MenuTheme.Dark" Mode="MenuMode.Inline" DefaultSelectedKeys="@(new[] { _activeKey })"
+                  Style="background: transparent; border-right: none;">
+                <MenuItem Key="10" RouterLink="/planner" Style="@MenuItemStyle">
+                    <Icon Type="schedule" Theme="IconThemeType.Outline" />
+                    <span>Work Planner</span>
+                </MenuItem>
+                <MenuItem Key="4" RouterLink="/workorders" Style="@MenuItemStyle">
+                    <Icon Type="file-text" Theme="IconThemeType.Outline" />
+                    <span>Órdenes de Trabajo</span>
+                </MenuItem>
+                <MenuItem Key="11" RouterLink="/labores-sueltas" Style="@MenuItemStyle">
+                    <Icon Type="thunderbolt" Theme="IconThemeType.Outline" />
+                    <span>Labores Sueltas</span>
+                    @if (_unassignedCount > 0)
+                    {
+                        <Badge Count="_unassignedCount" Style="margin-left: 8px;" />
+                    }
+                </MenuItem>
+            </Menu>
+
+            @if (!_collapsed)
+            {
+                <div style="padding: 16px 20px 8px; font-size: 10px; text-transform: uppercase; letter-spacing: 1.5px; color: rgba(255,255,255,0.3); font-weight: 600;">
+                    Gestión Agrícola
+                </div>
+            }
+
+            <Menu Theme="MenuTheme.Dark" Mode="MenuMode.Inline" DefaultSelectedKeys="@(new[] { _activeKey })"
+                  Style="background: transparent; border-right: none;">
+                <MenuItem Key="9" RouterLink="/campaigns" Style="@MenuItemStyle">
+                    <Icon Type="calendar" Theme="IconThemeType.Outline" />
+                    <span>Campañas</span>
+                </MenuItem>
+                <MenuItem Key="7" RouterLink="/estrategias" Style="@MenuItemStyle">
+                    <Icon Type="experiment" Theme="IconThemeType.Outline" />
+                    <span>Estrategias</span>
+                </MenuItem>
+                <MenuItem Key="2" RouterLink="/fields" Style="@MenuItemStyle">
+                    <Icon Type="environment" Theme="IconThemeType.Outline" />
+                    <span>Campos</span>
+                </MenuItem>
+                <MenuItem Key="3" RouterLink="/lots" Style="@MenuItemStyle">
+                    <Icon Type="appstore" Theme="IconThemeType.Outline" />
+                    <span>Lotes</span>
+                </MenuItem>
+            </Menu>
+
+            @if (!_collapsed)
+            {
+                <div style="padding: 16px 20px 8px; font-size: 10px; text-transform: uppercase; letter-spacing: 1.5px; color: rgba(255,255,255,0.3); font-weight: 600;">
+                    Análisis
+                </div>
+            }
+
+            <Menu Theme="MenuTheme.Dark" Mode="MenuMode.Inline" DefaultSelectedKeys="@(new[] { _activeKey })"
+                  Style="background: transparent; border-right: none;">
+                <MenuItem Key="5" RouterLink="/mapa" Style="@MenuItemStyle">
+                    <Icon Type="global" Theme="IconThemeType.Outline" />
+                    <span>Explorador GIS</span>
+                </MenuItem>
+            </Menu>
+
+            @if (!_collapsed)
+            {
+                <div style="padding: 16px 20px 8px; font-size: 10px; text-transform: uppercase; letter-spacing: 1.5px; color: rgba(255,255,255,0.3); font-weight: 600;">
+                    Recursos y Logística
+                </div>
+            }
+
+            <Menu Theme="MenuTheme.Dark" Mode="MenuMode.Inline" DefaultSelectedKeys="@(new[] { _activeKey })"
+                  Style="background: transparent; border-right: none;">
+                <MenuItem Key="6" RouterLink="/inventory" Style="@MenuItemStyle">
+                    <Icon Type="database" Theme="IconThemeType.Outline" />
+                    <span>Inventario</span>
+                </MenuItem>
+                <MenuItem Key="12" RouterLink="/erp-directory" Style="@MenuItemStyle">
+                    <Icon Type="contacts" Theme="IconThemeType.Outline" />
+                    <span>Directorio ERP</span>
+                </MenuItem>
+                <MenuItem Key="13" RouterLink="/personal" Style="@MenuItemStyle">
+                    <Icon Type="team" Theme="IconThemeType.Outline" />
+                    <span>Personal Activo</span>
+                </MenuItem>
+            </Menu>
+
+            @if (!_collapsed)
+            {
+                <div style="padding: 16px 20px 8px; font-size: 10px; text-transform: uppercase; letter-spacing: 1.5px; color: rgba(255,255,255,0.3); font-weight: 600;">
+                    Sistema
+                </div>
+            }
+
+            <Menu Theme="MenuTheme.Dark" Mode="MenuMode.Inline" DefaultSelectedKeys="@(new[] { _activeKey })"
+                  Style="background: transparent; border-right: none; margin-bottom: 48px;">
+                <MenuItem Key="8" RouterLink="/admin" Style="@MenuItemStyle">
+                    <Icon Type="setting" Theme="IconThemeType.Outline" />
+                    <span>Administración</span>
+                </MenuItem>
+            </Menu>
+        </div>
+    </Sider>
+
+    <Layout Style="background: transparent;">
+        <Content Style="@ContentStyle">
+            @Body
+        </Content>
+    </Layout>
+</Layout>
+
+<TenantSelector />
+
+@code {
+    private bool _collapsed = false;
+    private string _activeKey = "1";
+    private int _unassignedCount;
+    private const string MenuItemStyle = "font-size: 13px;";
+
+    private bool IsDashboard => Nav.Uri == Nav.BaseUri || Nav.Uri == Nav.BaseUri.TrimEnd('/');
+
+    private string ContentStyle => IsDashboard
+        ? "position: relative; padding: 0; overflow: hidden; flex: 1;"
+        : "min-height: 280px; position: relative; margin: 20px;";
+
+    protected override void OnInitialized()
+    {
+        TenantState.OnChange += StateHasChanged;
+        CampaignState.OnChange += StateHasChanged;
+        Loading.OnChange += StateHasChanged;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await LoadUnassignedCount();
+        }
+    }
+
+    private async Task LoadUnassignedCount()
+    {
+        try
+        {
+            var count = await Http.GetFromJsonAsync<int>("api/labors/unassigned/count");
+            _unassignedCount = count;
+            StateHasChanged();
+        }
+        catch (HttpRequestException ex)
+        {
+            Console.Error.WriteLine($"Error loading unassigned count: {ex.Message}");
+        }
+    }
+
+    private void SwitchTenant()
+    {
+        TenantState.Clear();
+    }
+}

@@ -1,0 +1,46 @@
+<Project Sdk="Microsoft.NET.Sdk.BlazorWebAssembly">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <NoDefaultLaunchSettingsFile>true</NoDefaultLaunchSettingsFile>
+    <StaticWebAssetProjectMode>Default</StaticWebAssetProjectMode>
+    <BlazorDisableThrowNavigationException>true</BlazorDisableThrowNavigationException>
+    <InvariantGlobalization>false</InvariantGlobalization>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <RunAOTCompilation>true</RunAOTCompilation>
+    <WasmStripILAfterAOT>true</WasmStripILAfterAOT>
+    <WasmEnableSIMD>true</WasmEnableSIMD>
+    <PublishTrimmed>true</PublishTrimmed>
+    <TrimMode>link</TrimMode>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="AntDesign" Version="1.5.1" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.QuickGrid" Version="10.0.1" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly" Version="10.0.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\GestorOT.Shared\GestorOT.Shared.csproj" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(Configuration)' == 'Release'">
+    <TrimmerRootAssembly Include="AntDesign" />
+    <TrimmerRootAssembly Include="Microsoft.AspNetCore.Components.QuickGrid" />
+    <TrimmerRootAssembly Include="NetTopologySuite" />
+    <TrimmerRootAssembly Include="NetTopologySuite.IO.GeoJSON" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(Configuration)' == 'Release'">
+  <TrimmerRootAssembly Include="GestorOT.Client" />
+  
+  <TrimmerRootAssembly Include="AntDesign" />
+  <TrimmerRootAssembly Include="Microsoft.AspNetCore.Components.QuickGrid" />
+  <TrimmerRootAssembly Include="NetTopologySuite" />
+  <TrimmerRootAssembly Include="NetTopologySuite.IO.GeoJSON" />
+</ItemGroup>
+
+</Project>

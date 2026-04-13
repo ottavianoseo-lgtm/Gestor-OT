@@ -1,0 +1,59 @@
+@page "/personal"
+@using GestorOT.Shared.Dtos
+@using System.Net.Http.Json
+@using AntDesign
+@inject HttpClient Http
+@inject IMessageService Message
+
+<PageTitle>Personal - GestorOT</PageTitle>
+
+<div class="page-header">
+    <div>
+        <h2 class="page-title">Personal de la Empresa</h2>
+        <span class="page-subtitle">Personal activo y contactos sincronizados.</span>
+    </div>
+</div>
+
+@if (_loading)
+{
+    <div style="text-align: center; padding: 60px;">
+        <Spin Size="@SpinSize.Large" Tip="Cargando personal..." />
+    </div>
+}
+else
+{
+    <Table DataSource="_contacts" Size="@TableSize.Middle">
+        <PropertyColumn Property="c => c.FullName" Title="Nombre Completo" />
+        <PropertyColumn Property="c => c.Position" Title="Cargo" />
+        <PropertyColumn Property="c => c.Role" Title="Rol" />
+        <PropertyColumn Property="c => c.Email" Title="Email" />
+        <PropertyColumn Property="c => c.VatNumber" Title="CUIT/VAT" />
+    </Table>
+}
+
+@code {
+    private List<ContactDto> _contacts = new();
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        _loading = true;
+        try
+        {
+            _contacts = await Http.GetFromJsonAsync<List<ContactDto>>("api/catalogs/contacts") ?? new();
+        }
+        catch (Exception ex)
+        {
+            Message.Error($"Error cargando personal: {ex.Message}");
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+}

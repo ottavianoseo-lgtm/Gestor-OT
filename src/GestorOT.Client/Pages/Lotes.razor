@@ -1,0 +1,277 @@
+@page "/lots"
+@using GestorOT.Shared.Dtos
+@using GestorOT.Shared
+@using System.Net.Http.Json
+@using AntDesign
+@inject HttpClient Http
+@inject IMessageService Message
+@inject GestorOT.Client.Services.CampaignState CampaignState
+@inject GestorOT.Client.Services.TenantState TenantState
+@implements IDisposable
+
+<PageTitle>Lotes - GestorOT</PageTitle>
+
+<div class="page-header">
+    <div>
+        <h2 class="page-title">Gestión de Lotes</h2>
+        <span class="page-subtitle">@_lots.Count lotes registrados</span>
+    </div>
+    <Button Type="@ButtonType.Primary" OnClick="OpenCreateModal"
+            Style="background: #E74C3C; border-color: #E74C3C; border-radius: 8px; font-weight: 600;">
+        <Icon Type="plus" Theme="IconThemeType.Outline" /> Nuevo Lote
+    </Button>
+</div>
+
+@if (!string.IsNullOrEmpty(_errorMessage))
+{
+    <Alert Type="@AlertType.Error" Message="@_errorMessage" ShowIcon="true" Style="margin-bottom: 16px;" />
+}
+
+<div class="glass-card">
+    <Table TItem="LotDto" DataSource="_lots" Loading="_loading" Size="@TableSize.Small"
+           ScrollX="1000">
+        <PropertyColumn Property="c => c.Name" Title="Nombre" Sortable>
+            <span style="font-weight: 600;">@context.Name</span>
+        </PropertyColumn>
+        <PropertyColumn Property="c => c.FieldName" Title="Campo" Sortable />
+        <PropertyColumn Property="c => c.Status" Title="Estado">
+            <Tag Color="@(context.Status == "Active" ? "green" : "red")" Style="border-radius: 12px; font-size: 11px; padding: 2px 10px;">
+                @(context.Status == "Active" ? "Activo" : "Inactivo")
+            </Tag>
+        </PropertyColumn>
+        <PropertyColumn Property="c => c.Area" Title="Área Dibujada (ha)">
+            <span>@context.Area.ToString("N2") ha</span>
+        </PropertyColumn>
+        <ActionColumn Title="Geometría">
+            @{
+                var hasGeometry = !string.IsNullOrEmpty(context.WktGeometry);
+            }
+            <Tag Color="@(hasGeometry ? "blue" : "default")" Style="border-radius: 12px; font-size: 11px; padding: 2px 10px;">
+                @(hasGeometry ? "Con geometría" : "Sin geometría")
+            </Tag>
+        </ActionColumn>
+        <ActionColumn Title="Acciones" Width="160">
+            <Space>
+                <SpaceItem>
+                    <Button Size="@ButtonSize.Small" OnClick="() => OpenEditModal(context)"
+                            Style="border-radius: 6px; border-color: rgba(255,255,255,0.15); color: rgba(255,255,255,0.7);">
+                        <Icon Type="edit" Theme="IconThemeType.Outline" />
+                    </Button>
+                </SpaceItem>
+                <SpaceItem>
+                    <Popconfirm Title="¿Eliminar este lote? Se eliminarán las OTs asociadas."
+                                OnConfirm="() => DeleteLot(context.Id)"
+                                OkText="Eliminar" CancelText="Cancelar">
+                        <Button Danger Size="@ButtonSize.Small" Style="border-radius: 6px;">
+                            <Icon Type="delete" Theme="IconThemeType.Outline" />
+                        </Button>
+                    </Popconfirm>
+                </SpaceItem>
+            </Space>
+        </ActionColumn>
+    </Table>
+</div>
+
+<Modal Title="@(_isEditing ? "Editar Lote" : "Nuevo Lote")"
+       Visible="_modalVisible"
+       OnCancel="CloseModal"
+       OnOk="SaveLot"
+       OkText="@(_isEditing ? "Guardar" : "Crear")"
+       ConfirmLoading="_saving"
+       Width="520">
+    <Form @ref="_form" Model="_formModel" Layout="@FormLayout.Vertical">
+        <FormItem Label="Nombre del Lote">
+            <Input @bind-Value="_formModel.Name" Placeholder="Ej: Lote Norte A1" />
+        </FormItem>
+        <FormItem Label="Campo">
+            <Select TItem="FieldDto"
+                    TItemValue="Guid"
+                    DataSource="_availableFields"
+                    @bind-Value="_formModel.FieldId"
+                    LabelName="@nameof(FieldDto.Name)"
+                    ValueName="@nameof(FieldDto.Id)"
+                    Placeholder="Seleccionar campo"
+                    Style="width: 100%;"
+                    EnableSearch />
+        </FormItem>
+        <FormItem Label="Estado">
+            <RadioGroup @bind-Value="_formModel.Status">
+                <Radio Value="@("Active")">Activo</Radio>
+                <Radio Value="@("Inactive")">Inactivo</Radio>
+            </RadioGroup>
+        </FormItem>
+    </Form>
+</Modal>
+
+@code {
+    private List<LotDto> _lots = new();
+    private List<FieldDto> _availableFields = new();
+    private bool _loading = true;
+    private string? _errorMessage;
+    private bool _modalVisible;
+    private bool _isEditing;
+    private bool _saving;
+    private Guid _editingId;
+    private LotFormModel _formModel = new();
+    private Form<LotFormModel>? _form;
+
+    public class LotFormModel
+    {
+        public string Name { get; set; } = string.Empty;
+        public Guid FieldId { get; set; }
+        public string Status { get; set; } = "Active";
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        CampaignState.OnChange += OnCampaignChanged;
+        TenantState.OnChange += OnCampaignChanged;
+        await LoadData();
+    }
+
+    private void OnCampaignChanged()
+    {
+        InvokeAsync(async () => { await LoadData(); StateHasChanged(); });
+    }
+
+    public void Dispose()
+    {
+        CampaignState.OnChange -= OnCampaignChanged;
+        TenantState.OnChange -= OnCampaignChanged;
+    }
+
+    private async Task LoadData()
+    {
+        try
+        {
+            _loading = true;
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+            var lotsTask = Http.GetFromJsonAsync("api/lots",
+                AppJsonSerializerContext.Default.ListLotDto, cts.Token);
+            var fieldsTask = Http.GetFromJsonAsync("api/fields",
+                AppJsonSerializerContext.Default.ListFieldDto, cts.Token);
+
+            _lots = await lotsTask ?? new();
+            _availableFields = await fieldsTask ?? new();
+            _errorMessage = null;
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Error: {ex.Message}";
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private void OpenCreateModal()
+    {
+        _isEditing = false;
+        _formModel = new LotFormModel();
+        if (_availableFields.Count > 0)
+            _formModel.FieldId = _availableFields[0].Id;
+        _modalVisible = true;
+    }
+
+    private void OpenEditModal(LotDto lot)
+    {
+        _isEditing = true;
+        _editingId = lot.Id;
+        _formModel = new LotFormModel
+        {
+            Name = lot.Name,
+            FieldId = lot.FieldId,
+            Status = lot.Status
+        };
+        _modalVisible = true;
+    }
+
+    private void CloseModal()
+    {
+        _modalVisible = false;
+    }
+
+    private async Task SaveLot()
+    {
+        if (string.IsNullOrWhiteSpace(_formModel.Name))
+        {
+            Message.Warning("El nombre del lote es obligatorio.");
+            return;
+        }
+        if (_formModel.FieldId == Guid.Empty)
+        {
+            Message.Warning("Debe seleccionar un campo.");
+            return;
+        }
+
+        _saving = true;
+        try
+        {
+            var existingWkt = _isEditing
+                ? _lots.FirstOrDefault(l => l.Id == _editingId)?.WktGeometry
+                : null;
+
+            var dto = new LotDto(
+                _isEditing ? _editingId : Guid.Empty,
+                _formModel.FieldId,
+                _formModel.Name,
+                _formModel.Status,
+                existingWkt
+            );
+
+            HttpResponseMessage response;
+            if (_isEditing)
+            {
+                response = await Http.PutAsJsonAsync($"api/lots/{_editingId}",
+                    dto, AppJsonSerializerContext.Default.LotDto);
+            }
+            else
+            {
+                response = await Http.PostAsJsonAsync("api/lots",
+                    dto, AppJsonSerializerContext.Default.LotDto);
+            }
+
+            if (response.IsSuccessStatusCode)
+            {
+                Message.Success(_isEditing ? "Lote actualizado." : "Lote creado correctamente.");
+                _modalVisible = false;
+                await LoadData();
+            }
+            else
+            {
+                Message.Error($"Error al guardar: {response.StatusCode}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Message.Error($"Error: {ex.Message}");
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private async Task DeleteLot(Guid id)
+    {
+        try
+        {
+            var response = await Http.DeleteAsync($"api/lots/{id}");
+            if (response.IsSuccessStatusCode)
+            {
+                Message.Success("Lote eliminado correctamente.");
+                await LoadData();
+            }
+            else
+            {
+                Message.Error($"Error al eliminar: {response.StatusCode}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Message.Error($"Error: {ex.Message}");
+        }
+    }
+}

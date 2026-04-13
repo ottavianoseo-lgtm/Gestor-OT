@@ -1,0 +1,211 @@
+@page "/admin/tankmix"
+@layout GestorOT.Client.Layout.AdminDashboardLayout
+@inject HttpClient Http
+@inject IMessageService Message
+@using AntDesign
+@using GestorOT.Shared
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Reglas de Mezcla (Tank Mix)</h1>
+        <span class="page-subtitle">Reglas de incompatibilidad entre productos agroquímicos</span>
+    </div>
+    <Button Type="@ButtonType.Primary" OnClick="OpenCreateModal"
+            Style="background: #E74C3C; border-color: #E74C3C; border-radius: 8px; font-weight: 600;">
+        <Icon Type="plus" Theme="IconThemeType.Outline" /> Nueva Regla
+    </Button>
+</div>
+
+@if (!string.IsNullOrEmpty(_error))
+{
+    <Alert Type="@AlertType.Error" Message="@_error" ShowIcon="true" Style="margin-bottom: 16px;" />
+}
+
+<div class="glass-card">
+    @if (_loading)
+    {
+        <div style="text-align: center; padding: 40px;">
+            <Spin Tip="Cargando reglas..." />
+        </div>
+    }
+    else if (_rules.Count == 0)
+    {
+        <Empty Description="@("No hay reglas de mezcla configuradas")" />
+    }
+    else
+    {
+        <Table TItem="TankMixRuleDto"
+               DataSource="@_rules"
+               Loading="@_loading"
+               Size="TableSize.Small"
+               ScrollX="900">
+            <PropertyColumn Property="c => c.ProductAName" Title="Producto A" Sortable />
+            <PropertyColumn Property="c => c.ProductBName" Title="Producto B" Sortable />
+            <Column TData="string" Title="Severidad">
+                <Tag Color="@(context.Severity == "Danger" ? "red" : "orange")">@context.Severity</Tag>
+            </Column>
+            <PropertyColumn Property="c => c.WarningMessage" Title="Mensaje de Alerta" />
+            <ActionColumn Title="Acciones" Width="100">
+                <Popconfirm Title="¿Eliminar esta regla?" OnConfirm="() => DeleteRule(context.Id)"
+                            OkText="Eliminar" CancelText="Cancelar">
+                    <Button Type="@ButtonType.Text" Danger>
+                        <Icon Type="delete" Theme="IconThemeType.Outline" />
+                    </Button>
+                </Popconfirm>
+            </ActionColumn>
+        </Table>
+    }
+</div>
+
+<Modal Title="Nueva Regla de Mezcla"
+       Visible="_modalVisible" OnCancel="() => _modalVisible = false" OnOk="SaveRule"
+       OkText="@("Guardar")" CancelText="@("Cancelar")">
+    <Form Model="_formModel" LabelColSpan="8" WrapperColSpan="16">
+        <FormItem Label="Producto A">
+            <Select @bind-Value="_formModel.ProductAId" Placeholder="Seleccionar producto"
+                    TItemValue="Guid" TItem="string" EnableSearch>
+                <SelectOptions>
+                    @foreach (var s in _supplies)
+                    {
+                        <SelectOption TItemValue="Guid" TItem="string" Value="@s.Id" Label="@s.ItemName" />
+                    }
+                </SelectOptions>
+            </Select>
+        </FormItem>
+        <FormItem Label="Producto B">
+            <Select @bind-Value="_formModel.ProductBId" Placeholder="Seleccionar producto"
+                    TItemValue="Guid" TItem="string" EnableSearch>
+                <SelectOptions>
+                    @foreach (var s in _supplies)
+                    {
+                        <SelectOption TItemValue="Guid" TItem="string" Value="@s.Id" Label="@s.ItemName" />
+                    }
+                </SelectOptions>
+            </Select>
+        </FormItem>
+        <FormItem Label="Severidad">
+            <RadioGroup @bind-Value="_formModel.Severity">
+                <Radio Value="@("Warning")">Advertencia</Radio>
+                <Radio Value="@("Danger")">Peligro</Radio>
+            </RadioGroup>
+        </FormItem>
+        <FormItem Label="Mensaje">
+            <TextArea @bind-Value="_formModel.WarningMessage" Rows="3"
+                      Placeholder="Ej: No mezclar 2,4-D con Graminicida" />
+        </FormItem>
+    </Form>
+</Modal>
+
+@code {
+    private List<TankMixRuleDto> _rules = new();
+    private List<InventoryDto> _supplies = new();
+    private bool _loading = true;
+    private string? _error;
+    private bool _modalVisible;
+    private TankMixFormModel _formModel = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Task.WhenAll(LoadRules(), LoadSupplies());
+    }
+
+    private async Task LoadRules()
+    {
+        _loading = true;
+        _error = null;
+        try
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+            _rules = await Http.GetFromJsonAsync("api/tankmixrules",
+                AppJsonSerializerContext.Default.ListTankMixRuleDto, cts.Token) ?? new();
+        }
+        catch (Exception ex)
+        {
+            _error = $"Error: {ex.Message}";
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task LoadSupplies()
+    {
+        try
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+            _supplies = await Http.GetFromJsonAsync("api/inventory",
+                AppJsonSerializerContext.Default.ListInventoryDto, cts.Token) ?? new();
+        }
+        catch { }
+    }
+
+    private void OpenCreateModal()
+    {
+        _formModel = new TankMixFormModel { Severity = "Warning" };
+        _modalVisible = true;
+    }
+
+    private async Task SaveRule()
+    {
+        if (_formModel.ProductAId == Guid.Empty || _formModel.ProductBId == Guid.Empty)
+        {
+            Message.Error("Seleccione ambos productos.");
+            return;
+        }
+
+        if (_formModel.ProductAId == _formModel.ProductBId)
+        {
+            Message.Error("Los productos deben ser diferentes.");
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_formModel.WarningMessage))
+        {
+            Message.Error("El mensaje de alerta es obligatorio.");
+            return;
+        }
+
+        try
+        {
+            var dto = new TankMixRuleDto(
+                Guid.Empty, _formModel.ProductAId, _formModel.ProductBId,
+                _formModel.Severity, _formModel.WarningMessage
+            );
+
+            await Http.PostAsJsonAsync("api/tankmixrules", dto,
+                AppJsonSerializerContext.Default.TankMixRuleDto);
+
+            Message.Success("Regla creada exitosamente.");
+            _modalVisible = false;
+            await LoadRules();
+        }
+        catch
+        {
+            Message.Error("Error al crear la regla.");
+        }
+    }
+
+    private async Task DeleteRule(Guid id)
+    {
+        try
+        {
+            await Http.DeleteAsync($"api/tankmixrules/{id}");
+            Message.Success("Regla eliminada.");
+            await LoadRules();
+        }
+        catch
+        {
+            Message.Error("Error al eliminar la regla.");
+        }
+    }
+
+    private class TankMixFormModel
+    {
+        public Guid ProductAId { get; set; }
+        public Guid ProductBId { get; set; }
+        public string Severity { get; set; } = "Warning";
+        public string WarningMessage { get; set; } = string.Empty;
+    }
+}

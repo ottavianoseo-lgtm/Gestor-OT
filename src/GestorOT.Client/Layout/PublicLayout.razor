@@ -1,0 +1,35 @@
+@inherits LayoutComponentBase
+@using AntDesign
+
+<div class="public-layout">
+    <header class="public-header">
+        <img src="images/logo.svg" alt="Gestor OT" style="width: 160px; object-fit: contain;" />
+        <span style="color: rgba(255,255,255,0.4); font-size: 12px; letter-spacing: 1px; text-transform: uppercase;">Vista Contratista</span>
+    </header>
+    <main class="public-content">
+        @Body
+    </main>
+</div>
+
+<style>
+    .public-layout {
+        min-height: 100vh;
+        background: #0f0f1a;
+    }
+
+    .public-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 16px 24px;
+        background: rgba(30, 30, 46, 0.6);
+        border-bottom: 1px solid rgba(255,255,255,0.08);
+        backdrop-filter: blur(10px);
+    }
+
+    .public-content {
+        padding: 24px;
+        max-width: 900px;
+        margin: 0 auto;
+    }
+</style>
