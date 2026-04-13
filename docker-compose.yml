@@ -9,6 +9,7 @@ services:
     restart: always
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./dp_keys:/home/app/.aspnet/DataProtection-Keys
 
   gestor-ot-app:
     container_name: gestorot-app
