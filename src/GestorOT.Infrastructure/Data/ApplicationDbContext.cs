@@ -37,6 +37,7 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
     public DbSet<Campaign> Campaigns => Set<Campaign>();
     public DbSet<CampaignLot> CampaignLots => Set<CampaignLot>();
+    public DbSet<Rotation> Rotations => Set<Rotation>();
     public DbSet<CampaignField> CampaignFields => Set<CampaignField>();
     public DbSet<ErpPerson> ErpPeople => Set<ErpPerson>();
 
@@ -64,7 +65,22 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
 
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(ApplicationDbContext).Assembly);
 
+        modelBuilder.Entity<Field>(entity =>
+        {
+            entity.HasQueryFilter(e => CurrentTenantId == Guid.Empty || e.TenantId == CurrentTenantId);
+        });
+
+        modelBuilder.Entity<Lot>(entity =>
+        {
+            entity.HasQueryFilter(e => CurrentTenantId == Guid.Empty || e.TenantId == CurrentTenantId);
+        });
+
         modelBuilder.Entity<CampaignLot>(entity =>
+        {
+            entity.HasQueryFilter(e => CurrentTenantId == Guid.Empty || e.TenantId == CurrentTenantId);
+        });
+
+        modelBuilder.Entity<Rotation>(entity =>
         {
             entity.HasQueryFilter(e => CurrentTenantId == Guid.Empty || e.TenantId == CurrentTenantId);
         });

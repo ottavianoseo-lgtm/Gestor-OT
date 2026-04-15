@@ -8,4 +8,5 @@ public class CampaignLot : TenantEntity
     public Guid? CropId { get; set; }
     public Campaign? Campaign { get; set; }
     public Lot? Lot { get; set; }
+    public ICollection<Rotation> Rotations { get; set; } = new List<Rotation>();
 }

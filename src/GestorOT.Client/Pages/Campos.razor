@@ -16,10 +16,20 @@
         <h2 class="page-title">Gestión de Campos</h2>
         <span class="page-subtitle">@_fields.Count campos registrados</span>
     </div>
-    <Button Type="@ButtonType.Primary" OnClick="OpenCreateModal"
-            Style="background: #E74C3C; border-color: #E74C3C; border-radius: 8px; font-weight: 600;">
-        <Icon Type="plus" Theme="IconThemeType.Outline" /> Nuevo Campo
-    </Button>
+    <div style="display: flex; align-items: center; gap: 16px;">
+        @if (CampaignState.IsSelected)
+        {
+            <div style="display: flex; align-items: center; gap: 8px; background: rgba(46, 204, 113, 0.1); padding: 6px 12px; border-radius: 8px; border: 1px solid rgba(46, 204, 113, 0.2);">
+                <Icon Type="calendar" Theme="IconThemeType.Outline" Style="color: #2ECC71;" />
+                <span style="color: #fff; font-size: 13px; font-weight: 600;">Campaña: @CampaignState.CurrentCampaign!.Name</span>
+                <Checkbox @bind-Checked="_filterByCampaign" Style="margin-left: 8px; color: rgba(255,255,255,0.7); font-size: 12px;">Ver solo mis campos</Checkbox>
+            </div>
+        }
+        <Button Type="@ButtonType.Primary" OnClick="OpenCreateModal"
+                Style="background: #E74C3C; border-color: #E74C3C; border-radius: 8px; font-weight: 600;">
+            <Icon Type="plus" Theme="IconThemeType.Outline" /> Nuevo Campo
+        </Button>
+    </div>
 </div>
 
 @if (!string.IsNullOrEmpty(_errorMessage))
@@ -29,7 +39,7 @@
 
 <div class="glass-card">
     <Table TItem="FieldDto"
-           DataSource="@_fields"
+           DataSource="@FilteredFields"
            Loading="@_loading"
            Size="TableSize.Small"
            ScrollX="900">
@@ -89,7 +99,9 @@
 
 @code {
     private List<FieldDto> _fields = new();
+    private List<CampaignFieldDto> _campaignFields = new();
     private bool _loading = true;
+    private bool _filterByCampaign = true;
     private string? _errorMessage;
     private bool _modalVisible;
     private bool _isEditing;
@@ -97,6 +109,11 @@
     private Guid _editingId;
     private FieldFormModel _formModel = new();
     private Form<FieldFormModel>? _form;
+
+    private IEnumerable<FieldDto> FilteredFields =>
+        _filterByCampaign && CampaignState.IsSelected
+            ? _fields.Where(f => _campaignFields.Any(cf => cf.FieldId == f.Id))
+            : _fields;
 
     public class FieldFormModel
     {
@@ -130,6 +147,18 @@
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
             _fields = await Http.GetFromJsonAsync("api/fields",
                 AppJsonSerializerContext.Default.ListFieldDto, cts.Token) ?? new();
+
+            if (CampaignState.IsSelected)
+            {
+                var campaign = await Http.GetFromJsonAsync<CampaignDto>($"api/campaigns/{CampaignState.CurrentCampaign!.Id}",
+                    AppJsonSerializerContext.Default.CampaignDto, cts.Token);
+                _campaignFields = campaign?.Fields ?? new();
+            }
+            else
+            {
+                _campaignFields.Clear();
+            }
+
             _errorMessage = null;
         }
         catch (OperationCanceledException)
@@ -200,6 +229,17 @@
 
             if (response.IsSuccessStatusCode)
             {
+                if (!_isEditing && CampaignState.IsSelected)
+                {
+                    var createdField = await response.Content.ReadFromJsonAsync<FieldDto>(AppJsonSerializerContext.Default.FieldDto);
+                    if (createdField != null)
+                    {
+                        await Http.PostAsJsonAsync($"api/campaigns/{CampaignState.CurrentCampaign!.Id}/fields",
+                            new CampaignFieldDto(CampaignState.CurrentCampaign.Id, createdField.Id, createdField.Name, 0, 0),
+                            AppJsonSerializerContext.Default.CampaignFieldDto);
+                    }
+                }
+
                 Message.Success(_isEditing ? "Campo actualizado correctamente." : "Campo creado correctamente.");
                 _modalVisible = false;
                 await LoadData();

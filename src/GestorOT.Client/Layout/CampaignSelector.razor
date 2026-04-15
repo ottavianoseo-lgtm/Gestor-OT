@@ -19,7 +19,7 @@
     }
     else if (CampaignState.IsSelected)
     {
-        <div class="campaign-badge" @onclick="OpenModal">
+        <div class="campaign-badge" @onclick="OpenModal" style="cursor: @(_campaigns.Count > 1 ? "pointer" : "default")">
             <div class="campaign-icon">
                 <Icon Type="calendar" Theme="IconThemeType.Outline" Style="color: #fff; font-size: 13px;" />
             </div>
@@ -27,7 +27,10 @@
                 <div style="color: rgba(255,255,255,0.5); font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px;">Campaña</div>
                 <div style="color: #fff; font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">@CampaignState.CurrentCampaign!.Name</div>
             </div>
-            <Icon Type="swap" Theme="IconThemeType.Outline" Style="color: rgba(255,255,255,0.3); font-size: 12px; cursor: pointer;" />
+            @if (_campaigns.Count > 1)
+            {
+                <Icon Type="swap" Theme="IconThemeType.Outline" Style="color: rgba(255,255,255,0.3); font-size: 12px;" />
+            }
         </div>
     }
     else
@@ -263,7 +266,10 @@
 
     private void OpenModal()
     {
-        _modalVisible = true;
+        if (_campaigns.Count > 1)
+        {
+            _modalVisible = true;
+        }
     }
 
     private void CloseModal()

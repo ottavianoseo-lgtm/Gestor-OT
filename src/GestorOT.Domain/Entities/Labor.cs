@@ -11,6 +11,7 @@ public class Labor : TenantEntity
     public string Status { get; set; } = "Planned";
     public DateTime? ExecutionDate { get; set; }
     public DateTime? EstimatedDate { get; set; }
+    public string? LaborTaskType { get; set; }
     public decimal Hectares { get; set; }
     public decimal EffectiveArea { get; set; }
     public decimal Rate { get; set; }

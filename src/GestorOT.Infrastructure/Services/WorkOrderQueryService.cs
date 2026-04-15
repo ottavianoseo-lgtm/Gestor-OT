@@ -77,6 +77,7 @@ public class WorkOrderQueryService : IWorkOrderQueryService
                 l.Status,
                 l.ExecutionDate,
                 l.EstimatedDate,
+                l.LaborTaskType,
                 l.Hectares,
                 l.CreatedAt,
                 l.Rate,

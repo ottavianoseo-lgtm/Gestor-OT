@@ -36,12 +36,36 @@
         
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
             <FormItem Label="Tipo de Actividad (ERP)">
-                <Select TItemValue="Guid" TItem="LaborTypeDto" @bind-Value="_model.LaborTypeId"
-                        Placeholder="Seleccionar actividad">
-                    @foreach (var type in _laborTypes)
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <Select TItemValue="Guid" TItem="LaborTypeDto" @bind-Value="_model.LaborTypeId"
+                            Placeholder="Seleccionar actividad" Disabled="@_actividadLocked" Style="flex: 1;">
+                        @foreach (var type in _laborTypes)
+                        {
+                            <SelectOption TItemValue="Guid" TItem="LaborTypeDto" Value="@type.Id"
+                                          Label="@type.Name" />
+                        }
+                    </Select>
+                    @if (_activeRotation != null)
                     {
-                        <SelectOption TItemValue="Guid" TItem="LaborTypeDto" Value="@type.Id"
-                                      Label="@type.Name" />
+                        <Tooltip Title="@($"Sugerido por rotación: {_activeRotation.CropName}")">
+                            <Tag Color="TagColor.Processing">Sugerido</Tag>
+                        </Tooltip>
+                    }
+                    else if (_showNoRotacionWarning)
+                    {
+                        <Tooltip Title="Sin rotación proyectada para esta fecha">
+                            <Tag Color="TagColor.Warning">Sin rotación</Tag>
+                        </Tooltip>
+                    }
+                </div>
+            </FormItem>
+
+            <FormItem Label="Tipo de Labor">
+                <Select TItemValue="string" TItem="string" @bind-Value="_model.LaborTaskType"
+                        Placeholder="Seleccionar tipo de labor" EnableSearch>
+                    @foreach (var task in _laborTaskTypes)
+                    {
+                        <SelectOption TItemValue="string" TItem="string" Value="@task" Label="@task" />
                     }
                 </Select>
             </FormItem>
@@ -52,7 +76,7 @@
                 <AntDesign.InputNumber TValue="decimal" @bind-Value="_model.Hectares" Min="0m" Step="0.1m" Style="width: 100%;" />
             </FormItem>
             <FormItem Label="Fecha Est.">
-                <DatePicker TValue="DateTime?" @bind-Value="_model.EstimatedDate" Style="width: 100%;" />
+                <DatePicker TValue="DateTime?" Value="@_model.EstimatedDate" OnChange="OnFechaEstimadaChanged" Style="width: 100%;" />
             </FormItem>
             <FormItem Label="Fecha Ejec.">
                 <DatePicker TValue="DateTime?" @bind-Value="_model.ExecutionDate" Style="width: 100%;" />
@@ -118,6 +142,16 @@
     private List<ContactDto> _contacts = new();
     private bool _loading;
 
+    private List<string> _laborTaskTypes = new() 
+    { 
+        "Fertilización", "Fumigación", "Cosecha", "Siembra", "Barbecho", 
+        "Control de Plagas", "Riego", "Desmalezado", "Muestreo de Suelo", "Otros" 
+    };
+
+    private bool _actividadLocked;
+    private bool _showNoRotacionWarning;
+    private RotationDto? _activeRotation;
+
     protected override async Task OnInitializedAsync()
     {
         CampaignState.OnChange += OnCampaignChanged;
@@ -125,10 +159,12 @@
         if (LaborId != Guid.Empty)
         {
             await LoadLabor();
+            if (_model.EstimatedDate.HasValue) await CheckRotation(_model.EstimatedDate.Value);
         }
         else
         {
             _model = new LaborDto { WorkOrderId = WorkOrderId, Status = "Planned", EstimatedDate = DefaultDate ?? DateTime.Today };
+            if (_model.EstimatedDate.HasValue) await CheckRotation(_model.EstimatedDate.Value);
         }
     }
 
@@ -174,7 +210,7 @@
         _model = await Http.GetFromJsonAsync<LaborDto>($"api/labors/{LaborId}") ?? new();
     }
 
-    private void OnLotChanged(CampaignLotDto lot)
+    private async Task OnLotChanged(CampaignLotDto lot)
     {
         if (lot != null)
         {
@@ -183,7 +219,55 @@
             {
                 _model = _model with { Hectares = lot.ProductiveArea > 0 ? lot.ProductiveArea : lot.CadastralArea };
             }
+            if (_model.EstimatedDate.HasValue) await CheckRotation(_model.EstimatedDate.Value);
         }
+    }
+
+    private async Task OnFechaEstimadaChanged(DateTimeChangedEventArgs<DateTime?> args)
+    {
+        _model.EstimatedDate = args.Date;
+        if (args.Date.HasValue)
+        {
+            await CheckRotation(args.Date.Value);
+        }
+    }
+
+    private async Task CheckRotation(DateTime date)
+    {
+        if (_model.CampaignLotId == null || CampaignState.CurrentCampaign == null) return;
+
+        try
+        {
+            var dateOnly = DateOnly.FromDateTime(date);
+            _activeRotation = await Http.GetFromJsonAsync<RotationDto>(
+                $"api/campaigns/{CampaignState.CurrentCampaign.Id}/lots/{_model.CampaignLotId}/rotations/active?date={dateOnly}");
+
+            if (_activeRotation != null)
+            {
+                _showNoRotacionWarning = false;
+                if (_activeRotation.SuggestedLaborTypeId != null)
+                {
+                    _model.LaborTypeId = _activeRotation.SuggestedLaborTypeId.Value;
+                    _actividadLocked = true;
+                }
+                else
+                {
+                    _actividadLocked = false;
+                }
+            }
+            else
+            {
+                _actividadLocked = false;
+                _showNoRotacionWarning = true;
+            }
+        }
+        catch
+        {
+            _activeRotation = null;
+            _actividadLocked = false;
+            _showNoRotacionWarning = false;
+        }
+        StateHasChanged();
     }
 
     private void OnSupplySelected(LaborSupplyDto row, InventoryDto supply)

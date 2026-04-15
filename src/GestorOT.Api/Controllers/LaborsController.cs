@@ -95,6 +95,7 @@ public class LaborsController : ControllerBase
             Status = "Planned",
             ExecutionDate = dto.ExecutionDate,
             EstimatedDate = dto.EstimatedDate,
+            LaborTaskType = dto.LaborTaskType,
             Hectares = dto.Hectares,
             Rate = dto.Rate,
             RateUnit = dto.RateUnit ?? "ha",
@@ -163,6 +164,7 @@ public class LaborsController : ControllerBase
         labor.LaborTypeId = dto.LaborTypeId;
         labor.ExecutionDate = dto.ExecutionDate;
         labor.EstimatedDate = dto.EstimatedDate;
+        labor.LaborTaskType = dto.LaborTaskType;
         labor.Hectares = dto.Hectares;
         labor.PlannedDose = dto.PlannedDose;
         labor.RealizedDose = dto.RealizedDose;
@@ -426,6 +428,7 @@ public class LaborsController : ControllerBase
             labor.Status,
             labor.ExecutionDate,
             labor.EstimatedDate,
+            labor.LaborTaskType,
             labor.Hectares,
             labor.CreatedAt,
             labor.Rate,

@@ -34,22 +34,10 @@ else if (!string.IsNullOrEmpty(Loading.SuccessMessage))
                 <img src="images/logo.svg" alt="Gestor OT" style="width: 200px; object-fit: contain;" />
             </div>
 
-            @if (TenantState.IsSelected && !_collapsed)
-            {
-                <div class="tenant-badge" @onclick="SwitchTenant">
-                    <div style="width: 28px; height: 28px; border-radius: 7px; background: linear-gradient(135deg, #E74C3C, #C0392B); display: flex; align-items: center; justify-content: center; font-weight: 700; color: #fff; font-size: 12px; flex-shrink: 0;">
-                        @TenantState.CurrentTenant!.Name[0]
-                    </div>
-                    <div style="flex: 1; min-width: 0;">
-                        <div style="color: rgba(255,255,255,0.7); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">@TenantState.CurrentTenant.Name</div>
-                    </div>
-                    <Icon Type="swap" Theme="IconThemeType.Outline" Style="color: rgba(255,255,255,0.3); font-size: 12px; cursor: pointer;" />
-                </div>
-            }
-
             @if (!_collapsed)
             {
                 <CampaignSelector />
+                <TenantSelector ShowBadge="true" />
             }
 
             @if (!_collapsed)
@@ -183,8 +171,6 @@ else if (!string.IsNullOrEmpty(Loading.SuccessMessage))
     </Layout>
 </Layout>
 
-<TenantSelector />
-
 @code {
     private bool _collapsed = false;
     private string _activeKey = "1";
@@ -224,10 +210,5 @@ else if (!string.IsNullOrEmpty(Loading.SuccessMessage))
         {
             Console.Error.WriteLine($"Error loading unassigned count: {ex.Message}");
         }
-    }
-
-    private void SwitchTenant()
-    {
-        TenantState.Clear();
     }
 }

@@ -20,40 +20,28 @@ public class ErpSyncWorker : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        _logger.LogInformation("ERP Sync Worker is starting.");
+        _logger.LogInformation("Intermediary Data Fetch Worker is starting.");
 
         while (!stoppingToken.IsCancellationRequested)
         {
             try
             {
-                _logger.LogInformation("Starting global ERP synchronization...");
+                _logger.LogInformation("Starting data fetch from GestorMaxIntegrator...");
 
                 using (var scope = _serviceProvider.CreateScope())
                 {
                     var syncService = scope.ServiceProvider.GetRequiredService<IErpSyncService>();
                     var context = scope.ServiceProvider.GetRequiredService<IApplicationDbContext>();
 
-                    // El worker debe iterar sobre todos los tenants que tengan configuracion de ERP
-                    var tenants = await context.Tenants
-                        .Where(t => !string.IsNullOrEmpty(t.GestorMaxApiKeyEncrypted))
-                        .ToListAsync(stoppingToken);
+                    // Obtenemos el tenant por defecto o el principal
+                    // En el futuro, esto podría ser más dinámico
+                    var tenants = await context.Tenants.ToListAsync(stoppingToken);
 
                     foreach (var tenant in tenants)
                     {
                         try
                         {
-                            // Verificamos si el tenant ya tiene datos para evitar sync innecesaria
-                            var hasData = await context.LaborTypes.AnyAsync(lt => lt.TenantId == tenant.Id, stoppingToken) ||
-                                          await context.ErpPeople.AnyAsync(ep => ep.TenantId == tenant.Id, stoppingToken);
-
-                            if (hasData)
-                            {
-                                _logger.LogInformation("Tenant {TenantId} already has data, skipping initial sync or performing light sync.", tenant.Id);
-                                // Opcional: Aquí podrías llamar a una sync ligera o simplemente continuar
-                                continue; 
-                            }
-
-                            _logger.LogInformation("Syncing data for tenant {TenantId} ({TenantName})...", tenant.Id, tenant.Name);
+                            _logger.LogInformation("Updating local cache for tenant {TenantId} from Intermediary...", tenant.Id);
                             
                             await syncService.SyncLaborTypesAsync(tenant.Id, stoppingToken);
                             await syncService.SyncContactsAsync(tenant.Id, stoppingToken);
@@ -61,17 +49,17 @@ public class ErpSyncWorker : BackgroundService
                         }
                         catch (Exception ex)
                         {
-                            _logger.LogError(ex, "Error syncing tenant {TenantId}.", tenant.Id);
+                            _logger.LogError(ex, "Error fetching data for tenant {TenantId} from Intermediary.", tenant.Id);
                         }
                     }
                 }
 
-                _logger.LogInformation("Global ERP synchronization completed. Sleeping for {Interval}.", _syncInterval);
+                _logger.LogInformation("Data fetch from Intermediary completed. Sleeping for {Interval}.", _syncInterval);
                 await Task.Delay(_syncInterval, stoppingToken);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error in ErpSyncWorker execution loop.");
+                _logger.LogError(ex, "Error in Intermediary Data Fetch execution loop.");
                 await Task.Delay(TimeSpan.FromMinutes(5), stoppingToken);
             }
         }
