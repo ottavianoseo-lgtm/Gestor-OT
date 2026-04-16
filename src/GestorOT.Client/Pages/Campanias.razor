@@ -38,13 +38,12 @@
             @context.StartDate.ToString("dd/MM/yyyy")
         </PropertyColumn>
         <PropertyColumn Property="c => c.EndDate" Title="Fin">
-            @(context.EndDate?.ToString("dd/MM/yyyy") ?? "—")
+            @context.EndDate.ToString("dd/MM/yyyy")
         </PropertyColumn>
         <Column TData="string" Title="Estado">
             @{
                 var (color, label) = context.Status switch
                 {
-                    CampaignStatus.Planning => ("#3498DB", "Planificación"),
                     CampaignStatus.Active => ("#2ECC71", "Activa"),
                     CampaignStatus.Locked => ("#95A5A6", "Bloqueada"),
                     _ => ("#F1C40F", "Desconocido")
@@ -74,17 +73,6 @@
         </Column>
         <ActionColumn Title="Acciones" Width="240">
             <Space>
-                @if (context.Status == CampaignStatus.Planning)
-                {
-                    <SpaceItem>
-                        <Tooltip Title="@("Activar campaña")">
-                            <Button Size="@ButtonSize.Small" OnClick="() => ChangeStatus(context, CampaignStatus.Active)"
-                                    Style="border-radius: 6px; background: #2ECC7115; border-color: #2ECC7140; color: #2ECC71;">
-                                <Icon Type="play-circle" Theme="IconThemeType.Outline" />
-                            </Button>
-                        </Tooltip>
-                    </SpaceItem>
-                }
                 @if (context.Status == CampaignStatus.Active)
                 {
                     <SpaceItem>
@@ -158,7 +146,7 @@
                 </FormItem>
             </AntDesign.Col>
             <AntDesign.Col Span="12">
-                <FormItem Label="Fecha de Fin (opcional)">
+                <FormItem Label="Fecha de Fin">
                     <DatePicker @bind-Value="_formModel.EndDate" Style="width: 100%;" Format="dd/MM/yyyy" />
                 </FormItem>
             </AntDesign.Col>
@@ -168,7 +156,6 @@
                 <FormItem Label="Estado">
                     <Select TItemValue="CampaignStatus" TItem="string" @bind-Value="_formModel.Status" Style="width: 100%;"
                             Disabled="@(_isEditing && _editingStatus == CampaignStatus.Locked)">
-                        <SelectOption TItemValue="CampaignStatus" TItem="string" Value="CampaignStatus.Planning" Label="Planificación" />
                         <SelectOption TItemValue="CampaignStatus" TItem="string" Value="CampaignStatus.Active" Label="Activa" />
                         <SelectOption TItemValue="CampaignStatus" TItem="string" Value="CampaignStatus.Locked" Label="Bloqueada" />
                     </Select>
@@ -300,7 +287,7 @@
         public string Name { get; set; } = string.Empty;
         public DateTime? StartDate { get; set; } = DateTime.Today;
         public DateTime? EndDate { get; set; }
-        public CampaignStatus Status { get; set; } = CampaignStatus.Planning;
+        public CampaignStatus Status { get; set; } = CampaignStatus.Active;
         public decimal BudgetTotalUSD { get; set; }
         public bool IsActive { get; set; } = true;
     }
@@ -358,7 +345,7 @@
         {
             Name = campaign.Name,
             StartDate = campaign.StartDate.ToDateTime(TimeOnly.MinValue),
-            EndDate = campaign.EndDate?.ToDateTime(TimeOnly.MinValue),
+            EndDate = campaign.EndDate.ToDateTime(TimeOnly.MinValue),
             Status = campaign.Status,
             BudgetTotalUSD = campaign.BudgetTotalUSD,
             IsActive = campaign.IsActive
@@ -383,12 +370,17 @@
             Message.Warning("La fecha de inicio es obligatoria.");
             return;
         }
+        if (_formModel.EndDate == null)
+        {
+            Message.Warning("La fecha de fin es obligatoria.");
+            return;
+        }
 
         _saving = true;
         try
         {
             var startDate = DateOnly.FromDateTime(_formModel.StartDate.Value);
-            var endDate = _formModel.EndDate != null ? DateOnly.FromDateTime(_formModel.EndDate.Value) : (DateOnly?)null;
+            var endDate = DateOnly.FromDateTime(_formModel.EndDate.Value);
 
             var dto = new CampaignDto(
                 _isEditing ? _editingId : Guid.Empty,

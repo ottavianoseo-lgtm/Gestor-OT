@@ -1,4 +1,5 @@
 using GestorOT.Domain.Entities;
+using GestorOT.Domain.Enums;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -11,10 +12,18 @@ public class LaborConfiguration : IEntityTypeConfiguration<Labor>
         builder.ToTable("Labors", "public");
         builder.HasKey(e => e.Id);
         builder.Property(e => e.LaborTypeId).IsRequired();
+        builder.Property(e => e.Mode).HasMaxLength(50).HasDefaultValue(LaborMode.Planned).HasConversion<string>();
+        
         builder.HasOne(e => e.Type)
             .WithMany()
             .HasForeignKey(e => e.LaborTypeId)
             .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasOne(e => e.ErpActivity)
+            .WithMany()
+            .HasForeignKey(e => e.ErpActivityId)
+            .OnDelete(DeleteBehavior.Restrict);
+
         builder.Property(e => e.Status).IsRequired().HasMaxLength(50).HasDefaultValue("Planned");
         builder.Property(e => e.Hectares).HasPrecision(18, 4);
         builder.Property(e => e.EffectiveArea).HasPrecision(18, 4);

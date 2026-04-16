@@ -179,29 +179,6 @@
                     <span class="rail-label">Área Dibujada</span>
                     <span class="rail-value">@_selectedLot.Area.ToString("N2") ha</span>
                 </div>
-                @{
-                    var field = _allFields.FirstOrDefault(f => f.Id == _selectedLot.FieldId);
-                    if (field != null)
-                    {
-                        var delta = _selectedLot.Area - field.HectareasTotales;
-                        var pct = field.HectareasTotales > 0 ? (delta / field.HectareasTotales * 100) : 0;
-                        <div class="rail-section">
-                            <span class="rail-label">Área Fiscal</span>
-                            <span class="rail-value">@field.HectareasTotales.ToString("N2") ha</span>
-                        </div>
-                        <div class="surface-comparison">
-                            <div style="font-size: 11px; color: rgba(255,255,255,0.5); margin-bottom: 6px;">Diferencia Superficie</div>
-                            <div style="display: flex; align-items: center; gap: 8px;">
-                                <span style="font-size: 18px; font-weight: 700; color: @(Math.Abs(pct) < 5 ? "#2ECC71" : "#F1C40F");">
-                                    @(delta > 0 ? "+" : "")@delta.ToString("N2") ha
-                                </span>
-                                <Tag Style="@($"background: {(Math.Abs(pct) < 5 ? "#2ECC71" : "#F1C40F")}20; color: {(Math.Abs(pct) < 5 ? "#2ECC71" : "#F1C40F")}; border: none; border-radius: 10px; font-size: 11px;")">
-                                    @(pct > 0 ? "+" : "")@pct.ToString("N1")%
-                                </Tag>
-                            </div>
-                        </div>
-                    }
-                }
                 <div class="rail-section">
                     <span class="rail-label">Geometría</span>
                     <span class="rail-value">@(!string.IsNullOrEmpty(_selectedLot.WktGeometry) ? "Definida" : "Sin datos")</span>

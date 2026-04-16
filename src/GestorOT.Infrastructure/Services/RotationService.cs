@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace GestorOT.Infrastructure.Services;
 
-public class RotationService : IRotationService
+public class RotationService : GestorOT.Application.Services.IRotationService
 {
     private readonly IApplicationDbContext _context;
 
@@ -20,17 +20,16 @@ public class RotationService : IRotationService
         return await _context.Rotations
             .AsNoTracking()
             .Where(r => r.CampaignLotId == campaignLotId)
-            .Include(r => r.SuggestedLaborType)
+            .Include(r => r.ErpActivity)
             .OrderBy(r => r.StartDate)
             .Select(r => new RotationDto(
                 r.Id,
                 r.CampaignLotId,
-                r.CropName,
+                r.ErpActivityId,
+                r.ErpActivity != null ? r.ErpActivity.Name : "Desconocida",
                 r.StartDate,
                 r.EndDate,
-                r.Notes,
-                r.SuggestedLaborTypeId,
-                r.SuggestedLaborType != null ? r.SuggestedLaborType.Name : null
+                r.Notes
             ))
             .ToListAsync(ct);
     }
@@ -40,31 +39,38 @@ public class RotationService : IRotationService
         return await _context.Rotations
             .AsNoTracking()
             .Where(r => r.CampaignLotId == campaignLotId && r.StartDate <= date && r.EndDate >= date)
-            .Include(r => r.SuggestedLaborType)
+            .Include(r => r.ErpActivity)
             .Select(r => new RotationDto(
                 r.Id,
                 r.CampaignLotId,
-                r.CropName,
+                r.ErpActivityId,
+                r.ErpActivity != null ? r.ErpActivity.Name : "Desconocida",
                 r.StartDate,
                 r.EndDate,
-                r.Notes,
-                r.SuggestedLaborTypeId,
-                r.SuggestedLaborType != null ? r.SuggestedLaborType.Name : null
+                r.Notes
             ))
             .FirstOrDefaultAsync(ct);
     }
 
     public async Task<RotationResponse> CreateRotationAsync(RotationDto dto, CancellationToken ct = default)
     {
+        // Step 16: Overlapping Rotation validation
+        var hasOverlap = await _context.Rotations
+            .AnyAsync(r => r.CampaignLotId == dto.CampaignLotId 
+                && r.StartDate < dto.EndDate 
+                && r.EndDate > dto.StartDate, ct);
+
+        if (hasOverlap)
+            throw new InvalidOperationException("Ya existe una rotación programada en ese período para este lote.");
+
         var rotation = new Rotation
         {
             Id = Guid.NewGuid(),
             CampaignLotId = dto.CampaignLotId,
-            CropName = dto.CropName,
+            ErpActivityId = dto.ActivityId,
             StartDate = dto.StartDate,
             EndDate = dto.EndDate,
-            Notes = dto.Notes,
-            SuggestedLaborTypeId = dto.SuggestedLaborTypeId
+            Notes = dto.Notes
         };
 
         _context.Rotations.Add(rotation);
@@ -76,11 +82,11 @@ public class RotationService : IRotationService
             new RotationDto(
                 rotation.Id,
                 rotation.CampaignLotId,
-                rotation.CropName,
+                rotation.ErpActivityId,
+                null,
                 rotation.StartDate,
                 rotation.EndDate,
-                rotation.Notes,
-                rotation.SuggestedLaborTypeId
+                rotation.Notes
             ),
             warnings
         );
@@ -91,11 +97,20 @@ public class RotationService : IRotationService
         var rotation = await _context.Rotations.FindAsync(new object[] { id }, ct);
         if (rotation == null) return;
 
-        rotation.CropName = dto.CropName;
+        // Step 16: Overlapping Rotation validation (excluding self)
+        var hasOverlap = await _context.Rotations
+            .AnyAsync(r => r.CampaignLotId == dto.CampaignLotId 
+                && r.Id != id
+                && r.StartDate < dto.EndDate 
+                && r.EndDate > dto.StartDate, ct);
+
+        if (hasOverlap)
+            throw new InvalidOperationException("Ya existe una rotación programada en ese período para este lote.");
+
+        rotation.ErpActivityId = dto.ActivityId;
         rotation.StartDate = dto.StartDate;
         rotation.EndDate = dto.EndDate;
         rotation.Notes = dto.Notes;
-        rotation.SuggestedLaborTypeId = dto.SuggestedLaborTypeId;
 
         await _context.SaveChangesAsync(ct);
     }
@@ -115,9 +130,9 @@ public class RotationService : IRotationService
             .AsNoTracking()
             .FirstOrDefaultAsync(c => c.Id == campaignId, ct);
 
-        if (campaign == null || campaign.EndDate == null) return new List<RotationWarning>();
+        if (campaign == null) return new List<RotationWarning>();
 
-        var campaignEndDate = campaign.EndDate.Value;
+        var campaignEndDate = campaign.EndDate;
 
         return await _context.Rotations
             .AsNoTracking()
@@ -143,12 +158,12 @@ public class RotationService : IRotationService
             .Include(cl => cl.Lot)
             .FirstOrDefaultAsync(cl => cl.Id == rotation.CampaignLotId, ct);
 
-        if (campaignData?.Campaign?.EndDate != null && rotation.EndDate > campaignData.Campaign.EndDate.Value)
+        if (campaignData?.Campaign != null && rotation.EndDate > campaignData.Campaign.EndDate)
         {
             warnings.Add(new RotationWarning(
                 campaignData.Lot?.Name ?? "Lote desconocido",
                 rotation.EndDate,
-                campaignData.Campaign.EndDate.Value,
+                campaignData.Campaign.EndDate,
                 "La rotación supera el cierre de la campaña."
             ));
         }

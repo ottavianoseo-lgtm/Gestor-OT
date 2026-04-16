@@ -1,0 +1,268 @@
+@page "/workorders/{Id:guid}"
+@using GestorOT.Shared.Dtos
+@using GestorOT.Shared
+@using GestorOT.Client.Components
+@using System.Net.Http.Json
+@using AntDesign
+@inject HttpClient Http
+@inject IMessageService Message
+@inject NavigationManager Navigation
+@inject GestorOT.Client.Services.CampaignState CampaignState
+
+<PageTitle>Detalle de OT - GestorOT</PageTitle>
+
+@if (_loading && _order == null)
+{
+    <div style="text-align: center; padding: 100px;">
+        <Spin Size="@SpinSize.Large" Tip="Cargando Orden de Trabajo..." />
+    </div>
+}
+else if (_order != null)
+{
+    <div class="page-header">
+        <div style="display: flex; align-items: center; gap: 12px;">
+            <Button OnClick="BackToList" Icon="arrow-left" Shape="@ButtonShape.Circle" />
+            <div>
+                <h2 class="page-title">@_order.Description</h2>
+                <span class="page-subtitle">@_order.FieldName · @_order.OTNumber</span>
+            </div>
+        </div>
+        <div style="display: flex; gap: 12px; align-items: center;">
+            <div style="text-align: right; margin-right: 12px;">
+                <div style="font-size: 11px; color: rgba(255,255,255,0.4); text-transform: uppercase;">Estado Actual</div>
+                <Tag Color="@_orderStatusColor" Style="font-weight: 700; padding: 4px 12px; border-radius: 8px;">@_orderStatusName</Tag>
+            </div>
+            <Button Type="@ButtonType.Primary" OnClick="() => _showStatusModal = true" Ghost>Cambiar Estado</Button>
+        </div>
+    </div>
+
+    <AntDesign.Row Gutter="16" Style="margin-bottom: 24px;">
+        <AntDesign.Col Span="6">
+            <div class="kpi-card-sm">
+                <span class="kpi-sm-label">Responsable</span>
+                <span class="kpi-sm-value" style="font-size: 16px;">@_order.AssignedTo</span>
+            </div>
+        </AntDesign.Col>
+        <AntDesign.Col Span="6">
+            <div class="kpi-card-sm">
+                <span class="kpi-sm-label">Fecha Límite</span>
+                <span class="kpi-sm-value" style="font-size: 16px;">@_order.DueDate.ToString("dd/MM/yyyy")</span>
+            </div>
+        </AntDesign.Col>
+        <AntDesign.Col Span="6">
+            <div class="kpi-card-sm">
+                <span class="kpi-sm-label">Superficie Total</span>
+                <span class="kpi-sm-value" style="font-size: 16px;">@_order.Labors.Sum(l => l.Hectares).ToString("N2") ha</span>
+            </div>
+        </AntDesign.Col>
+        <AntDesign.Col Span="6">
+            <div class="kpi-card-sm">
+                <span class="kpi-sm-label">Costo Est.</span>
+                <span class="kpi-sm-value" style="font-size: 16px; color: #2ECC71;">USD @_order.EstimatedCostUSD.ToString("N2")</span>
+            </div>
+        </AntDesign.Col>
+    </AntDesign.Row>
+
+    <Tabs DefaultActiveKey="1" Type="@TabType.Line" Size="@TabSize.Default" animated>
+        <TabPane Tab="Labores y Tareas" Key="1">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                <h3 style="color: #fff; margin: 0;">Labores Asignadas</h3>
+                <Button Type="@ButtonType.Primary" Icon="plus" OnClick="() => OpenLaborModal()">Agregar Labor</Button>
+            </div>
+            <Table TItem="LaborDto" DataSource="_order.Labors" Size="TableSize.Small">
+                <PropertyColumn Property="c => c.LotName" Title="Lote" />
+                <PropertyColumn Property="c => c.LaborTypeName" Title="Tarea" />
+                <PropertyColumn Property="c => c.ErpActivityName" Title="Actividad" />
+                <PropertyColumn Property="c => c.Hectares" Title="Superficie" />
+                <Column TData="string" Title="Estado">
+                    <Tag Color="@(context.Status == "Realized" ? TagColor.Green : TagColor.Orange)">@context.Status</Tag>
+                </Column>
+                <ActionColumn Title="">
+                    <Space>
+                        <SpaceItem><Button Size="@ButtonSize.Small" Icon="edit" OnClick="() => OpenLaborModal(context.Id)" /></SpaceItem>
+                        <SpaceItem><Button Size="@ButtonSize.Small" Icon="delete" Danger /></SpaceItem>
+                    </Space>
+                </ActionColumn>
+            </Table>
+        </TabPane>
+
+        <TabPane Tab="Planeado (Insumos)" Key="2">
+            <div class="glass-card" style="padding: 20px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                    <h4 style="color: #fff; margin: 0;">Consolidado de Insumos</h4>
+                    <Button Type="@ButtonType.Primary" Size="@ButtonSize.Small" Ghost Icon="sync" OnClick="ConsolidateSupplies">Sincronizar de Labores</Button>
+                </div>
+                <Table TItem="WorkOrderSupplyApprovalDto" DataSource="_order.SupplyApprovals" Size="TableSize.Small" HidePagination>
+                    <PropertyColumn Property="c => c.SupplyName" Title="Insumo" />
+                    <PropertyColumn Property="c => c.TotalCalculated" Title="Total Planificado" />
+                    <Column TData="decimal" Title="Retiro Aprobado">
+                         <AntDesign.InputNumber TValue="decimal" Value="@context.ApprovedWithdrawal" OnChange="(decimal val) => UpdateApproval(context, val, context.WithdrawalCenter)" />
+                    </Column>
+                    <Column TData="string" Title="Centro / Depósito">
+                         <AntDesign.Input Value="@context.WithdrawalCenter" OnChange="(string val) => UpdateApproval(context, context.ApprovedWithdrawal, val)" />
+                    </Column>
+                </Table>
+            </div>
+        </TabPane>
+
+        <TabPane Tab="Realizado" Key="3">
+             <div class="glass-card" style="padding: 20px;">
+                <h4 style="color: #fff; margin-bottom: 16px;">Consumo Real vs Planificado</h4>
+                <Table TItem="WorkOrderSupplyApprovalDto" DataSource="_order.SupplyApprovals" Size="TableSize.Small" HidePagination>
+                    <PropertyColumn Property="c => c.SupplyName" Title="Insumo" />
+                    <PropertyColumn Property="c => c.TotalCalculated" Title="Total Plan." />
+                    <Column TData="decimal?" Title="Total Utilizado">
+                         <AntDesign.InputNumber TValue="decimal?" Value="@context.RealTotalUsed" OnChange="(decimal? val) => UpdateRealUsed(context, val)" />
+                    </Column>
+                    <Column TData="decimal" Title="Desvío">
+                        @{
+                            var diff = (context.RealTotalUsed ?? 0) - context.TotalCalculated;
+                            var color = diff > 0 ? "red" : "green";
+                        }
+                        <span style="color: @color; font-weight: bold;">@diff.ToString("N2")</span>
+                    </Column>
+                </Table>
+            </div>
+        </TabPane>
+    </Tabs>
+}
+
+<Modal Title="Cambiar Estado de la OT" Visible="_showStatusModal" OnCancel="() => _showStatusModal = false" Footer="null">
+    <div style="display: grid; gap: 8px;">
+        @foreach (var status in _availableStatuses)
+        {
+            <Button Block Style="@($"border-color: {status.ColorHex}; color: {status.ColorHex};")" 
+                    OnClick="() => ChangeOrderStatus(status)">
+                @status.Name
+            </Button>
+        }
+    </div>
+</Modal>
+
+<Modal Title="@(_editingLaborId == Guid.Empty ? "Nueva Labor" : "Detalle de Labor")" 
+       Visible="_showLaborModal" OnCancel="() => _showLaborModal = false" Footer="null" Width="800">
+    <LaborEditorForm WorkOrderId="Id" LaborId="_editingLaborId" OnSaved="OnLaborSaved" />
+</Modal>
+
+<style>
+    .kpi-card-sm {
+        background: rgba(255,255,255,0.04);
+        border: 1px solid rgba(255,255,255,0.08);
+        border-radius: 12px;
+        padding: 16px;
+    }
+    .kpi-sm-label {
+        display: block;
+        font-size: 11px;
+        color: rgba(255,255,255,0.4);
+        text-transform: uppercase;
+        margin-bottom: 4px;
+    }
+    .kpi-sm-value {
+        font-weight: 700;
+        color: #fff;
+    }
+</style>
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+
+    private WorkOrderDetailDto? _order;
+    private bool _loading = true;
+    private List<WorkOrderStatusDto> _availableStatuses = new();
+    private bool _showStatusModal;
+    private string _orderStatusName = "Cargando...";
+    private string _orderStatusColor = "#95A5A6";
+
+    private bool _showLaborModal;
+    private Guid _editingLaborId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        _loading = true;
+        try
+        {
+            _order = await Http.GetFromJsonAsync<WorkOrderDetailDto>($"api/workorders/{Id}");
+            _availableStatuses = await Http.GetFromJsonAsync<List<WorkOrderStatusDto>>("api/workorderstatuses") ?? new();
+            
+            var currentStatus = _availableStatuses.FirstOrDefault(s => s.Name == _order?.Status);
+            _orderStatusName = currentStatus?.Name ?? _order?.Status ?? "Desconocido";
+            _orderStatusColor = currentStatus?.ColorHex ?? "#95A5A6";
+        }
+        catch (Exception ex)
+        {
+            Message.Error($"Error: {ex.Message}");
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void BackToList() => Navigation.NavigateTo("/workorders");
+
+    private async Task ConsolidateSupplies()
+    {
+        var response = await Http.PostAsync($"api/workorders/{Id}/consolidate-supplies", null);
+        if (response.IsSuccessStatusCode)
+        {
+            Message.Success("Insumos consolidados.");
+            await LoadData();
+        }
+    }
+
+    private async Task UpdateApproval(WorkOrderSupplyApprovalDto item, decimal withdrawal, string? center)
+    {
+        item.ApprovedWithdrawal = withdrawal;
+        item.WithdrawalCenter = center;
+        var response = await Http.PutAsJsonAsync($"api/workorders/{Id}/approvals", new List<WorkOrderSupplyApprovalDto> { item });
+        if (response.IsSuccessStatusCode)
+        {
+            Message.Success("Aprobación actualizada.");
+        }
+    }
+
+    private async Task UpdateRealUsed(WorkOrderSupplyApprovalDto item, decimal? val)
+    {
+        item.RealTotalUsed = val;
+        var response = await Http.PutAsJsonAsync($"api/workorders/{Id}/approvals", new List<WorkOrderSupplyApprovalDto> { item });
+        if (response.IsSuccessStatusCode)
+        {
+            Message.Success("Consumo real actualizado.");
+            await LoadData(); 
+        }
+    }
+
+    private async Task ChangeOrderStatus(WorkOrderStatusDto status)
+    {
+        var response = await Http.PutAsJsonAsync($"api/workorders/{Id}/status", status.Id);
+        if (response.IsSuccessStatusCode)
+        {
+            Message.Success($"Estado cambiado a {status.Name}");
+            _showStatusModal = false;
+            await LoadData();
+        }
+        else
+        {
+            var err = await response.Content.ReadAsStringAsync();
+            Message.Error($"Error: {err}");
+        }
+    }
+
+    private void OpenLaborModal(Guid? laborId = null)
+    {
+        _editingLaborId = laborId ?? Guid.Empty;
+        _showLaborModal = true;
+    }
+
+    private async Task OnLaborSaved()
+    {
+        _showLaborModal = false;
+        await LoadData();
+    }
+}

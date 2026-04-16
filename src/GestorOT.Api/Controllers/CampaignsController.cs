@@ -79,7 +79,7 @@ public class CampaignsController : ControllerBase
     }
 
     private static CampaignStatus ParseStatus(string status) =>
-        Enum.TryParse<CampaignStatus>(status, out var s) ? s : CampaignStatus.Planning;
+        Enum.TryParse<CampaignStatus>(status, out var s) ? s : CampaignStatus.Active;
 
     [HttpPost]
     public async Task<ActionResult<CampaignDto>> CreateCampaign(CampaignDto dto)
@@ -298,6 +298,17 @@ public class CampaignsController : ControllerBase
             return BadRequest($"La superficie productiva ({dto.ProductiveArea:N2}) no puede superar la catastral ({lot.CadastralArea:N2}).");
 
         var productiveArea = dto.ProductiveArea > 0 ? dto.ProductiveArea : lot.CadastralArea;
+
+        // Step 15: Overlapping Campaign validation per Lot
+        var overlappingCampaign = await _context.CampaignLots
+            .Include(cl => cl.Campaign)
+            .Where(cl => cl.LotId == dto.LotId && cl.CampaignId != id)
+            .Where(cl => cl.Campaign!.StartDate < campaign.EndDate && cl.Campaign.EndDate > campaign.StartDate)
+            .Select(cl => cl.Campaign!.Name)
+            .FirstOrDefaultAsync();
+
+        if (overlappingCampaign != null)
+            return BadRequest($"El lote ya está asignado a la campaña '{overlappingCampaign}' cuyas fechas se superponen con la actual.");
 
         _context.CampaignLots.Add(new CampaignLot
         {

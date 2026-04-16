@@ -71,10 +71,10 @@ public record DashboardStatsDto(
     int PendingWorkOrders,
     int InProgressWorkOrders,
     int CompletedWorkOrders,
-    double TotalArea
+    decimal TotalProductiveArea
 )
 {
-    public DashboardStatsDto() : this(0, 0, 0, 0, 0, 0, 0) { }
+    public DashboardStatsDto() : this(0, 0, 0, 0, 0, 0, 0m) { }
 }
 
 public record RecentWorkOrderDto(

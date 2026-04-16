@@ -7,16 +7,18 @@ public record LaborDto
     public Guid LotId { get; set; }
     public Guid? CampaignLotId { get; set; }
     public Guid LaborTypeId { get; set; }
+    public Guid? ErpActivityId { get; set; }
     public string Status { get; set; } = "Planned";
+    public string Mode { get; set; } = "Planned"; // Added Mode
     public DateTime? ExecutionDate { get; set; }
     public DateTime? EstimatedDate { get; set; }
-    public string? LaborTaskType { get; set; }
     public decimal Hectares { get; set; }
     public DateTime CreatedAt { get; set; }
     public decimal Rate { get; set; }
     public string RateUnit { get; set; } = "ha";
     public string? LotName { get; set; }
     public string? LaborTypeName { get; set; }
+    public string? ErpActivityName { get; set; }
     public List<LaborSupplyDto> Supplies { get; set; } = new();
     public string? PrescriptionMapUrl { get; set; }
     public string? MachineryUsedId { get; set; }
@@ -28,9 +30,9 @@ public record LaborDto
     public decimal? RealizedDose { get; set; }
 
     public LaborDto() { }
-    public LaborDto(Guid id, Guid? workOrderId, Guid lotId, Guid? campaignLotId, Guid laborTypeId, string status, DateTime? executionDate, DateTime? estimatedDate, string? laborTaskType, decimal hectares, DateTime createdAt, decimal rate, string rateUnit, string? lotName, string? laborTypeName, List<LaborSupplyDto> supplies, string? prescriptionMapUrl, string? machineryUsedId, string? weatherLogJson, string? notes, string? fieldName, decimal plannedDose, decimal? realizedDose, Guid? contactId)
+    public LaborDto(Guid id, Guid? workOrderId, Guid lotId, Guid? campaignLotId, Guid laborTypeId, Guid? erpActivityId, string status, string mode, DateTime? executionDate, DateTime? estimatedDate, decimal hectares, DateTime createdAt, decimal rate, string rateUnit, string? lotName, string? laborTypeName, string? erpActivityName, List<LaborSupplyDto> supplies, string? prescriptionMapUrl, string? machineryUsedId, string? weatherLogJson, string? notes, string? fieldName, decimal plannedDose, decimal? realizedDose, Guid? contactId)
     {
-        Id = id; WorkOrderId = workOrderId; LotId = lotId; CampaignLotId = campaignLotId; LaborTypeId = laborTypeId; Status = status; ExecutionDate = executionDate; EstimatedDate = estimatedDate; LaborTaskType = laborTaskType; Hectares = hectares; CreatedAt = createdAt; Rate = rate; RateUnit = rateUnit; LotName = lotName; LaborTypeName = laborTypeName; Supplies = supplies ?? new(); PrescriptionMapUrl = prescriptionMapUrl; MachineryUsedId = machineryUsedId; WeatherLogJson = weatherLogJson; Notes = notes; FieldName = fieldName; PlannedDose = plannedDose; RealizedDose = realizedDose; ContactId = contactId;
+        Id = id; WorkOrderId = workOrderId; LotId = lotId; CampaignLotId = campaignLotId; LaborTypeId = laborTypeId; ErpActivityId = erpActivityId; Status = status; Mode = mode; ExecutionDate = executionDate; EstimatedDate = estimatedDate; Hectares = hectares; CreatedAt = createdAt; Rate = rate; RateUnit = rateUnit; LotName = lotName; LaborTypeName = laborTypeName; ErpActivityName = erpActivityName; Supplies = supplies ?? new(); PrescriptionMapUrl = prescriptionMapUrl; MachineryUsedId = machineryUsedId; WeatherLogJson = weatherLogJson; Notes = notes; FieldName = fieldName; PlannedDose = plannedDose; RealizedDose = realizedDose; ContactId = contactId;
     }
 }
 
@@ -39,10 +41,14 @@ public record LaborSupplyDto
     public Guid Id { get; set; }
     public Guid LaborId { get; set; }
     public Guid SupplyId { get; set; }
+    public decimal PlannedHectares { get; set; }
+    public decimal? RealHectares { get; set; }
     public decimal PlannedDose { get; set; }
     public decimal? RealDose { get; set; }
     public decimal PlannedTotal { get; set; }
     public decimal? RealTotal { get; set; }
+    public decimal? CalculatedDose { get; set; }
+    public decimal? CalculatedTotal { get; set; }
     public string UnitOfMeasure { get; set; } = string.Empty;
     public string? SupplyName { get; set; }
     public string? SupplyUnit { get; set; }
@@ -50,9 +56,9 @@ public record LaborSupplyDto
     public bool IsSubstitute { get; set; }
 
     public LaborSupplyDto() { }
-    public LaborSupplyDto(Guid id, Guid laborId, Guid supplyId, decimal plannedDose, decimal? realDose, decimal plannedTotal, decimal? realTotal, string unitOfMeasure, string? supplyName, string? supplyUnit, int tankMixOrder, bool isSubstitute)
+    public LaborSupplyDto(Guid id, Guid laborId, Guid supplyId, decimal plannedHectares, decimal? realHectares, decimal plannedDose, decimal? realDose, decimal plannedTotal, decimal? realTotal, decimal? calculatedDose, decimal? calculatedTotal, string unitOfMeasure, string? supplyName, string? supplyUnit, int tankMixOrder, bool isSubstitute)
     {
-        Id = id; LaborId = laborId; SupplyId = supplyId; PlannedDose = plannedDose; RealDose = realDose; PlannedTotal = plannedTotal; RealTotal = realTotal; UnitOfMeasure = unitOfMeasure; SupplyName = supplyName; SupplyUnit = supplyUnit; TankMixOrder = tankMixOrder; IsSubstitute = isSubstitute;
+        Id = id; LaborId = laborId; SupplyId = supplyId; PlannedHectares = plannedHectares; RealHectares = realHectares; PlannedDose = plannedDose; RealDose = realDose; PlannedTotal = plannedTotal; RealTotal = realTotal; CalculatedDose = calculatedDose; CalculatedTotal = calculatedTotal; UnitOfMeasure = unitOfMeasure; SupplyName = supplyName; SupplyUnit = supplyUnit; TankMixOrder = tankMixOrder; IsSubstitute = isSubstitute;
     }
 }
 
@@ -76,6 +82,24 @@ public record LaborCalendarDto
     }
 }
 
+public class WorkOrderSupplyApprovalDto
+{
+    public Guid Id { get; set; }
+    public Guid WorkOrderId { get; set; }
+    public Guid SupplyId { get; set; }
+    public string? SupplyName { get; set; }
+    public decimal TotalCalculated { get; set; }
+    public decimal ApprovedWithdrawal { get; set; }
+    public string? WithdrawalCenter { get; set; }
+    public decimal? RealTotalUsed { get; set; }
+
+    public WorkOrderSupplyApprovalDto() { }
+    public WorkOrderSupplyApprovalDto(Guid id, Guid workOrderId, Guid supplyId, string? supplyName, decimal totalCalculated, decimal approvedWithdrawal, string? withdrawalCenter, decimal? realTotalUsed)
+    {
+        Id = id; WorkOrderId = workOrderId; SupplyId = supplyId; SupplyName = supplyName; TotalCalculated = totalCalculated; ApprovedWithdrawal = approvedWithdrawal; WithdrawalCenter = withdrawalCenter; RealTotalUsed = realTotalUsed;
+    }
+}
+
 public record WorkOrderDetailDto
 {
     public Guid Id { get; set; }
@@ -95,10 +119,11 @@ public record WorkOrderDetailDto
     public Guid? CampaignId { get; set; }
     public Guid? ContractorId { get; set; }
     public Guid? ContactId { get; set; }
+    public List<WorkOrderSupplyApprovalDto> SupplyApprovals { get; set; } = new();
 
     public WorkOrderDetailDto() { }
-    public WorkOrderDetailDto(Guid id, Guid fieldId, string description, string status, string assignedTo, DateTime dueDate, string? fieldName, List<LaborDto> labors, string? otNumber, DateTime? plannedDate, DateTime? expirationDate, decimal estimatedCost, decimal agreedRate, bool stockReserved, Guid? campaignId, Guid? contractorId, Guid? contactId)
+    public WorkOrderDetailDto(Guid id, Guid fieldId, string description, string status, string assignedTo, DateTime dueDate, string? fieldName, List<LaborDto> labors, string? otNumber, DateTime? plannedDate, DateTime? expirationDate, decimal estimatedCost, decimal agreedRate, bool stockReserved, Guid? campaignId, Guid? contractorId, Guid? contactId, List<WorkOrderSupplyApprovalDto> approvals)
     {
-        Id = id; FieldId = fieldId; Description = description; Status = status; AssignedTo = assignedTo; DueDate = dueDate; FieldName = fieldName; Labors = labors; OTNumber = otNumber; PlannedDate = plannedDate; ExpirationDate = expirationDate; EstimatedCostUSD = estimatedCost; AgreedRate = agreedRate; StockReserved = stockReserved; CampaignId = campaignId; ContractorId = contractorId; ContactId = contactId;
+        Id = id; FieldId = fieldId; Description = description; Status = status; AssignedTo = assignedTo; DueDate = dueDate; FieldName = fieldName; Labors = labors; OTNumber = otNumber; PlannedDate = plannedDate; ExpirationDate = expirationDate; EstimatedCostUSD = estimatedCost; AgreedRate = agreedRate; StockReserved = stockReserved; CampaignId = campaignId; ContractorId = contractorId; ContactId = contactId; SupplyApprovals = approvals ?? new();
     }
 }

@@ -22,8 +22,20 @@ public class CatalogsController : ControllerBase
     {
         return await _context.LaborTypes
             .AsNoTracking()
+            .OrderBy(lt => lt.Name)
             .Select(lt => new LaborTypeDto(
                 lt.Id, lt.Name, lt.Description, lt.ExternalErpId))
+            .ToListAsync(ct);
+    }
+
+    [HttpGet("activities")]
+    public async Task<ActionResult<List<ErpActivityDto>>> GetActivities(CancellationToken ct)
+    {
+        return await _context.ErpActivities
+            .AsNoTracking()
+            .OrderBy(a => a.Name)
+            .Select(a => new ErpActivityDto(
+                a.Id, a.Name, a.ExternalErpId))
             .ToListAsync(ct);
     }
 

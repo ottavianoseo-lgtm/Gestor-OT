@@ -16,12 +16,13 @@ public class DashboardQueryService : IDashboardQueryService
 
     public async Task<DashboardStatsDto> GetStatsAsync(CancellationToken ct = default)
     {
-        // 1 query: Fields count + total area
-        var fieldStats = await _context.Fields
+        // 1 query: Fields count
+        var fieldsCount = await _context.Fields.CountAsync(CancellationToken.None);
+
+        // 1 query: Total productive area from all lots in the context (using CampaignLots)
+        var totalProductiveArea = await _context.CampaignLots
             .AsNoTracking()
-            .GroupBy(_ => 1)
-            .Select(g => new { Count = g.Count(), TotalArea = g.Sum(f => f.HectareasTotales) })
-            .FirstOrDefaultAsync(CancellationToken.None);
+            .SumAsync(cl => cl.ProductiveArea, CancellationToken.None);
 
         // 1 query: Lots total + active
         var lotStats = await _context.Lots
@@ -42,13 +43,13 @@ public class DashboardQueryService : IDashboardQueryService
         var completedOrders  = workOrderCounts.FirstOrDefault(x => x.Status == "Completed")?.Count ?? 0;
 
         return new DashboardStatsDto(
-            fieldStats?.Count ?? 0,
+            fieldsCount,
             lotStats?.Total ?? 0,
             lotStats?.Active ?? 0,
             pendingOrders,
             inProgressOrders,
             completedOrders,
-            fieldStats?.TotalArea ?? 0);
+            totalProductiveArea);
     }
 
     public async Task<List<RecentWorkOrderDto>> GetRecentOrdersAsync(int count = 10, CancellationToken ct = default)

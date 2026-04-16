@@ -11,6 +11,7 @@ public class CampaignLotConfiguration : IEntityTypeConfiguration<CampaignLot>
         builder.ToTable("CampaignLots", "public");
         builder.HasKey(e => e.Id);
         builder.Property(e => e.ProductiveArea).HasPrecision(18, 4);
+        builder.Property(e => e.Geometry).HasColumnType("geometry(Geometry, 4326)");
         builder.HasIndex(e => new { e.CampaignId, e.LotId }).IsUnique();
 
         builder.HasOne(e => e.Campaign)

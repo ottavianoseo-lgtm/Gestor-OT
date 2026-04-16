@@ -11,7 +11,6 @@ public class FieldConfiguration : IEntityTypeConfiguration<Field>
         builder.ToTable("Fields", "public");
         builder.HasKey(e => e.Id);
         builder.Property(e => e.Name).IsRequired().HasMaxLength(200);
-        builder.Property(e => e.HectareasTotales);
         builder.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
     }
 }

@@ -129,8 +129,7 @@
                                 }
                             </div>
                         </PropertyColumn>
-                        <PropertyColumn Property="r => r.CropName" Title="Cultivo" />
-                        <PropertyColumn Property="r => r.SuggestedLaborTypeName" Title="Actividad Sugerida" />
+                        <PropertyColumn Property="r => r.ActivityName" Title="Actividad (Cultivo)" />
                         <PropertyColumn Property="r => r.Notes" Title="Notas" />
                         <ActionColumn Title="" Width="100">
                             @if (_campaign?.Status != CampaignStatus.Locked)
@@ -311,18 +310,13 @@
             }
         </div>
         <div>
-            <label style="display: block; color: rgba(255,255,255,0.7); font-size: 12px; font-weight: 600; margin-bottom: 6px;">Cultivo</label>
-            <AntDesign.Input @bind-Value="_rotationModel.CropName" Placeholder="Ej: Soja 1ra, Maíz Tardío..." />
-        </div>
-        <div>
-            <label style="display: block; color: rgba(255,255,255,0.7); font-size: 12px; font-weight: 600; margin-bottom: 6px;">Actividad Sugerida (opcional)</label>
-            <Select @bind-Value="_rotationModel.SuggestedLaborTypeId"
-                    TItemValue="Guid?" TItem="LaborTypeDto"
-                    DataSource="@_laborTypes"
-                    LabelName="@nameof(LaborTypeDto.Name)"
-                    ValueName="@nameof(LaborTypeDto.Id)"
+            <label style="display: block; color: rgba(255,255,255,0.7); font-size: 12px; font-weight: 600; margin-bottom: 6px;">Actividad (Cultivo)</label>
+            <Select @bind-Value="_rotationModel.ActivityId"
+                    TItemValue="Guid" TItem="ErpActivityDto"
+                    DataSource="@_activities"
+                    LabelName="@nameof(ErpActivityDto.Name)"
+                    ValueName="@nameof(ErpActivityDto.Id)"
                     Placeholder="Seleccionar actividad..."
-                    AllowClear
                     ShowSearch
                     Style="width: 100%;" />
         </div>
@@ -374,7 +368,7 @@
     private List<LotDto> _allLots = new();
     private List<LotDto> _availableLots = new();
     private List<CampaignDto> _otherCampaigns = new();
-    private List<LaborTypeDto> _laborTypes = new();
+    private List<ErpActivityDto> _activities = new();
     private Dictionary<Guid, List<RotationDto>> _rotationsByLot = new();
     private bool _loading = true;
     private string? _errorMessage;
@@ -404,11 +398,10 @@
     {
         public Guid Id { get; set; }
         public Guid CampaignLotId { get; set; }
-        public string CropName { get; set; } = string.Empty;
+        public Guid ActivityId { get; set; }
         public DateOnly StartDate { get; set; } = DateOnly.FromDateTime(DateTime.Today);
         public DateOnly EndDate { get; set; } = DateOnly.FromDateTime(DateTime.Today.AddMonths(4));
         public string? Notes { get; set; }
-        public Guid? SuggestedLaborTypeId { get; set; }
     }
 
     protected override async Task OnInitializedAsync()
@@ -431,10 +424,12 @@
                 AppJsonSerializerContext.Default.ListLotDto, cts.Token);
             var campaignsTask = Http.GetFromJsonAsync("api/campaigns",
                 AppJsonSerializerContext.Default.ListCampaignDto, cts.Token);
-            var laborTypesTask = Http.GetFromJsonAsync("api/labortypes",
+            var laborTypesTask = Http.GetFromJsonAsync("api/catalogs/labor-types",
                 AppJsonSerializerContext.Default.ListLaborTypeDto, cts.Token);
+            var activitiesTask = Http.GetFromJsonAsync("api/catalogs/activities",
+                AppJsonSerializerContext.Default.ListErpActivityDto, cts.Token);
 
-            await Task.WhenAll(campaignTask, lotsTask, allLotsTask, campaignsTask, laborTypesTask);
+            await Task.WhenAll(campaignTask, lotsTask, allLotsTask, campaignsTask, laborTypesTask, activitiesTask);
 
             _campaign = campaignTask.Result;
             _lots = lotsTask.Result ?? new();
@@ -442,7 +437,7 @@
             _otherCampaigns = (campaignsTask.Result ?? new())
                 .Where(c => c.Id != CampaignId)
                 .ToList();
-            _laborTypes = laborTypesTask.Result ?? new();
+            _activities = activitiesTask.Result ?? new();
             RefreshAvailableLots();
             _errorMessage = null;
         }
@@ -519,11 +514,10 @@
         {
             Id = rotation.Id,
             CampaignLotId = rotation.CampaignLotId,
-            CropName = rotation.CropName,
+            ActivityId = rotation.ActivityId,
             StartDate = rotation.StartDate,
             EndDate = rotation.EndDate,
-            Notes = rotation.Notes,
-            SuggestedLaborTypeId = rotation.SuggestedLaborTypeId
+            Notes = rotation.Notes
         };
         _rotationModalVisible = true;
     }
@@ -535,9 +529,9 @@
 
     private async Task SaveRotation()
     {
-        if (string.IsNullOrWhiteSpace(_rotationModel.CropName))
+        if (_rotationModel.ActivityId == Guid.Empty)
         {
-            Message.Warning("El cultivo es obligatorio.");
+            Message.Warning("La actividad es obligatoria.");
             return;
         }
 
@@ -547,11 +541,11 @@
             var dto = new RotationDto(
                 _rotationModel.Id,
                 _rotationModel.CampaignLotId,
-                _rotationModel.CropName,
+                _rotationModel.ActivityId,
+                null,
                 _rotationModel.StartDate,
                 _rotationModel.EndDate,
-                _rotationModel.Notes,
-                _rotationModel.SuggestedLaborTypeId
+                _rotationModel.Notes
             );
 
             if (_isEditingRotation)

@@ -11,7 +11,6 @@ public class RotationConfiguration : IEntityTypeConfiguration<Rotation>
         builder.ToTable("Rotations", "public");
         builder.HasKey(e => e.Id);
 
-        builder.Property(e => e.CropName).HasMaxLength(100).IsRequired();
         builder.Property(e => e.Notes).HasMaxLength(500);
 
         builder.HasOne(e => e.CampaignLot)
@@ -19,9 +18,9 @@ public class RotationConfiguration : IEntityTypeConfiguration<Rotation>
             .HasForeignKey(e => e.CampaignLotId)
             .OnDelete(DeleteBehavior.Cascade);
 
-        builder.HasOne(e => e.SuggestedLaborType)
+        builder.HasOne(e => e.ErpActivity)
             .WithMany()
-            .HasForeignKey(e => e.SuggestedLaborTypeId)
-            .OnDelete(DeleteBehavior.SetNull);
+            .HasForeignKey(e => e.ErpActivityId)
+            .OnDelete(DeleteBehavior.Restrict);
     }
 }

@@ -35,19 +35,16 @@
         </div>
         
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
-            <FormItem Label="Tipo de Actividad (ERP)">
+            <FormItem Label="Actividad (ERP)">
                 <div style="display: flex; align-items: center; gap: 8px;">
-                    <Select TItemValue="Guid" TItem="LaborTypeDto" @bind-Value="_model.LaborTypeId"
-                            Placeholder="Seleccionar actividad" Disabled="@_actividadLocked" Style="flex: 1;">
-                        @foreach (var type in _laborTypes)
-                        {
-                            <SelectOption TItemValue="Guid" TItem="LaborTypeDto" Value="@type.Id"
-                                          Label="@type.Name" />
-                        }
+                    <Select TItemValue="Guid?" TItem="ErpActivityDto" @bind-Value="_model.ErpActivityId"
+                            Placeholder="Seleccionar actividad" Disabled="@_actividadLocked" Style="flex: 1;"
+                            LabelName="@nameof(ErpActivityDto.Name)" ValueName="@nameof(ErpActivityDto.Id)"
+                            DataSource="@_activities" EnableSearch>
                     </Select>
                     @if (_activeRotation != null)
                     {
-                        <Tooltip Title="@($"Sugerido por rotación: {_activeRotation.CropName}")">
+                        <Tooltip Title="@($"Sugerido por rotación: {_activeRotation.ActivityName}")">
                             <Tag Color="TagColor.Processing">Sugerido</Tag>
                         </Tooltip>
                     }
@@ -60,20 +57,24 @@
                 </div>
             </FormItem>
 
-            <FormItem Label="Tipo de Labor">
-                <Select TItemValue="string" TItem="string" @bind-Value="_model.LaborTaskType"
-                        Placeholder="Seleccionar tipo de labor" EnableSearch>
-                    @foreach (var task in _laborTaskTypes)
-                    {
-                        <SelectOption TItemValue="string" TItem="string" Value="@task" Label="@task" />
-                    }
+            <FormItem Label="Tipo de Labor (Tarea)">
+                <Select TItemValue="Guid" TItem="LaborTypeDto" @bind-Value="_model.LaborTypeId"
+                        Placeholder="Seleccionar tipo de labor" EnableSearch
+                        LabelName="@nameof(LaborTypeDto.Name)" ValueName="@nameof(LaborTypeDto.Id)"
+                        DataSource="@_laborTypes">
                 </Select>
             </FormItem>
         </div>
 
         <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px;">
             <FormItem Label="Hectáreas">
-                <AntDesign.InputNumber TValue="decimal" @bind-Value="_model.Hectares" Min="0m" Step="0.1m" Style="width: 100%;" />
+                <AntDesign.InputNumber TValue="decimal" Value="@_model.Hectares" OnChange="OnHectareasChanged" Min="0m" Step="0.1m" Style="width: 100%;" />
+                @if (_haSuperaLote)
+                {
+                    <div style="color: #F1C40F; font-size: 11px; margin-top: 4px;">
+                        <Icon Type="warning" /> La superficie supera el área productiva del lote (@_lotProductiveArea ha).
+                    </div>
+                }
             </FormItem>
             <FormItem Label="Fecha Est.">
                 <DatePicker TValue="DateTime?" Value="@_model.EstimatedDate" OnChange="OnFechaEstimadaChanged" Style="width: 100%;" />
@@ -93,7 +94,7 @@
             @foreach (var supply in _model.Supplies)
             {
                 <div style="border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 15px; margin-bottom: 10px; background: rgba(255,255,255,0.02);">
-                    <div style="display: grid; grid-template-columns: 2fr 1fr 1fr 50px; gap: 15px; align-items: end;">
+                    <div style="display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 50px; gap: 15px; align-items: end;">
                         <FormItem Label="Insumo" Style="margin-bottom: 0;">
                             <Select TItemValue="Guid" TItem="InventoryDto" @bind-Value="supply.SupplyId" 
                                     OnSelectedItemChanged="(InventoryDto s) => OnSupplySelected(supply, s)"
@@ -105,11 +106,17 @@
                                 }
                             </Select>
                         </FormItem>
+                        <FormItem Label="Hectáreas" Style="margin-bottom: 0;">
+                            <AntDesign.InputNumber TValue="decimal" @bind-Value="supply.PlannedHectares" Min="0m" Step="0.1m" Style="width: 100%;" />
+                        </FormItem>
                         <FormItem Label="Dosis Plan." Style="margin-bottom: 0;">
                             <AntDesign.InputNumber TValue="decimal" @bind-Value="supply.PlannedDose" Min="0m" Step="0.01m" Style="width: 100%;" />
                         </FormItem>
-                        <FormItem Label="Dosis Real" Style="margin-bottom: 0;">
-                            <AntDesign.InputNumber TValue="decimal?" @bind-Value="supply.RealDose" Min="0m" Step="0.01m" Style="width: 100%;" />
+                        <FormItem Label="Cantidad" Style="margin-bottom: 0;">
+                            <div style="display: flex; align-items: center; gap: 4px;">
+                                <span style="color: #fff; font-weight: 600;">@((supply.PlannedDose * supply.PlannedHectares).ToString("N2"))</span>
+                                <span style="font-size: 11px; color: rgba(255,255,255,0.4);">@supply.UnitOfMeasure</span>
+                            </div>
                         </FormItem>
                         <Button Danger Icon="delete" OnClick="() => RemoveSupply(supply)" Style="margin-bottom: 4px;" />
                     </div>
@@ -127,6 +134,11 @@
             </Button>
         </FormItem>
     </Form>
+
+    @if (LaborId != Guid.Empty)
+    {
+        <LaborAttachments LaborId="@LaborId" />
+    }
 </Card>
 
 @code {
@@ -138,19 +150,16 @@
     private LaborDto _model = new();
     private List<CampaignLotDto> _lots = new();
     private List<LaborTypeDto> _laborTypes = new();
+    private List<ErpActivityDto> _activities = new();
     private List<InventoryDto> _inventories = new();
     private List<ContactDto> _contacts = new();
     private bool _loading;
 
-    private List<string> _laborTaskTypes = new() 
-    { 
-        "Fertilización", "Fumigación", "Cosecha", "Siembra", "Barbecho", 
-        "Control de Plagas", "Riego", "Desmalezado", "Muestreo de Suelo", "Otros" 
-    };
-
     private bool _actividadLocked;
     private bool _showNoRotacionWarning;
     private RotationDto? _activeRotation;
+    private bool _haSuperaLote;
+    private decimal _lotProductiveArea;
 
     protected override async Task OnInitializedAsync()
     {
@@ -160,10 +169,11 @@
         {
             await LoadLabor();
             if (_model.EstimatedDate.HasValue) await CheckRotation(_model.EstimatedDate.Value);
+            CheckHectaresWarning(_model.Hectares);
         }
         else
         {
-            _model = new LaborDto { WorkOrderId = WorkOrderId, Status = "Planned", EstimatedDate = DefaultDate ?? DateTime.Today };
+            _model = new LaborDto { WorkOrderId = WorkOrderId, Status = "Planned", Mode = "Planned", EstimatedDate = DefaultDate ?? DateTime.Today };
             if (_model.EstimatedDate.HasValue) await CheckRotation(_model.EstimatedDate.Value);
         }
     }
@@ -181,6 +191,7 @@
     private async Task LoadCatalogs()
     {
         var typesTask = Http.GetFromJsonAsync<List<LaborTypeDto>>("api/catalogs/labor-types");
+        var activitiesTask = Http.GetFromJsonAsync<List<ErpActivityDto>>("api/catalogs/activities");
         var itemsTask = Http.GetFromJsonAsync<List<InventoryDto>>("api/inventory");
         var contactsTask = Http.GetFromJsonAsync<List<ContactDto>>("api/catalogs/contacts");
 
@@ -191,7 +202,7 @@
                 $"api/campaigns/{CampaignState.CurrentCampaign.Id}/lots");
         }
 
-        var tasks = new List<Task> { typesTask, itemsTask, contactsTask };
+        var tasks = new List<Task> { typesTask, activitiesTask, itemsTask, contactsTask };
         if (lotsTask != null)
         {
             tasks.Add(lotsTask);
@@ -201,6 +212,7 @@
         if (lotsTask != null)
             _lots = lotsTask.Result ?? new();
         _laborTypes = typesTask.Result ?? new();
+        _activities = activitiesTask.Result ?? new();
         _inventories = itemsTask.Result ?? new();
         _contacts = contactsTask.Result ?? new();
     }
@@ -215,11 +227,29 @@
         if (lot != null)
         {
             _model = _model with { LotId = lot.LotId, CampaignLotId = lot.Id };
+            _lotProductiveArea = lot.ProductiveArea;
             if (_model.Hectares == 0)
             {
-                _model = _model with { Hectares = lot.ProductiveArea > 0 ? lot.ProductiveArea : lot.CadastralArea };
+                _model.Hectares = lot.ProductiveArea > 0 ? lot.ProductiveArea : lot.CadastralArea;
+                CheckHectaresWarning(_model.Hectares);
             }
             if (_model.EstimatedDate.HasValue) await CheckRotation(_model.EstimatedDate.Value);
+        }
+    }
+
+    private void OnHectareasChanged(decimal val)
+    {
+        _model.Hectares = val;
+        CheckHectaresWarning(val);
+    }
+
+    private void CheckHectaresWarning(decimal val)
+    {
+        var lot = _lots.FirstOrDefault(l => l.LotId == _model.LotId);
+        if (lot != null)
+        {
+            _lotProductiveArea = lot.ProductiveArea;
+            _haSuperaLote = val > lot.ProductiveArea;
         }
     }
 
@@ -245,15 +275,8 @@
             if (_activeRotation != null)
             {
                 _showNoRotacionWarning = false;
-                if (_activeRotation.SuggestedLaborTypeId != null)
-                {
-                    _model.LaborTypeId = _activeRotation.SuggestedLaborTypeId.Value;
-                    _actividadLocked = true;
-                }
-                else
-                {
-                    _actividadLocked = false;
-                }
+                _model.ErpActivityId = _activeRotation.ActivityId;
+                _actividadLocked = true;
             }
             else
             {
@@ -292,7 +315,12 @@
         _model.Supplies ??= new();
         // Generamos un Guid nuevo para evitar colisiones en la UI; 
         // el backend ignorará este ID y generará uno propio al guardar.
-        _model.Supplies.Add(new LaborSupplyDto { Id = Guid.NewGuid(), LaborId = LaborId });
+        _model.Supplies.Add(new LaborSupplyDto 
+        { 
+            Id = Guid.NewGuid(), 
+            LaborId = LaborId,
+            PlannedHectares = _model.Hectares // Default to labor hectares
+        });
         StateHasChanged();
     }
 

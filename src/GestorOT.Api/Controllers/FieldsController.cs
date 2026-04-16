@@ -27,7 +27,6 @@ public class FieldsController : ControllerBase
             .Select(f => new FieldDto(
                 f.Id,
                 f.Name,
-                f.HectareasTotales,
                 f.CreatedAt,
                 f.Lots.Select(l => new LotSummaryDto(
                     l.Id,
@@ -50,7 +49,6 @@ public class FieldsController : ControllerBase
             .Select(f => new FieldDto(
                 f.Id,
                 f.Name,
-                f.HectareasTotales,
                 f.CreatedAt,
                 f.Lots.Select(l => new LotSummaryDto(
                     l.Id,
@@ -73,7 +71,6 @@ public class FieldsController : ControllerBase
         {
             Id = Guid.NewGuid(),
             Name = dto.Name,
-            HectareasTotales = dto.HectareasTotales,
             CreatedAt = DateTime.UtcNow
         };
 
@@ -83,7 +80,6 @@ public class FieldsController : ControllerBase
         var result = new FieldDto(
             field.Id,
             field.Name,
-            field.HectareasTotales,
             field.CreatedAt,
             new List<LotSummaryDto>()
         );
@@ -99,7 +95,6 @@ public class FieldsController : ControllerBase
             return NotFound();
 
         field.Name = dto.Name;
-        field.HectareasTotales = dto.HectareasTotales;
 
         await _context.SaveChangesAsync();
         return NoContent();

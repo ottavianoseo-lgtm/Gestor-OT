@@ -206,6 +206,99 @@ public class WorkOrdersController : ControllerBase
         }
     }
 
+    [HttpPut("{id:guid}/status")]
+    public async Task<IActionResult> UpdateStatus(Guid id, [FromBody] Guid statusId)
+    {
+        var workOrder = await _context.WorkOrders.FindAsync(id);
+        if (workOrder == null) return NotFound();
+
+        var status = await _context.WorkOrderStatuses.FindAsync(statusId);
+        if (status == null) return BadRequest("Estado no válido.");
+
+        workOrder.WorkOrderStatusId = statusId;
+        workOrder.Status = status.Name;
+
+        await _context.SaveChangesAsync();
+        return NoContent();
+    }
+
+    [HttpPut("{id:guid}/approvals")]
+    public async Task<IActionResult> UpdateApprovals(Guid id, List<WorkOrderSupplyApprovalDto> dtos)
+    {
+        var workOrder = await _context.WorkOrders
+            .Include(w => w.SupplyApprovals)
+            .FirstOrDefaultAsync(w => w.Id == id);
+
+        if (workOrder == null) return NotFound();
+
+        foreach (var dto in dtos)
+        {
+            var approval = workOrder.SupplyApprovals.FirstOrDefault(a => a.Id == dto.Id);
+            if (approval == null)
+            {
+                approval = new WorkOrderSupplyApproval
+                {
+                    Id = Guid.NewGuid(),
+                    WorkOrderId = id,
+                    SupplyId = dto.SupplyId
+                };
+                _context.WorkOrderSupplyApprovals.Add(approval);
+            }
+
+            approval.ApprovedWithdrawal = dto.ApprovedWithdrawal;
+            approval.WithdrawalCenter = dto.WithdrawalCenter;
+            approval.RealTotalUsed = dto.RealTotalUsed;
+            // TotalCalculated usually comes from a consolidate logic, but let's allow setting it if needed
+            approval.TotalCalculated = dto.TotalCalculated;
+        }
+
+        await _context.SaveChangesAsync();
+        return NoContent();
+    }
+
+    [HttpPost("{id:guid}/consolidate-supplies")]
+    public async Task<IActionResult> ConsolidateSupplies(Guid id)
+    {
+        var workOrder = await _context.WorkOrders
+            .Include(w => w.Labors)
+                .ThenInclude(l => l.Supplies)
+            .Include(w => w.SupplyApprovals)
+            .FirstOrDefaultAsync(w => w.Id == id);
+
+        if (workOrder == null) return NotFound();
+
+        var suppliesInLabors = workOrder.Labors
+            .SelectMany(l => l.Supplies)
+            .GroupBy(s => s.SupplyId)
+            .Select(g => new { SupplyId = g.Key, Total = g.Sum(s => s.PlannedTotal) })
+            .ToList();
+
+        foreach (var item in suppliesInLabors)
+        {
+            var approval = workOrder.SupplyApprovals.FirstOrDefault(a => a.SupplyId == item.SupplyId);
+            if (approval == null)
+            {
+                approval = new WorkOrderSupplyApproval
+                {
+                    Id = Guid.NewGuid(),
+                    WorkOrderId = id,
+                    SupplyId = item.SupplyId,
+                    ApprovedWithdrawal = item.Total // Default to total
+                };
+                _context.WorkOrderSupplyApprovals.Add(approval);
+            }
+            approval.TotalCalculated = item.Total;
+        }
+
+        // Cleanup approvals for supplies no longer in labors
+        var laborSupplyIds = suppliesInLabors.Select(s => s.SupplyId).ToHashSet();
+        var toRemove = workOrder.SupplyApprovals.Where(a => !laborSupplyIds.Contains(a.SupplyId)).ToList();
+        _context.WorkOrderSupplyApprovals.RemoveRange(toRemove);
+
+        await _context.SaveChangesAsync();
+        return Ok();
+    }
+
     [HttpDelete("{id:guid}")]
     public async Task<IActionResult> DeleteWorkOrder(Guid id)
     {

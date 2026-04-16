@@ -3,12 +3,11 @@ namespace GestorOT.Shared.Dtos;
 public record RotationDto(
     Guid Id,
     Guid CampaignLotId,
-    string CropName,
+    Guid ActivityId,
+    string? ActivityName,
     DateOnly StartDate,
     DateOnly EndDate,
-    string? Notes,
-    Guid? SuggestedLaborTypeId,
-    string? SuggestedLaborTypeName = null
+    string? Notes
 );
 
 public record RotationWarning(

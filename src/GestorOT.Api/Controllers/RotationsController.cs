@@ -16,14 +16,14 @@ public class RotationsController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<ActionResult<List<RotationDto>>> GetRotations(Guid lotId)
+    public async Task<ActionResult<List<RotationDto>>> GetRotations(Guid campaignId, Guid lotId)
     {
         var rotations = await _rotationService.GetRotationsByCampaignLotAsync(lotId);
         return Ok(rotations);
     }
 
     [HttpGet("active")]
-    public async Task<ActionResult<RotationDto>> GetActiveRotation(Guid lotId, [FromQuery] DateOnly date)
+    public async Task<ActionResult<RotationDto>> GetActiveRotation(Guid campaignId, Guid lotId, [FromQuery] DateOnly date)
     {
         var rotation = await _rotationService.GetActiveRotationAsync(lotId, date);
         if (rotation == null) return NotFound();
@@ -31,12 +31,19 @@ public class RotationsController : ControllerBase
     }
 
     [HttpPost]
-    public async Task<ActionResult<RotationResponse>> CreateRotation(Guid lotId, RotationDto dto)
+    public async Task<ActionResult<RotationResponse>> CreateRotation(Guid campaignId, Guid lotId, RotationDto dto)
     {
         if (lotId != dto.CampaignLotId) return BadRequest("Lot ID mismatch");
         
-        var response = await _rotationService.CreateRotationAsync(dto);
-        return Ok(response);
+        try
+        {
+            var response = await _rotationService.CreateRotationAsync(dto);
+            return Ok(response);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
     }
 
     [HttpPut("{id:guid}")]
@@ -44,8 +51,15 @@ public class RotationsController : ControllerBase
     {
         if (id != dto.Id) return BadRequest("ID mismatch");
         
-        await _rotationService.UpdateRotationAsync(id, dto);
-        return NoContent();
+        try
+        {
+            await _rotationService.UpdateRotationAsync(id, dto);
+            return NoContent();
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
     }
 
     [HttpDelete("{id:guid}")]

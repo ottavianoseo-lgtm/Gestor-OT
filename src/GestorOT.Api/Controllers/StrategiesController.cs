@@ -1,6 +1,7 @@
 using System.Text.Json;
 using GestorOT.Application.Interfaces;
 using GestorOT.Domain.Entities;
+using GestorOT.Domain.Enums;
 using GestorOT.Shared;
 using GestorOT.Shared.Dtos;
 using Microsoft.AspNetCore.Mvc;
@@ -175,10 +176,11 @@ public class StrategiesController : ControllerBase
                     WorkOrderId = wo.Id,
                     LotId = lot.Id,
                     LaborTypeId = item.LaborTypeId,
+                    Mode = LaborMode.Planned,
                     Status = "Planned",
                     ExecutionDate = request.StartDate.AddDays(item.DayOffset),
-                    Hectares = (decimal)(lot.Field?.HectareasTotales ?? 0),
-                    EffectiveArea = (decimal)(lot.Field?.HectareasTotales ?? 0),
+                    Hectares = lot.CadastralArea,
+                    EffectiveArea = lot.CadastralArea,
                     CreatedAt = DateTime.UtcNow
                 };
 

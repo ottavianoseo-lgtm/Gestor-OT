@@ -74,13 +74,12 @@ public static class ServiceExtensions
             services.AddScoped<ILotQueryService, LotQueryService>();
             services.AddScoped<IDashboardQueryService, DashboardQueryService>();
             services.AddScoped<IAuditLogQueryService, AuditLogQueryService>();
-            services.AddScoped<IRotationService, RotationService>();
+            services.AddScoped<GestorOT.Application.Services.IRotationService, RotationService>();
             services.AddScoped<IErpSyncService, ErpSyncService>();
             services.AddHttpClient();
 #pragma warning disable EXTEXP0018
             services.AddHybridCache();
 #pragma warning restore EXTEXP0018
-            services.AddHostedService<ErpSyncWorker>();
         }
         else
         {
