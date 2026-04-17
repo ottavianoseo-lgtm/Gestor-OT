@@ -20,7 +20,7 @@
     {
         if (!CampaignState.IsSelected && !string.IsNullOrEmpty(PersistedCampaignId) && Guid.TryParse(PersistedCampaignId, out var campaignId))
         {
-            var status = Enum.TryParse<CampaignStatus>(PersistedCampaignStatus, out var s) ? s : CampaignStatus.Planning;
+            var status = Enum.TryParse<CampaignStatus>(PersistedCampaignStatus, out var s) ? s : CampaignStatus.Active;
             CampaignState.SetCampaign(new CampaignSummaryDto(campaignId, PersistedCampaignName ?? "", status, true));
         }
 

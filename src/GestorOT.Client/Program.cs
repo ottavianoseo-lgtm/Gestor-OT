@@ -3,14 +3,9 @@ using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
 
 var builder = WebAssemblyHostBuilder.CreateDefault(args);
 
-var tenantState = new TenantState();
-builder.Services.AddSingleton(tenantState);
-
-var campaignState = new CampaignState();
-builder.Services.AddSingleton(campaignState);
-
-var loadingService = new LoadingService();
-builder.Services.AddSingleton(loadingService);
+builder.Services.AddScoped<TenantState>();
+builder.Services.AddScoped<CampaignState>();
+builder.Services.AddScoped<LoadingService>();
 
 builder.Services.AddScoped<DashboardState>();
 

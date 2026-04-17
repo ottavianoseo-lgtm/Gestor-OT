@@ -2,7 +2,6 @@ namespace GestorOT.Shared.Dtos;
 
 public enum CampaignStatus
 {
-    Planning,
     Active,
     Locked
 }
@@ -11,7 +10,7 @@ public record CampaignDto(
     Guid Id,
     string Name,
     DateOnly StartDate,
-    DateOnly? EndDate,
+    DateOnly EndDate,
     bool IsActive,
     CampaignStatus Status,
     decimal BudgetTotalUSD,
@@ -20,7 +19,7 @@ public record CampaignDto(
     List<CampaignFieldDto>? Fields = null
 )
 {
-    public CampaignDto() : this(Guid.Empty, string.Empty, DateOnly.MinValue, null, true, CampaignStatus.Planning, 0, null, DateTime.MinValue, null) { }
+    public CampaignDto() : this(Guid.Empty, string.Empty, DateOnly.MinValue, DateOnly.MinValue, true, CampaignStatus.Active, 0, null, DateTime.MinValue, null) { }
 }
 
 public record CampaignFieldDto(
@@ -41,7 +40,7 @@ public record CampaignSummaryDto(
     bool IsActive
 )
 {
-    public CampaignSummaryDto() : this(Guid.Empty, string.Empty, CampaignStatus.Planning, true) { }
+    public CampaignSummaryDto() : this(Guid.Empty, string.Empty, CampaignStatus.Active, true) { }
 }
 
 public record CampaignLotDto(

@@ -27,7 +27,6 @@ public class FieldsController : ControllerBase
             .Select(f => new FieldDto(
                 f.Id,
                 f.Name,
-                f.HectareasTotales,
                 f.CreatedAt,
                 f.Lots.Select(l => new LotSummaryDto(
                     l.Id,
@@ -50,7 +49,6 @@ public class FieldsController : ControllerBase
             .Select(f => new FieldDto(
                 f.Id,
                 f.Name,
-                f.HectareasTotales,
                 f.CreatedAt,
                 f.Lots.Select(l => new LotSummaryDto(
                     l.Id,
@@ -73,7 +71,6 @@ public class FieldsController : ControllerBase
         {
             Id = Guid.NewGuid(),
             Name = dto.Name,
-            HectareasTotales = dto.HectareasTotales,
             CreatedAt = DateTime.UtcNow
         };
 
@@ -83,7 +80,6 @@ public class FieldsController : ControllerBase
         var result = new FieldDto(
             field.Id,
             field.Name,
-            field.HectareasTotales,
             field.CreatedAt,
             new List<LotSummaryDto>()
         );
@@ -99,7 +95,6 @@ public class FieldsController : ControllerBase
             return NotFound();
 
         field.Name = dto.Name;
-        field.HectareasTotales = dto.HectareasTotales;
 
         await _context.SaveChangesAsync();
         return NoContent();
@@ -110,7 +105,11 @@ public class FieldsController : ControllerBase
     {
         var field = await _context.Fields.FindAsync(id);
         if (field == null)
-            return NotFound();
+            return NotFound("El campo no existe.");
+
+        var hasLots = await _context.Lots.AnyAsync(l => l.FieldId == id);
+        if (hasLots)
+            return BadRequest("No se puede eliminar un campo que todavía tiene lotes asociados. Elimine los lotes primero.");
 
         _context.Fields.Remove(field);
         await _context.SaveChangesAsync();

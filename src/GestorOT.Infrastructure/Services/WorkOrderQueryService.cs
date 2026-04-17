@@ -53,12 +53,91 @@ public class WorkOrderQueryService : IWorkOrderQueryService
             .Include(w => w.Labors)
                 .ThenInclude(l => l.Type)
             .Include(w => w.Labors)
+                .ThenInclude(l => l.ErpActivity)
+            .Include(w => w.Labors)
                 .ThenInclude(l => l.Supplies)
                     .ThenInclude(s => s.Supply)
+            .Include(w => w.SupplyApprovals)
+                .ThenInclude(a => a.Supply)
             .FirstOrDefaultAsync(w => w.Id == id, ct);
 
         if (workOrder == null)
             return null;
+
+        var labors = workOrder.Labors.OrderBy(l => l.CreatedAt).Select(l => new LaborDto(
+            l.Id,
+            l.WorkOrderId,
+            l.LotId,
+            l.CampaignLotId ?? Guid.Empty,
+            l.LaborTypeId,
+            l.ErpActivityId,
+            l.Status,
+            l.Mode.ToString(),
+            l.ExecutionDate,
+            l.EstimatedDate,
+            l.Hectares,
+            l.CreatedAt,
+            l.Rate,
+            l.RateUnit,
+            l.Lot?.Name,
+            l.Type?.Name,
+            l.ErpActivity?.Name,
+            l.Supplies.OrderBy(s => s.TankMixOrder).Select(s => new LaborSupplyDto(
+                s.Id,
+                s.LaborId,
+                s.SupplyId,
+                s.PlannedHectares,
+                s.RealHectares,
+                s.PlannedDose,
+                s.RealDose,
+                s.PlannedTotal,
+                s.RealTotal,
+                s.CalculatedDose,
+                s.CalculatedTotal,
+                s.UnitOfMeasure,
+                s.Supply?.ItemName,
+                s.Supply?.UnitB,
+                s.TankMixOrder,
+                s.IsSubstitute
+            )).ToList(),
+            l.PrescriptionMapUrl,
+            l.MachineryUsedId,
+            l.WeatherLogJson,
+            l.Notes,
+            l.Lot?.Field?.Name,
+            l.PlannedDose,
+            l.RealizedDose,
+            l.ContactId
+        )).ToList();
+
+        // Step 19: Rule of three for Realized labors
+        foreach (var approval in workOrder.SupplyApprovals.Where(a => a.RealTotalUsed.HasValue))
+        {
+            var supplyId = approval.SupplyId;
+            var realTotal = approval.RealTotalUsed!.Value;
+
+            // Get all labors (usually realized ones) that use this supply
+            var laborsWithSupply = labors.Where(l => l.Supplies.Any(s => s.SupplyId == supplyId)).ToList();
+            var totalPlannedForSupply = laborsWithSupply.Sum(l => l.Supplies.First(s => s.SupplyId == supplyId).PlannedTotal);
+
+            if (totalPlannedForSupply > 0)
+            {
+                foreach (var labor in laborsWithSupply)
+                {
+                    var supply = labor.Supplies.First(s => s.SupplyId == supplyId);
+                    var proportion = supply.PlannedTotal / totalPlannedForSupply;
+                    supply.CalculatedTotal = realTotal * proportion;
+                    
+                    // Coef = Total / Area
+                    // Use RealHectares if available, else Labor Hectares
+                    var area = supply.RealHectares ?? labor.Hectares;
+                    if (area > 0)
+                    {
+                        supply.CalculatedDose = supply.CalculatedTotal / area;
+                    }
+                }
+            }
+        }
 
         return new WorkOrderDetailDto(
             workOrder.Id,
@@ -68,44 +147,7 @@ public class WorkOrderQueryService : IWorkOrderQueryService
             workOrder.AssignedTo,
             workOrder.DueDate,
             workOrder.Field?.Name,
-            workOrder.Labors.OrderBy(l => l.CreatedAt).Select(l => new LaborDto(
-                l.Id,
-                l.WorkOrderId,
-                l.LotId,
-                l.CampaignLotId ?? Guid.Empty,
-                l.LaborTypeId,
-                l.Status,
-                l.ExecutionDate,
-                l.EstimatedDate,
-                l.Hectares,
-                l.CreatedAt,
-                l.Rate,
-                l.RateUnit,
-                l.Lot?.Name,
-                l.Type?.Name,
-                l.Supplies.OrderBy(s => s.TankMixOrder).Select(s => new LaborSupplyDto(
-                    s.Id,
-                    s.LaborId,
-                    s.SupplyId,
-                    s.PlannedDose,
-                    s.RealDose,
-                    s.PlannedTotal,
-                    s.RealTotal,
-                    s.UnitOfMeasure,
-                    s.Supply?.ItemName,
-                    s.Supply?.UnitB,
-                    s.TankMixOrder,
-                    s.IsSubstitute
-                )).ToList(),
-                l.PrescriptionMapUrl,
-                l.MachineryUsedId,
-                l.WeatherLogJson,
-                l.Notes,
-                l.Lot?.Field?.Name,
-                l.PlannedDose,
-                l.RealizedDose,
-                l.ContactId
-            )).ToList(),
+            labors,
             workOrder.OTNumber,
             workOrder.PlannedDate,
             workOrder.ExpirationDate,
@@ -114,7 +156,10 @@ public class WorkOrderQueryService : IWorkOrderQueryService
             workOrder.StockReserved,
             workOrder.CampaignId,
             workOrder.ContractorId,
-            workOrder.ContactId
+            workOrder.ContactId,
+            workOrder.SupplyApprovals.Select(a => new WorkOrderSupplyApprovalDto(
+                a.Id, a.WorkOrderId, a.SupplyId, a.Supply?.ItemName, a.TotalCalculated, a.ApprovedWithdrawal, a.WithdrawalCenter, a.RealTotalUsed
+            )).ToList()
         );
     }
 }

@@ -91,7 +91,10 @@
             }
             else
             {
-                @foreach (var lot in _orphanLots)
+                <div style="padding: 10px;">
+                    <Input @bind-Value="_orphanSearch" Placeholder="Buscar lote..." />
+                </div>
+                @foreach (var lot in _orphanLots.Where(l => string.IsNullOrEmpty(_orphanSearch) || l.Name.Contains(_orphanSearch, StringComparison.OrdinalIgnoreCase)))
                 {
                     <div class="orphan-item @(lot.Id == _linkingLotId ? "orphan-item--active" : "")"
                          @onclick="() => SelectOrphanForLinking(lot)">
@@ -105,7 +108,9 @@
                         }
                         else
                         {
-                            <Icon Type="link" Theme="IconThemeType.Outline" Style="color: rgba(255,255,255,0.3);" />
+                            <Button Size="@ButtonSize.Small" OnClick="() => StartDrawingForLot(lot)">
+                                Dibujar
+                            </Button>
                         }
                     </div>
                 }
@@ -174,29 +179,6 @@
                     <span class="rail-label">Área Dibujada</span>
                     <span class="rail-value">@_selectedLot.Area.ToString("N2") ha</span>
                 </div>
-                @{
-                    var field = _allFields.FirstOrDefault(f => f.Id == _selectedLot.FieldId);
-                    if (field != null)
-                    {
-                        var delta = _selectedLot.Area - field.HectareasTotales;
-                        var pct = field.HectareasTotales > 0 ? (delta / field.HectareasTotales * 100) : 0;
-                        <div class="rail-section">
-                            <span class="rail-label">Área Fiscal</span>
-                            <span class="rail-value">@field.HectareasTotales.ToString("N2") ha</span>
-                        </div>
-                        <div class="surface-comparison">
-                            <div style="font-size: 11px; color: rgba(255,255,255,0.5); margin-bottom: 6px;">Diferencia Superficie</div>
-                            <div style="display: flex; align-items: center; gap: 8px;">
-                                <span style="font-size: 18px; font-weight: 700; color: @(Math.Abs(pct) < 5 ? "#2ECC71" : "#F1C40F");">
-                                    @(delta > 0 ? "+" : "")@delta.ToString("N2") ha
-                                </span>
-                                <Tag Style="@($"background: {(Math.Abs(pct) < 5 ? "#2ECC71" : "#F1C40F")}20; color: {(Math.Abs(pct) < 5 ? "#2ECC71" : "#F1C40F")}; border: none; border-radius: 10px; font-size: 11px;")">
-                                    @(pct > 0 ? "+" : "")@pct.ToString("N1")%
-                                </Tag>
-                            </div>
-                        </div>
-                    }
-                }
                 <div class="rail-section">
                     <span class="rail-label">Geometría</span>
                     <span class="rail-value">@(!string.IsNullOrEmpty(_selectedLot.WktGeometry) ? "Definida" : "Sin datos")</span>
@@ -305,12 +287,26 @@
 
     .gis-toolbar {
         position: absolute;
-        top: 80px;
-        left: 12px;
+        top: 100px;
+        right: 12px;
         z-index: 999;
         display: flex;
         flex-direction: column;
         gap: 6px;
+    }
+
+    .gis-legend {
+        position: absolute;
+        top: 16px;
+        left: 16px;
+        z-index: 999;
+        background: rgba(30,30,46,0.9);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        border: 1px solid rgba(255,255,255,0.1);
+        border-radius: 12px;
+        padding: 14px 18px;
+        min-width: 160px;
     }
 
     .toolbar-btn {
@@ -359,7 +355,7 @@
     .gis-legend {
         position: absolute;
         top: 16px;
-        left: 16px;
+        left: 56px;
         z-index: 999;
         background: rgba(30,30,46,0.9);
         backdrop-filter: blur(12px);
@@ -395,7 +391,7 @@
     .orphan-panel {
         position: absolute;
         top: 80px;
-        left: 56px;
+        left: 230px;
         z-index: 998;
         background: rgba(30,30,46,0.95);
         backdrop-filter: blur(20px);
@@ -517,6 +513,7 @@
     private List<LotDto> _allLots = new();
     private List<FieldDto> _allFields = new();
     private List<LotDto> _orphanLots = new();
+    private string _orphanSearch = "";
     private bool _showOrphanPanel;
     private bool _showImportModal;
     private bool _showLinkModal;
@@ -527,6 +524,13 @@
     private Guid _linkingLotId;
     private string? _importLinkWkt;
     private List<ImportResult> _importResults = new();
+
+    private async Task StartDrawingForLot(LotDto lot)
+    {
+        _linkingLotId = lot.Id;
+        _showOrphanPanel = false;
+        await JS.InvokeVoidAsync("mapInterop.enableDrawing");
+    }
 
     public class ImportResult
     {

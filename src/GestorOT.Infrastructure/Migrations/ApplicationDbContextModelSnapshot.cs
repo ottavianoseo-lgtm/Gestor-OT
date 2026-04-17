@@ -92,7 +92,7 @@ namespace GestorOT.Infrastructure.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasDefaultValueSql("CURRENT_TIMESTAMP");
 
-                    b.Property<DateOnly?>("EndDate")
+                    b.Property<DateOnly>("EndDate")
                         .HasColumnType("date");
 
                     b.Property<bool>("IsActive")
@@ -113,7 +113,7 @@ namespace GestorOT.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)")
-                        .HasDefaultValue("Planning");
+                        .HasDefaultValue("Active");
 
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uuid");
@@ -171,6 +171,9 @@ namespace GestorOT.Infrastructure.Migrations
 
                     b.Property<Guid?>("CropId")
                         .HasColumnType("uuid");
+
+                    b.Property<Geometry>("Geometry")
+                        .HasColumnType("geometry(Geometry, 4326)");
 
                     b.Property<Guid>("LotId")
                         .HasColumnType("uuid");
@@ -262,6 +265,160 @@ namespace GestorOT.Infrastructure.Migrations
                     b.ToTable("CropStrategies", "public");
                 });
 
+            modelBuilder.Entity("GestorOT.Domain.Entities.ErpActivity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ExternalErpId")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("ErpActivities", "public");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = new Guid("5f96e4e0-0b6e-4f0e-8d8a-9f8e8e8e8e01"),
+                            Name = "Trigo",
+                            TenantId = new Guid("00000000-0000-0000-0000-000000000000")
+                        },
+                        new
+                        {
+                            Id = new Guid("5f96e4e0-0b6e-4f0e-8d8a-9f8e8e8e8e02"),
+                            Name = "Sorgo",
+                            TenantId = new Guid("00000000-0000-0000-0000-000000000000")
+                        },
+                        new
+                        {
+                            Id = new Guid("5f96e4e0-0b6e-4f0e-8d8a-9f8e8e8e8e03"),
+                            Name = "Avena",
+                            TenantId = new Guid("00000000-0000-0000-0000-000000000000")
+                        },
+                        new
+                        {
+                            Id = new Guid("5f96e4e0-0b6e-4f0e-8d8a-9f8e8e8e8e04"),
+                            Name = "Maní",
+                            TenantId = new Guid("00000000-0000-0000-0000-000000000000")
+                        },
+                        new
+                        {
+                            Id = new Guid("5f96e4e0-0b6e-4f0e-8d8a-9f8e8e8e8e05"),
+                            Name = "Camelina",
+                            TenantId = new Guid("00000000-0000-0000-0000-000000000000")
+                        },
+                        new
+                        {
+                            Id = new Guid("5f96e4e0-0b6e-4f0e-8d8a-9f8e8e8e8e06"),
+                            Name = "Alpiste",
+                            TenantId = new Guid("00000000-0000-0000-0000-000000000000")
+                        },
+                        new
+                        {
+                            Id = new Guid("5f96e4e0-0b6e-4f0e-8d8a-9f8e8e8e8e07"),
+                            Name = "Girasol",
+                            TenantId = new Guid("00000000-0000-0000-0000-000000000000")
+                        },
+                        new
+                        {
+                            Id = new Guid("5f96e4e0-0b6e-4f0e-8d8a-9f8e8e8e8e08"),
+                            Name = "Girasol alto oleico",
+                            TenantId = new Guid("00000000-0000-0000-0000-000000000000")
+                        },
+                        new
+                        {
+                            Id = new Guid("5f96e4e0-0b6e-4f0e-8d8a-9f8e8e8e8e09"),
+                            Name = "Soja 1º",
+                            TenantId = new Guid("00000000-0000-0000-0000-000000000000")
+                        },
+                        new
+                        {
+                            Id = new Guid("5f96e4e0-0b6e-4f0e-8d8a-9f8e8e8e8e10"),
+                            Name = "Soja 2º",
+                            TenantId = new Guid("00000000-0000-0000-0000-000000000000")
+                        },
+                        new
+                        {
+                            Id = new Guid("5f96e4e0-0b6e-4f0e-8d8a-9f8e8e8e8e11"),
+                            Name = "Papa",
+                            TenantId = new Guid("00000000-0000-0000-0000-000000000000")
+                        },
+                        new
+                        {
+                            Id = new Guid("5f96e4e0-0b6e-4f0e-8d8a-9f8e8e8e8e12"),
+                            Name = "Cebada cervezera",
+                            TenantId = new Guid("00000000-0000-0000-0000-000000000000")
+                        },
+                        new
+                        {
+                            Id = new Guid("5f96e4e0-0b6e-4f0e-8d8a-9f8e8e8e8e13"),
+                            Name = "Cebada forrajera",
+                            TenantId = new Guid("00000000-0000-0000-0000-000000000000")
+                        },
+                        new
+                        {
+                            Id = new Guid("5f96e4e0-0b6e-4f0e-8d8a-9f8e8e8e8e14"),
+                            Name = "Maíz",
+                            TenantId = new Guid("00000000-0000-0000-0000-000000000000")
+                        },
+                        new
+                        {
+                            Id = new Guid("5f96e4e0-0b6e-4f0e-8d8a-9f8e8e8e8e15"),
+                            Name = "Maíz tardío",
+                            TenantId = new Guid("00000000-0000-0000-0000-000000000000")
+                        });
+                });
+
+            modelBuilder.Entity("GestorOT.Domain.Entities.ErpConcept", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("ExternalErpId")
+                        .HasColumnType("text");
+
+                    b.Property<string>("GrupoConcepto")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("LastSyncDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<double>("Stock")
+                        .HasColumnType("double precision");
+
+                    b.Property<string>("SubGrupoConcepto")
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("UnitA")
+                        .HasColumnType("text");
+
+                    b.Property<string>("UnitB")
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("ErpConcepts");
+                });
+
             modelBuilder.Entity("GestorOT.Domain.Entities.ErpPerson", b =>
                 {
                     b.Property<Guid>("Id")
@@ -328,9 +485,6 @@ namespace GestorOT.Infrastructure.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasDefaultValueSql("CURRENT_TIMESTAMP");
 
-                    b.Property<double>("HectareasTotales")
-                        .HasColumnType("double precision");
-
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(200)
@@ -368,6 +522,9 @@ namespace GestorOT.Infrastructure.Migrations
                     b.Property<string>("ExternalErpId")
                         .HasColumnType("text");
 
+                    b.Property<string>("GrupoConcepto")
+                        .HasColumnType("text");
+
                     b.Property<string>("ItemName")
                         .IsRequired()
                         .HasMaxLength(200)
@@ -376,6 +533,9 @@ namespace GestorOT.Infrastructure.Migrations
                     b.Property<double>("ReorderLevel")
                         .HasPrecision(18, 4)
                         .HasColumnType("double precision");
+
+                    b.Property<string>("SubGrupoConcepto")
+                        .HasColumnType("text");
 
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uuid");
@@ -402,7 +562,7 @@ namespace GestorOT.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
-                    b.Property<Guid>("CampaignLotId")
+                    b.Property<Guid?>("CampaignLotId")
                         .HasColumnType("uuid");
 
                     b.Property<Guid?>("ContactId")
@@ -416,6 +576,9 @@ namespace GestorOT.Infrastructure.Migrations
                     b.Property<decimal>("EffectiveArea")
                         .HasPrecision(18, 4)
                         .HasColumnType("numeric(18,4)");
+
+                    b.Property<Guid?>("ErpActivityId")
+                        .HasColumnType("uuid");
 
                     b.Property<DateTime?>("EstimatedDate")
                         .HasColumnType("timestamp with time zone");
@@ -444,6 +607,13 @@ namespace GestorOT.Infrastructure.Migrations
 
                     b.Property<string>("MetadataExterna")
                         .HasColumnType("jsonb");
+
+                    b.Property<string>("Mode")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasDefaultValue("Planned");
 
                     b.Property<string>("Notes")
                         .HasColumnType("text");
@@ -492,6 +662,8 @@ namespace GestorOT.Infrastructure.Migrations
 
                     b.HasIndex("ContactId");
 
+                    b.HasIndex("ErpActivityId");
+
                     b.HasIndex("LaborTypeId");
 
                     b.HasIndex("LotId");
@@ -501,11 +673,58 @@ namespace GestorOT.Infrastructure.Migrations
                     b.ToTable("Labors", "public");
                 });
 
+            modelBuilder.Entity("GestorOT.Domain.Entities.LaborAttachment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<byte[]>("Content")
+                        .IsRequired()
+                        .HasColumnType("bytea");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<long>("FileSizeBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("LaborId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("MimeType")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("UploadedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("LaborId");
+
+                    b.ToTable("LaborAttachments", "public");
+                });
+
             modelBuilder.Entity("GestorOT.Domain.Entities.LaborSupply", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
+
+                    b.Property<decimal?>("CalculatedDose")
+                        .HasPrecision(18, 6)
+                        .HasColumnType("numeric(18,6)");
+
+                    b.Property<decimal?>("CalculatedTotal")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("numeric(18,4)");
 
                     b.Property<bool>("IsSubstitute")
                         .HasColumnType("boolean");
@@ -517,6 +736,10 @@ namespace GestorOT.Infrastructure.Migrations
                         .HasPrecision(18, 6)
                         .HasColumnType("numeric(18,6)");
 
+                    b.Property<decimal>("PlannedHectares")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("numeric(18,4)");
+
                     b.Property<decimal>("PlannedTotal")
                         .HasPrecision(18, 4)
                         .HasColumnType("numeric(18,4)");
@@ -524,6 +747,10 @@ namespace GestorOT.Infrastructure.Migrations
                     b.Property<decimal?>("RealDose")
                         .HasPrecision(18, 6)
                         .HasColumnType("numeric(18,6)");
+
+                    b.Property<decimal?>("RealHectares")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("numeric(18,4)");
 
                     b.Property<decimal?>("RealTotal")
                         .HasPrecision(18, 4)
@@ -614,6 +841,40 @@ namespace GestorOT.Infrastructure.Migrations
                     NpgsqlIndexBuilderExtensions.HasMethod(b.HasIndex("Geometry"), "GIST");
 
                     b.ToTable("Lots", "public");
+                });
+
+            modelBuilder.Entity("GestorOT.Domain.Entities.Rotation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("CampaignLotId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateOnly>("EndDate")
+                        .HasColumnType("date");
+
+                    b.Property<Guid>("ErpActivityId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<DateOnly>("StartDate")
+                        .HasColumnType("date");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CampaignLotId");
+
+                    b.HasIndex("ErpActivityId");
+
+                    b.ToTable("Rotations", "public");
                 });
 
             modelBuilder.Entity("GestorOT.Domain.Entities.SharedToken", b =>
@@ -858,6 +1119,9 @@ namespace GestorOT.Infrastructure.Migrations
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uuid");
 
+                    b.Property<Guid?>("WorkOrderStatusId")
+                        .HasColumnType("uuid");
+
                     b.HasKey("Id");
 
                     b.HasIndex("CampaignId");
@@ -868,7 +1132,82 @@ namespace GestorOT.Infrastructure.Migrations
 
                     b.HasIndex("LotId");
 
+                    b.HasIndex("WorkOrderStatusId");
+
                     b.ToTable("WorkOrders", "public");
+                });
+
+            modelBuilder.Entity("GestorOT.Domain.Entities.WorkOrderStatus", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ColorHex")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
+
+                    b.Property<bool>("IsDefault")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("IsEditable")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("WorkOrderStatuses", "public");
+                });
+
+            modelBuilder.Entity("GestorOT.Domain.Entities.WorkOrderSupplyApproval", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("ApprovedWithdrawal")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("numeric(18,4)");
+
+                    b.Property<decimal?>("RealTotalUsed")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("numeric(18,4)");
+
+                    b.Property<Guid>("SupplyId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("TotalCalculated")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("numeric(18,4)");
+
+                    b.Property<string>("WithdrawalCenter")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<Guid>("WorkOrderId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SupplyId");
+
+                    b.HasIndex("WorkOrderId");
+
+                    b.ToTable("WorkOrderSupplyApprovals", "public");
                 });
 
             modelBuilder.Entity("GestorOT.Domain.Entities.CampaignField", b =>
@@ -923,12 +1262,16 @@ namespace GestorOT.Infrastructure.Migrations
                     b.HasOne("GestorOT.Domain.Entities.CampaignLot", "CampaignLot")
                         .WithMany()
                         .HasForeignKey("CampaignLotId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.SetNull);
 
                     b.HasOne("GestorOT.Domain.Entities.Contact", "Contact")
                         .WithMany()
                         .HasForeignKey("ContactId");
+
+                    b.HasOne("GestorOT.Domain.Entities.ErpActivity", "ErpActivity")
+                        .WithMany()
+                        .HasForeignKey("ErpActivityId")
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.HasOne("GestorOT.Domain.Entities.LaborType", "Type")
                         .WithMany()
@@ -951,11 +1294,24 @@ namespace GestorOT.Infrastructure.Migrations
 
                     b.Navigation("Contact");
 
+                    b.Navigation("ErpActivity");
+
                     b.Navigation("Lot");
 
                     b.Navigation("Type");
 
                     b.Navigation("WorkOrder");
+                });
+
+            modelBuilder.Entity("GestorOT.Domain.Entities.LaborAttachment", b =>
+                {
+                    b.HasOne("GestorOT.Domain.Entities.Labor", "Labor")
+                        .WithMany()
+                        .HasForeignKey("LaborId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Labor");
                 });
 
             modelBuilder.Entity("GestorOT.Domain.Entities.LaborSupply", b =>
@@ -986,6 +1342,25 @@ namespace GestorOT.Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("Field");
+                });
+
+            modelBuilder.Entity("GestorOT.Domain.Entities.Rotation", b =>
+                {
+                    b.HasOne("GestorOT.Domain.Entities.CampaignLot", "CampaignLot")
+                        .WithMany("Rotations")
+                        .HasForeignKey("CampaignLotId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("GestorOT.Domain.Entities.ErpActivity", "ErpActivity")
+                        .WithMany()
+                        .HasForeignKey("ErpActivityId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("CampaignLot");
+
+                    b.Navigation("ErpActivity");
                 });
 
             modelBuilder.Entity("GestorOT.Domain.Entities.SharedToken", b =>
@@ -1050,11 +1425,37 @@ namespace GestorOT.Infrastructure.Migrations
                         .WithMany("WorkOrders")
                         .HasForeignKey("LotId");
 
+                    b.HasOne("GestorOT.Domain.Entities.WorkOrderStatus", "WorkOrderStatus")
+                        .WithMany()
+                        .HasForeignKey("WorkOrderStatusId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.Navigation("Campaign");
 
                     b.Navigation("Contact");
 
                     b.Navigation("Field");
+
+                    b.Navigation("WorkOrderStatus");
+                });
+
+            modelBuilder.Entity("GestorOT.Domain.Entities.WorkOrderSupplyApproval", b =>
+                {
+                    b.HasOne("GestorOT.Domain.Entities.Inventory", "Supply")
+                        .WithMany()
+                        .HasForeignKey("SupplyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GestorOT.Domain.Entities.WorkOrder", "WorkOrder")
+                        .WithMany("SupplyApprovals")
+                        .HasForeignKey("WorkOrderId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Supply");
+
+                    b.Navigation("WorkOrder");
                 });
 
             modelBuilder.Entity("GestorOT.Domain.Entities.Campaign", b =>
@@ -1064,6 +1465,11 @@ namespace GestorOT.Infrastructure.Migrations
                     b.Navigation("CampaignLots");
 
                     b.Navigation("WorkOrders");
+                });
+
+            modelBuilder.Entity("GestorOT.Domain.Entities.CampaignLot", b =>
+                {
+                    b.Navigation("Rotations");
                 });
 
             modelBuilder.Entity("GestorOT.Domain.Entities.CropStrategy", b =>
@@ -1093,6 +1499,8 @@ namespace GestorOT.Infrastructure.Migrations
             modelBuilder.Entity("GestorOT.Domain.Entities.WorkOrder", b =>
                 {
                     b.Navigation("Labors");
+
+                    b.Navigation("SupplyApprovals");
                 });
 #pragma warning restore 612, 618
         }

@@ -52,3 +52,16 @@ body {
 h1, h2, h3, h4, h5, h6 {
     color: #FFFFFF;
 }
+
+/* AntDesign DatePicker Header Contrast Fix (ISSUE-01) */
+.ant-picker-header button,
+.ant-picker-header-super-prev-btn,
+.ant-picker-header-prev-btn,
+.ant-picker-header-next-btn,
+.ant-picker-header-super-next-btn {
+    color: rgba(255, 255, 255, 0.75) !important;
+}
+
+.ant-picker-header button:hover {
+    color: #ffffff !important;
+}

@@ -3,6 +3,7 @@
 @using GestorOT.Shared
 @using System.Net.Http.Json
 @using AntDesign
+@using AntDesign.TableModels
 @inject HttpClient Http
 @inject IMessageService Message
 @inject NavigationManager Nav
@@ -101,69 +102,121 @@
         <Table TItem="CampaignLotDto"
                DataSource="@_lots"
                Size="TableSize.Small"
-               ScrollX="900">
-            <PropertyColumn Property="l => l.LotName" Title="Lote" Sortable>
-                <span style="font-weight: 600;">@context.LotName</span>
-            </PropertyColumn>
-            <PropertyColumn Property="l => l.FieldName" Title="Campo" Sortable>
-                <span style="color: rgba(255,255,255,0.6);">@(context.FieldName ?? "—")</span>
-            </PropertyColumn>
-            <PropertyColumn Property="l => l.CadastralArea" Title="Sup. Catastral (ha)" Sortable>
-                <span style="color: rgba(255,255,255,0.5);">@context.CadastralArea.ToString("N2")</span>
-            </PropertyColumn>
-            <Column TData="decimal" Title="Sup. Productiva (ha)">
-                @if (_editingLotId == context.LotId && _campaign?.Status != CampaignStatus.Locked)
-                {
-                    <div style="display: flex; align-items: center; gap: 6px;">
-                        <AntDesign.InputNumber TValue="decimal" @bind-Value="_editProductiveArea"
-                                               Min="0m" Max="@context.CadastralArea"
-                                               Step="0.5m"
-                                               Style="width: 120px;" />
-                        <Button Size="@ButtonSize.Small" OnClick="() => SaveProductiveArea(context)"
-                                Loading="_savingArea"
-                                Style="border-radius: 6px; background: #2ECC7115; border-color: #2ECC7140; color: #2ECC71;">
-                            <Icon Type="check" Theme="IconThemeType.Outline" />
-                        </Button>
-                        <Button Size="@ButtonSize.Small" OnClick="CancelEdit"
-                                Style="border-radius: 6px; border-color: rgba(255,255,255,0.15); color: rgba(255,255,255,0.5);">
-                            <Icon Type="close" Theme="IconThemeType.Outline" />
-                        </Button>
-                    </div>
-                }
-                else
-                {
-                    <div style="display: flex; align-items: center; gap: 8px;">
-                        <span style="font-weight: 600; color: #2ECC71;">@context.ProductiveArea.ToString("N2")</span>
-                        @if (context.CadastralArea > 0 && context.ProductiveArea < context.CadastralArea)
-                        {
-                            var delta = context.CadastralArea - context.ProductiveArea;
-                            var pct = (delta / context.CadastralArea * 100);
-                            <Tag Style="background: #F1C40F20; color: #F1C40F; border: 1px solid #F1C40F40; border-radius: 10px; font-size: 10px; padding: 0 6px;">
-                                -@pct.ToString("N1")%
-                            </Tag>
-                        }
+               ScrollX="900"
+               OnExpand="OnExpandLot">
+            <ExpandTemplate Context="lot">
+                <div style="padding: 16px; background: rgba(0,0,0,0.2); border-radius: 8px; margin: 8px 0;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                        <h4 style="margin: 0; color: #fff;">Rotaciones Proyectadas</h4>
                         @if (_campaign?.Status != CampaignStatus.Locked)
                         {
-                            <Button Size="@ButtonSize.Small" OnClick="() => StartEdit(context)"
-                                    Style="border: none; background: transparent; color: rgba(255,255,255,0.3); padding: 2px 6px;">
-                                <Icon Type="edit" Theme="IconThemeType.Outline" Style="font-size: 12px;" />
+                            <Button Size="@ButtonSize.Small" Type="@ButtonType.Primary" OnClick="() => OpenAddRotationModal(lot.Data)">
+                                <Icon Type="plus" /> Agregar Rotación
                             </Button>
                         }
                     </div>
-                }
-            </Column>
-            <ActionColumn Title="" Width="60">
-                @if (_campaign?.Status != CampaignStatus.Locked)
-                {
-                    <Popconfirm Title="¿Quitar este lote de la campaña?"
-                                OnConfirm="() => RemoveLot(context)"
-                                OkText="Quitar" CancelText="Cancelar">
-                        <Button Danger Size="@ButtonSize.Small" Style="border-radius: 6px;">
-                            <Icon Type="delete" Theme="IconThemeType.Outline" />
-                        </Button>
-                    </Popconfirm>
-                }
-            </ActionColumn>
+
+                    <Table TItem="RotationDto" DataSource="@GetRotations(lot.Data.Id)" Size="TableSize.Small" PageSize="50" HidePagination>
+                        <PropertyColumn Property="r => r.StartDate" Title="Inicio" />
+                        <PropertyColumn Property="r => r.EndDate" Title="Fin">
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                @context.EndDate
+                                @if (_campaign?.EndDate != null && context.EndDate > _campaign.EndDate)
+                                {
+                                    <Tooltip Title="La rotación supera el cierre de la campaña">
+                                        <Icon Type="warning" Theme="IconThemeType.Fill" Style="color: #F1C40F;" />
+                                    </Tooltip>
+                                }
+                            </div>
+                        </PropertyColumn>
+                        <PropertyColumn Property="r => r.ActivityName" Title="Actividad (Cultivo)" />
+                        <PropertyColumn Property="r => r.Notes" Title="Notas" />
+                        <ActionColumn Title="" Width="100">
+                            @if (_campaign?.Status != CampaignStatus.Locked)
+                            {
+                                <Space>
+                                    <SpaceItem>
+                                        <Button Size="@ButtonSize.Small" OnClick="() => OpenEditRotationModal(lot.Data, context)">
+                                            <Icon Type="edit" />
+                                        </Button>
+                                    </SpaceItem>
+                                    <SpaceItem>
+                                        <Popconfirm Title="¿Eliminar rotación?" OnConfirm="() => DeleteRotation(context)">
+                                            <Button Danger Size="@ButtonSize.Small">
+                                                <Icon Type="delete" />
+                                            </Button>
+                                        </Popconfirm>
+                                    </SpaceItem>
+                                </Space>
+                            }
+                        </ActionColumn>
+                    </Table>
+                </div>
+            </ExpandTemplate>
+            <ChildContent>
+                <PropertyColumn Property="l => l.LotName" Title="Lote" Sortable>
+                    <span style="font-weight: 600;">@context.LotName</span>
+                </PropertyColumn>
+                <PropertyColumn Property="l => l.FieldName" Title="Campo" Sortable>
+                    <span style="color: rgba(255,255,255,0.6);">@(context.FieldName ?? "—")</span>
+                </PropertyColumn>
+                <PropertyColumn Property="l => l.CadastralArea" Title="Sup. Catastral (ha)" Sortable>
+                    <span style="color: rgba(255,255,255,0.5);">@context.CadastralArea.ToString("N2")</span>
+                </PropertyColumn>
+                <Column TData="decimal" Title="Sup. Productiva (ha)">
+                    @if (_editingLotId == context.LotId && _campaign?.Status != CampaignStatus.Locked)
+                    {
+                        <div style="display: flex; align-items: center; gap: 6px;">
+                            <AntDesign.InputNumber TValue="decimal" @bind-Value="_editProductiveArea"
+                                                   Min="0m" Max="@context.CadastralArea"
+                                                   Step="0.5m"
+                                                   Style="width: 120px;" />
+                            <Button Size="@ButtonSize.Small" OnClick="() => SaveProductiveArea(context)"
+                                    Loading="_savingArea"
+                                    Style="border-radius: 6px; background: #2ECC7115; border-color: #2ECC7140; color: #2ECC71;">
+                                <Icon Type="check" Theme="IconThemeType.Outline" />
+                            </Button>
+                            <Button Size="@ButtonSize.Small" OnClick="CancelEdit"
+                                    Style="border-radius: 6px; border-color: rgba(255,255,255,0.15); color: rgba(255,255,255,0.5);">
+                                <Icon Type="close" Theme="IconThemeType.Outline" />
+                            </Button>
+                        </div>
+                    }
+                    else
+                    {
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <span style="font-weight: 600; color: #2ECC71;">@context.ProductiveArea.ToString("N2")</span>
+                            @if (context.CadastralArea > 0 && context.ProductiveArea < context.CadastralArea)
+                            {
+                                var delta = context.CadastralArea - context.ProductiveArea;
+                                var pct = (delta / context.CadastralArea * 100);
+                                <Tag Style="background: #F1C40F20; color: #F1C40F; border: 1px solid #F1C40F40; border-radius: 10px; font-size: 10px; padding: 0 6px;">
+                                    -@pct.ToString("N1")%
+                                </Tag>
+                            }
+                            @if (_campaign?.Status != CampaignStatus.Locked)
+                            {
+                                <Button Size="@ButtonSize.Small" OnClick="() => StartEdit(context)"
+                                        Style="border: none; background: transparent; color: rgba(255,255,255,0.3); padding: 2px 6px;">
+                                    <Icon Type="edit" Theme="IconThemeType.Outline" Style="font-size: 12px;" />
+                                </Button>
+                            }
+                        </div>
+                    }
+                </Column>
+                <ActionColumn Title="" Width="60">
+                    @if (_campaign?.Status != CampaignStatus.Locked)
+                    {
+                        <Popconfirm Title="¿Quitar este lote de la campaña?"
+                                    OnConfirm="() => RemoveLot(context)"
+                                    OkText="Quitar" CancelText="Cancelar">
+                            <Button Danger Size="@ButtonSize.Small" Style="border-radius: 6px;">
+                                <Icon Type="delete" Theme="IconThemeType.Outline" />
+                            </Button>
+                        </Popconfirm>
+                    }
+                </ActionColumn>
+            </ChildContent>
         </Table>
     }
 </div>
@@ -235,6 +288,45 @@
     </div>
 </Modal>
 
+<Modal Title="@(_isEditingRotation ? "Editar Rotación" : "Nueva Rotación")"
+       Visible="_rotationModalVisible"
+       OnCancel="CloseRotationModal"
+       OnOk="SaveRotation"
+       OkText="@("Guardar")"
+       ConfirmLoading="_savingRotation"
+       Width="540">
+    <div style="display: flex; flex-direction: column; gap: 16px;">
+        <div>
+            <label style="display: block; color: rgba(255,255,255,0.7); font-size: 12px; font-weight: 600; margin-bottom: 6px;">Rango de Fechas</label>
+            <div style="display: flex; gap: 8px;">
+                <DatePicker TValue="DateOnly" @bind-Value="_rotationModel.StartDate" Style="width: 50%;" />
+                <DatePicker TValue="DateOnly" @bind-Value="_rotationModel.EndDate" Style="width: 50%;" />
+            </div>
+            @if (_campaign?.EndDate != null && _rotationModel.EndDate > _campaign.EndDate)
+            {
+                <div style="color: #F1C40F; font-size: 11px; margin-top: 4px;">
+                    <Icon Type="warning" /> La fecha de fin supera el cierre de la campaña (@_campaign.EndDate).
+                </div>
+            }
+        </div>
+        <div>
+            <label style="display: block; color: rgba(255,255,255,0.7); font-size: 12px; font-weight: 600; margin-bottom: 6px;">Actividad (Cultivo)</label>
+            <Select @bind-Value="_rotationModel.ActivityId"
+                    TItemValue="Guid" TItem="ErpActivityDto"
+                    DataSource="@_activities"
+                    LabelName="@nameof(ErpActivityDto.Name)"
+                    ValueName="@nameof(ErpActivityDto.Id)"
+                    Placeholder="Seleccionar actividad..."
+                    ShowSearch
+                    Style="width: 100%;" />
+        </div>
+        <div>
+            <label style="display: block; color: rgba(255,255,255,0.7); font-size: 12px; font-weight: 600; margin-bottom: 6px;">Notas</label>
+            <TextArea @bind-Value="_rotationModel.Notes" Rows="2" />
+        </div>
+    </div>
+</Modal>
+
 <style>
     .summary-bar {
         display: flex;
@@ -276,6 +368,8 @@
     private List<LotDto> _allLots = new();
     private List<LotDto> _availableLots = new();
     private List<CampaignDto> _otherCampaigns = new();
+    private List<ErpActivityDto> _activities = new();
+    private Dictionary<Guid, List<RotationDto>> _rotationsByLot = new();
     private bool _loading = true;
     private string? _errorMessage;
 
@@ -292,6 +386,23 @@
     private Guid _importFromCampaignId;
     private bool _useProductiveAreaFromPrevious;
     private bool _importing;
+
+    // Rotation properties
+    private bool _rotationModalVisible;
+    private bool _isEditingRotation;
+    private bool _savingRotation;
+    private RotationModel _rotationModel = new();
+    private CampaignLotDto? _currentLot;
+
+    private class RotationModel
+    {
+        public Guid Id { get; set; }
+        public Guid CampaignLotId { get; set; }
+        public Guid ActivityId { get; set; }
+        public DateOnly StartDate { get; set; } = DateOnly.FromDateTime(DateTime.Today);
+        public DateOnly EndDate { get; set; } = DateOnly.FromDateTime(DateTime.Today.AddMonths(4));
+        public string? Notes { get; set; }
+    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -313,8 +424,12 @@
                 AppJsonSerializerContext.Default.ListLotDto, cts.Token);
             var campaignsTask = Http.GetFromJsonAsync("api/campaigns",
                 AppJsonSerializerContext.Default.ListCampaignDto, cts.Token);
+            var laborTypesTask = Http.GetFromJsonAsync("api/catalogs/labor-types",
+                AppJsonSerializerContext.Default.ListLaborTypeDto, cts.Token);
+            var activitiesTask = Http.GetFromJsonAsync("api/catalogs/activities",
+                AppJsonSerializerContext.Default.ListErpActivityDto, cts.Token);
 
-            await Task.WhenAll(campaignTask, lotsTask, allLotsTask, campaignsTask);
+            await Task.WhenAll(campaignTask, lotsTask, allLotsTask, campaignsTask, laborTypesTask, activitiesTask);
 
             _campaign = campaignTask.Result;
             _lots = lotsTask.Result ?? new();
@@ -322,6 +437,7 @@
             _otherCampaigns = (campaignsTask.Result ?? new())
                 .Where(c => c.Id != CampaignId)
                 .ToList();
+            _activities = activitiesTask.Result ?? new();
             RefreshAvailableLots();
             _errorMessage = null;
         }
@@ -344,6 +460,156 @@
     {
         var usedLotIds = _lots.Select(l => l.LotId).ToHashSet();
         _availableLots = _allLots.Where(l => !usedLotIds.Contains(l.Id)).ToList();
+    }
+
+    private async Task OnExpandLot(RowData<CampaignLotDto> args)
+    {
+        if (args.Expanded)
+        {
+            await LoadRotations(args.Data.Id);
+        }
+    }
+
+    private async Task LoadRotations(Guid campaignLotId)
+    {
+        try
+        {
+            var rotations = await Http.GetFromJsonAsync<List<RotationDto>>(
+                $"api/campaigns/{CampaignId}/lots/{campaignLotId}/rotations");
+            
+            if (rotations != null)
+            {
+                _rotationsByLot[campaignLotId] = rotations;
+            }
+        }
+        catch (Exception ex)
+        {
+            Message.Error($"Error cargando rotaciones: {ex.Message}");
+        }
+    }
+
+    private List<RotationDto> GetRotations(Guid campaignLotId)
+    {
+        return _rotationsByLot.TryGetValue(campaignLotId, out var rotations) ? rotations : new List<RotationDto>();
+    }
+
+    private void OpenAddRotationModal(CampaignLotDto lot)
+    {
+        _currentLot = lot;
+        _isEditingRotation = false;
+        _rotationModel = new RotationModel
+        {
+            CampaignLotId = lot.Id,
+            StartDate = _campaign?.StartDate ?? DateOnly.FromDateTime(DateTime.Today),
+            EndDate = _campaign?.EndDate ?? DateOnly.FromDateTime(DateTime.Today.AddMonths(6))
+        };
+        _rotationModalVisible = true;
+    }
+
+    private void OpenEditRotationModal(CampaignLotDto lot, RotationDto rotation)
+    {
+        _currentLot = lot;
+        _isEditingRotation = true;
+        _rotationModel = new RotationModel
+        {
+            Id = rotation.Id,
+            CampaignLotId = rotation.CampaignLotId,
+            ActivityId = rotation.ActivityId,
+            StartDate = rotation.StartDate,
+            EndDate = rotation.EndDate,
+            Notes = rotation.Notes
+        };
+        _rotationModalVisible = true;
+    }
+
+    private void CloseRotationModal()
+    {
+        _rotationModalVisible = false;
+    }
+
+    private async Task SaveRotation()
+    {
+        if (_rotationModel.ActivityId == Guid.Empty)
+        {
+            Message.Warning("La actividad es obligatoria.");
+            return;
+        }
+
+        _savingRotation = true;
+        try
+        {
+            var dto = new RotationDto(
+                _rotationModel.Id,
+                _rotationModel.CampaignLotId,
+                _rotationModel.ActivityId,
+                null,
+                _rotationModel.StartDate,
+                _rotationModel.EndDate,
+                _rotationModel.Notes
+            );
+
+            HttpResponseMessage response;
+            if (_isEditingRotation)
+            {
+                response = await Http.PutAsJsonAsync($"api/campaigns/{CampaignId}/lots/{_rotationModel.CampaignLotId}/rotations/{_rotationModel.Id}", dto);
+            }
+            else
+            {
+                response = await Http.PostAsJsonAsync($"api/campaigns/{CampaignId}/lots/{_rotationModel.CampaignLotId}/rotations", dto);
+            }
+
+            if (response.IsSuccessStatusCode)
+            {
+                if (!_isEditingRotation)
+                {
+                    var result = await response.Content.ReadFromJsonAsync<RotationResponse>();
+                    if (result?.Warnings.Any() == true)
+                    {
+                        foreach (var w in result.Warnings)
+                            Message.Warning(w.Message);
+                    }
+                }
+                Message.Success(_isEditingRotation ? "Rotación actualizada." : "Rotación creada.");
+                _rotationModalVisible = false;
+                if (_currentLot != null) await LoadRotations(_currentLot.Id);
+            }
+            else
+            {
+                var body = await response.Content.ReadAsStringAsync();
+                Message.Error($"Error: {body}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Message.Error($"Error al guardar: {ex.Message}");
+        }
+        finally
+        {
+            _savingRotation = false;
+        }
+    }
+
+    private async Task DeleteRotation(RotationDto rotation)
+    {
+        try
+        {
+            var response = await Http.DeleteAsync($"api/campaigns/{CampaignId}/lots/{rotation.CampaignLotId}/rotations/{rotation.Id}");
+            if (response.IsSuccessStatusCode)
+            {
+                Message.Success("Rotación eliminada.");
+                if (_currentLot != null) await LoadRotations(_currentLot.Id);
+                else if (_rotationsByLot.ContainsKey(rotation.CampaignLotId)) await LoadRotations(rotation.CampaignLotId);
+            }
+            else
+            {
+                var body = await response.Content.ReadAsStringAsync();
+                Message.Error($"Error al eliminar: {body}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Message.Error($"Error al eliminar: {ex.Message}");
+        }
     }
 
     private void StartEdit(CampaignLotDto lot)

@@ -23,7 +23,10 @@ public class InventoryController : ControllerBase
         [FromQuery] int page = 1, 
         [FromQuery] int pageSize = 100)
     {
-        var query = _context.Inventories.AsNoTracking();
+        var validSubGroups = new[] { "ADITIVO", "CURASEMILLA", "FERTILIZANTE", "FUNGICIDA", "HERBICIDA", "INOCULANTE", "INOCULANTES Y CURASEMILLAS", "INSERCTICIDA", "RESERVAS FORRAJERAS", "SEMILLA", "SILO BOLSA Y OTROS" };
+
+        var query = _context.Inventories.AsNoTracking()
+            .Where(i => i.GrupoConcepto == "INSUMOS" && validSubGroups.Contains(i.SubGrupoConcepto));
 
         if (!string.IsNullOrEmpty(search))
         {
@@ -37,7 +40,8 @@ public class InventoryController : ControllerBase
             .Take(pageSize)
             .Select(i => new InventoryDto(
                 i.Id, i.Category, i.ItemName, i.CurrentStock, i.ReorderLevel,
-                i.UnitA ?? "", i.UnitB ?? "", i.ConversionFactor
+                i.UnitA ?? "", i.UnitB ?? "", i.ConversionFactor,
+                i.GrupoConcepto, i.SubGrupoConcepto
             ))
             .ToListAsync();
 
@@ -52,7 +56,8 @@ public class InventoryController : ControllerBase
             .Where(i => i.Id == id)
             .Select(i => new InventoryDto(
                 i.Id, i.Category, i.ItemName, i.CurrentStock, i.ReorderLevel,
-                i.UnitA ?? "", i.UnitB ?? "", i.ConversionFactor
+                i.UnitA ?? "", i.UnitB ?? "", i.ConversionFactor,
+                i.GrupoConcepto, i.SubGrupoConcepto
             ))
             .FirstOrDefaultAsync();
 

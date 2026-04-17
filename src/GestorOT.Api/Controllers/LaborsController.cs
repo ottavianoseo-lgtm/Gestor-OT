@@ -90,6 +90,7 @@ public class LaborsController : ControllerBase
             WorkOrderId = dto.WorkOrderId,
             LotId = lotId,
             CampaignLotId = campaignLotId,
+            ErpActivityId = dto.ErpActivityId,
             LaborTypeId = dto.LaborTypeId,
             ContactId = dto.ContactId,
             Status = "Planned",
@@ -160,6 +161,7 @@ public class LaborsController : ControllerBase
         }
         
         labor.CampaignLotId = campaignLotId;
+        labor.ErpActivityId = dto.ErpActivityId;
         labor.LaborTypeId = dto.LaborTypeId;
         labor.ExecutionDate = dto.ExecutionDate;
         labor.EstimatedDate = dto.EstimatedDate;
@@ -277,6 +279,7 @@ public class LaborsController : ControllerBase
             WorkOrderId = source.WorkOrderId,
             LotId = source.LotId,
             CampaignLotId = source.CampaignLotId,
+            ErpActivityId = source.ErpActivityId,
             LaborTypeId = source.LaborTypeId,
             ContactId = source.ContactId,
             Status = "Realized",
@@ -423,7 +426,9 @@ public class LaborsController : ControllerBase
             labor.LotId,
             labor.CampaignLotId ?? Guid.Empty,
             labor.LaborTypeId,
+            labor.ErpActivityId,
             labor.Status,
+            labor.Mode.ToString(),
             labor.ExecutionDate,
             labor.EstimatedDate,
             labor.Hectares,
@@ -432,7 +437,8 @@ public class LaborsController : ControllerBase
             labor.RateUnit,
             labor.Lot?.Name,
             labor.Type?.Name,
-            labor.Supplies.Select(s => new LaborSupplyDto(s.Id, s.LaborId, s.SupplyId, s.PlannedDose, s.RealDose, s.PlannedTotal, s.RealTotal, s.UnitOfMeasure, s.Supply?.ItemName, s.Supply?.UnitA, s.TankMixOrder, s.IsSubstitute)).ToList(),
+            labor.ErpActivity?.Name,
+            labor.Supplies.Select(s => new LaborSupplyDto(s.Id, s.LaborId, s.SupplyId, s.PlannedHectares, s.RealHectares, s.PlannedDose, s.RealDose, s.PlannedTotal, s.RealTotal, s.CalculatedDose, s.CalculatedTotal, s.UnitOfMeasure, s.Supply?.ItemName, s.Supply?.UnitA, s.TankMixOrder, s.IsSubstitute)).ToList(),
             labor.PrescriptionMapUrl,
             labor.MachineryUsedId,
             labor.WeatherLogJson,

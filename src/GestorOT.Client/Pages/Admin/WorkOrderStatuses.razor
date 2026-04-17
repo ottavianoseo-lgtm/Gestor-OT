@@ -1,0 +1,158 @@
+@page "/admin/workorder-statuses"
+@using GestorOT.Shared.Dtos
+@using System.Net.Http.Json
+@using AntDesign
+@inject HttpClient Http
+@inject IMessageService Message
+
+<PageTitle>Estados de OT - Admin</PageTitle>
+
+<div class="page-header">
+    <div>
+        <h2 class="page-title">Configuración de Estados</h2>
+        <span class="page-subtitle">Personaliza el flujo de trabajo de tus OTs</span>
+    </div>
+    <Button Type="@ButtonType.Primary" OnClick="OpenCreateModal"
+            Style="background: #E74C3C; border-color: #E74C3C; border-radius: 8px;">
+        <Icon Type="plus" /> Nuevo Estado
+    </Button>
+</div>
+
+<div class="glass-card">
+    <Table TItem="WorkOrderStatusDto" DataSource="_statuses" Loading="_loading" Size="TableSize.Small">
+        <PropertyColumn Property="c => c.SortOrder" Title="#" Width="60" />
+        <Column TData="string" Title="Nombre">
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <div style="width: 12px; height: 12px; border-radius: 50%; background: @context.ColorHex;"></div>
+                <span style="font-weight: 600;">@context.Name</span>
+                @if (context.IsDefault)
+                {
+                    <Tag Color="@TagColor.Processing">Default</Tag>
+                }
+            </div>
+        </Column>
+        <Column TData="bool" Title="Permite Edición">
+            @if (context.IsEditable)
+            {
+                <Tag Color="@TagColor.Green">Sí</Tag>
+            }
+            else
+            {
+                <Tag Color="@TagColor.Red">No (Bloqueado)</Tag>
+            }
+        </Column>
+        <ActionColumn Title="Acciones" Width="120">
+            <Space>
+                <SpaceItem>
+                    <Button Size="@ButtonSize.Small" OnClick="() => OpenEditModal(context)">
+                        <Icon Type="edit" />
+                    </Button>
+                </SpaceItem>
+                <SpaceItem>
+                    <Popconfirm Title="¿Eliminar este estado?" OnConfirm="() => DeleteStatus(context.Id)">
+                        <Button Danger Size="@ButtonSize.Small">
+                            <Icon Type="delete" />
+                        </Button>
+                    </Popconfirm>
+                </SpaceItem>
+            </Space>
+        </ActionColumn>
+    </Table>
+</div>
+
+<Modal Title="@(_isEditing ? "Editar Estado" : "Nuevo Estado")"
+       Visible="_modalVisible"
+       OnCancel="() => _modalVisible = false"
+       OnOk="SaveStatus"
+       ConfirmLoading="_saving">
+    <Form Model="_formModel" Layout="@FormLayout.Vertical">
+        <FormItem Label="Nombre">
+            <Input @bind-Value="_formModel.Name" />
+        </FormItem>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+            <FormItem Label="Color UI">
+                <input @bind-value="_formModel.ColorHex" type="color" style="width: 100%; height: 32px; border: 1px solid rgba(255,255,255,0.1); background: transparent; padding: 2px;" />
+            </FormItem>
+            <FormItem Label="Orden">
+                <AntDesign.InputNumber TValue="int" @bind-Value="_formModel.SortOrder" />
+            </FormItem>
+        </div>
+        <div style="display: flex; gap: 24px; margin-top: 12px;">
+            <Checkbox @bind-Checked="_formModel.IsEditable">Permite editar la OT y Labores</Checkbox>
+            <Checkbox @bind-Checked="_formModel.IsDefault">Estado Inicial</Checkbox>
+        </div>
+    </Form>
+</Modal>
+
+@code {
+    private List<WorkOrderStatusDto> _statuses = new();
+    private bool _loading = true;
+    private bool _modalVisible;
+    private bool _isEditing;
+    private bool _saving;
+    private WorkOrderStatusDto _formModel = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        _loading = true;
+        _statuses = await Http.GetFromJsonAsync<List<WorkOrderStatusDto>>("api/workorderstatuses") ?? new();
+        _loading = false;
+    }
+
+    private void OpenCreateModal()
+    {
+        _isEditing = false;
+        _formModel = new WorkOrderStatusDto { SortOrder = _statuses.Count + 1 };
+        _modalVisible = true;
+    }
+
+    private void OpenEditModal(WorkOrderStatusDto status)
+    {
+        _isEditing = true;
+        _formModel = new WorkOrderStatusDto(status.Id, status.Name, status.ColorHex, status.IsEditable, status.IsDefault, status.SortOrder);
+        _modalVisible = true;
+    }
+
+    private async Task SaveStatus()
+    {
+        _saving = true;
+        HttpResponseMessage response;
+        if (_isEditing)
+            response = await Http.PutAsJsonAsync($"api/workorderstatuses/{_formModel.Id}", _formModel);
+        else
+            response = await Http.PostAsJsonAsync("api/workorderstatuses", _formModel);
+
+        if (response.IsSuccessStatusCode)
+        {
+            Message.Success("Estado guardado.");
+            _modalVisible = false;
+            await LoadData();
+        }
+        else
+        {
+            var err = await response.Content.ReadAsStringAsync();
+            Message.Error($"Error: {err}");
+        }
+        _saving = false;
+    }
+
+    private async Task DeleteStatus(Guid id)
+    {
+        var response = await Http.DeleteAsync($"api/workorderstatuses/{id}");
+        if (response.IsSuccessStatusCode)
+        {
+            Message.Success("Estado eliminado.");
+            await LoadData();
+        }
+        else
+        {
+            var err = await response.Content.ReadAsStringAsync();
+            Message.Error($"Error: {err}");
+        }
+    }
+}

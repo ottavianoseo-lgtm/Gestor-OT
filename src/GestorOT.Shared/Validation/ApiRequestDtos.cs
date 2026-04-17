@@ -7,9 +7,6 @@ public class CreateFieldRequest
     [Required(ErrorMessage = "El nombre del campo es obligatorio.")]
     [StringLength(200, MinimumLength = 2, ErrorMessage = "El nombre debe tener entre 2 y 200 caracteres.")]
     public string Name { get; set; } = string.Empty;
-
-    [Range(0, double.MaxValue, ErrorMessage = "Las hectáreas totales deben ser mayor o igual a 0.")]
-    public double HectareasTotales { get; set; }
 }
 
 public class CreateLotRequest
@@ -66,12 +63,12 @@ public class CreateCampaignRequest
     public string Name { get; set; } = string.Empty;
 
     public DateOnly StartDate { get; set; }
-    public DateOnly? EndDate { get; set; }
+    public DateOnly EndDate { get; set; }
     public bool IsActive { get; set; } = true;
 
     [Required(ErrorMessage = "El estado es obligatorio.")]
     [StringLength(50)]
-    public string Status { get; set; } = "Planning";
+    public string Status { get; set; } = "Active";
 
     [Range(0, double.MaxValue, ErrorMessage = "El presupuesto debe ser mayor o igual a 0.")]
     public decimal BudgetTotalUSD { get; set; }

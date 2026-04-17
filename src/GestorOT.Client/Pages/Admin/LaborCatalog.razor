@@ -1,0 +1,176 @@
+@page "/admin/labor-catalog"
+@using GestorOT.Shared.Dtos
+@using System.Net.Http.Json
+@using AntDesign
+@inject HttpClient Http
+@inject IMessageService Message
+
+<PageTitle>Catálogo de Labores - Admin</PageTitle>
+
+<div class="page-header">
+    <div>
+        <h2 class="page-title">Catálogo de Labores (ERP)</h2>
+        <span class="page-subtitle">Gestiona las tareas disponibles sincronizadas desde el ERP</span>
+    </div>
+    <Button Type="@ButtonType.Primary" Icon="sync" OnClick="SyncFromErp" Loading="_syncing"
+            Style="background: #E74C3C; border-color: #E74C3C; border-radius: 8px;">
+        Sincronizar Catálogo
+    </Button>
+</div>
+
+<div class="glass-card">
+    <div style="margin-bottom: 16px;">
+        <Input Placeholder="Buscar labor..." @bind-Value="_search" OnInput="OnSearch" AllowClear 
+               PrefixIcon="search" Style="max-width: 400px; border-radius: 8px;" />
+    </div>
+
+    <Table TItem="ErpConceptDto" DataSource="FilteredConcepts" Loading="_loading" Size="TableSize.Small">
+        <PropertyColumn Property="c => c.ExternalErpId" Title="Código ERP" Width="120" />
+        <PropertyColumn Property="c => c.Description" Title="Descripción" Sortable />
+        <PropertyColumn Property="c => c.SubGrupoConcepto" Title="Subgrupo" Sortable />
+        <PropertyColumn Property="c => c.UnitA" Title="Unidad" Width="80" />
+        <Column TData="bool" Title="Estado">
+            @if (context.IsActivated)
+            {
+                <Tag Color="@TagColor.Green"><Icon Type="check-circle" /> Activada</Tag>
+            }
+            else
+            {
+                <Tag Color="default">Inactiva</Tag>
+            }
+        </Column>
+        <ActionColumn Title="Acciones" Width="120">
+            @if (!context.IsActivated)
+            {
+                <Button Type="@ButtonType.Primary" Size="@ButtonSize.Small" Ghost 
+                        OnClick="() => Activate(context)" Loading="_processingId == context.Id">
+                    Activar
+                </Button>
+            }
+            else
+            {
+                <Button Type="@ButtonType.Default" Danger Size="@ButtonSize.Small" Ghost
+                        OnClick="() => Deactivate(context)" Loading="_processingId == context.Id">
+                    Desactivar
+                </Button>
+            }
+        </ActionColumn>
+    </Table>
+</div>
+
+@code {
+    private List<ErpConceptDto> _concepts = new();
+    private bool _loading = true;
+    private bool _syncing;
+    private string _search = "";
+    private Guid? _processingId;
+
+    private IEnumerable<ErpConceptDto> FilteredConcepts => 
+        string.IsNullOrWhiteSpace(_search) 
+            ? _concepts 
+            : _concepts.Where(c => c.Description.Contains(_search, StringComparison.OrdinalIgnoreCase) || 
+                                   c.ExternalErpId?.Contains(_search) == true);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        _loading = true;
+        try
+        {
+            _concepts = await Http.GetFromJsonAsync<List<ErpConceptDto>>("api/erpconcepts?group=LABOR") ?? new();
+        }
+        catch (Exception ex)
+        {
+            Message.Error("Error al cargar el catálogo.");
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task SyncFromErp()
+    {
+        _syncing = true;
+        try
+        {
+            var response = await Http.PostAsync("api/sync/catalog", null);
+            if (response.IsSuccessStatusCode)
+            {
+                Message.Success("Sincronización completada.");
+                await LoadData();
+            }
+            else
+            {
+                Message.Error("Error en la sincronización.");
+            }
+        }
+        catch
+        {
+            Message.Error("Error de conexión con el servidor.");
+        }
+        finally
+        {
+            _syncing = false;
+        }
+    }
+
+    private async Task Activate(ErpConceptDto concept)
+    {
+        _processingId = concept.Id;
+        try
+        {
+            var response = await Http.PostAsync($"api/erpconcepts/{concept.Id}/activate", null);
+            if (response.IsSuccessStatusCode)
+            {
+                Message.Success($"{concept.Description} activada.");
+                await LoadData();
+            }
+            else
+            {
+                Message.Error("No se pudo activar.");
+            }
+        }
+        catch
+        {
+            Message.Error("Error de red.");
+        }
+        finally
+        {
+            _processingId = null;
+        }
+    }
+
+    private async Task Deactivate(ErpConceptDto concept)
+    {
+        _processingId = concept.Id;
+        try
+        {
+            var response = await Http.PostAsync($"api/erpconcepts/{concept.Id}/deactivate", null);
+            if (response.IsSuccessStatusCode)
+            {
+                Message.Success($"{concept.Description} desactivada.");
+                await LoadData();
+            }
+            else
+            {
+                var error = await response.Content.ReadAsStringAsync();
+                Message.Warning(error ?? "No se pudo desactivar.");
+            }
+        }
+        catch
+        {
+            Message.Error("Error de red.");
+        }
+        finally
+        {
+            _processingId = null;
+        }
+    }
+
+    private void OnSearch() => StateHasChanged();
+}

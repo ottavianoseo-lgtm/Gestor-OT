@@ -3,11 +3,28 @@
 @using GestorOT.Shared
 @using GestorOT.Shared.Dtos
 @using AntDesign
+@implements IDisposable
 
-@if (!TenantState.IsSelected)
+@if (ShowBadge && TenantState.IsSelected)
 {
-    <div class="tenant-overlay">
-        <div class="tenant-card">
+    <div class="tenant-badge" @onclick="OpenSelector" style="cursor: @(_tenants.Count > 1 ? "pointer" : "default")">
+        <div style="width: 28px; height: 28px; border-radius: 7px; background: linear-gradient(135deg, #E74C3C, #C0392B); display: flex; align-items: center; justify-content: center; font-weight: 700; color: #fff; font-size: 12px; flex-shrink: 0;">
+            @TenantState.CurrentTenant!.Name[0]
+        </div>
+        <div style="flex: 1; min-width: 0;">
+            <div style="color: rgba(255,255,255,0.7); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">@TenantState.CurrentTenant.Name</div>
+        </div>
+        @if (_tenants.Count > 1)
+        {
+            <Icon Type="swap" Theme="IconThemeType.Outline" Style="color: rgba(255,255,255,0.3); font-size: 12px;" />
+        }
+    </div>
+}
+
+@if (!TenantState.IsSelected || _selectorVisible)
+{
+    <div class="tenant-overlay" @onclick="CloseSelector">
+        <div class="tenant-card" @onclick:stopPropagation="true">
             <div style="text-align: center; margin-bottom: 24px;">
                 <img src="images/logo.svg" alt="Gestor OT" style="width: 180px; margin-bottom: 16px;" />
                 <h2 style="color: #fff; margin: 0 0 4px 0; font-size: 20px; font-weight: 700;">Seleccionar Empresa</h2>
@@ -25,7 +42,8 @@
                 <div class="tenant-list">
                     @foreach (var tenant in _tenants)
                     {
-                        <div class="tenant-item" @onclick="() => SelectTenant(tenant)">
+                        var isSelected = TenantState.CurrentTenant?.Id == tenant.Id;
+                        <div class="tenant-item @(isSelected ? "tenant-item-selected" : "")" @onclick="() => SelectTenant(tenant)">
                             <div style="width: 40px; height: 40px; border-radius: 10px; background: linear-gradient(135deg, #E74C3C, #C0392B); display: flex; align-items: center; justify-content: center; font-weight: 700; color: #fff; font-size: 16px;">
                                 @tenant.Name[0]
                             </div>
@@ -33,9 +51,23 @@
                                 <div style="color: #fff; font-weight: 600; font-size: 14px;">@tenant.Name</div>
                                 <div style="color: rgba(255,255,255,0.4); font-size: 11px;">ID: @tenant.Id.ToString()[..8]...</div>
                             </div>
-                            <Icon Type="right" Theme="IconThemeType.Outline" Style="color: rgba(255,255,255,0.3); font-size: 16px;" />
+                            @if (isSelected)
+                            {
+                                <Icon Type="check" Theme="IconThemeType.Outline" Style="color: #2ECC71; font-size: 16px;" />
+                            }
+                            else
+                            {
+                                <Icon Type="right" Theme="IconThemeType.Outline" Style="color: rgba(255,255,255,0.3); font-size: 16px;" />
+                            }
                         </div>
                     }
+                </div>
+            }
+            
+            @if (TenantState.IsSelected && _selectorVisible)
+            {
+                <div style="margin-top: 24px; text-align: center;">
+                    <Button Type="@ButtonType.Link" OnClick="CloseSelector" Style="color: rgba(255,255,255,0.5);">Cancelar</Button>
                 </div>
             }
         </div>
@@ -86,19 +118,58 @@
         border-color: rgba(231,76,60,0.3);
         transform: translateX(4px);
     }
+
+    .tenant-item-selected {
+        background: rgba(231,76,60,0.08);
+        border-color: rgba(231,76,60,0.2);
+    }
+
+    .tenant-badge {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 12px 16px;
+        margin: 12px 14px;
+        border-radius: 12px;
+        background: rgba(231, 76, 60, 0.08);
+        border: 1px solid rgba(231, 76, 60, 0.15);
+        transition: all 0.2s ease;
+    }
+
+    .tenant-badge:hover {
+        background: rgba(231, 76, 60, 0.15);
+        border-color: rgba(231, 76, 60, 0.3);
+    }
 </style>
 
 @code {
+    [Parameter] public bool ShowBadge { get; set; } = false;
+    
     private List<TenantDto> _tenants = new();
     private bool _loading = true;
+    private bool _selectorVisible = false;
 
     protected override async Task OnInitializedAsync()
     {
+        TenantState.OnChange += StateHasChanged;
+        await LoadTenants();
+    }
+
+    private async Task LoadTenants()
+    {
         try
         {
+            _loading = true;
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
             _tenants = await Http.GetFromJsonAsync("api/tenants",
                 AppJsonSerializerContext.Default.ListTenantDto, cts.Token) ?? new();
+            
+            TenantState.AvailableTenants = _tenants;
+
+            if (_tenants.Count == 1 && !TenantState.IsSelected)
+            {
+                TenantState.SetTenant(_tenants[0]);
+            }
         }
         catch
         {
@@ -113,5 +184,27 @@
     private void SelectTenant(TenantDto tenant)
     {
         TenantState.SetTenant(tenant);
+        _selectorVisible = false;
+    }
+
+    private void OpenSelector()
+    {
+        if (_tenants.Count > 1)
+        {
+            _selectorVisible = true;
+        }
+    }
+
+    private void CloseSelector()
+    {
+        if (TenantState.IsSelected)
+        {
+            _selectorVisible = false;
+        }
+    }
+
+    public void Dispose()
+    {
+        TenantState.OnChange -= StateHasChanged;
     }
 }

@@ -14,6 +14,11 @@ public class WorkOrderConfiguration : IEntityTypeConfiguration<WorkOrder>
         builder.Property(e => e.Status).HasMaxLength(50);
         builder.Property(e => e.AssignedTo).HasMaxLength(200);
 
+        builder.HasOne(e => e.WorkOrderStatus)
+            .WithMany()
+            .HasForeignKey(e => e.WorkOrderStatusId)
+            .OnDelete(DeleteBehavior.SetNull);
+
         builder.HasOne(e => e.Field)
             .WithMany(f => f.WorkOrders)
             .HasForeignKey(e => e.FieldId)

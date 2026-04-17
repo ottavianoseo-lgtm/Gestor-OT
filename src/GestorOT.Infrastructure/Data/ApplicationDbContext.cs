@@ -37,8 +37,14 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
     public DbSet<Campaign> Campaigns => Set<Campaign>();
     public DbSet<CampaignLot> CampaignLots => Set<CampaignLot>();
+    public DbSet<Rotation> Rotations => Set<Rotation>();
     public DbSet<CampaignField> CampaignFields => Set<CampaignField>();
     public DbSet<ErpPerson> ErpPeople => Set<ErpPerson>();
+    public DbSet<ErpActivity> ErpActivities => Set<ErpActivity>();
+    public DbSet<ErpConcept> ErpConcepts => Set<ErpConcept>();
+    public DbSet<WorkOrderStatus> WorkOrderStatuses => Set<WorkOrderStatus>();
+    public DbSet<LaborAttachment> LaborAttachments => Set<LaborAttachment>();
+    public DbSet<WorkOrderSupplyApproval> WorkOrderSupplyApprovals => Set<WorkOrderSupplyApproval>();
 
     private Guid CurrentTenantId
     {
@@ -64,7 +70,22 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
 
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(ApplicationDbContext).Assembly);
 
+        modelBuilder.Entity<Field>(entity =>
+        {
+            entity.HasQueryFilter(e => CurrentTenantId == Guid.Empty || e.TenantId == CurrentTenantId);
+        });
+
+        modelBuilder.Entity<Lot>(entity =>
+        {
+            entity.HasQueryFilter(e => CurrentTenantId == Guid.Empty || e.TenantId == CurrentTenantId);
+        });
+
         modelBuilder.Entity<CampaignLot>(entity =>
+        {
+            entity.HasQueryFilter(e => CurrentTenantId == Guid.Empty || e.TenantId == CurrentTenantId);
+        });
+
+        modelBuilder.Entity<Rotation>(entity =>
         {
             entity.HasQueryFilter(e => CurrentTenantId == Guid.Empty || e.TenantId == CurrentTenantId);
         });
@@ -133,6 +154,31 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
         });
 
         modelBuilder.Entity<ErpPerson>(entity =>
+        {
+            entity.HasQueryFilter(e => CurrentTenantId == Guid.Empty || e.TenantId == CurrentTenantId);
+        });
+
+        modelBuilder.Entity<ErpActivity>(entity =>
+        {
+            entity.HasQueryFilter(e => e.TenantId == Guid.Empty || CurrentTenantId == Guid.Empty || e.TenantId == CurrentTenantId);
+        });
+
+        modelBuilder.Entity<ErpConcept>(entity =>
+        {
+            entity.HasQueryFilter(e => CurrentTenantId == Guid.Empty || e.TenantId == CurrentTenantId);
+        });
+
+        modelBuilder.Entity<WorkOrderStatus>(entity =>
+        {
+            entity.HasQueryFilter(e => CurrentTenantId == Guid.Empty || e.TenantId == CurrentTenantId);
+        });
+
+        modelBuilder.Entity<LaborAttachment>(entity =>
+        {
+            entity.HasQueryFilter(e => CurrentTenantId == Guid.Empty || e.TenantId == CurrentTenantId);
+        });
+
+        modelBuilder.Entity<WorkOrderSupplyApproval>(entity =>
         {
             entity.HasQueryFilter(e => CurrentTenantId == Guid.Empty || e.TenantId == CurrentTenantId);
         });

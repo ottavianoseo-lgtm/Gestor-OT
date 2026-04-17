@@ -11,8 +11,8 @@ public class LoadingService
     public void Show()
     {
         IsLoading = true;
-        ErrorMessage = null;
-        SuccessMessage = null;
+        // ErrorMessage = null; // Removed to prevent clearing on every show
+        // SuccessMessage = null;
         OnChange?.Invoke();
     }
 

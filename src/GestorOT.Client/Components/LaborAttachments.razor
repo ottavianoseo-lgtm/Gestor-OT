@@ -1,0 +1,217 @@
+@using GestorOT.Shared.Dtos
+@using System.Net.Http.Json
+@using AntDesign
+@inject HttpClient Http
+@inject IJSRuntime JS
+@inject IMessageService Message
+
+<div class="attachments-container">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+        <h4 style="color: #fff; margin: 0;"><Icon Type="paper-clip" /> Adjuntos y Evidencia</h4>
+        <div style="position: relative;">
+            <Button Type="@ButtonType.Primary" Icon="upload" Size="@ButtonSize.Small" Ghost>
+                Subir Archivo
+            </Button>
+            <InputFile OnChange="HandleFileSelected" 
+                       style="position: absolute; top: 0; left: 0; opacity: 0; width: 100%; height: 100%; cursor: pointer;" />
+        </div>
+    </div>
+
+    @if (_loading)
+    {
+        <Spin Tip="Cargando adjuntos..." />
+    }
+    else if (_attachments.Count == 0)
+    {
+        <div style="text-align: center; padding: 20px; background: rgba(255,255,255,0.02); border-radius: 8px; border: 1px dashed rgba(255,255,255,0.1);">
+            <span style="color: rgba(255,255,255,0.3); font-size: 12px;">Sin archivos adjuntos</span>
+        </div>
+    }
+    else
+    {
+        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px;">
+            @foreach (var att in _attachments)
+            {
+                <div class="attachment-card">
+                    <div class="attachment-icon">
+                        @if (att.MimeType.StartsWith("image/"))
+                        {
+                            <Icon Type="picture" Theme="IconThemeType.Fill" Style="font-size: 24px; color: #3498DB;" />
+                        }
+                        else if (att.MimeType.Contains("pdf"))
+                        {
+                            <Icon Type="file-pdf" Theme="IconThemeType.Fill" Style="font-size: 24px; color: #E74C3C;" />
+                        }
+                        else if (att.MimeType.StartsWith("audio/"))
+                        {
+                            <Icon Type="audio" Theme="IconThemeType.Fill" Style="font-size: 24px; color: #F1C40F;" />
+                        }
+                        else
+                        {
+                            <Icon Type="file" Theme="IconThemeType.Fill" Style="font-size: 24px; color: #95A5A6;" />
+                        }
+                    </div>
+                    <div class="attachment-info">
+                        <div class="attachment-name" title="@att.FileName">@att.FileName</div>
+                        <div class="attachment-size">@FormatSize(att.FileSizeBytes)</div>
+                    </div>
+                    <div class="attachment-actions">
+                        <Button Icon="download" Size="@ButtonSize.Small" Type="@ButtonType.Text" OnClick="() => Download(att)" />
+                        <Popconfirm Title="¿Eliminar?" OnConfirm="() => Delete(att.Id)">
+                            <Button Icon="delete" Size="@ButtonSize.Small" Type="@ButtonType.Text" Danger />
+                        </Popconfirm>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+<style>
+    .attachments-container {
+        margin-top: 16px;
+        padding: 16px;
+        background: rgba(255,255,255,0.03);
+        border-radius: 12px;
+        border: 1px solid rgba(255,255,255,0.08);
+    }
+    .attachment-card {
+        background: rgba(255,255,255,0.05);
+        border: 1px solid rgba(255,255,255,0.1);
+        border-radius: 8px;
+        padding: 12px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+        transition: all 0.2s;
+        position: relative;
+    }
+    .attachment-card:hover {
+        background: rgba(255,255,255,0.08);
+        border-color: rgba(255,255,255,0.2);
+    }
+    .attachment-icon {
+        margin-bottom: 8px;
+    }
+    .attachment-name {
+        font-size: 11px;
+        color: #fff;
+        font-weight: 600;
+        max-width: 100%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        margin-bottom: 2px;
+    }
+    .attachment-size {
+        font-size: 10px;
+        color: rgba(255,255,255,0.4);
+    }
+    .attachment-actions {
+        margin-top: 8px;
+        display: flex;
+        gap: 4px;
+    }
+</style>
+
+@code {
+    [Parameter] public Guid LaborId { get; set; }
+
+    private List<LaborAttachmentDto> _attachments = new();
+    private bool _loading = true;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (LaborId != Guid.Empty)
+        {
+            await LoadAttachments();
+        }
+    }
+
+    private async Task LoadAttachments()
+    {
+        _loading = true;
+        try
+        {
+            _attachments = await Http.GetFromJsonAsync<List<LaborAttachmentDto>>($"api/laborattachments/labor/{LaborId}") ?? new();
+        }
+        catch (Exception ex)
+        {
+            Message.Error("Error al cargar adjuntos.");
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task HandleFileSelected(InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+        if (file == null) return;
+
+        try
+        {
+            using var content = new MultipartFormDataContent();
+            var fileContent = new StreamContent(file.OpenReadStream(maxAllowedSize: 10 * 1024 * 1024)); // 10MB limit
+            fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(file.ContentType);
+            content.Add(fileContent, "file", file.Name);
+
+            var response = await Http.PostAsync($"api/laborattachments/labor/{LaborId}/upload", content);
+
+            if (response.IsSuccessStatusCode)
+            {
+                Message.Success("Archivo subido.");
+                await LoadAttachments();
+            }
+            else
+            {
+                Message.Error("Error al subir archivo.");
+            }
+        }
+        catch (Exception ex)
+        {
+            Message.Error("Archivo demasiado grande o error de red.");
+        }
+    }
+
+    private async Task Download(LaborAttachmentDto att)
+    {
+        try
+        {
+            var url = $"api/laborattachments/{att.Id}/download";
+            await JS.InvokeVoidAsync("utilsInterop.triggerFileDownload", att.FileName, url);
+        }
+        catch
+        {
+            Message.Error("Error al descargar.");
+        }
+    }
+
+    private async Task Delete(Guid id)
+    {
+        var response = await Http.DeleteAsync($"api/laborattachments/{id}");
+        if (response.IsSuccessStatusCode)
+        {
+            Message.Success("Adjunto eliminado.");
+            await LoadAttachments();
+        }
+        else
+        {
+            Message.Error("Error al eliminar.");
+        }
+    }
+
+    private string FormatSize(long bytes)
+    {
+        string[] suffix = { "B", "KB", "MB", "GB" };
+        int i = 0;
+        double dblSByte = bytes;
+        if (bytes > 1024)
+            for (i = 0; (bytes / 1024) > 0; i++, bytes /= 1024)
+                dblSByte = bytes / 1024.0;
+
+        return $"{dblSByte:0.#} {suffix[i]}";
+    }
+}

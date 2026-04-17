@@ -1,4 +1,5 @@
 using GestorOT.Application.Interfaces;
+using GestorOT.Application.Services;
 using GestorOT.Domain.Entities;
 using GestorOT.Domain.Enums;
 using Microsoft.EntityFrameworkCore;
@@ -23,200 +24,27 @@ public class ErpSyncService : IErpSyncService
 
     public ErpSyncService(
         IApplicationDbContext context, 
-        ILogger<ErpSyncService> logger,
+        ILogger<ErpSyncService> _logger,
         IEncryptionService encryptionService,
         ICurrentTenantService currentTenantService,
         IHttpClientFactory httpClientFactory,
         HybridCache cache)
     {
         _context = context;
-        _logger = logger;
+        this._logger = _logger;
         _encryptionService = encryptionService;
         _currentTenantService = currentTenantService;
         _httpClientFactory = httpClientFactory;
         _cache = cache;
     }
 
-    public async Task SyncLaborTypesAsync(Guid? overrideTenantId = null, CancellationToken ct = default)
+    public async Task SyncActivitiesAsync(Guid? overrideTenantId = null, CancellationToken ct = default)
     {
-        var tenantId = overrideTenantId ?? _currentTenantService.TenantId;
-        if (tenantId == Guid.Empty) return;
-
-        var tenant = await _context.Tenants.FindAsync(new object[] { tenantId }, ct);
-        if (tenant == null || string.IsNullOrEmpty(tenant.GestorMaxApiKeyEncrypted)) return;
-
-        try 
-        {
-            string apiKey = _encryptionService.Decrypt(tenant.GestorMaxApiKeyEncrypted);
-            
-            if (apiKey == "ERROR_DECRYPTING")
-            {
-                _logger.LogError("Could not decrypt Gestor Max API Key for tenant {TenantId}. Please re-enter the API key in the company settings.", tenantId);
-                return;
-            }
-
-            if (string.IsNullOrWhiteSpace(tenant.GestorMaxDatabaseId))
-            {
-                _logger.LogWarning("Tenant {TenantId} identifies no Gestor Max Database ID.", tenantId);
-                return;
-            }
-
-            var url = $"{BaseUrl}/v3/GestorG4/ListActividades?databaseId={tenant.GestorMaxDatabaseId.Trim()}&soloHabilitados=true";
-            string finalKey = apiKey.Trim();
-            // Logging masked key details for debugging padding issues
-            _logger.LogInformation("ERP Request -> DB: {DbId}, Key Length: {KeyLength}, Key Starts: {Start}..., Ends: ...{End}", 
-                tenant.GestorMaxDatabaseId.Trim(), finalKey.Length, finalKey[..5], finalKey[^1..]);
-
-            var client = _httpClientFactory.CreateClient();
-            client.DefaultRequestHeaders.Add("X-Api-Key", finalKey);
-            client.DefaultRequestHeaders.Accept.Clear();
-            client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-            client.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
-
-            var response = await client.GetAsync(url, ct);
-            if (!response.IsSuccessStatusCode)
-            {
-                var errorBody = await response.Content.ReadAsStringAsync(ct);
-                _logger.LogError("Gestor Max API Error ({StatusCode}): {Body}", response.StatusCode, errorBody);
-                response.EnsureSuccessStatusCode();
-            }
-
-            var erpActivities = await response.Content.ReadFromJsonAsync<List<ErpActivityResponse>>(ct);
-
-            if (erpActivities == null) return;
-
-            foreach (var act in erpActivities)
-            {
-                var laborType = await _context.LaborTypes
-                    .IgnoreQueryFilters()
-                    .Where(l => l.TenantId == tenantId && l.ExternalErpId == act.Codigo.ToString())
-                    .FirstOrDefaultAsync(ct);
-
-                if (laborType == null)
-                {
-                    laborType = new LaborType
-                    {
-                        Id = Guid.NewGuid(),
-                        TenantId = tenantId,
-                        Name = act.Nombre,
-                        ExternalErpId = act.Codigo.ToString()
-                    };
-                    _context.LaborTypes.Add(laborType);
-                }
-                else 
-                {
-                    laborType.Name = act.Nombre;
-                }
-            }
-
-            await _context.SaveChangesAsync(ct);
-            _logger.LogInformation("Successfully synced {Count} labor types for tenant {TenantId}.", erpActivities.Count, tenantId);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error syncing labor types from Gestor Max.");
-            throw; // Re-throw to propagate error
-        }
+        // Manual management as requested by user
+        await Task.CompletedTask;
     }
 
-    public async Task SyncContactsAsync(Guid? overrideTenantId = null, CancellationToken ct = default)
-    {
-        var tenantId = overrideTenantId ?? _currentTenantService.TenantId;
-        if (tenantId == Guid.Empty) 
-        {
-            _logger.LogWarning("No tenant context for ERP Sync.");
-            return;
-        }
-
-        var tenant = await _context.Tenants.FindAsync(new object[] { tenantId }, ct);
-        if (tenant == null || string.IsNullOrEmpty(tenant.GestorMaxApiKeyEncrypted))
-        {
-            _logger.LogWarning("Tenant {TenantId} has no ERP configuration.", tenantId);
-            return;
-        }
-
-        try 
-        {
-            string apiKey = _encryptionService.Decrypt(tenant.GestorMaxApiKeyEncrypted);
-            
-            if (apiKey == "ERROR_DECRYPTING")
-            {
-                _logger.LogError("Could not decrypt Gestor Max API Key for tenant {TenantId}.", tenantId);
-                return;
-            }
-
-            if (string.IsNullOrWhiteSpace(tenant.GestorMaxDatabaseId)) return;
-
-            var client = _httpClientFactory.CreateClient();
-            client.DefaultRequestHeaders.Add("X-Api-Key", apiKey.Trim());
-            client.DefaultRequestHeaders.Accept.Clear();
-            client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-            client.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
-
-            var url = $"{BaseUrl}/v3/GestorG4/ListPersonas?databaseId={tenant.GestorMaxDatabaseId.Trim()}";
-            var response = await client.GetAsync(url, ct);
-            if (!response.IsSuccessStatusCode)
-            {
-                var errorBody = await response.Content.ReadAsStringAsync(ct);
-                _logger.LogError("Gestor Max API Error ({StatusCode}): {Body}", response.StatusCode, errorBody);
-                response.EnsureSuccessStatusCode();
-            }
-
-             var erpPeople = await response.Content.ReadFromJsonAsync<List<ErpPersonResponse>>(ct);
- 
-             if (erpPeople == null) return;
- 
-             foreach (var p in erpPeople)
-             {
-                 var externalId = p.Id?.ToString();
-                 if (string.IsNullOrEmpty(externalId)) continue;
-                 
-                 var erpPerson = await _context.ErpPeople
-                     .IgnoreQueryFilters()
-                     .Where(e => e.TenantId == tenantId && e.ExternalErpId == externalId)
-                     .FirstOrDefaultAsync(ct);
- 
-                 if (erpPerson == null)
-                 {
-                     erpPerson = new ErpPerson
-                     {
-                         Id = Guid.NewGuid(),
-                         TenantId = tenantId,
-                         ExternalErpId = externalId,
-                         FullName = p.Nombre ?? "Sin Nombre",
-                         Alias = p.Alias,
-                         VatNumber = p.VatNumber,
-                         PersonType = p.PersonType,
-                         DocumentType = p.DocumentType,
-                         Country = p.Country,
-                         ResponsibleTax = p.ResponsibleTax,
-                         Group = p.Group,
-                         Enabled = p.Enabled,
-                         LastSyncDate = DateTime.UtcNow
-                     };
-                     _context.ErpPeople.Add(erpPerson);
-                 }
-                 else
-                 {
-                     erpPerson.FullName = p.Nombre ?? erpPerson.FullName;
-                     erpPerson.Alias = p.Alias ?? erpPerson.Alias;
-                     erpPerson.VatNumber = p.VatNumber ?? erpPerson.VatNumber;
-                     erpPerson.Enabled = p.Enabled;
-                     erpPerson.LastSyncDate = DateTime.UtcNow;
-                 }
-             }
- 
-             await _context.SaveChangesAsync(ct);
-             _logger.LogInformation("Successfully synced {Count} ERP individuals for tenant {TenantId}.", erpPeople.Count, tenantId);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error syncing contacts from Gestor Max.");
-            throw; // Re-throw
-        }
-    }
-
-    public async Task SyncStockAsync(Guid? overrideTenantId = null, CancellationToken ct = default)
+    public async Task SyncCatalogAsync(Guid? overrideTenantId = null, CancellationToken ct = default)
     {
         var tenantId = overrideTenantId ?? _currentTenantService.TenantId;
         if (tenantId == Guid.Empty) return;
@@ -227,87 +55,202 @@ public class ErpSyncService : IErpSyncService
         try
         {
             string apiKey = _encryptionService.Decrypt(tenant.GestorMaxApiKeyEncrypted);
-            
-            if (apiKey == "ERROR_DECRYPTING")
-            {
-                _logger.LogError("Could not decrypt Gestor Max API Key for tenant {TenantId}.", tenantId);
-                return;
-            }
+            if (apiKey == "ERROR_DECRYPTING" || string.IsNullOrWhiteSpace(tenant.GestorMaxDatabaseId)) return;
 
-            if (string.IsNullOrWhiteSpace(tenant.GestorMaxDatabaseId)) return;
-
+            var url = $"{BaseUrl}/v3/GestorG4/ListConceptos?databaseId={tenant.GestorMaxDatabaseId.Trim()}&soloFisicos=true";
             var client = _httpClientFactory.CreateClient();
             client.DefaultRequestHeaders.Add("X-Api-Key", apiKey.Trim());
-            client.DefaultRequestHeaders.Accept.Clear();
             client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-            client.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
+            client.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0");
 
-            // Intentamos traer de Cache primero si existe una sincronizacion reciente
-            var cacheKey = $"erp_stock_{tenantId}";
-            
-            var erpStock = await _cache.GetOrCreateAsync(
-                cacheKey,
-                async cancel => 
-                {
-                    var url = $"{BaseUrl}/v3/GestorG4/ListConceptos?databaseId={tenant.GestorMaxDatabaseId.Trim()}&soloFisicos=true";
-                    _logger.LogInformation("Requesting Stock from: {Url}", url);
-                    var response = await client.GetAsync(url, cancel);
-                    if (!response.IsSuccessStatusCode)
-                    {
-                        var errorBody = await response.Content.ReadAsStringAsync(cancel);
-                        _logger.LogWarning("Gestor Max API Error ({StatusCode}): {Body}", response.StatusCode, errorBody);
-                        return null; 
-                    }
-                    return await response.Content.ReadFromJsonAsync<List<ErpConceptResponse>>(cancel);
-                },
-                new HybridCacheEntryOptions { Expiration = TimeSpan.FromMinutes(15) },
-                cancellationToken: ct);
+            var response = await client.GetAsync(url, ct);
+            if (!response.IsSuccessStatusCode) return;
 
+            var options = new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+            var erpStock = await response.Content.ReadFromJsonAsync<List<ErpConceptResponse>>(options, ct);
             if (erpStock == null) return;
 
             foreach (var item in erpStock)
             {
                 if (string.IsNullOrEmpty(item.Descripcion)) continue;
-                
-                var inventory = await _context.Inventories
+
+                var externalId = item.CodConcepto?.ToString() ?? item.Descripcion;
+                var grupo = (item.GrupoConceptos ?? item.GrupoConcepto ?? "").ToUpper().Trim();
+                var subGrupo = (item.SubgrupoConceptos ?? item.SubgrupoConcepto ?? "").ToUpper().Trim();
+
+                // 1. Update ErpConcepts (The full catalog)
+                var concept = await _context.ErpConcepts
                     .IgnoreQueryFilters()
-                    .Where(i => i.TenantId == tenantId && i.ItemName == item.Descripcion)
+                    .Where(c => c.TenantId == tenantId && c.ExternalErpId == externalId)
                     .FirstOrDefaultAsync(ct);
 
-                if (inventory == null)
+                if (concept == null)
                 {
-                    inventory = new Inventory
+                    concept = new ErpConcept
                     {
                         Id = Guid.NewGuid(),
                         TenantId = tenantId,
-                        ItemName = item.Descripcion,
-                        CurrentStock = item.Cantidad,
-                        Unit = item.UnidadA ?? "u",
-                        UnitB = item.UnidadB ?? "u",
-                        ExternalErpId = item.Descripcion
+                        ExternalErpId = externalId,
+                        Description = item.Descripcion,
+                        Stock = item.Cantidad,
+                        UnitA = item.UnidadA,
+                        UnitB = item.UnidadB,
+                        GrupoConcepto = grupo,
+                        SubGrupoConcepto = subGrupo,
+                        LastSyncDate = DateTime.UtcNow
                     };
-                    _context.Inventories.Add(inventory);
+                    _context.ErpConcepts.Add(concept);
                 }
                 else
                 {
-                    inventory.ItemName = item.Descripcion;
-                    inventory.CurrentStock = item.Cantidad;
-                    inventory.Unit = item.UnidadA ?? inventory.Unit;
-                    inventory.UnitB = item.UnidadB ?? inventory.UnitB;
+                    concept.Description = item.Descripcion;
+                    concept.Stock = item.Cantidad;
+                    concept.UnitA = item.UnidadA;
+                    concept.UnitB = item.UnidadB;
+                    concept.GrupoConcepto = grupo;
+                    concept.SubGrupoConcepto = subGrupo;
+                    concept.LastSyncDate = DateTime.UtcNow;
+                }
+
+                // 2. Sync stock to activated LaborTypes (if exists)
+                if (grupo == "LABOR" || grupo == "LABORES")
+                {
+                    var laborType = await _context.LaborTypes
+                        .IgnoreQueryFilters()
+                        .Where(l => l.TenantId == tenantId && (l.ExternalErpId == externalId || l.Name == item.Descripcion))
+                        .FirstOrDefaultAsync(ct);
+
+                    if (laborType != null)
+                    {
+                        laborType.Name = item.Descripcion;
+                        laborType.ExternalErpId = externalId;
+                    }
+                }
+                // 3. Sync stock to Inventories (Insumos) - Auto-create all INSUMOS
+                else if (grupo == "INSUMOS")
+                {
+                    var inventory = await _context.Inventories
+                        .IgnoreQueryFilters()
+                        .Where(i => i.TenantId == tenantId && (i.ExternalErpId == externalId || i.ItemName == item.Descripcion))
+                        .FirstOrDefaultAsync(ct);
+
+                    if (inventory == null)
+                    {
+                        inventory = new Inventory
+                        {
+                            Id = Guid.NewGuid(),
+                            TenantId = tenantId,
+                            ExternalErpId = externalId,
+                            ItemName = item.Descripcion,
+                            CurrentStock = item.Cantidad,
+                            Unit = item.UnidadA ?? "u",
+                            UnitB = item.UnidadB ?? "u",
+                            GrupoConcepto = grupo,
+                            SubGrupoConcepto = subGrupo
+                        };
+                        _context.Inventories.Add(inventory);
+                    }
+                    else
+                    {
+                        inventory.CurrentStock = item.Cantidad;
+                        inventory.ItemName = item.Descripcion;
+                        inventory.ExternalErpId = externalId;
+                        inventory.GrupoConcepto = grupo;
+                        inventory.SubGrupoConcepto = subGrupo;
+                    }
                 }
             }
-
             await _context.SaveChangesAsync(ct);
-            _logger.LogInformation("Successfully synced stock for {Count} items.", erpStock.Count);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error syncing stock from ERP. Message: {Message}", ex.Message);
-            throw; // Re-throw
+            _logger.LogError(ex, "Error syncing Catalog.");
         }
     }
 
-    // Helper records para mapear la respuesta de Gestor Max
+    public async Task SyncLaborTypesAsync(Guid? overrideTenantId = null, CancellationToken ct = default)
+    {
+        await SyncCatalogAsync(overrideTenantId, ct);
+    }
+
+    public async Task SyncStockAsync(Guid? overrideTenantId = null, CancellationToken ct = default)
+    {
+        await SyncCatalogAsync(overrideTenantId, ct);
+    }
+
+    public async Task SyncContactsAsync(Guid? overrideTenantId = null, CancellationToken ct = default)
+    {
+        var tenantId = overrideTenantId ?? _currentTenantService.TenantId;
+        if (tenantId == Guid.Empty) return;
+
+        var tenant = await _context.Tenants.FindAsync(new object[] { tenantId }, ct);
+        if (tenant == null || string.IsNullOrEmpty(tenant.GestorMaxApiKeyEncrypted)) return;
+
+        try
+        {
+            string apiKey = _encryptionService.Decrypt(tenant.GestorMaxApiKeyEncrypted);
+            if (apiKey == "ERROR_DECRYPTING" || string.IsNullOrWhiteSpace(tenant.GestorMaxDatabaseId)) return;
+
+            var client = _httpClientFactory.CreateClient();
+            client.DefaultRequestHeaders.Add("X-Api-Key", apiKey.Trim());
+            client.DefaultRequestHeaders.Accept.Clear();
+            client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+            client.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0");
+
+            var url = $"{BaseUrl}/v3/GestorG4/ListPersonas?databaseId={tenant.GestorMaxDatabaseId.Trim()}";
+            var response = await client.GetAsync(url, ct);
+            if (!response.IsSuccessStatusCode) return;
+
+            var erpPeople = await response.Content.ReadFromJsonAsync<List<ErpPersonResponse>>(ct);
+            if (erpPeople == null) return;
+
+            foreach (var p in erpPeople)
+            {
+                var externalId = p.Id?.ToString();
+                if (string.IsNullOrEmpty(externalId)) continue;
+
+                var erpPerson = await _context.ErpPeople
+                    .IgnoreQueryFilters()
+                    .Where(e => e.TenantId == tenantId && e.ExternalErpId == externalId)
+                    .FirstOrDefaultAsync(ct);
+
+                if (erpPerson == null)
+                {
+                    erpPerson = new ErpPerson
+                    {
+                        Id = Guid.NewGuid(),
+                        TenantId = tenantId,
+                        ExternalErpId = externalId,
+                        FullName = p.Nombre ?? "Sin Nombre",
+                        Alias = p.Alias,
+                        VatNumber = p.VatNumber,
+                        PersonType = p.PersonType,
+                        DocumentType = p.DocumentType,
+                        Country = p.Country,
+                        ResponsibleTax = p.ResponsibleTax,
+                        Group = p.Group,
+                        Enabled = p.Enabled,
+                        LastSyncDate = DateTime.UtcNow
+                    };
+                    _context.ErpPeople.Add(erpPerson);
+                }
+                else
+                {
+                    erpPerson.FullName = p.Nombre ?? erpPerson.FullName;
+                    erpPerson.Alias = p.Alias ?? erpPerson.Alias;
+                    erpPerson.VatNumber = p.VatNumber ?? erpPerson.VatNumber;
+                    erpPerson.Enabled = p.Enabled;
+                    erpPerson.LastSyncDate = DateTime.UtcNow;
+                }
+            }
+            await _context.SaveChangesAsync(ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error syncing Contacts.");
+        }
+    }
+
     private record ErpPersonResponse(
         [property: JsonPropertyName("codPersona")] object Id, 
         [property: JsonPropertyName("persona")] string Nombre,
@@ -325,10 +268,31 @@ public class ErpSyncService : IErpSyncService
         [property: JsonPropertyName("actividadPerfilImputacion")] string Nombre);
 
     private record ErpConceptResponse(
+        [property: JsonPropertyName("codConcepto")] object? CodConcepto,
         [property: JsonPropertyName("descripcion")] string Descripcion, 
         [property: JsonPropertyName("cantidad")] double Cantidad, 
         [property: JsonPropertyName("unidadAuxiliar")] string? UnidadA,
         [property: JsonPropertyName("UnidadPrecio")] string? UnidadB,
-        [property: JsonPropertyName("precio")] double Precio, 
-        [property: JsonPropertyName("totalConcepto")] double totalConcepto);
+        [property: JsonPropertyName("grupoConceptos")] string? GrupoConceptos,
+        [property: JsonPropertyName("subgrupoConceptos")] string? SubgrupoConceptos,
+        [property: JsonPropertyName("grupoConcepto")] string? GrupoConcepto,
+        [property: JsonPropertyName("subgrupoConcepto")] string? SubgrupoConcepto);
 }
+
+/*
+EXAMPLE RESPONSE FROM GESTORMAX (ListConceptos):
+{
+    "codigo": "50030",
+    "codGrupoConceptos": "10002",
+    "codSubgrupoConceptos": "20009",
+    "codSubClasificacionConceptos": 0,
+    "codConcepto": "50030",
+    "codigoConcepto": "2010101000",
+    "descripcion": "ACEITE AGRICOLA",
+    "grupoConceptos": "INSUMOS",
+    "subgrupoConceptos": "ADITIVO",
+    "tipo": "Concepto",
+    "unidadAuxiliar": "HA",
+    "UnidadPrecio": "LT"
+}
+*/

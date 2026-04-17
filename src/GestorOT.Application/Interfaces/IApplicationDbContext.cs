@@ -23,8 +23,14 @@ public interface IApplicationDbContext
     DbSet<AuditLog> AuditLogs { get; }
     DbSet<Campaign> Campaigns { get; }
     DbSet<CampaignLot> CampaignLots { get; }
+    DbSet<Rotation> Rotations { get; }
     DbSet<CampaignField> CampaignFields { get; }
     DbSet<ErpPerson> ErpPeople { get; }
+    DbSet<ErpActivity> ErpActivities { get; }
+    DbSet<ErpConcept> ErpConcepts { get; }
+    DbSet<WorkOrderStatus> WorkOrderStatuses { get; }
+    DbSet<LaborAttachment> LaborAttachments { get; }
+    DbSet<WorkOrderSupplyApproval> WorkOrderSupplyApprovals { get; }
     DatabaseFacade Database { get; }
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 }
