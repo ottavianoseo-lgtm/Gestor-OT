@@ -453,5 +453,21 @@ window.mapInterop = {
             console.error('Error adding imported polygon:', e);
             return false;
         }
+    },
+
+    searchCity: async function (query) {
+        if (!this.map || !query) return;
+        try {
+            const response = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=1`);
+            const data = await response.json();
+            if (data && data.length > 0) {
+                const result = data[0];
+                this.map.flyTo([parseFloat(result.lat), parseFloat(result.lon)], 13);
+                return true;
+            }
+        } catch (e) {
+            console.error('Error searching city:', e);
+        }
+        return false;
     }
 };

@@ -3,6 +3,7 @@
 @using GestorOT.Shared
 @using System.Net.Http.Json
 @using AntDesign
+@using AntDesign.TableModels
 @inject HttpClient Http
 @inject IMessageService Message
 @inject GestorOT.Client.Services.CampaignState CampaignState
@@ -37,57 +38,139 @@
     <Alert Type="@AlertType.Error" Message="@_errorMessage" ShowIcon="true" Style="margin-bottom: 16px;" />
 }
 
+<div class="summary-bar" style="display: flex; gap: 24px; background: rgba(255,255,255,0.03); padding: 16px 24px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.08); margin-bottom: 16px;">
+    <div class="summary-item">
+        <div style="font-size: 11px; color: rgba(255,255,255,0.4); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">Total Catastral</div>
+        <div style="font-size: 18px; font-weight: 700; color: #fff;">@FilteredLots.Sum(l => (decimal)l.CadastralArea).ToString("N2") ha</div>
+    </div>
+    @if (CampaignState.IsSelected)
+    {
+        <div class="summary-item">
+            <div style="font-size: 11px; color: rgba(255,255,255,0.4); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">Total Productiva</div>
+            <div style="font-size: 18px; font-weight: 700; color: #2ECC71;">@_campaignLots.Sum(l => l.ProductiveArea).ToString("N2") ha</div>
+        </div>
+        <div class="summary-item">
+            <div style="font-size: 11px; color: rgba(255,255,255,0.4); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">Variación Total</div>
+            @{
+                var totalVari = _campaignLots.Sum(l => l.ProductiveArea) - FilteredLots.Where(l => _campaignLots.Any(cl => cl.LotId == l.Id)).Sum(l => (decimal)l.CadastralArea);
+                var variColor = totalVari < 0 ? "#E74C3C" : (totalVari > 0 ? "#2ECC71" : "#fff");
+            }
+            <div style="font-size: 18px; font-weight: 700; color: @variColor;">@(totalVari > 0 ? "+" : "")@totalVari.ToString("N2") ha</div>
+        </div>
+    }
+    <div class="summary-item">
+        <div style="font-size: 11px; color: rgba(255,255,255,0.4); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">Cant. Lotes</div>
+        <div style="font-size: 18px; font-weight: 700; color: #fff;">@FilteredLots.Count()</div>
+    </div>
+</div>
+
 <div class="glass-card">
     <Table TItem="LotDto" DataSource="FilteredLots" Loading="_loading" Size="@TableSize.Small"
-           ScrollX="1000">
-        <PropertyColumn Property="c => c.Name" Title="Nombre" Sortable>
-            <span style="font-weight: 600;">@context.Name</span>
-        </PropertyColumn>
-        <PropertyColumn Property="c => c.FieldName" Title="Campo" Sortable />
-        <PropertyColumn Property="c => c.Status" Title="Estado">
-            <Tag Color="@(context.Status == "Active" ? "green" : "red")" Style="border-radius: 12px; font-size: 11px; padding: 2px 10px;">
-                @(context.Status == "Active" ? "Activo" : "Inactivo")
-            </Tag>
-        </PropertyColumn>
-        <PropertyColumn Property="c => c.Area" Title="Área Dibujada (ha)">
-            <span>@context.Area.ToString("N2") ha</span>
-        </PropertyColumn>
-        <ActionColumn Title="Geometría">
-            @{
-                var hasGeometry = !string.IsNullOrEmpty(context.WktGeometry);
-            }
-            @if (hasGeometry)
-            {
-                <Tag Color="@("blue")" Style="border-radius: 12px; font-size: 11px; padding: 2px 10px;">
-                    Con geometría
+           ScrollX="1200" OnExpand="OnExpandLot">
+        <ExpandTemplate Context="lot">
+            <div style="padding: 16px; background: rgba(0,0,0,0.2); border-radius: 8px;">
+                <h4 style="color: #fff; margin-bottom: 12px;">Historial de Superficies por Campaña</h4>
+                @if (_historyByLot.TryGetValue(lot.Data.Id, out var history))
+                {
+                    <Table TItem="SurfaceHistoryDto" DataSource="history" Size="TableSize.Small" PageSize="10" HidePagination>
+                        <PropertyColumn Property="h => h.CampaignName" Title="Campaña" />
+                        <PropertyColumn Property="h => h.StartDate" Title="Inicio" />
+                        <PropertyColumn Property="h => h.CadastralArea" Title="Sup. Catastral" />
+                        <PropertyColumn Property="h => h.ProductiveArea" Title="Sup. Productiva" />
+                        <PropertyColumn Property="h => h.Variation" Title="Variación">
+                            @{
+                                var h = context;
+                                var color = h.Variation < 0 ? "#E74C3C" : (h.Variation > 0 ? "#2ECC71" : "#fff");
+                            }
+                            <span style="color: @color; font-weight: 600;">@(h.Variation > 0 ? "+" : "")@h.Variation.ToString("N2") ha</span>
+                        </PropertyColumn>
+                    </Table>
+                }
+                else
+                {
+                    <div style="text-align: center; padding: 10px; color: rgba(255,255,255,0.4);">
+                        Cargando historial...
+                    </div>
+                }
+            </div>
+        </ExpandTemplate>
+        <ChildContent>
+            <PropertyColumn Property="c => c.Name" Title="Nombre" Sortable>
+                <span style="font-weight: 600;">@context.Name</span>
+            </PropertyColumn>
+            <PropertyColumn Property="c => c.FieldName" Title="Campo" Sortable />
+            <PropertyColumn Property="c => c.Status" Title="Estado">
+                <Tag Color="@(context.Status == "Active" ? TagColor.Green : TagColor.Red)" Style="border-radius: 12px; font-size: 11px; padding: 2px 10px;">
+                    @(context.Status == "Active" ? "Activo" : "Inactivo")
                 </Tag>
-            }
-            else
+            </PropertyColumn>
+            <PropertyColumn Property="c => c.CadastralArea" Title="Área Catastral (ha)">
+                <span style="font-weight: 600;">@context.CadastralArea.ToString("N2") ha</span>
+            </PropertyColumn>
+            @if (CampaignState.IsSelected)
             {
-                <a href="/mapa" class="ant-tag ant-tag-red" style="border-radius: 12px; font-size: 11px; padding: 2px 10px; cursor: pointer;">
-                    Sin geometría (Configurar)
-                </a>
+                <Column TData="decimal" Title="Área Productiva (ha)">
+                    @{
+                        var cl = _campaignLots.FirstOrDefault(x => x.LotId == context.Id);
+                        if (cl != null)
+                        {
+                            <span>@cl.ProductiveArea.ToString("N2") ha</span>
+                        }
+                        else
+                        {
+                            <span style="color: rgba(255,255,255,0.3);">—</span>
+                        }
+                    }
+                </Column>
+                <Column TData="decimal" Title="Variación">
+                    @{
+                        var clv = _campaignLots.FirstOrDefault(x => x.LotId == context.Id);
+                        if (clv != null)
+                        {
+                            var vari = clv.ProductiveArea - context.CadastralArea;
+                            var colorv = vari < 0 ? "#E74C3C" : (vari > 0 ? "#2ECC71" : "rgba(255,255,255,0.3)");
+                            <span style="color: @colorv; font-weight: 600;">@(vari > 0 ? "+" : "")@vari.ToString("N2") ha</span>
+                        }
+                    }
+                </Column>
             }
-        </ActionColumn>
-        <ActionColumn Title="Acciones" Width="160">
-            <Space>
-                <SpaceItem>
-                    <Button Size="@ButtonSize.Small" OnClick="() => OpenEditModal(context)"
-                            Style="border-radius: 6px; border-color: rgba(255,255,255,0.15); color: rgba(255,255,255,0.7);">
-                        <Icon Type="edit" Theme="IconThemeType.Outline" />
-                    </Button>
-                </SpaceItem>
-                <SpaceItem>
-                    <Popconfirm Title="¿Eliminar este lote? Se eliminarán las OTs asociadas."
-                                OnConfirm="() => DeleteLot(context.Id)"
-                                OkText="Eliminar" CancelText="Cancelar">
-                        <Button Danger Size="@ButtonSize.Small" Style="border-radius: 6px;">
-                            <Icon Type="delete" Theme="IconThemeType.Outline" />
+            <ActionColumn Title="Geometría">
+                @{
+                    var hasGeometry = !string.IsNullOrEmpty(context.WktGeometry);
+                }
+                @if (hasGeometry)
+                {
+                    <Tag Color="@TagColor.Blue" Style="border-radius: 12px; font-size: 11px; padding: 2px 10px;">
+                        Con geometría
+                    </Tag>
+                }
+                else
+                {
+                    <a href="/mapa" class="ant-tag ant-tag-red" style="border-radius: 12px; font-size: 11px; padding: 2px 10px; cursor: pointer;">
+                        Sin geometría (Configurar)
+                    </a>
+                }
+            </ActionColumn>
+            <ActionColumn Title="Acciones" Width="160">
+                <Space>
+                    <SpaceItem>
+                        <Button Size="@ButtonSize.Small" OnClick="() => OpenEditModal(context)"
+                                Style="border-radius: 6px; border-color: rgba(255,255,255,0.15); color: rgba(255,255,255,0.7);">
+                            <Icon Type="edit" Theme="IconThemeType.Outline" />
                         </Button>
-                    </Popconfirm>
-                </SpaceItem>
-            </Space>
-        </ActionColumn>
+                    </SpaceItem>
+                    <SpaceItem>
+                        <Popconfirm Title="¿Eliminar este lote? Se eliminarán las OTs asociadas."
+                                    OnConfirm="() => DeleteLot(context.Id)"
+                                    OkText="Eliminar" CancelText="Cancelar">
+                            <Button Danger Size="@ButtonSize.Small" Style="border-radius: 6px;">
+                                <Icon Type="delete" Theme="IconThemeType.Outline" />
+                            </Button>
+                        </Popconfirm>
+                    </SpaceItem>
+                </Space>
+            </ActionColumn>
+        </ChildContent>
     </Table>
 </div>
 
@@ -126,6 +209,7 @@
     private List<LotDto> _lots = new();
     private List<FieldDto> _availableFields = new();
     private List<CampaignLotDto> _campaignLots = new();
+    private Dictionary<Guid, List<SurfaceHistoryDto>> _historyByLot = new();
     private bool _loading = true;
     private bool _filterByCampaign = true;
     private string? _errorMessage;
@@ -164,6 +248,30 @@
     {
         CampaignState.OnChange -= OnCampaignChanged;
         TenantState.OnChange -= OnCampaignChanged;
+    }
+
+    private async Task OnExpandLot(RowData<LotDto> args)
+    {
+        if (args.Expanded && !_historyByLot.ContainsKey(args.Data.Id))
+        {
+            await LoadHistory(args.Data.Id);
+        }
+    }
+
+    private async Task LoadHistory(Guid lotId)
+    {
+        try
+        {
+            var history = await Http.GetFromJsonAsync<List<SurfaceHistoryDto>>($"api/lots/{lotId}/surface-history");
+            if (history != null)
+            {
+                _historyByLot[lotId] = history;
+            }
+        }
+        catch (Exception ex)
+        {
+            Message.Error("Error al cargar historial.");
+        }
     }
 
     private async Task LoadData()

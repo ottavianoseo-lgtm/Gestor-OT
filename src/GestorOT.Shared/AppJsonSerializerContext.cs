@@ -89,6 +89,11 @@ namespace GestorOT.Shared;
 [JsonSerializable(typeof(ErpConceptDto))]
 [JsonSerializable(typeof(List<ErpConceptDto>))]
 [JsonSerializable(typeof(List<LaborAttachmentDto>))]
+[JsonSerializable(typeof(LaborSaveResponse))]
+[JsonSerializable(typeof(WorkOrderSupplyApprovalDto))]
+[JsonSerializable(typeof(List<WorkOrderSupplyApprovalDto>))]
+[JsonSerializable(typeof(SurfaceHistoryDto))]
+[JsonSerializable(typeof(List<SurfaceHistoryDto>))]
 [JsonSerializable(typeof(ActivateContactRequest))]
 [JsonSourceGenerationOptions(
     PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,

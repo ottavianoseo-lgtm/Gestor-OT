@@ -36,4 +36,54 @@ public class AgronomicValidationService : IAgronomicValidationService
             r.WarningMessage
         )).ToList();
     }
+
+    public async Task<bool> ValidateLaborSurfaceAsync(Guid campaignLotId, decimal hectares, CancellationToken ct = default)
+    {
+        var campaignLot = await _context.CampaignLots
+            .AsNoTracking()
+            .FirstOrDefaultAsync(cl => cl.Id == campaignLotId, ct);
+
+        if (campaignLot == null) return true; // Lot not found, maybe standalone labor
+
+        return hectares <= campaignLot.ProductiveArea;
+    }
+
+    public async Task<string?> ValidateLaborActivityMatchesRotationAsync(Guid campaignLotId, DateOnly date, Guid activityId, CancellationToken ct = default)
+    {
+        var activeRotation = await _context.Rotations
+            .AsNoTracking()
+            .Include(r => r.ErpActivity)
+            .Where(r => r.CampaignLotId == campaignLotId && r.StartDate <= date && r.EndDate >= date)
+            .FirstOrDefaultAsync(ct);
+
+        if (activeRotation == null) return null; // No rotation for this date
+
+        if (activeRotation.ErpActivityId != activityId)
+        {
+            return $"La actividad seleccionada no coincide con el cultivo proyectado ({activeRotation.ErpActivity?.Name}).";
+        }
+
+        return null;
+    }
+
+    public async Task<string?> ValidateLaborDatesInRotationAsync(Guid campaignLotId, DateTime? estimatedDate, DateTime? executionDate, CancellationToken ct = default)
+    {
+        // Use execution date if available, else estimated date
+        var dateToValidate = executionDate ?? estimatedDate;
+        if (dateToValidate == null) return null;
+
+        var dateOnly = DateOnly.FromDateTime(dateToValidate.Value);
+
+        var activeRotation = await _context.Rotations
+            .AsNoTracking()
+            .Where(r => r.CampaignLotId == campaignLotId && r.StartDate <= dateOnly && r.EndDate >= dateOnly)
+            .FirstOrDefaultAsync(ct);
+
+        if (activeRotation == null)
+        {
+            return "No existe una rotación activa para la fecha seleccionada.";
+        }
+
+        return null;
+    }
 }

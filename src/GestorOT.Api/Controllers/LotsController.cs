@@ -42,6 +42,12 @@ public class LotsController : ControllerBase
         return await _queryService.GetGeoJsonAsync(ct);
     }
 
+    [HttpGet("{id:guid}/surface-history")]
+    public async Task<ActionResult<List<SurfaceHistoryDto>>> GetSurfaceHistory(Guid id, CancellationToken ct)
+    {
+        return await _queryService.GetSurfaceHistoryAsync(id, ct);
+    }
+
     [HttpPost]
     public async Task<ActionResult<LotDto>> CreateLot(LotDto dto)
     {
@@ -63,26 +69,37 @@ public class LotsController : ControllerBase
         };
 
         _context.Lots.Add(lot);
+
+        if (!string.IsNullOrEmpty(dto.WktGeometry))
+        {
+            var areaHa = await _queryService.CalculateAreaFromWktAsync(dto.WktGeometry);
+            lot.CadastralArea = (decimal)areaHa;
+        }
+
         await _context.SaveChangesAsync();
 
         return CreatedAtAction(nameof(GetLot), new { id = lot.Id },
-            new LotDto(lot.Id, lot.FieldId, lot.Name, lot.Status, dto.WktGeometry, null, 0));
+            new LotDto(lot.Id, lot.FieldId, lot.Name, lot.Status, dto.WktGeometry, null, 0, lot.CadastralArea));
     }
 
     [HttpPut("{id:guid}")]
     public async Task<IActionResult> UpdateLot(Guid id, LotDto dto)
     {
         var lot = await _context.Lots.FindAsync(id);
-        if (lot == null) return NotFound();
+        if (lot == null) return NotFound("El lote no existe.");
 
         lot.Name = dto.Name;
         lot.Status = dto.Status;
         lot.FieldId = dto.FieldId;
+        
         if (!string.IsNullOrEmpty(dto.WktGeometry))
         {
             var reader = new WKTReader();
             lot.Geometry = (Polygon)reader.Read(dto.WktGeometry);
             lot.Geometry.SRID = 4326;
+            
+            var areaHa = await _queryService.CalculateAreaFromWktAsync(dto.WktGeometry);
+            lot.CadastralArea = (decimal)areaHa;
         }
 
         await _context.SaveChangesAsync();

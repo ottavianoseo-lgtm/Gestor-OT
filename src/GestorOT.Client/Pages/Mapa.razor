@@ -15,6 +15,14 @@
 <div class="gis-container">
     <div id="map" class="gis-map"></div>
 
+    <div class="gis-search">
+        <Search Placeholder="Buscar ciudad o localidad..."
+                @bind-Value="_cityQuery"
+                OnSearch="SearchCity"
+                EnterButton="@(true)"
+                Style="width: 300px; border-radius: 20px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.2);" />
+    </div>
+
     @if (_loading)
     {
         <div class="gis-overlay">
@@ -134,22 +142,50 @@
                 </div>
                 <div style="margin-top: 16px;">
                     <div style="font-size: 12px; color: rgba(255,255,255,0.5); margin-bottom: 8px;">Vincular a lote:</div>
-                    <Select TItem="LotDto"
-                            TItemValue="Guid"
-                            DataSource="_orphanLots"
-                            @bind-Value="_linkingLotId"
-                            LabelName="@nameof(LotDto.Name)"
-                            ValueName="@nameof(LotDto.Id)"
-                            Placeholder="Seleccionar lote huérfano"
-                            Style="width: 100%;"
-                            EnableSearch />
+                    @if (!_showCreateLotInline)
+                    {
+                        <Select TItem="LotDto"
+                                TItemValue="Guid"
+                                DataSource="_orphanLots"
+                                @bind-Value="_linkingLotId"
+                                LabelName="@nameof(LotDto.Name)"
+                                ValueName="@nameof(LotDto.Id)"
+                                Placeholder="Seleccionar lote huérfano"
+                                Style="width: 100%;"
+                                EnableSearch />
+                        
+                        <Button Type="@ButtonType.Link" OnClick="() => _showCreateLotInline = true" Style="padding: 0; margin-top: 8px; font-size: 12px;">
+                            <Icon Type="plus" /> O crear nuevo lote
+                        </Button>
+                    }
+                    else
+                    {
+                        <div style="background: rgba(255,255,255,0.03); border: 1px dashed rgba(255,255,255,0.1); border-radius: 8px; padding: 12px; display: grid; gap: 12px;">
+                            <div style="font-weight: 600; font-size: 11px; color: #fff;">NUEVO LOTE</div>
+                            <Input @bind-Value="_newLotName" Placeholder="Nombre del lote..." Size="@InputSize.Small" />
+                            <Select TItem="FieldDto"
+                                    TItemValue="Guid"
+                                    DataSource="_allFields"
+                                    @bind-Value="_newLotFieldId"
+                                    LabelName="@nameof(FieldDto.Name)"
+                                    ValueName="@nameof(FieldDto.Id)"
+                                    Placeholder="Seleccionar campo"
+                                    Size="@InputSize.Small"
+                                    EnableSearch />
+                            
+                            <div style="display: flex; gap: 8px;">
+                                <Button Size="@ButtonSize.Small" Type="@ButtonType.Primary" OnClick="CreateAndLinkLot" Loading="_creatingLot">Crear</Button>
+                                <Button Size="@ButtonSize.Small" OnClick="() => _showCreateLotInline = false">Cancelar</Button>
+                            </div>
+                        </div>
+                    }
                 </div>
             </div>
             <div class="rail-actions">
                 <Button Type="@ButtonType.Primary" Block Size="@ButtonSize.Small"
                         Style="background: #E74C3C; border-color: #E74C3C; border-radius: 8px;"
                         OnClick="SaveDrawnGeometry"
-                        Disabled="@(_linkingLotId == Guid.Empty)"
+                        Disabled="@(_linkingLotId == Guid.Empty || _showCreateLotInline)"
                         Loading="_savingGeometry">
                     <Icon Type="save" Theme="IconThemeType.Outline" /> Guardar Geometría
                 </Button>
@@ -283,6 +319,14 @@
         transform: translateX(-50%);
         z-index: 1001;
         max-width: 400px;
+    }
+
+    .gis-search {
+        position: absolute;
+        top: 16px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 1000;
     }
 
     .gis-toolbar {
@@ -522,8 +566,62 @@
     private string? _drawnWkt;
     private double _drawnArea;
     private Guid _linkingLotId;
+    private string? _cityQuery;
+    private bool _showCreateLotInline;
+    private string _newLotName = "";
+    private Guid _newLotFieldId;
+    private bool _creatingLot;
     private string? _importLinkWkt;
     private List<ImportResult> _importResults = new();
+
+    private async Task SearchCity()
+    {
+        if (string.IsNullOrWhiteSpace(_cityQuery)) return;
+        await JS.InvokeVoidAsync("mapInterop.searchCity", _cityQuery);
+    }
+
+    private async Task CreateAndLinkLot()
+    {
+        if (string.IsNullOrWhiteSpace(_newLotName) || _newLotFieldId == Guid.Empty)
+        {
+            Message.Warning("Complete el nombre y el campo.");
+            return;
+        }
+
+        _creatingLot = true;
+        try
+        {
+            var dto = new LotDto(Guid.Empty, _newLotFieldId, _newLotName, "Active", _drawnWkt, "");
+            var response = await Http.PostAsJsonAsync("api/lots", dto);
+            
+            if (response.IsSuccessStatusCode)
+            {
+                var created = await response.Content.ReadFromJsonAsync<LotDto>(AppJsonSerializerContext.Default.LotDto);
+                if (created != null)
+                {
+                    _allLots.Add(created);
+                    _linkingLotId = created.Id;
+                    _showCreateLotInline = false;
+                    Message.Success("Lote creado y vinculado.");
+                    // Immediately save geometry since we already have the WKT and the ID
+                    await SaveDrawnGeometry();
+                }
+            }
+            else
+            {
+                var err = await response.Content.ReadAsStringAsync();
+                Message.Error($"Error al crear lote: {err}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Message.Error($"Error: {ex.Message}");
+        }
+        finally
+        {
+            _creatingLot = false;
+        }
+    }
 
     private async Task StartDrawingForLot(LotDto lot)
     {

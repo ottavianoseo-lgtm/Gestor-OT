@@ -36,6 +36,11 @@ public record LaborDto
     }
 }
 
+public record LaborSaveResponse(
+    LaborDto Labor,
+    List<string> Warnings
+);
+
 public record LaborSupplyDto
 {
     public Guid Id { get; set; }
