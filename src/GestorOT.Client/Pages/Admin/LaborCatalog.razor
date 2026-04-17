@@ -43,13 +43,16 @@
             @if (!context.IsActivated)
             {
                 <Button Type="@ButtonType.Primary" Size="@ButtonSize.Small" Ghost 
-                        OnClick="() => Activate(context)" Loading="_activatingId == context.Id">
+                        OnClick="() => Activate(context)" Loading="_processingId == context.Id">
                     Activar
                 </Button>
             }
             else
             {
-                <span style="color: rgba(255,255,255,0.3); font-size: 11px;">Ya disponible</span>
+                <Button Type="@ButtonType.Default" Danger Size="@ButtonSize.Small" Ghost
+                        OnClick="() => Deactivate(context)" Loading="_processingId == context.Id">
+                    Desactivar
+                </Button>
             }
         </ActionColumn>
     </Table>
@@ -60,7 +63,7 @@
     private bool _loading = true;
     private bool _syncing;
     private string _search = "";
-    private Guid? _activatingId;
+    private Guid? _processingId;
 
     private IEnumerable<ErpConceptDto> FilteredConcepts => 
         string.IsNullOrWhiteSpace(_search) 
@@ -118,18 +121,18 @@
 
     private async Task Activate(ErpConceptDto concept)
     {
-        _activatingId = concept.Id;
+        _processingId = concept.Id;
         try
         {
             var response = await Http.PostAsync($"api/erpconcepts/{concept.Id}/activate", null);
             if (response.IsSuccessStatusCode)
             {
-                Message.Success($"{concept.Description} activada correctamente.");
+                Message.Success($"{concept.Description} activada.");
                 await LoadData();
             }
             else
             {
-                Message.Error("No se pudo activar la labor.");
+                Message.Error("No se pudo activar.");
             }
         }
         catch
@@ -138,7 +141,34 @@
         }
         finally
         {
-            _activatingId = null;
+            _processingId = null;
+        }
+    }
+
+    private async Task Deactivate(ErpConceptDto concept)
+    {
+        _processingId = concept.Id;
+        try
+        {
+            var response = await Http.PostAsync($"api/erpconcepts/{concept.Id}/deactivate", null);
+            if (response.IsSuccessStatusCode)
+            {
+                Message.Success($"{concept.Description} desactivada.");
+                await LoadData();
+            }
+            else
+            {
+                var error = await response.Content.ReadAsStringAsync();
+                Message.Warning(error ?? "No se pudo desactivar.");
+            }
+        }
+        catch
+        {
+            Message.Error("Error de red.");
+        }
+        finally
+        {
+            _processingId = null;
         }
     }
 

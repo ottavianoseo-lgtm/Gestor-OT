@@ -416,7 +416,7 @@
             else
             {
                 var body = await response.Content.ReadAsStringAsync();
-                Message.Error($"Error: {body}");
+                Message.Error($"Error al guardar: {body}");
             }
         }
         catch (Exception ex)

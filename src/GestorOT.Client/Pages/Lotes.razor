@@ -278,9 +278,15 @@
                     var createdLot = await response.Content.ReadFromJsonAsync<LotDto>(AppJsonSerializerContext.Default.LotDto);
                     if (createdLot != null)
                     {
-                        await Http.PostAsJsonAsync($"api/campaigns/{CampaignState.CurrentCampaign!.Id}/lots",
+                        var lotAddResp = await Http.PostAsJsonAsync($"api/campaigns/{CampaignState.CurrentCampaign!.Id}/lots",
                             new CampaignLotDto(Guid.Empty, CampaignState.CurrentCampaign.Id, createdLot.Id, null, null, 0, 0, null),
                             AppJsonSerializerContext.Default.CampaignLotDto);
+                        
+                        if (!lotAddResp.IsSuccessStatusCode)
+                        {
+                            var lotAddErr = await lotAddResp.Content.ReadAsStringAsync();
+                            Message.Warning($"El lote se creó pero no pudo asignarse a la campaña: {lotAddErr}");
+                        }
                     }
                 }
 
@@ -290,7 +296,8 @@
             }
             else
             {
-                Message.Error($"Error al guardar: {response.StatusCode}");
+                var body = await response.Content.ReadAsStringAsync();
+                Message.Error($"Error al guardar: {body}");
             }
         }
         catch (Exception ex)
@@ -315,7 +322,8 @@
             }
             else
             {
-                Message.Error($"Error al eliminar: {response.StatusCode}");
+                var body = await response.Content.ReadAsStringAsync();
+                Message.Error($"Error al eliminar: {body}");
             }
         }
         catch (Exception ex)

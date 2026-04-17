@@ -93,11 +93,11 @@ public class LotsController : ControllerBase
     public async Task<IActionResult> DeleteLot(Guid id)
     {
         var lot = await _context.Lots.FindAsync(id);
-        if (lot == null) return NotFound();
+        if (lot == null) return NotFound("El lote no existe.");
 
         var hasWorkOrders = await _context.Labors.AnyAsync(l => l.LotId == id);
         if (hasWorkOrders)
-            return BadRequest("No se puede eliminar un lote con labores asociadas.");
+            return BadRequest("No se puede eliminar un lote que tiene labores u órdenes de trabajo asociadas.");
 
         _context.Lots.Remove(lot);
         await _context.SaveChangesAsync();

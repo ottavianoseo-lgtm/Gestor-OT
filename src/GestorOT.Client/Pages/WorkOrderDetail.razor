@@ -214,6 +214,11 @@ else if (_order != null)
             Message.Success("Insumos consolidados.");
             await LoadData();
         }
+        else
+        {
+            var body = await response.Content.ReadAsStringAsync();
+            Message.Error($"Error al consolidar: {body}");
+        }
     }
 
     private async Task UpdateApproval(WorkOrderSupplyApprovalDto item, decimal withdrawal, string? center)
@@ -225,6 +230,11 @@ else if (_order != null)
         {
             Message.Success("Aprobación actualizada.");
         }
+        else
+        {
+            var body = await response.Content.ReadAsStringAsync();
+            Message.Error($"Error al actualizar aprobación: {body}");
+        }
     }
 
     private async Task UpdateRealUsed(WorkOrderSupplyApprovalDto item, decimal? val)
@@ -235,6 +245,11 @@ else if (_order != null)
         {
             Message.Success("Consumo real actualizado.");
             await LoadData(); 
+        }
+        else
+        {
+            var body = await response.Content.ReadAsStringAsync();
+            Message.Error($"Error al actualizar consumo: {body}");
         }
     }
 

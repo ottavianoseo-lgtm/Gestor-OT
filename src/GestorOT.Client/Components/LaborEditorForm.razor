@@ -361,7 +361,8 @@
             }
             else
             {
-                Message.Error("Error al guardar la labor.");
+                var body = await response.Content.ReadAsStringAsync();
+                Message.Error($"Error al guardar la labor: {body}");
             }
         }
         catch (Exception ex)

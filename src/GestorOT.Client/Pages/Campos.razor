@@ -225,9 +225,15 @@
                     var createdField = await response.Content.ReadFromJsonAsync<FieldDto>(AppJsonSerializerContext.Default.FieldDto);
                     if (createdField != null)
                     {
-                        await Http.PostAsJsonAsync($"api/campaigns/{CampaignState.CurrentCampaign!.Id}/fields",
+                        var fieldAddResp = await Http.PostAsJsonAsync($"api/campaigns/{CampaignState.CurrentCampaign!.Id}/fields",
                             new CampaignFieldDto(CampaignState.CurrentCampaign.Id, createdField.Id, createdField.Name, 0, 0),
                             AppJsonSerializerContext.Default.CampaignFieldDto);
+                        
+                        if (!fieldAddResp.IsSuccessStatusCode)
+                        {
+                            var fieldAddErr = await fieldAddResp.Content.ReadAsStringAsync();
+                            Message.Warning($"El campo se creó pero no pudo asignarse a la campaña: {fieldAddErr}");
+                        }
                     }
                 }
 
@@ -237,7 +243,8 @@
             }
             else
             {
-                Message.Error($"Error al guardar: {response.StatusCode}");
+                var body = await response.Content.ReadAsStringAsync();
+                Message.Error($"Error al guardar: {body}");
             }
         }
         catch (Exception ex)
@@ -262,7 +269,8 @@
             }
             else
             {
-                Message.Error($"Error al eliminar: {response.StatusCode}");
+                var body = await response.Content.ReadAsStringAsync();
+                Message.Error($"Error al eliminar: {body}");
             }
         }
         catch (Exception ex)

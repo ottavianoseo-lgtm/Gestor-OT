@@ -186,7 +186,7 @@ public class CampaignsController : ControllerBase
     {
         var campaign = await _context.Campaigns.FindAsync(id);
         if (campaign == null)
-            return NotFound();
+            return NotFound("La campaña no existe.");
 
         if (campaign.Status == "Locked")
             return BadRequest("No se puede eliminar una campaña cerrada.");
@@ -196,7 +196,7 @@ public class CampaignsController : ControllerBase
             .AnyAsync(w => w.CampaignId == id);
 
         if (hasWorkOrders)
-            return BadRequest("No se puede eliminar una campaña con órdenes de trabajo asociadas.");
+            return BadRequest("No se puede eliminar una campaña que tiene órdenes de trabajo asociadas.");
 
         _context.Campaigns.Remove(campaign);
         await _context.SaveChangesAsync();
@@ -208,7 +208,7 @@ public class CampaignsController : ControllerBase
     {
         var campaign = await _context.Campaigns.FindAsync(id);
         if (campaign == null)
-            return NotFound();
+            return NotFound("La campaña no existe.");
 
         if (campaign.Status == "Locked")
             return BadRequest("No se pueden modificar campos en una campaña cerrada.");
@@ -217,7 +217,7 @@ public class CampaignsController : ControllerBase
             .AnyAsync(cf => cf.CampaignId == id && cf.FieldId == dto.FieldId);
 
         if (exists)
-            return NoContent(); // idempotente: el campo ya estaba, la operación es exitosa
+            return BadRequest("Este campo ya está asociado a la campaña.");
 
         _context.CampaignFields.Add(new CampaignField
         {
@@ -239,7 +239,7 @@ public class CampaignsController : ControllerBase
             .FirstOrDefaultAsync(x => x.CampaignId == id && x.FieldId == fieldId);
 
         if (cf == null)
-            return NotFound();
+            return NotFound("El campo no está asociado a esta campaña.");
 
         var campaign = await _context.Campaigns.FindAsync(id);
         if (campaign?.Status == "Locked")
@@ -279,18 +279,20 @@ public class CampaignsController : ControllerBase
     {
         var campaign = await _context.Campaigns.FindAsync(id);
         if (campaign == null)
-            return NotFound();
+            return NotFound("La campaña no existe.");
 
         if (campaign.Status == "Locked")
             return BadRequest("No se pueden modificar lotes en una campaña bloqueada.");
 
+        var lotId = dto.LotId != Guid.Empty ? dto.LotId : dto.Id; // Handle both mapping cases
+
         var exists = await _context.CampaignLots
-            .AnyAsync(cl => cl.CampaignId == id && cl.LotId == dto.LotId);
+            .AnyAsync(cl => cl.CampaignId == id && cl.LotId == lotId);
 
         if (exists)
             return BadRequest("El lote ya está asignado a esta campaña.");
 
-        var lot = await _context.Lots.FindAsync(dto.LotId);
+        var lot = await _context.Lots.FindAsync(lotId);
         if (lot == null)
             return BadRequest("El lote no existe.");
 
@@ -302,8 +304,8 @@ public class CampaignsController : ControllerBase
         // Step 15: Overlapping Campaign validation per Lot
         var overlappingCampaign = await _context.CampaignLots
             .Include(cl => cl.Campaign)
-            .Where(cl => cl.LotId == dto.LotId && cl.CampaignId != id)
-            .Where(cl => cl.Campaign!.StartDate < campaign.EndDate && cl.Campaign.EndDate > campaign.StartDate)
+            .Where(cl => cl.LotId == lotId && cl.CampaignId != id)
+            .Where(cl => cl.Campaign!.StartDate <= campaign.EndDate && cl.Campaign.EndDate >= campaign.StartDate)
             .Select(cl => cl.Campaign!.Name)
             .FirstOrDefaultAsync();
 
@@ -314,7 +316,7 @@ public class CampaignsController : ControllerBase
         {
             Id = Guid.NewGuid(),
             CampaignId = id,
-            LotId = dto.LotId,
+            LotId = lotId,
             ProductiveArea = productiveArea,
             CropId = dto.CropId
         });
@@ -331,7 +333,7 @@ public class CampaignsController : ControllerBase
             .FirstOrDefaultAsync(x => x.CampaignId == campaignId && x.LotId == lotId);
 
         if (cl == null)
-            return NotFound();
+            return NotFound("El lote no está asignado a esta campaña.");
 
         var campaign = await _context.Campaigns.FindAsync(campaignId);
         if (campaign?.Status == "Locked")
@@ -354,7 +356,7 @@ public class CampaignsController : ControllerBase
             .FirstOrDefaultAsync(x => x.CampaignId == campaignId && x.LotId == lotId);
 
         if (cl == null)
-            return NotFound();
+            return NotFound("El lote no está asignado a esta campaña.");
 
         var campaign = await _context.Campaigns.FindAsync(campaignId);
         if (campaign?.Status == "Locked")

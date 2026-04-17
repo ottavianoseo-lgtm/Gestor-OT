@@ -548,25 +548,36 @@
                 _rotationModel.Notes
             );
 
+            HttpResponseMessage response;
             if (_isEditingRotation)
             {
-                await Http.PutAsJsonAsync($"api/campaigns/{CampaignId}/lots/{_rotationModel.CampaignLotId}/rotations/{_rotationModel.Id}", dto);
-                Message.Success("Rotación actualizada.");
+                response = await Http.PutAsJsonAsync($"api/campaigns/{CampaignId}/lots/{_rotationModel.CampaignLotId}/rotations/{_rotationModel.Id}", dto);
             }
             else
             {
-                var response = await Http.PostAsJsonAsync($"api/campaigns/{CampaignId}/lots/{_rotationModel.CampaignLotId}/rotations", dto);
-                var result = await response.Content.ReadFromJsonAsync<RotationResponse>();
-                if (result?.Warnings.Any() == true)
-                {
-                    foreach (var w in result.Warnings)
-                        Message.Warning(w.Message);
-                }
-                Message.Success("Rotación creada.");
+                response = await Http.PostAsJsonAsync($"api/campaigns/{CampaignId}/lots/{_rotationModel.CampaignLotId}/rotations", dto);
             }
 
-            _rotationModalVisible = false;
-            if (_currentLot != null) await LoadRotations(_currentLot.Id);
+            if (response.IsSuccessStatusCode)
+            {
+                if (!_isEditingRotation)
+                {
+                    var result = await response.Content.ReadFromJsonAsync<RotationResponse>();
+                    if (result?.Warnings.Any() == true)
+                    {
+                        foreach (var w in result.Warnings)
+                            Message.Warning(w.Message);
+                    }
+                }
+                Message.Success(_isEditingRotation ? "Rotación actualizada." : "Rotación creada.");
+                _rotationModalVisible = false;
+                if (_currentLot != null) await LoadRotations(_currentLot.Id);
+            }
+            else
+            {
+                var body = await response.Content.ReadAsStringAsync();
+                Message.Error($"Error: {body}");
+            }
         }
         catch (Exception ex)
         {
@@ -582,10 +593,18 @@
     {
         try
         {
-            await Http.DeleteAsync($"api/campaigns/{CampaignId}/lots/{rotation.CampaignLotId}/rotations/{rotation.Id}");
-            Message.Success("Rotación eliminada.");
-            if (_currentLot != null) await LoadRotations(_currentLot.Id);
-            else if (_rotationsByLot.ContainsKey(rotation.CampaignLotId)) await LoadRotations(rotation.CampaignLotId);
+            var response = await Http.DeleteAsync($"api/campaigns/{CampaignId}/lots/{rotation.CampaignLotId}/rotations/{rotation.Id}");
+            if (response.IsSuccessStatusCode)
+            {
+                Message.Success("Rotación eliminada.");
+                if (_currentLot != null) await LoadRotations(_currentLot.Id);
+                else if (_rotationsByLot.ContainsKey(rotation.CampaignLotId)) await LoadRotations(rotation.CampaignLotId);
+            }
+            else
+            {
+                var body = await response.Content.ReadAsStringAsync();
+                Message.Error($"Error al eliminar: {body}");
+            }
         }
         catch (Exception ex)
         {

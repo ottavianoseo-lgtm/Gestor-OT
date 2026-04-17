@@ -24,7 +24,15 @@ public class ErpConceptsController : ControllerBase
 
         if (!string.IsNullOrEmpty(group))
         {
-            query = query.Where(c => c.GrupoConcepto == group);
+            var g = group.ToUpper().Trim();
+            if (g == "LABOR" || g == "LABORES")
+            {
+                query = query.Where(c => c.GrupoConcepto == "LABOR" || c.GrupoConcepto == "LABORES");
+            }
+            else
+            {
+                query = query.Where(c => c.GrupoConcepto == g);
+            }
         }
 
         var concepts = await query.ToListAsync();
@@ -53,7 +61,9 @@ public class ErpConceptsController : ControllerBase
         var concept = await _context.ErpConcepts.FindAsync(id);
         if (concept == null) return NotFound();
 
-        if (concept.GrupoConcepto == "LABOR")
+        var group = (concept.GrupoConcepto ?? "").ToUpper().Trim();
+
+        if (group == "LABOR" || group == "LABORES")
         {
             var exists = await _context.LaborTypes.AnyAsync(l => l.ExternalErpId == concept.ExternalErpId);
             if (!exists)
@@ -67,7 +77,7 @@ public class ErpConceptsController : ControllerBase
                 });
             }
         }
-        else if (concept.GrupoConcepto == "INSUMOS")
+        else if (group == "INSUMOS")
         {
             var exists = await _context.Inventories.AnyAsync(i => i.ExternalErpId == concept.ExternalErpId);
             if (!exists)
@@ -84,6 +94,46 @@ public class ErpConceptsController : ControllerBase
                     GrupoConcepto = concept.GrupoConcepto,
                     SubGrupoConcepto = concept.SubGrupoConcepto
                 });
+            }
+        }
+
+        await _context.SaveChangesAsync();
+        return Ok();
+    }
+
+    [HttpPost("{id:guid}/deactivate")]
+    public async Task<IActionResult> DeactivateConcept(Guid id)
+    {
+        var concept = await _context.ErpConcepts.FindAsync(id);
+        if (concept == null) return NotFound();
+
+        var group = (concept.GrupoConcepto ?? "").ToUpper().Trim();
+
+        if (group == "LABOR" || group == "LABORES")
+        {
+            var laborType = await _context.LaborTypes
+                .FirstOrDefaultAsync(l => l.ExternalErpId == concept.ExternalErpId);
+            
+            if (laborType != null)
+            {
+                // Optional: Check if used in any labor before deleting
+                var isUsed = await _context.Labors.AnyAsync(l => l.LaborTypeId == laborType.Id);
+                if (isUsed) return BadRequest("No se puede desactivar una labor que ya está siendo usada en órdenes de trabajo.");
+
+                _context.LaborTypes.Remove(laborType);
+            }
+        }
+        else if (group == "INSUMOS")
+        {
+            var inventory = await _context.Inventories
+                .FirstOrDefaultAsync(i => i.ExternalErpId == concept.ExternalErpId);
+            
+            if (inventory != null)
+            {
+                var isUsed = await _context.LaborSupplies.AnyAsync(s => s.SupplyId == inventory.Id);
+                if (isUsed) return BadRequest("No se puede desactivar un insumo que ya está siendo usado.");
+
+                _context.Inventories.Remove(inventory);
             }
         }
 
