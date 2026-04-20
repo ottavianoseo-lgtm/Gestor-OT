@@ -10,6 +10,7 @@ public record LaborDto
     public Guid? ErpActivityId { get; set; }
     public string Status { get; set; } = "Planned";
     public string Mode { get; set; } = "Planned"; // Added Mode
+    public Guid? PlannedLaborId { get; set; }
     public DateTime? ExecutionDate { get; set; }
     public DateTime? EstimatedDate { get; set; }
     public decimal Hectares { get; set; }
@@ -30,11 +31,16 @@ public record LaborDto
     public decimal? RealizedDose { get; set; }
 
     public LaborDto() { }
-    public LaborDto(Guid id, Guid? workOrderId, Guid lotId, Guid? campaignLotId, Guid laborTypeId, Guid? erpActivityId, string status, string mode, DateTime? executionDate, DateTime? estimatedDate, decimal hectares, DateTime createdAt, decimal rate, string rateUnit, string? lotName, string? laborTypeName, string? erpActivityName, List<LaborSupplyDto> supplies, string? prescriptionMapUrl, string? machineryUsedId, string? weatherLogJson, string? notes, string? fieldName, decimal plannedDose, decimal? realizedDose, Guid? contactId)
+    public LaborDto(Guid id, Guid? workOrderId, Guid lotId, Guid? campaignLotId, Guid laborTypeId, Guid? erpActivityId, string status, string mode, DateTime? executionDate, DateTime? estimatedDate, decimal hectares, DateTime createdAt, decimal rate, string rateUnit, string? lotName, string? laborTypeName, string? erpActivityName, List<LaborSupplyDto> supplies, string? prescriptionMapUrl, string? machineryUsedId, string? weatherLogJson, string? notes, string? fieldName, decimal plannedDose, decimal? realizedDose, Guid? contactId, Guid? plannedLaborId = null)
     {
-        Id = id; WorkOrderId = workOrderId; LotId = lotId; CampaignLotId = campaignLotId; LaborTypeId = laborTypeId; ErpActivityId = erpActivityId; Status = status; Mode = mode; ExecutionDate = executionDate; EstimatedDate = estimatedDate; Hectares = hectares; CreatedAt = createdAt; Rate = rate; RateUnit = rateUnit; LotName = lotName; LaborTypeName = laborTypeName; ErpActivityName = erpActivityName; Supplies = supplies ?? new(); PrescriptionMapUrl = prescriptionMapUrl; MachineryUsedId = machineryUsedId; WeatherLogJson = weatherLogJson; Notes = notes; FieldName = fieldName; PlannedDose = plannedDose; RealizedDose = realizedDose; ContactId = contactId;
+        Id = id; WorkOrderId = workOrderId; LotId = lotId; CampaignLotId = campaignLotId; LaborTypeId = laborTypeId; ErpActivityId = erpActivityId; Status = status; Mode = mode; ExecutionDate = executionDate; EstimatedDate = estimatedDate; Hectares = hectares; CreatedAt = createdAt; Rate = rate; RateUnit = rateUnit; LotName = lotName; LaborTypeName = laborTypeName; ErpActivityName = erpActivityName; Supplies = supplies ?? new(); PrescriptionMapUrl = prescriptionMapUrl; MachineryUsedId = machineryUsedId; WeatherLogJson = weatherLogJson; Notes = notes; FieldName = fieldName; PlannedDose = plannedDose; RealizedDose = realizedDose; ContactId = contactId; PlannedLaborId = plannedLaborId;
     }
 }
+
+public record LaborSaveResponse(
+    LaborDto Labor,
+    List<string> Warnings
+);
 
 public record LaborSupplyDto
 {

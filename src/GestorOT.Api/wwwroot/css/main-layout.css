@@ -281,6 +281,23 @@ input::placeholder, textarea::placeholder {
 }
 
 /* --- Picker --- */
+.ant-picker {
+    background: rgba(255,255,255,0.06) !important;
+    border-color: rgba(255,255,255,0.12) !important;
+}
+
+.ant-picker-input > input {
+    color: rgba(255,255,255,0.85) !important;
+}
+
+.ant-picker-suffix {
+    color: rgba(255,255,255,0.45) !important;
+}
+
+.ant-picker-clear {
+    background: #1E1E2E !important;
+    color: rgba(255,255,255,0.45) !important;
+}
 
 .ant-picker-panel-container {
     background: #1E1E2E !important;
@@ -350,6 +367,59 @@ input::placeholder, textarea::placeholder {
 
 .ant-empty-description {
     color: rgba(255,255,255,0.4) !important;
+}
+
+/* --- Dark Mode Typography Fixes (ISSUE 5.1) --- */
+.ant-descriptions-item-label, 
+.ant-descriptions-item-content,
+.ant-list-item-meta-title,
+.ant-list-item-meta-description,
+.ant-form-item-explain-error,
+.ant-modal-confirm-title,
+.ant-modal-confirm-content,
+.ant-empty-description,
+.ant-select-item-option-content,
+.ant-tabs-tab-btn,
+.ant-checkbox-wrapper,
+.ant-radio-wrapper {
+    color: rgba(255,255,255,0.85) !important;
+}
+
+.ant-list-item-meta-description {
+    color: rgba(255,255,255,0.45) !important;
+}
+
+.ant-tabs-tab.ant-tabs-tab-active .ant-tabs-tab-btn {
+    color: #E74C3C !important;
+}
+
+.ant-picker-panel-container .ant-picker-header button {
+    color: rgba(255,255,255,0.45) !important;
+}
+
+.ant-picker-panel-container .ant-picker-header button:hover {
+    color: #fff !important;
+}
+
+.ant-input-number-handler-wrap {
+    background: rgba(255,255,255,0.02) !important;
+}
+
+.ant-input-number-handler-up-inner, .ant-input-number-handler-down-inner {
+    color: rgba(255,255,255,0.45) !important;
+}
+
+/* Fix for specific AntDesign inline styles */
+[style*="color: rgba(0, 0, 0, 0.85)"], 
+[style*="color:rgba(0,0,0,0.85)"],
+[style*="color: #000"],
+[style*="color:#000"] {
+    color: rgba(255,255,255,0.85) !important;
+}
+
+[style*="color: rgba(0, 0, 0, 0.45)"], 
+[style*="color:rgba(0,0,0,0.45)"] {
+    color: rgba(255,255,255,0.45) !important;
 }
 
 /* ============================================================

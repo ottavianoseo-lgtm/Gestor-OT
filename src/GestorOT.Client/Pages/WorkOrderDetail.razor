@@ -6,6 +6,7 @@
 @using AntDesign
 @inject HttpClient Http
 @inject IMessageService Message
+@inject IJSRuntime JS
 @inject NavigationManager Navigation
 @inject GestorOT.Client.Services.CampaignState CampaignState
 
@@ -27,13 +28,23 @@ else if (_order != null)
                 <span class="page-subtitle">@_order.FieldName · @_order.OTNumber</span>
             </div>
         </div>
-        <div style="display: flex; gap: 12px; align-items: center;">
-            <div style="text-align: right; margin-right: 12px;">
-                <div style="font-size: 11px; color: rgba(255,255,255,0.4); text-transform: uppercase;">Estado Actual</div>
-                <Tag Color="@_orderStatusColor" Style="font-weight: 700; padding: 4px 12px; border-radius: 8px;">@_orderStatusName</Tag>
+            <div style="display: flex; gap: 12px; align-items: center;">
+                <div style="text-align: right; margin-right: 12px;">
+                    <div style="font-size: 11px; color: rgba(255,255,255,0.4); text-transform: uppercase;">Estado Actual</div>
+                    <Tag Color="@_orderStatusColor" Style="font-weight: 700; padding: 4px 12px; border-radius: 8px;">@_orderStatusName</Tag>
+                </div>
+                <Dropdown Trigger="@(new Trigger[] { Trigger.Click })">
+                    <Overlay>
+                        <Menu>
+                            <MenuItem OnClick="() => _showStatusModal = true">Cambiar Estado</MenuItem>
+                            <MenuItem OnClick="ExportHtmlInteractivo">Exportar HTML Interactivo</MenuItem>
+                        </Menu>
+                    </Overlay>
+                    <ChildContent>
+                        <Button Type="@ButtonType.Primary" Ghost>Acciones <Icon Type="down" /></Button>
+                    </ChildContent>
+                </Dropdown>
             </div>
-            <Button Type="@ButtonType.Primary" OnClick="() => _showStatusModal = true" Ghost>Cambiar Estado</Button>
-        </div>
     </div>
 
     <AntDesign.Row Gutter="16" Style="margin-bottom: 24px;">
@@ -69,21 +80,110 @@ else if (_order != null)
                 <h3 style="color: #fff; margin: 0;">Labores Asignadas</h3>
                 <Button Type="@ButtonType.Primary" Icon="plus" OnClick="() => OpenLaborModal()">Agregar Labor</Button>
             </div>
-            <Table TItem="LaborDto" DataSource="_order.Labors" Size="TableSize.Small">
-                <PropertyColumn Property="c => c.LotName" Title="Lote" />
-                <PropertyColumn Property="c => c.LaborTypeName" Title="Tarea" />
-                <PropertyColumn Property="c => c.ErpActivityName" Title="Actividad" />
-                <PropertyColumn Property="c => c.Hectares" Title="Superficie" />
-                <Column TData="string" Title="Estado">
-                    <Tag Color="@(context.Status == "Realized" ? TagColor.Green : TagColor.Orange)">@context.Status</Tag>
-                </Column>
-                <ActionColumn Title="">
-                    <Space>
-                        <SpaceItem><Button Size="@ButtonSize.Small" Icon="edit" OnClick="() => OpenLaborModal(context.Id)" /></SpaceItem>
-                        <SpaceItem><Button Size="@ButtonSize.Small" Icon="delete" Danger /></SpaceItem>
-                    </Space>
-                </ActionColumn>
-            </Table>
+            
+            <div style="display: grid; gap: 16px;">
+                @foreach (var group in GetLaborGroups())
+                {
+                    <div class="glass-card" style="padding: 16px; border-left: 4px solid #3498DB;">
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 12px; align-items: center;">
+                            <div>
+                                <span style="font-weight: 700; color: #fff; font-size: 15px;">@group.LaborTypeName</span>
+                                <span style="color: rgba(255,255,255,0.4); margin-left: 8px;">en @group.LotName</span>
+                            </div>
+                            @if (group.Planned != null && group.Realized != null)
+                            {
+                                <Tag Color="@("blue")" Style="border-radius: 12px; font-weight: 600;">EJECUTADA CON TRAZABILIDAD</Tag>
+                            }
+                        </div>
+
+                        <Tabs Type="@TabType.Card" Size="@TabSize.Small" DefaultActiveKey="@(group.Realized != null ? "real" : "plan")">
+                            @if (group.Planned != null)
+                            {
+                                <TabPane Tab="PLANEADA" Key="plan">
+                                    <div style="display: flex; gap: 24px; padding: 12px 8px;">
+                                        <div>
+                                            <div style="font-size: 11px; color: rgba(255,255,255,0.4);">SUPERFICIE</div>
+                                            <div style="color: #fff; font-weight: 600;">@group.Planned.Hectares.ToString("N2") ha</div>
+                                        </div>
+                                        <div>
+                                            <div style="font-size: 11px; color: rgba(255,255,255,0.4);">FECHA ESTIMADA</div>
+                                            <div style="color: #fff; font-weight: 600;">@(group.Planned.EstimatedDate?.ToString("dd/MM/yyyy") ?? "—")</div>
+                                        </div>
+                                        <div style="flex: 1; text-align: right;">
+                                            <Button Size="@ButtonSize.Small" Icon="edit" Ghost OnClick="() => OpenLaborModal(group.Planned.Id)" />
+                                            <Popconfirm Title="¿Eliminar esta labor?" OnConfirm="() => DeleteLabor(group.Planned.Id)">
+                                                <Button Size="@ButtonSize.Small" Icon="delete" Danger Ghost />
+                                            </Popconfirm>
+                                        </div>
+                                    </div>
+                                    <Table TItem="LaborSupplyDto" DataSource="group.Planned.Supplies" Size="TableSize.Small" HidePagination>
+                                        <PropertyColumn Property="s => s.SupplyName" Title="Insumo" />
+                                        <PropertyColumn Property="s => s.PlannedDose" Title="Dosis Plan." />
+                                        <PropertyColumn Property="s => s.PlannedTotal" Title="Total Plan." />
+                                        <PropertyColumn Property="s => s.UnitOfMeasure" Title="U.M" />
+                                    </Table>
+                                </TabPane>
+                            }
+                            @if (group.Realized != null)
+                            {
+                                <TabPane Tab="REALIZADA" Key="real">
+                                    <div style="display: flex; gap: 24px; padding: 12px 8px;">
+                                        <div>
+                                            <div style="font-size: 11px; color: rgba(255,255,255,0.4);">SUPERFICIE REAL</div>
+                                            <div style="color: #2ECC71; font-weight: 600;">@group.Realized.Hectares.ToString("N2") ha</div>
+                                        </div>
+                                        <div>
+                                            <div style="font-size: 11px; color: rgba(255,255,255,0.4);">FECHA EJECUCIÓN</div>
+                                            <div style="color: #fff; font-weight: 600;">@(group.Realized.ExecutionDate?.ToString("dd/MM/yyyy") ?? "—")</div>
+                                        </div>
+                                        <div style="flex: 1; text-align: right;">
+                                            @if (group.Planned != null)
+                                            {
+                                                var devHa = group.Realized.Hectares - group.Planned.Hectares;
+                                                var colorHa = devHa != 0 ? "#E74C3C" : "rgba(255,255,255,0.4)";
+                                                
+                                                <div style="display: inline-block; text-align: left; margin-right: 20px;">
+                                                    <div style="font-size: 10px; color: rgba(255,255,255,0.4);">DESVÍO SUP.</div>
+                                                    <div style="color: @colorHa; font-weight: 700;">@(devHa > 0 ? "+" : "")@devHa.ToString("N2") ha</div>
+                                                </div>
+                                            }
+                                            <Button Size="@ButtonSize.Small" Icon="edit" Ghost OnClick="() => OpenLaborModal(group.Realized.Id)" />
+                                            <Popconfirm Title="¿Eliminar esta labor realizada?" OnConfirm="() => DeleteLabor(group.Realized.Id)">
+                                                <Button Size="@ButtonSize.Small" Icon="delete" Danger Ghost />
+                                            </Popconfirm>
+                                        </div>
+                                    </div>
+                                    <Table TItem="LaborSupplyDto" DataSource="group.Realized.Supplies" Size="TableSize.Small" HidePagination>
+                                        <PropertyColumn Property="s => s.SupplyName" Title="Insumo" />
+                                        <PropertyColumn Property="s => s.RealDose" Title="Dosis Real" />
+                                        <PropertyColumn Property="s => s.RealTotal" Title="Total Real" />
+                                        <Column TData="decimal" Title="Desvío Dosis">
+                                            @{
+                                                var planSup = group.Planned?.Supplies.FirstOrDefault(x => x.SupplyId == context.SupplyId);
+                                                decimal? diff = null;
+                                                string color = "rgba(255,255,255,0.3)";
+                                                if (planSup != null && context.RealDose.HasValue)
+                                                {
+                                                    diff = context.RealDose.Value - planSup.PlannedDose;
+                                                    color = diff == 0 ? "rgba(255,255,255,0.3)" : (diff > 0 ? "#E74C3C" : "#2ECC71");
+                                                }
+                                            }
+                                            @if (diff.HasValue)
+                                            {
+                                                <span style="color: @color; font-weight: 600;">@(diff > 0 ? "+" : "")@diff.Value.ToString("N2")</span>
+                                            }
+                                            else
+                                            {
+                                                <span>—</span>
+                                            }
+                                        </Column>
+                                    </Table>
+                                </TabPane>
+                            }
+                        </Tabs>
+                    </div>
+                }
+            </div>
         </TabPane>
 
         <TabPane Tab="Planeado (Insumos)" Key="2">
@@ -275,9 +375,69 @@ else if (_order != null)
         _showLaborModal = true;
     }
 
+    private async Task DeleteLabor(Guid id)
+    {
+        var response = await Http.DeleteAsync($"api/labors/{id}");
+        if (response.IsSuccessStatusCode)
+        {
+            Message.Success("Labor eliminada.");
+            await LoadData();
+        }
+        else
+        {
+            Message.Error("Error al eliminar.");
+        }
+    }
+
+    private IEnumerable<LaborGroup> GetLaborGroups()
+    {
+        if (_order == null) return Enumerable.Empty<LaborGroup>();
+
+        return _order.Labors
+            .GroupBy(l => new { l.LotId, l.LaborTypeId })
+            .Select(g => new LaborGroup
+            {
+                LotName = g.First().LotName,
+                LaborTypeName = g.First().LaborTypeName,
+                Planned = g.FirstOrDefault(l => l.Mode == "Planned"),
+                Realized = g.FirstOrDefault(l => l.Mode == "Realized")
+            });
+    }
+
+    public class LaborGroup
+    {
+        public string? LotName { get; set; }
+        public string? LaborTypeName { get; set; }
+        public LaborDto? Planned { get; set; }
+        public LaborDto? Realized { get; set; }
+    }
+
     private async Task OnLaborSaved()
     {
         _showLaborModal = false;
         await LoadData();
+    }
+
+    private async Task ExportHtmlInteractivo()
+    {
+        try
+        {
+            var response = await Http.GetAsync($"api/workorders/{Id}/export-html");
+            if (response.IsSuccessStatusCode)
+            {
+                var bytes = await response.Content.ReadAsByteArrayAsync();
+                var fileName = $"OT_{_order?.OTNumber ?? Id.ToString()}.html";
+                await JS.InvokeVoidAsync("utilsInterop.downloadFile", fileName, "text/html", bytes);
+                Message.Success("HTML generado y descargado.");
+            }
+            else
+            {
+                Message.Error("Error al generar HTML.");
+            }
+        }
+        catch (Exception ex)
+        {
+            Message.Error($"Error: {ex.Message}");
+        }
     }
 }

@@ -5,5 +5,11 @@ window.utilsInterop = {
         anchorElement.download = fileName ?? '';
         anchorElement.click();
         anchorElement.remove();
+    },
+    downloadFile: function (fileName, contentType, bytes) {
+        const file = new Blob([new Uint8Array(bytes)], { type: contentType });
+        const url = URL.createObjectURL(file);
+        this.triggerFileDownload(fileName, url);
+        URL.revokeObjectURL(url);
     }
 };

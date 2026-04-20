@@ -7,10 +7,11 @@ public record LotDto(
     string Status,
     string? WktGeometry = null,
     string? FieldName = null,
-    double Area = 0
+    double Area = 0,
+    decimal CadastralArea = 0
 )
 {
-    public LotDto() : this(Guid.Empty, Guid.Empty, string.Empty, "Active", null, null, 0) { }
+    public LotDto() : this(Guid.Empty, Guid.Empty, string.Empty, "Active", null, null, 0, 0) { }
 }
 
 public record WorkOrderDto
@@ -87,6 +88,17 @@ public record RecentWorkOrderDto(
 )
 {
     public RecentWorkOrderDto() : this(Guid.Empty, string.Empty, "Pending", string.Empty, DateTime.MinValue, null) { }
+}
+
+public record SurfaceHistoryDto(
+    string CampaignName,
+    DateOnly StartDate,
+    decimal ProductiveArea,
+    decimal CadastralArea,
+    decimal Variation
+)
+{
+    public SurfaceHistoryDto() : this(string.Empty, DateOnly.MinValue, 0, 0, 0) { }
 }
 
 public class LotAreaResult

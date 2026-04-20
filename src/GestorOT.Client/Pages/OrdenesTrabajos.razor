@@ -122,6 +122,11 @@
         <FormItem Label="Descripción">
             <TextArea @bind-Value="_formModel.Description" Placeholder="Descripción de la orden" Rows="3" />
         </FormItem>
+        <FormItem Label="Campaña">
+            <Select TItem="CampaignSummaryDto" TItemValue="Guid" DataSource="_availableCampaigns" @bind-Value="_formModel.CampaignId"
+                    LabelName="@nameof(CampaignSummaryDto.Name)" ValueName="@nameof(CampaignSummaryDto.Id)" Placeholder="Seleccionar campaña"
+                    Style="width: 100%;" EnableSearch />
+        </FormItem>
         <FormItem Label="Campo">
             <Select TItem="FieldDto" TItemValue="Guid" DataSource="_availableFields" @bind-Value="_formModel.FieldId"
                     LabelName="@nameof(FieldDto.Name)" ValueName="@nameof(FieldDto.Id)" Placeholder="Seleccionar campo"
@@ -268,8 +273,12 @@
     {
         _isEditing = false;
         _formModel = new WoFormModel();
-        if (_availableCampaigns.Count > 0)
+        
+        if (CampaignState.IsSelected)
+            _formModel.CampaignId = CampaignState.CurrentCampaign!.Id;
+        else if (_availableCampaigns.Count > 0)
             _formModel.CampaignId = _availableCampaigns[0].Id;
+
         _modalVisible = true;
     }
 
@@ -314,7 +323,7 @@
             var dto = new WorkOrderDto
             {
                 Id = _isEditing ? _editingId : Guid.Empty,
-                CampaignId = CampaignState.CurrentCampaign?.Id,
+                CampaignId = _formModel.CampaignId != Guid.Empty ? _formModel.CampaignId : null,
                 FieldId = _formModel.FieldId,
                 Description = _formModel.Description,
                 Status = _formModel.Status,

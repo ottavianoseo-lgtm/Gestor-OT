@@ -1,3 +1,4 @@
+using System.Text;
 using GestorOT.Application.Interfaces;
 using GestorOT.Application.Services;
 using GestorOT.Domain.Entities;
@@ -15,17 +16,20 @@ public class WorkOrdersController : ControllerBase
     private readonly IWorkOrderQueryService _queryService;
     private readonly IStockValidatorService _stockValidator;
     private readonly IIsoXmlExporterService _isoXmlExporter;
+    private readonly IHtmlLaborExporterService _htmlExporter;
 
     public WorkOrdersController(
         IApplicationDbContext context,
         IWorkOrderQueryService queryService,
         IStockValidatorService stockValidator,
-        IIsoXmlExporterService isoXmlExporter)
+        IIsoXmlExporterService isoXmlExporter,
+        IHtmlLaborExporterService htmlExporter)
     {
         _context = context;
         _queryService = queryService;
         _stockValidator = stockValidator;
         _isoXmlExporter = isoXmlExporter;
+        _htmlExporter = htmlExporter;
     }
 
     [HttpGet]
@@ -204,6 +208,18 @@ public class WorkOrdersController : ControllerBase
         {
             return NotFound();
         }
+    }
+
+    [HttpGet("{id:guid}/export-html")]
+    public async Task<IActionResult> ExportHtml(Guid id, CancellationToken ct)
+    {
+        var baseUrl = $"{Request.Scheme}://{Request.Host}";
+        var html = await _htmlExporter.GenerateInteractiveHtmlAsync(id, baseUrl, ct);
+        
+        if (string.IsNullOrEmpty(html)) return NotFound();
+
+        var bytes = Encoding.UTF8.GetBytes(html);
+        return File(bytes, "text/html", $"OT_{id:N}.html");
     }
 
     [HttpPut("{id:guid}/status")]

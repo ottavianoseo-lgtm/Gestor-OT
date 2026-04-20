@@ -47,6 +47,8 @@ public class WorkOrderQueryService : IWorkOrderQueryService
         var workOrder = await _context.WorkOrders
             .AsNoTracking()
             .Include(w => w.Field)
+            .Include(w => w.SupplyApprovals)
+                .ThenInclude(a => a.Supply)
             .Include(w => w.Labors)
                 .ThenInclude(l => l.Lot)
                     .ThenInclude(lot => lot!.Field)
@@ -57,14 +59,12 @@ public class WorkOrderQueryService : IWorkOrderQueryService
             .Include(w => w.Labors)
                 .ThenInclude(l => l.Supplies)
                     .ThenInclude(s => s.Supply)
-            .Include(w => w.SupplyApprovals)
-                .ThenInclude(a => a.Supply)
             .FirstOrDefaultAsync(w => w.Id == id, ct);
 
         if (workOrder == null)
             return null;
 
-        var labors = workOrder.Labors.OrderBy(l => l.CreatedAt).Select(l => new LaborDto(
+        var laborsDto = workOrder.Labors.OrderBy(l => l.CreatedAt).Select(l => new LaborDto(
             l.Id,
             l.WorkOrderId,
             l.LotId,
@@ -96,7 +96,7 @@ public class WorkOrderQueryService : IWorkOrderQueryService
                 s.CalculatedTotal,
                 s.UnitOfMeasure,
                 s.Supply?.ItemName,
-                s.Supply?.UnitB,
+                s.Supply?.UnitA,
                 s.TankMixOrder,
                 s.IsSubstitute
             )).ToList(),
@@ -107,37 +107,55 @@ public class WorkOrderQueryService : IWorkOrderQueryService
             l.Lot?.Field?.Name,
             l.PlannedDose,
             l.RealizedDose,
-            l.ContactId
+            l.ContactId,
+            l.PlannedLaborId
         )).ToList();
 
         // Step 19: Rule of three for Realized labors
         foreach (var approval in workOrder.SupplyApprovals.Where(a => a.RealTotalUsed.HasValue))
         {
             var supplyId = approval.SupplyId;
-            var realTotal = approval.RealTotalUsed!.Value;
+            var realTotalUsed = approval.RealTotalUsed!.Value;
 
-            // Get all labors (usually realized ones) that use this supply
-            var laborsWithSupply = labors.Where(l => l.Supplies.Any(s => s.SupplyId == supplyId)).ToList();
-            var totalPlannedForSupply = laborsWithSupply.Sum(l => l.Supplies.First(s => s.SupplyId == supplyId).PlannedTotal);
+            // Get all labors that use this supply
+            var laborsWithSupply = laborsDto.Where(l => l.Supplies.Any(s => s.SupplyId == supplyId)).ToList();
+            
+            // Calculate total planned across all labors for this supply
+            var totalPlannedForSupply = laborsWithSupply
+                .Sum(l => l.Supplies.Where(s => s.SupplyId == supplyId).Sum(s => s.PlannedTotal));
 
             if (totalPlannedForSupply > 0)
             {
                 foreach (var labor in laborsWithSupply)
                 {
-                    var supply = labor.Supplies.First(s => s.SupplyId == supplyId);
-                    var proportion = supply.PlannedTotal / totalPlannedForSupply;
-                    supply.CalculatedTotal = realTotal * proportion;
-                    
-                    // Coef = Total / Area
-                    // Use RealHectares if available, else Labor Hectares
-                    var area = supply.RealHectares ?? labor.Hectares;
-                    if (area > 0)
+                    foreach (var supply in labor.Supplies.Where(s => s.SupplyId == supplyId))
                     {
-                        supply.CalculatedDose = supply.CalculatedTotal / area;
+                        var proportion = supply.PlannedTotal / totalPlannedForSupply;
+                        supply.CalculatedTotal = realTotalUsed * proportion;
+                        
+                        // Coef = Total / Area
+                        var area = supply.RealHectares ?? labor.Hectares;
+                        if (area > 0)
+                        {
+                            supply.CalculatedDose = supply.CalculatedTotal / area;
+                        }
                     }
                 }
             }
         }
+
+        var supplyApprovalsDto = workOrder.SupplyApprovals
+            .OrderBy(a => a.Supply?.ItemName)
+            .Select(a => new WorkOrderSupplyApprovalDto(
+                a.Id, 
+                a.WorkOrderId, 
+                a.SupplyId, 
+                a.Supply?.ItemName, 
+                a.TotalCalculated, 
+                a.ApprovedWithdrawal, 
+                a.WithdrawalCenter, 
+                a.RealTotalUsed
+            )).ToList();
 
         return new WorkOrderDetailDto(
             workOrder.Id,
@@ -147,7 +165,7 @@ public class WorkOrderQueryService : IWorkOrderQueryService
             workOrder.AssignedTo,
             workOrder.DueDate,
             workOrder.Field?.Name,
-            labors,
+            laborsDto,
             workOrder.OTNumber,
             workOrder.PlannedDate,
             workOrder.ExpirationDate,
@@ -157,9 +175,7 @@ public class WorkOrderQueryService : IWorkOrderQueryService
             workOrder.CampaignId,
             workOrder.ContractorId,
             workOrder.ContactId,
-            workOrder.SupplyApprovals.Select(a => new WorkOrderSupplyApprovalDto(
-                a.Id, a.WorkOrderId, a.SupplyId, a.Supply?.ItemName, a.TotalCalculated, a.ApprovedWithdrawal, a.WithdrawalCenter, a.RealTotalUsed
-            )).ToList()
+            supplyApprovalsDto
         );
     }
 }

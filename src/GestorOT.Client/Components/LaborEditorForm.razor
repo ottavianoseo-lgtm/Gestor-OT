@@ -71,13 +71,19 @@
                 <AntDesign.InputNumber TValue="decimal" Value="@_model.Hectares" OnChange="OnHectareasChanged" Min="0m" Step="0.1m" Style="width: 100%;" />
                 @if (_haSuperaLote)
                 {
-                    <div style="color: #F1C40F; font-size: 11px; margin-top: 4px;">
+                    <div style="color: #E74C3C; font-size: 11px; margin-top: 4px;">
                         <Icon Type="warning" /> La superficie supera el área productiva del lote (@_lotProductiveArea ha).
                     </div>
                 }
             </FormItem>
             <FormItem Label="Fecha Est.">
                 <DatePicker TValue="DateTime?" Value="@_model.EstimatedDate" OnChange="OnFechaEstimadaChanged" Style="width: 100%;" />
+                @if (_fechaFueraRotacion)
+                {
+                    <div style="color: #F1C40F; font-size: 11px; margin-top: 4px;">
+                        <Icon Type="warning" /> Fecha fuera del rango de rotación.
+                    </div>
+                }
             </FormItem>
             <FormItem Label="Fecha Ejec.">
                 <DatePicker TValue="DateTime?" @bind-Value="_model.ExecutionDate" Style="width: 100%;" />
@@ -129,6 +135,7 @@
 
         <FormItem Style="margin-top: 24px;">
             <Button Type="@ButtonType.Primary" HtmlType="submit" Loading="_loading" Block
+                    Disabled="@(_haSuperaLote || _fechaFueraRotacion)"
                     Style="height: 45px; border-radius: 8px; font-weight: 600;">
                 <Icon Type="save" /> Guardar Labor
             </Button>
@@ -159,6 +166,7 @@
     private bool _showNoRotacionWarning;
     private RotationDto? _activeRotation;
     private bool _haSuperaLote;
+    private bool _fechaFueraRotacion;
     private decimal _lotProductiveArea;
 
     protected override async Task OnInitializedAsync()
@@ -259,6 +267,24 @@
         if (args.Date.HasValue)
         {
             await CheckRotation(args.Date.Value);
+            CheckDateOverlap(args.Date.Value);
+        }
+        else
+        {
+            _fechaFueraRotacion = false;
+        }
+    }
+
+    private void CheckDateOverlap(DateTime date)
+    {
+        if (_activeRotation != null)
+        {
+            var dateOnly = DateOnly.FromDateTime(date);
+            _fechaFueraRotacion = dateOnly < _activeRotation.StartDate || dateOnly > _activeRotation.EndDate;
+        }
+        else
+        {
+            _fechaFueraRotacion = false;
         }
     }
 
@@ -277,11 +303,13 @@
                 _showNoRotacionWarning = false;
                 _model.ErpActivityId = _activeRotation.ActivityId;
                 _actividadLocked = true;
+                CheckDateOverlap(date);
             }
             else
             {
                 _actividadLocked = false;
                 _showNoRotacionWarning = true;
+                _fechaFueraRotacion = false;
             }
         }
         catch
@@ -289,6 +317,7 @@
             _activeRotation = null;
             _actividadLocked = false;
             _showNoRotacionWarning = false;
+            _fechaFueraRotacion = false;
         }
         StateHasChanged();
     }
@@ -344,9 +373,20 @@
 
     private async Task HandleSubmit()
     {
+        if (_haSuperaLote)
+        {
+            Message.Error("La superficie supera el área productiva del lote.");
+            return;
+        }
+
+        if (_fechaFueraRotacion)
+        {
+            Message.Error("La fecha seleccionada está fuera del rango de la rotación activa.");
+            return;
+        }
+
         try
         {
-            Console.WriteLine($"HandleSubmit: CampaignLotId={_model.CampaignLotId}, LotId={_model.LotId}");
             _loading = true;
             HttpResponseMessage response;
             if (LaborId == Guid.Empty)
@@ -356,6 +396,16 @@
 
             if (response.IsSuccessStatusCode)
             {
+                var result = await response.Content.ReadFromJsonAsync<LaborSaveResponse>(AppJsonSerializerContext.Default.LaborSaveResponse);
+                
+                if (result?.Warnings != null && result.Warnings.Any())
+                {
+                    foreach (var warning in result.Warnings)
+                    {
+                        Message.Warning(warning);
+                    }
+                }
+
                 Message.Success("Labor guardada correctamente.");
                 await OnSaved.InvokeAsync();
             }

@@ -1,5 +1,7 @@
 using GestorOT.Application.Interfaces;
+using GestorOT.Application.Services;
 using GestorOT.Domain.Entities;
+using GestorOT.Domain.Enums;
 using GestorOT.Shared.Dtos;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -11,10 +13,12 @@ namespace GestorOT.Api.Controllers;
 public class LaborsController : ControllerBase
 {
     private readonly IApplicationDbContext _context;
+    private readonly IAgronomicValidationService _validationService;
 
-    public LaborsController(IApplicationDbContext context)
+    public LaborsController(IApplicationDbContext context, IAgronomicValidationService validationService)
     {
         _context = context;
+        _validationService = validationService;
     }
 
     [HttpGet("by-workorder/{workOrderId:guid}")]
@@ -49,7 +53,7 @@ public class LaborsController : ControllerBase
     }
 
     [HttpPost]
-    public async Task<ActionResult<LaborDto>> CreateLabor(LaborDto dto)
+    public async Task<ActionResult<LaborSaveResponse>> CreateLabor(LaborDto dto)
     {
         // Debug
         Console.WriteLine($"CreateLabor: CampaignLotId={dto.CampaignLotId}, LotId={dto.LotId}");
@@ -82,6 +86,13 @@ public class LaborsController : ControllerBase
         else if (lotId == Guid.Empty && (campaignLotId == null || campaignLotId == Guid.Empty))
         {
             return BadRequest("Debe proporcionar al menos un LotId o un CampaignLotId.");
+        }
+
+        // Sprint 2 Validations
+        var validation = await ValidateLaborAsync(dto with { LotId = lotId, CampaignLotId = campaignLotId });
+        if (validation.Error != null)
+        {
+            return BadRequest(validation.Error);
         }
 
         var labor = new Labor
@@ -119,6 +130,7 @@ public class LaborsController : ControllerBase
                     SupplyId = supplyDto.SupplyId,
                     PlannedDose = supplyDto.PlannedDose,
                     PlannedTotal = supplyDto.PlannedTotal > 0 ? supplyDto.PlannedTotal : supplyDto.PlannedDose * labor.Hectares,
+                    PlannedHectares = supplyDto.PlannedHectares > 0 ? supplyDto.PlannedHectares : labor.Hectares,
                     UnitOfMeasure = supplyDto.UnitOfMeasure,
                     TankMixOrder = supplyDto.TankMixOrder,
                     IsSubstitute = supplyDto.IsSubstitute
@@ -136,11 +148,11 @@ public class LaborsController : ControllerBase
                 .ThenInclude(s => s.Supply)
             .FirstAsync(l => l.Id == labor.Id);
 
-        return CreatedAtAction(nameof(GetLabor), new { id = labor.Id }, MapToDto(created));
+        return Ok(new LaborSaveResponse(MapToDto(created), validation.Warnings));
     }
 
     [HttpPut("{id:guid}")]
-    public async Task<IActionResult> UpdateLabor(Guid id, LaborDto dto)
+    public async Task<ActionResult<LaborSaveResponse>> UpdateLabor(Guid id, LaborDto dto)
     {
         var labor = await _context.Labors
             .Include(l => l.Supplies)
@@ -148,6 +160,13 @@ public class LaborsController : ControllerBase
 
         if (labor == null)
             return NotFound();
+
+        // Sprint 2 Validations
+        var validation = await ValidateLaborAsync(dto);
+        if (validation.Error != null)
+        {
+            return BadRequest(validation.Error);
+        }
 
         labor.LotId = dto.LotId;
         
@@ -191,7 +210,9 @@ public class LaborsController : ControllerBase
                     {
                         existing.SupplyId = supplyDto.SupplyId;
                         existing.PlannedDose = supplyDto.PlannedDose;
-                        existing.PlannedTotal = supplyDto.PlannedTotal > 0 ? supplyDto.PlannedTotal : supplyDto.PlannedDose * labor.Hectares;
+                        existing.PlannedTotal = supplyDto.PlannedTotal > 0 ? supplyDto.PlannedTotal : supplyDto.PlannedDose * supplyDto.PlannedHectares;
+                        existing.PlannedHectares = supplyDto.PlannedHectares > 0 ? supplyDto.PlannedHectares : labor.Hectares;
+                        existing.RealHectares = supplyDto.RealHectares;
                         existing.UnitOfMeasure = supplyDto.UnitOfMeasure;
                         existing.TankMixOrder = supplyDto.TankMixOrder;
                         existing.IsSubstitute = supplyDto.IsSubstitute;
@@ -204,7 +225,8 @@ public class LaborsController : ControllerBase
                             LaborId = labor.Id,
                             SupplyId = supplyDto.SupplyId,
                             PlannedDose = supplyDto.PlannedDose,
-                            PlannedTotal = supplyDto.PlannedTotal > 0 ? supplyDto.PlannedTotal : supplyDto.PlannedDose * labor.Hectares,
+                            PlannedTotal = supplyDto.PlannedTotal > 0 ? supplyDto.PlannedTotal : supplyDto.PlannedDose * supplyDto.PlannedHectares,
+                            PlannedHectares = supplyDto.PlannedHectares > 0 ? supplyDto.PlannedHectares : labor.Hectares,
                             UnitOfMeasure = supplyDto.UnitOfMeasure,
                             TankMixOrder = supplyDto.TankMixOrder,
                             IsSubstitute = supplyDto.IsSubstitute
@@ -219,7 +241,8 @@ public class LaborsController : ControllerBase
                         LaborId = labor.Id,
                         SupplyId = supplyDto.SupplyId,
                         PlannedDose = supplyDto.PlannedDose,
-                        PlannedTotal = supplyDto.PlannedTotal > 0 ? supplyDto.PlannedTotal : supplyDto.PlannedDose * labor.Hectares,
+                        PlannedTotal = supplyDto.PlannedTotal > 0 ? supplyDto.PlannedTotal : supplyDto.PlannedDose * supplyDto.PlannedHectares,
+                        PlannedHectares = supplyDto.PlannedHectares > 0 ? supplyDto.PlannedHectares : labor.Hectares,
                         UnitOfMeasure = supplyDto.UnitOfMeasure,
                         TankMixOrder = supplyDto.TankMixOrder,
                         IsSubstitute = supplyDto.IsSubstitute
@@ -229,7 +252,15 @@ public class LaborsController : ControllerBase
         }
 
         await _context.SaveChangesAsync();
-        return NoContent();
+        
+        var updated = await _context.Labors
+            .AsNoTracking()
+            .Include(l => l.Lot)
+            .Include(l => l.Supplies)
+                .ThenInclude(s => s.Supply)
+            .FirstAsync(l => l.Id == labor.Id);
+
+        return Ok(new LaborSaveResponse(MapToDto(updated), validation.Warnings));
     }
 
     [HttpPost("{id:guid}/realize")]
@@ -318,6 +349,89 @@ public class LaborsController : ControllerBase
             .FirstAsync(l => l.Id == newLabor.Id);
 
         return CreatedAtAction(nameof(GetLabor), new { id = newLabor.Id }, MapToDto(created));
+    }
+
+    [HttpPost("{id:guid}/execute-standalone")]
+    public async Task<ActionResult<Guid>> ExecuteStandalone(Guid id, [FromBody] List<LaborSupplyDto> realSupplies)
+    {
+        var strategy = _context.Database.CreateExecutionStrategy();
+
+        return await strategy.ExecuteAsync(async () =>
+        {
+            using var transaction = await _context.Database.BeginTransactionAsync();
+            try
+            {
+                var source = await _context.Labors
+                    .Include(l => l.Supplies)
+                    .FirstOrDefaultAsync(l => l.Id == id);
+
+                if (source == null) return (ActionResult<Guid>)NotFound();
+                if (source.Mode != LaborMode.Planned) return (ActionResult<Guid>)BadRequest("Solo se pueden ejecutar labores planeadas.");
+                if (source.Status == "Realized") return (ActionResult<Guid>)BadRequest("La labor ya fue realizada.");
+
+                var newLabor = new Labor
+                {
+                    Id = Guid.NewGuid(),
+                    WorkOrderId = source.WorkOrderId,
+                    LotId = source.LotId,
+                    CampaignLotId = source.CampaignLotId,
+                    ErpActivityId = source.ErpActivityId,
+                    LaborTypeId = source.LaborTypeId,
+                    ContactId = source.ContactId,
+                    IsExternalBilling = source.IsExternalBilling,
+                    Mode = LaborMode.Realized,
+                    Status = "Realized",
+                    ExecutionDate = DateTime.UtcNow,
+                    Hectares = source.Hectares,
+                    EffectiveArea = source.Hectares, // Default to hectares
+                    Rate = source.Rate,
+                    RateUnit = source.RateUnit,
+                    PlannedDose = source.PlannedDose,
+                    RealizedDose = source.PlannedDose,
+                    PlannedLaborId = source.Id,
+                    CreatedAt = DateTime.UtcNow,
+                    Notes = source.Notes,
+                    PrescriptionMapUrl = source.PrescriptionMapUrl,
+                    MachineryUsedId = source.MachineryUsedId,
+                    WeatherLogJson = source.WeatherLogJson,
+                    EvidencePhotosJson = source.EvidencePhotosJson,
+                    MetadataExterna = source.MetadataExterna
+                };
+
+                foreach (var s in source.Supplies)
+                {
+                    var realSupply = realSupplies.FirstOrDefault(rs => rs.SupplyId == s.SupplyId);
+                    var dose = realSupply?.RealDose ?? s.PlannedDose;
+
+                    newLabor.Supplies.Add(new LaborSupply
+                    {
+                        Id = Guid.NewGuid(),
+                        LaborId = newLabor.Id,
+                        SupplyId = s.SupplyId,
+                        PlannedDose = s.PlannedDose,
+                        PlannedTotal = s.PlannedTotal,
+                        PlannedHectares = s.PlannedHectares,
+                        RealDose = dose,
+                        RealTotal = dose * newLabor.Hectares,
+                        RealHectares = newLabor.Hectares,
+                        UnitOfMeasure = s.UnitOfMeasure,
+                        TankMixOrder = s.TankMixOrder,
+                        IsSubstitute = s.IsSubstitute
+                    });
+                }
+
+                _context.Labors.Add(newLabor);
+                await _context.SaveChangesAsync();
+                await transaction.CommitAsync();
+
+                return (ActionResult<Guid>)Ok(newLabor.Id);
+            }
+            catch (Exception)
+            {
+                await transaction.RollbackAsync();
+                throw;
+            }
+        });
     }
 
     [HttpDelete("{id:guid}")]
@@ -418,6 +532,48 @@ public class LaborsController : ControllerBase
         return NoContent();
     }
 
+    private async Task<(string? Error, List<string> Warnings)> ValidateLaborAsync(LaborDto dto)
+    {
+        var warnings = new List<string>();
+        
+        // 1.1 Validation of Surface
+        if (dto.CampaignLotId.HasValue && dto.CampaignLotId != Guid.Empty)
+        {
+            var isSurfaceValid = await _validationService.ValidateLaborSurfaceAsync(dto.CampaignLotId.Value, dto.Hectares);
+            if (!isSurfaceValid)
+            {
+                return ("La superficie de la labor supera el área productiva del lote asignado.", warnings);
+            }
+        }
+
+        // 1.3 Validation of Dates
+        if (dto.CampaignLotId.HasValue && dto.CampaignLotId != Guid.Empty)
+        {
+            var dateError = await _validationService.ValidateLaborDatesInRotationAsync(dto.CampaignLotId.Value, dto.EstimatedDate, dto.ExecutionDate);
+            if (dateError != null)
+            {
+                return (dateError, warnings);
+            }
+        }
+
+        // 1.2 Validation of Activity
+        if (dto.CampaignLotId.HasValue && dto.CampaignLotId != Guid.Empty && dto.ErpActivityId.HasValue)
+        {
+            var date = dto.ExecutionDate ?? dto.EstimatedDate ?? DateTime.Today;
+            var activityWarning = await _validationService.ValidateLaborActivityMatchesRotationAsync(
+                dto.CampaignLotId.Value, 
+                DateOnly.FromDateTime(date), 
+                dto.ErpActivityId.Value);
+            
+            if (activityWarning != null)
+            {
+                warnings.Add(activityWarning);
+            }
+        }
+
+        return (null, warnings);
+    }
+
     private static LaborDto MapToDto(Labor labor)
     {
         return new LaborDto(
@@ -446,7 +602,8 @@ public class LaborsController : ControllerBase
             labor.Lot?.Field?.Name,
             labor.PlannedDose,
             labor.RealizedDose,
-            labor.ContactId
+            labor.ContactId,
+            labor.PlannedLaborId
         );
     }
 }

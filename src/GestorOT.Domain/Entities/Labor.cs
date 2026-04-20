@@ -28,6 +28,8 @@ public class Labor : TenantEntity
     public string? WeatherLogJson { get; set; }
     public string? EvidencePhotosJson { get; set; }
     public string? MetadataExterna { get; set; }
+    public Guid? PlannedLaborId { get; set; }
+    public Labor? PlannedLabor { get; set; }
     public WorkOrder? WorkOrder { get; set; }
     public Lot? Lot { get; set; }
     public CampaignLot? CampaignLot { get; set; }

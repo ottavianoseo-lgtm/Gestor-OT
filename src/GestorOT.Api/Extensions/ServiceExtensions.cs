@@ -69,6 +69,7 @@ public static class ServiceExtensions
             services.AddScoped<IAgronomicValidationService, AgronomicValidationService>();
             services.AddScoped<IStockValidatorService, StockValidatorService>();
             services.AddScoped<IIsoXmlExporterService, IsoXmlExporterService>();
+            services.AddScoped<IHtmlLaborExporterService, HtmlLaborExporterService>();
             services.AddScoped<ICampaignManagerService, CampaignManagerService>();
             services.AddScoped<IWorkOrderQueryService, WorkOrderQueryService>();
             services.AddScoped<ILotQueryService, LotQueryService>();

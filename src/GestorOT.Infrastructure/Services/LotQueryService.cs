@@ -34,7 +34,8 @@ public class LotQueryService : ILotQueryService
             l.Status,
             l.Geometry != null ? writer.Write(l.Geometry) : null,
             l.Field?.Name,
-            areaMap.GetValueOrDefault(l.Id, 0)
+            areaMap.GetValueOrDefault(l.Id, 0),
+            l.CadastralArea
         )).ToList();
     }
 
@@ -58,7 +59,8 @@ public class LotQueryService : ILotQueryService
             lot.Status,
             lot.Geometry != null ? writer.Write(lot.Geometry) : null,
             lot.Field?.Name,
-            areaHa
+            areaHa,
+            lot.CadastralArea
         );
     }
 
@@ -86,6 +88,58 @@ public class LotQueryService : ILotQueryService
         )).ToList();
 
         return new GeoJsonFeatureCollection("FeatureCollection", features);
+    }
+
+    public async Task<double> CalculateAreaFromWktAsync(string wkt, CancellationToken ct = default)
+    {
+        if (string.IsNullOrEmpty(wkt)) return 0;
+        
+        var result = await _context.Database
+            .SqlQueryRaw<double>(
+                @"SELECT COALESCE(ST_Area(ST_GeomFromText({0}, 4326)::geography) / 10000.0, 0) AS ""Value""",
+                wkt)
+            .FirstOrDefaultAsync(ct);
+            
+        return Math.Round(result, 4);
+    }
+
+    public async Task<List<SurfaceHistoryDto>> GetSurfaceHistoryAsync(Guid lotId, CancellationToken ct = default)
+    {
+        return await _context.CampaignLots
+            .AsNoTracking()
+            .Include(cl => cl.Campaign)
+            .Include(cl => cl.Lot)
+            .Where(cl => cl.LotId == lotId)
+            .OrderByDescending(cl => cl.Campaign!.StartDate)
+            .Select(cl => new SurfaceHistoryDto(
+                cl.Campaign!.Name,
+                cl.Campaign.StartDate,
+                cl.ProductiveArea,
+                cl.Lot!.CadastralArea,
+                cl.ProductiveArea - cl.Lot.CadastralArea
+            ))
+            .ToListAsync(ct);
+    }
+
+    public async Task<List<CampaignLotDto>> GetCampaignsByLotAsync(Guid lotId, CancellationToken ct = default)
+    {
+        return await _context.CampaignLots
+            .AsNoTracking()
+            .Include(cl => cl.Campaign)
+            .Include(cl => cl.Lot)
+            .Where(cl => cl.LotId == lotId)
+            .OrderByDescending(cl => cl.Campaign!.StartDate)
+            .Select(cl => new CampaignLotDto(
+                cl.Id,
+                cl.CampaignId,
+                cl.LotId,
+                cl.Campaign!.Name,
+                null,
+                cl.Lot!.CadastralArea,
+                cl.ProductiveArea,
+                cl.CropId
+            ))
+            .ToListAsync(ct);
     }
 
     private async Task<Dictionary<Guid, double>> GetLotAreasAsync(CancellationToken ct = default)
