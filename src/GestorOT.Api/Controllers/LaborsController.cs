@@ -196,42 +196,28 @@ public class LaborsController : ControllerBase
 
         if (dto.Supplies != null)
         {
-            var existingIds = dto.Supplies.Where(s => s.Id != Guid.Empty).Select(s => s.Id).ToHashSet();
-            var toRemove = labor.Supplies.Where(s => !existingIds.Contains(s.Id)).ToList();
+            // 1. Remover insumos que ya no están en el DTO
+            var incomingIds = dto.Supplies.Where(s => s.Id != Guid.Empty).Select(s => s.Id).ToHashSet();
+            var toRemove = labor.Supplies.Where(s => !incomingIds.Contains(s.Id)).ToList();
             foreach (var r in toRemove)
+            {
                 _context.LaborSupplies.Remove(r);
+            }
 
+            // 2. Actualizar existentes o agregar nuevos
             foreach (var supplyDto in dto.Supplies)
             {
-                if (supplyDto.Id != Guid.Empty)
+                var existing = labor.Supplies.FirstOrDefault(s => s.Id == supplyDto.Id && s.Id != Guid.Empty);
+                if (existing != null)
                 {
-                    var existing = labor.Supplies.FirstOrDefault(s => s.Id == supplyDto.Id);
-                    if (existing != null)
-                    {
-                        existing.SupplyId = supplyDto.SupplyId;
-                        existing.PlannedDose = supplyDto.PlannedDose;
-                        existing.PlannedTotal = supplyDto.PlannedTotal > 0 ? supplyDto.PlannedTotal : supplyDto.PlannedDose * supplyDto.PlannedHectares;
-                        existing.PlannedHectares = supplyDto.PlannedHectares > 0 ? supplyDto.PlannedHectares : labor.Hectares;
-                        existing.RealHectares = supplyDto.RealHectares;
-                        existing.UnitOfMeasure = supplyDto.UnitOfMeasure;
-                        existing.TankMixOrder = supplyDto.TankMixOrder;
-                        existing.IsSubstitute = supplyDto.IsSubstitute;
-                    }
-                    else
-                    {
-                        labor.Supplies.Add(new LaborSupply
-                        {
-                            Id = Guid.NewGuid(),
-                            LaborId = labor.Id,
-                            SupplyId = supplyDto.SupplyId,
-                            PlannedDose = supplyDto.PlannedDose,
-                            PlannedTotal = supplyDto.PlannedTotal > 0 ? supplyDto.PlannedTotal : supplyDto.PlannedDose * supplyDto.PlannedHectares,
-                            PlannedHectares = supplyDto.PlannedHectares > 0 ? supplyDto.PlannedHectares : labor.Hectares,
-                            UnitOfMeasure = supplyDto.UnitOfMeasure,
-                            TankMixOrder = supplyDto.TankMixOrder,
-                            IsSubstitute = supplyDto.IsSubstitute
-                        });
-                    }
+                    existing.SupplyId = supplyDto.SupplyId;
+                    existing.PlannedDose = supplyDto.PlannedDose;
+                    existing.PlannedTotal = supplyDto.PlannedTotal > 0 ? supplyDto.PlannedTotal : supplyDto.PlannedDose * supplyDto.PlannedHectares;
+                    existing.PlannedHectares = supplyDto.PlannedHectares > 0 ? supplyDto.PlannedHectares : labor.Hectares;
+                    existing.RealHectares = supplyDto.RealHectares;
+                    existing.UnitOfMeasure = supplyDto.UnitOfMeasure;
+                    existing.TankMixOrder = supplyDto.TankMixOrder;
+                    existing.IsSubstitute = supplyDto.IsSubstitute;
                 }
                 else
                 {
@@ -241,7 +227,7 @@ public class LaborsController : ControllerBase
                         LaborId = labor.Id,
                         SupplyId = supplyDto.SupplyId,
                         PlannedDose = supplyDto.PlannedDose,
-                        PlannedTotal = supplyDto.PlannedTotal > 0 ? supplyDto.PlannedTotal : supplyDto.PlannedDose * supplyDto.PlannedHectares,
+                        PlannedTotal = supplyDto.PlannedTotal > 0 ? supplyDto.PlannedTotal : supplyDto.PlannedDose * (supplyDto.PlannedHectares > 0 ? supplyDto.PlannedHectares : labor.Hectares),
                         PlannedHectares = supplyDto.PlannedHectares > 0 ? supplyDto.PlannedHectares : labor.Hectares,
                         UnitOfMeasure = supplyDto.UnitOfMeasure,
                         TankMixOrder = supplyDto.TankMixOrder,

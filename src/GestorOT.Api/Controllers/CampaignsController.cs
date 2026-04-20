@@ -225,10 +225,12 @@ public class CampaignsController : ControllerBase
             CampaignId = id,
             FieldId = dto.FieldId,
             TargetYieldTonHa = dto.TargetYieldTonHa,
-            AllocatedHectares = dto.AllocatedHectares
+            AllocatedHectares = 0 // Will be updated below
         });
 
         await _context.SaveChangesAsync();
+        await RecalculateFieldHectares(id, dto.FieldId);
+
         return NoContent();
     }
 
@@ -263,8 +265,8 @@ public class CampaignsController : ControllerBase
                 cl.Id,
                 cl.CampaignId,
                 cl.LotId,
-                cl.Lot!.Name,
-                cl.Lot.Field != null ? cl.Lot.Field.Name : null,
+                cl.Lot != null ? cl.Lot.Name : "Sin nombre",
+                cl.Lot!.Field != null ? cl.Lot.Field.Name : null,
                 cl.Lot.CadastralArea,
                 cl.ProductiveArea,
                 cl.CropId
@@ -301,6 +303,22 @@ public class CampaignsController : ControllerBase
 
         var productiveArea = dto.ProductiveArea > 0 ? dto.ProductiveArea : lot.CadastralArea;
 
+        // Ensure CampaignField exists for this lot's field
+        var campaignField = await _context.CampaignFields
+            .FirstOrDefaultAsync(cf => cf.CampaignId == id && cf.FieldId == lot.FieldId);
+
+        if (campaignField == null)
+        {
+            _context.CampaignFields.Add(new CampaignField
+            {
+                Id = Guid.NewGuid(),
+                CampaignId = id,
+                FieldId = lot.FieldId,
+                TargetYieldTonHa = 0,
+                AllocatedHectares = 0 // Will be updated below
+            });
+        }
+
         // Step 15: Overlapping Campaign validation per Lot
         var overlappingCampaign = await _context.CampaignLots
             .Include(cl => cl.Campaign)
@@ -322,7 +340,24 @@ public class CampaignsController : ControllerBase
         });
 
         await _context.SaveChangesAsync();
+        await RecalculateFieldHectares(id, lot.FieldId);
+
         return NoContent();
+    }
+
+    private async Task RecalculateFieldHectares(Guid campaignId, Guid fieldId)
+    {
+        var campaignField = await _context.CampaignFields
+            .FirstOrDefaultAsync(cf => cf.CampaignId == campaignId && cf.FieldId == fieldId);
+
+        if (campaignField == null) return;
+
+        var totalHa = await _context.CampaignLots
+            .Where(cl => cl.CampaignId == campaignId && cl.Lot!.FieldId == fieldId)
+            .SumAsync(cl => cl.ProductiveArea);
+
+        campaignField.AllocatedHectares = totalHa;
+        await _context.SaveChangesAsync();
     }
 
     [HttpPut("{campaignId:guid}/lots/{lotId:guid}")]
@@ -345,7 +380,18 @@ public class CampaignsController : ControllerBase
         cl.ProductiveArea = dto.ProductiveArea;
         cl.CropId = dto.CropId;
 
+        // Sync Lot status/name if provided (optional consistency)
+        if (cl.Lot != null)
+        {
+            if (!string.IsNullOrEmpty(dto.LotName)) cl.Lot.Name = dto.LotName;
+        }
+
         await _context.SaveChangesAsync();
+        if (cl.Lot != null)
+        {
+            await RecalculateFieldHectares(campaignId, cl.Lot.FieldId);
+        }
+
         return NoContent();
     }
 
@@ -353,6 +399,7 @@ public class CampaignsController : ControllerBase
     public async Task<IActionResult> RemoveLot(Guid campaignId, Guid lotId)
     {
         var cl = await _context.CampaignLots
+            .Include(x => x.Lot)
             .FirstOrDefaultAsync(x => x.CampaignId == campaignId && x.LotId == lotId);
 
         if (cl == null)
@@ -362,8 +409,15 @@ public class CampaignsController : ControllerBase
         if (campaign?.Status == "Locked")
             return BadRequest("No se pueden modificar lotes en una campaña bloqueada.");
 
+        var fieldId = cl.Lot?.FieldId;
         _context.CampaignLots.Remove(cl);
         await _context.SaveChangesAsync();
+
+        if (fieldId.HasValue)
+        {
+            await RecalculateFieldHectares(campaignId, fieldId.Value);
+        }
+
         return NoContent();
     }
 
