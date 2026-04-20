@@ -224,7 +224,7 @@
                             </Button>
                             <Button Size="@ButtonSize.Small" OnClick="() => GoToRotations(c.CampaignId, c.LotId)"
                                     Style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; color: #fff; height: 36px; font-size: 11px; font-weight: 600;">
-                                Rotaciones
+                                Rotac.
                             </Button>
                         </div>
                     }
@@ -260,9 +260,10 @@
 <Modal Title="Asignar a Campaña" Visible="_addCampaignModalVisible" OnCancel="() => _addCampaignModalVisible = false" OnOk="AddLotToLotCampaign" Width="400">
     <div style="display: grid; gap: 16px; padding: 10px 0;">
         <div>
-            <label style="display: block; margin-bottom: 8px; font-size: 12px; color: rgba(255,255,255,0.5);">Seleccionar Campaña</label>
+            <label style="display: block; color: rgba(255,255,255,0.5); font-size: 11px; text-transform: uppercase; margin-bottom: 8px;">Seleccionar Campaña</label>
             <Select TItem="CampaignSummaryDto" TItemValue="Guid" DataSource="_allCampaigns" @bind-Value="_selectedCampaignId"
                     LabelName="@nameof(CampaignSummaryDto.Name)" ValueName="@nameof(CampaignSummaryDto.Id)"
+                    OnSelectedItemChanged="OnAddCampaignChanged"
                     Placeholder="Campaña" Style="width: 100%;" />
         </div>
         <div>
@@ -356,7 +357,7 @@
                 AppJsonSerializerContext.Default.ListLotDto, cts.Token);
             var fieldsTask = Http.GetFromJsonAsync("api/fields",
                 AppJsonSerializerContext.Default.ListFieldDto, cts.Token);
-            var campTask = Http.GetFromJsonAsync("api/campaigns",
+            var campTask = Http.GetFromJsonAsync("api/campaigns/active",
                 AppJsonSerializerContext.Default.ListCampaignSummaryDto, cts.Token);
 
             _lots = await lotsTask ?? new();
@@ -408,6 +409,10 @@
         };
         
         await LoadLotCampaigns(lot.Id);
+        
+        // Prepoblado: Si el lote ya está en la campaña activa, asegurar que el modelo refleje datos actuales si fuera necesario
+        // Aunque por ahora el modelo base solo tiene Nombre, Campo y Estado.
+        
         _modalVisible = true;
     }
 
@@ -431,6 +436,18 @@
     private void GoToRotations(Guid campaignId, Guid lotId)
     {
         Nav.NavigateTo($"/campaigns/{campaignId}/lots?lotId={lotId}");
+    }
+
+    private void OnAddCampaignChanged(CampaignSummaryDto campaign)
+    {
+        if (campaign != null)
+        {
+            var lot = _lots.FirstOrDefault(x => x.Id == _editingId);
+            if (lot != null)
+            {
+                _newCampaignProductiveArea = lot.CadastralArea;
+            }
+        }
     }
 
     private async Task AddLotToLotCampaign()

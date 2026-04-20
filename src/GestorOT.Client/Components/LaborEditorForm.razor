@@ -11,15 +11,13 @@
       Style="border-radius: 12px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1);">
     <Form Model="@_model" OnFinish="HandleSubmit" Layout="@FormLayout.Vertical">
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
-            <FormItem Label="Lote / Superficie">
+            <FormItem Label="Lote">
                 <Select TItemValue="Guid" TItem="CampaignLotDto" @bind-Value="_model.LotId"
                         Placeholder="Seleccionar lote" EnableSearch 
+                        DataSource="@_lots"
+                        LabelName="@nameof(CampaignLotDto.LotName)"
+                        ValueName="@nameof(CampaignLotDto.LotId)"
                         OnSelectedItemChanged="OnLotChanged">
-                    @foreach (var lot in _lots)
-                    {
-                        <SelectOption TItemValue="Guid" TItem="CampaignLotDto" Value="@lot.LotId"
-                                      Label="@($"{lot.LotName} ({lot.FieldName})")" />
-                    }
                 </Select>
             </FormItem>
 
@@ -239,9 +237,13 @@
             if (_model.Hectares == 0)
             {
                 _model.Hectares = lot.ProductiveArea > 0 ? lot.ProductiveArea : lot.CadastralArea;
-                CheckHectaresWarning(_model.Hectares);
             }
-            if (_model.EstimatedDate.HasValue) await CheckRotation(_model.EstimatedDate.Value);
+            CheckHectaresWarning(_model.Hectares);
+            
+            if (_model.EstimatedDate.HasValue) 
+            {
+                await CheckRotation(_model.EstimatedDate.Value);
+            }
         }
     }
 
@@ -271,6 +273,9 @@
         }
         else
         {
+            _activeRotation = null;
+            _actividadLocked = false;
+            _showNoRotacionWarning = false;
             _fechaFueraRotacion = false;
         }
     }
@@ -290,30 +295,50 @@
 
     private async Task CheckRotation(DateTime date)
     {
-        if (_model.CampaignLotId == null || CampaignState.CurrentCampaign == null) return;
+        if (_model.LotId == Guid.Empty || CampaignState.CurrentCampaign == null) return;
+
+        // Si no tenemos CampaignLotId pero sí LotId, intentamos encontrarlo en la lista de lotes cargada
+        if (_model.CampaignLotId == null || _model.CampaignLotId == Guid.Empty)
+        {
+            var currentLot = _lots.FirstOrDefault(l => l.LotId == _model.LotId);
+            if (currentLot != null)
+            {
+                _model.CampaignLotId = currentLot.Id;
+            }
+            else
+            {
+                // Si no está en la lista (raro), no podemos consultar rotación por campaña
+                return;
+            }
+        }
 
         try
         {
             var dateOnly = DateOnly.FromDateTime(date);
-            _activeRotation = await Http.GetFromJsonAsync<RotationDto>(
-                $"api/campaigns/{CampaignState.CurrentCampaign.Id}/lots/{_model.CampaignLotId}/rotations/active?date={dateOnly}");
-
-            if (_activeRotation != null)
+            var response = await Http.GetAsync($"api/campaigns/{CampaignState.CurrentCampaign.Id}/lots/{_model.CampaignLotId}/rotations/active?date={dateOnly:yyyy-MM-dd}");
+            
+            if (response.IsSuccessStatusCode)
             {
-                _showNoRotacionWarning = false;
-                _model.ErpActivityId = _activeRotation.ActivityId;
-                _actividadLocked = true;
-                CheckDateOverlap(date);
+                _activeRotation = await response.Content.ReadFromJsonAsync<RotationDto>();
+                if (_activeRotation != null)
+                {
+                    _showNoRotacionWarning = false;
+                    _model.ErpActivityId = _activeRotation.ActivityId;
+                    _actividadLocked = true;
+                    CheckDateOverlap(date);
+                }
             }
             else
             {
+                _activeRotation = null;
                 _actividadLocked = false;
                 _showNoRotacionWarning = true;
                 _fechaFueraRotacion = false;
             }
         }
-        catch
+        catch (Exception ex)
         {
+            Console.WriteLine($"Error checking rotation: {ex.Message}");
             _activeRotation = null;
             _actividadLocked = false;
             _showNoRotacionWarning = false;
@@ -398,6 +423,11 @@
             {
                 var result = await response.Content.ReadFromJsonAsync<LaborSaveResponse>(AppJsonSerializerContext.Default.LaborSaveResponse);
                 
+                if (result?.Labor != null)
+                {
+                    _model = result.Labor;
+                }
+
                 if (result?.Warnings != null && result.Warnings.Any())
                 {
                     foreach (var warning in result.Warnings)
@@ -413,6 +443,7 @@
             {
                 var body = await response.Content.ReadAsStringAsync();
                 Message.Error($"Error al guardar la labor: {body}");
+                Console.WriteLine($"Error 400/500: {body}");
             }
         }
         catch (Exception ex)

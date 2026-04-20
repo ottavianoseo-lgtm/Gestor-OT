@@ -7,55 +7,36 @@
 @inject HttpClient Http
 @inject IMessageService Message
 @inject NavigationManager Nav
+@inject GestorOT.Client.Services.CampaignState CampaignState
 
 <PageTitle>Lotes de Campaña - GestorOT</PageTitle>
 
 <div class="page-header">
     <div>
-        <div style="display: flex; align-items: center; gap: 12px;">
-            <Button Type="@ButtonType.Text" OnClick="GoBack"
-                    Style="color: rgba(255,255,255,0.5); padding: 4px 8px; border-radius: 8px;">
-                <Icon Type="arrow-left" Theme="IconThemeType.Outline" />
-            </Button>
-            <div>
-                <h2 class="page-title">Lotes de Campaña</h2>
-                <span class="page-subtitle">
-                    @if (_campaign != null)
-                    {
-                        @_campaign.Name
-                        <span> — @_lots.Count lotes asignados</span>
-                    }
-                </span>
-            </div>
-        </div>
+        <h2 class="page-title">Gestión de Lotes de Campaña</h2>
+        <span class="page-subtitle">@(_campaign?.Name ?? "Cargando...")</span>
     </div>
-    <Space>
-        @if (_campaign != null && _campaign.Status != CampaignStatus.Locked)
+    <div style="display: flex; gap: 12px;">
+        <Button OnClick='() => Nav.NavigateTo("/campaigns")' 
+                Style="background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.1); color: #fff;">
+            <Icon Type="arrow-left" /> Volver
+        </Button>
+        @if (_campaign?.Status != CampaignStatus.Locked)
         {
-            <SpaceItem>
-                <Button OnClick="OpenImportModal"
-                        Style="border-radius: 8px; border-color: #9B59B640; color: #9B59B6; font-weight: 600;">
-                    <Icon Type="import" Theme="IconThemeType.Outline" /> Importar de otra Campaña
-                </Button>
-            </SpaceItem>
-            <SpaceItem>
-                <Button Type="@ButtonType.Primary" OnClick="OpenAddModal"
-                        Style="background: #E74C3C; border-color: #E74C3C; border-radius: 8px; font-weight: 600;">
-                    <Icon Type="plus" Theme="IconThemeType.Outline" /> Agregar Lote
-                </Button>
-            </SpaceItem>
+            <Button Type="@ButtonType.Primary" OnClick="() => _importModalVisible = true" Ghost>
+                <Icon Type="import" /> Importar de otra Campaña
+            </Button>
+            <Button Type="@ButtonType.Primary" OnClick="() => _addModalVisible = true"
+                    Style="background: #E74C3C; border-color: #E74C3C; border-radius: 8px;">
+                <Icon Type="plus" /> Agregar Lote
+            </Button>
         }
-    </Space>
+    </div>
 </div>
 
 @if (!string.IsNullOrEmpty(_errorMessage))
 {
     <Alert Type="@AlertType.Error" Message="@_errorMessage" ShowIcon="true" Closable="true" Style="margin-bottom: 16px;" />
-}
-
-@if (_campaign?.Status == CampaignStatus.Locked)
-{
-    <Alert Type="@AlertType.Warning" Message="Esta campaña está bloqueada. Los lotes no se pueden modificar." ShowIcon="true" Style="margin-bottom: 16px;" />
 }
 
 <div class="glass-card">
@@ -65,300 +46,122 @@
             <Spin Size="SpinSize.Large" Tip="Cargando lotes..." />
         </div>
     }
-    else if (_lots.Count == 0)
-    {
-        <div style="text-align: center; padding: 48px; color: rgba(255,255,255,0.35);">
-            <Icon Type="inbox" Theme="IconThemeType.Outline" Style="font-size: 48px; display: block; margin-bottom: 12px;" />
-            <div style="font-size: 16px; margin-bottom: 8px;">No hay lotes asignados a esta campaña</div>
-            <div style="font-size: 13px;">Usá "Agregar Lote" o "Importar de otra Campaña" para comenzar</div>
-        </div>
-    }
     else
     {
         <div class="summary-bar">
             <div class="summary-item">
                 <span class="summary-label">Total Catastral</span>
-                <span class="summary-value">@_lots.Sum(l => l.CadastralArea).ToString("N2") ha</span>
+                <span class="summary-value">@(_lots?.Sum(l => l.CadastralArea).ToString("N2") ?? "0") ha</span>
             </div>
             <div class="summary-item">
                 <span class="summary-label">Total Productiva</span>
-                <span class="summary-value" style="color: #2ECC71;">@_lots.Sum(l => l.ProductiveArea).ToString("N2") ha</span>
+                <span class="summary-value" style="color: #2ECC71;">@(_lots?.Sum(l => l.ProductiveArea).ToString("N2") ?? "0") ha</span>
             </div>
             <div class="summary-item">
                 <span class="summary-label">Diferencia</span>
                 @{
-                    var diff = _lots.Sum(l => l.CadastralArea) - _lots.Sum(l => l.ProductiveArea);
+                    var dTotal = (_lots?.Sum(l => l.CadastralArea) ?? 0) - (_lots?.Sum(l => l.ProductiveArea) ?? 0);
                 }
-                <span class="summary-value" style="color: @(diff > 0 ? "#F1C40F" : "#2ECC71");">
-                    @(diff > 0 ? "-" : "")@diff.ToString("N2") ha
+                <span class="summary-value" style="color: @(dTotal > 0 ? "#F1C40F" : "#2ECC71");">
+                    @(dTotal > 0 ? "-" : "")@dTotal.ToString("N2") ha
                 </span>
             </div>
             <div class="summary-item">
                 <span class="summary-label">Lotes</span>
-                <span class="summary-value">@_lots.Count</span>
+                <span class="summary-value">@(_lots?.Count ?? 0)</span>
             </div>
         </div>
 
         <Table TItem="CampaignLotDto"
                DataSource="@_lots"
                Size="TableSize.Small"
-               ScrollX="900"
                OnExpand="OnExpandLot"
-               @bind-ExpandedRowKeys="_expandedRows">
-            <ExpandTemplate Context="lot">
-                <div style="padding: 16px; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06); border-radius: 8px; margin: 8px 0;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-                        <h4 style="margin: 0; color: #fff;">Rotaciones Proyectadas</h4>
+               RowKey="x => x.Id">
+            <ColumnDefinitions>
+                <PropertyColumn Property="l => l.LotName" Title="Lote" Sortable />
+                <PropertyColumn Property="l => l.FieldName" Title="Campo" Sortable />
+                <PropertyColumn Property="l => l.CadastralArea" Title="Sup. Catastral" Sortable />
+                <Column TData="decimal" Title="Sup. Productiva">
+                    @{ var lotData = context; }
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span style="font-weight: 600; color: #2ECC71;">@lotData.ProductiveArea.ToString("N2")</span>
                         @if (_campaign?.Status != CampaignStatus.Locked)
                         {
-                            <Button Size="@ButtonSize.Small" Type="@ButtonType.Primary" OnClick="() => OpenAddRotationModal(lot.Data)">
-                                <Icon Type="plus" /> Agregar Rotación
-                            </Button>
+                            <Button Size="@ButtonSize.Small" OnClick="() => StartEdit(lotData)" Icon="edit" Type="@ButtonType.Link" />
                         }
                     </div>
-
-                    <Table TItem="RotationDto" DataSource="@GetRotations(lot.Data.Id)" Size="TableSize.Small" PageSize="50" HidePagination>
+                </Column>
+                <ActionColumn Title="Acciones">
+                    <Popconfirm Title="¿Remover?" OnConfirm="() => RemoveLot(context)">
+                        <Button Danger Size="@ButtonSize.Small" Icon="delete" />
+                    </Popconfirm>
+                </ActionColumn>
+            </ColumnDefinitions>
+            <ExpandTemplate Context="row">
+                <div style="padding: 16px; background: rgba(0,0,0,0.1); border-radius: 8px;">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 12px;">
+                        <h4 style="color: #fff; margin: 0;">Rotaciones del Lote</h4>
+                        <Button Size="@ButtonSize.Small" Type="@ButtonType.Primary" OnClick="() => OpenAddRotationModal(row.Data)">+ Agregar</Button>
+                    </div>
+                    <Table TItem="RotationDto" DataSource="@GetRotations(row.Data.Id)" Size="TableSize.Small" HidePagination>
                         <PropertyColumn Property="r => r.StartDate" Title="Inicio" />
-                        <PropertyColumn Property="r => r.EndDate" Title="Fin">
-                            <div style="display: flex; align-items: center; gap: 8px;">
-                                @context.EndDate
-                                @if (_campaign?.EndDate != null && context.EndDate > _campaign.EndDate)
-                                {
-                                    <Tooltip Title="La rotación supera el cierre de la campaña">
-                                        <Icon Type="warning" Theme="IconThemeType.Fill" Style="color: #F1C40F;" />
-                                    </Tooltip>
-                                }
-                            </div>
-                        </PropertyColumn>
-                        <PropertyColumn Property="r => r.ActivityName" Title="Actividad (Cultivo)" />
-                        <PropertyColumn Property="r => r.Notes" Title="Notas" />
-                        <ActionColumn Title="" Width="100">
-                            @if (_campaign?.Status != CampaignStatus.Locked)
-                            {
-                                <Space>
-                                    <SpaceItem>
-                                        <Button Size="@ButtonSize.Small" OnClick="() => OpenEditRotationModal(lot.Data, context)">
-                                            <Icon Type="edit" />
-                                        </Button>
-                                    </SpaceItem>
-                                    <SpaceItem>
-                                        <Popconfirm Title="¿Eliminar rotación?" OnConfirm="() => DeleteRotation(context)">
-                                            <Button Danger Size="@ButtonSize.Small">
-                                                <Icon Type="delete" />
-                                            </Button>
-                                        </Popconfirm>
-                                    </SpaceItem>
-                                </Space>
-                            }
+                        <PropertyColumn Property="r => r.EndDate" Title="Fin" />
+                        <PropertyColumn Property="r => r.ActivityName" Title="Cultivo" />
+                        <ActionColumn>
+                             @{ var rotData = context; }
+                             <Button Size="@ButtonSize.Small" Icon="edit" OnClick="() => OpenEditRotationModal(row.Data, rotData)" />
+                             <Button Danger Size="@ButtonSize.Small" Icon="delete" OnClick="() => DeleteRotation(rotData)" />
                         </ActionColumn>
                     </Table>
                 </div>
             </ExpandTemplate>
-            <ChildContent>
-                <PropertyColumn Property="l => l.LotName" Title="Lote" Sortable>
-                    <span style="font-weight: 600;">@context.LotName</span>
-                </PropertyColumn>
-                <PropertyColumn Property="l => l.FieldName" Title="Campo" Sortable>
-                    <span style="color: rgba(255,255,255,0.6);">@(context.FieldName ?? "—")</span>
-                </PropertyColumn>
-                <PropertyColumn Property="l => l.CadastralArea" Title="Sup. Catastral (ha)" Sortable>
-                    <span style="color: rgba(255,255,255,0.5);">@context.CadastralArea.ToString("N2")</span>
-                </PropertyColumn>
-                <Column TData="decimal" Title="Sup. Productiva (ha)">
-                    @if (_editingLotId == context.LotId && _campaign?.Status != CampaignStatus.Locked)
-                    {
-                        <div style="display: flex; align-items: center; gap: 6px;">
-                            <AntDesign.InputNumber TValue="decimal" @bind-Value="_editProductiveArea"
-                                                   Min="0m" Max="@context.CadastralArea"
-                                                   Step="0.5m"
-                                                   Style="width: 120px;" />
-                            <Button Size="@ButtonSize.Small" OnClick="() => SaveProductiveArea(context)"
-                                    Loading="_savingArea"
-                                    Style="border-radius: 6px; background: #2ECC7115; border-color: #2ECC7140; color: #2ECC71;">
-                                <Icon Type="check" Theme="IconThemeType.Outline" />
-                            </Button>
-                            <Button Size="@ButtonSize.Small" OnClick="CancelEdit"
-                                    Style="border-radius: 6px; border-color: rgba(255,255,255,0.15); color: rgba(255,255,255,0.5);">
-                                <Icon Type="close" Theme="IconThemeType.Outline" />
-                            </Button>
-                        </div>
-                    }
-                    else
-                    {
-                        <div style="display: flex; align-items: center; gap: 8px;">
-                            <span style="font-weight: 600; color: #2ECC71;">@context.ProductiveArea.ToString("N2")</span>
-                            @if (context.CadastralArea > 0 && context.ProductiveArea < context.CadastralArea)
-                            {
-                                var delta = context.CadastralArea - context.ProductiveArea;
-                                var pct = (delta / context.CadastralArea * 100);
-                                <Tag Style="background: #F1C40F20; color: #F1C40F; border: 1px solid #F1C40F40; border-radius: 10px; font-size: 10px; padding: 0 6px;">
-                                    -@pct.ToString("N1")%
-                                </Tag>
-                            }
-                            @if (_campaign?.Status != CampaignStatus.Locked)
-                            {
-                                <Button Size="@ButtonSize.Small" OnClick="() => StartEdit(context)"
-                                        Style="border: none; background: transparent; color: rgba(255,255,255,0.3); padding: 2px 6px;">
-                                    <Icon Type="edit" Theme="IconThemeType.Outline" Style="font-size: 12px;" />
-                                </Button>
-                            }
-                        </div>
-                    }
-                </Column>
-                <ActionColumn Title="" Width="60">
-                    @if (_campaign?.Status != CampaignStatus.Locked)
-                    {
-                        <Popconfirm Title="¿Quitar este lote de la campaña?"
-                                    OnConfirm="() => RemoveLot(context)"
-                                    OkText="Quitar" CancelText="Cancelar">
-                            <Button Danger Size="@ButtonSize.Small" Style="border-radius: 6px;">
-                                <Icon Type="delete" Theme="IconThemeType.Outline" />
-                            </Button>
-                        </Popconfirm>
-                    }
-                </ActionColumn>
-            </ChildContent>
         </Table>
     }
 </div>
 
-<Modal Title="Agregar Lote a la Campaña"
-       Visible="_addModalVisible"
-       OnCancel="CloseAddModal"
-       OnOk="AddLotToCampaign"
-       OkText="@("Agregar")"
-       ConfirmLoading="_addingLot"
-       Width="480">
-    <div>
-        <div style="margin-bottom: 16px;">
-            <label style="display: block; color: rgba(255,255,255,0.7); font-size: 12px; font-weight: 600; margin-bottom: 6px;">Seleccionar Lote</label>
-            <Select @bind-Value="_addLotId" Placeholder="Buscar lote..."
-                    TItemValue="Guid" TItem="string"
-                    AllowClear
-                    ShowSearch
-                    Style="width: 100%;">
-                @foreach (var lot in _availableLots)
-                {
-                    <SelectOption TItemValue="Guid" TItem="string" Value="lot.Id"
-                                  Label="@($"{lot.Name} ({lot.FieldName ?? "Sin campo"}) - {lot.Area:N2} ha")" />
-                }
-            </Select>
-        </div>
-        <div style="margin-bottom: 16px;">
-            <label style="display: block; color: rgba(255,255,255,0.7); font-size: 12px; font-weight: 600; margin-bottom: 6px;">Superficie Productiva (ha)</label>
-            <AntDesign.InputNumber TValue="decimal" @bind-Value="_addProductiveArea" Min="0m" Step="0.5m"
-                                   Style="width: 100%;" Placeholder="Dejar en 0 para usar la catastral" />
-            <div style="color: rgba(255,255,255,0.4); font-size: 11px; margin-top: 4px;">
-                Si se deja en 0, se usará la superficie catastral del lote.
-            </div>
-        </div>
+<Modal Title="Agregar Lote" Visible="_addModalVisible" OnCancel="() => _addModalVisible = false" OnOk="AddLotToCampaign">
+    <div style="display: grid; gap: 12px;">
+        <Select @bind-Value="_addLotId" TItemValue="Guid" TItem="LotDto" DataSource="@_availableLots" LabelName="@nameof(LotDto.Name)" ValueName="@nameof(LotDto.Id)" EnableSearch />
+        <AntDesign.InputNumber TValue="decimal" @bind-Value="_addProductiveArea" Placeholder="Superficie Productiva" Style="width:100%" />
     </div>
 </Modal>
 
-<Modal Title="Importar Lotes de Campaña Anterior"
-       Visible="_importModalVisible"
-       OnCancel="CloseImportModal"
-       OnOk="ExecuteImport"
-       OkText="@("Importar")"
-       ConfirmLoading="_importing"
-       Width="480">
-    <div>
-        <div style="margin-bottom: 16px;">
-            <label style="display: block; color: rgba(255,255,255,0.7); font-size: 12px; font-weight: 600; margin-bottom: 6px;">Campaña Origen</label>
-            <Select @bind-Value="_importFromCampaignId" Placeholder="Seleccionar campaña anterior..."
-                    TItemValue="Guid" TItem="string"
-                    AllowClear
-                    Style="width: 100%;">
-                @foreach (var c in _otherCampaigns)
-                {
-                    <SelectOption TItemValue="Guid" TItem="string" Value="c.Id"
-                                  Label="@($"{c.Name} ({c.Status})")" />
-                }
-            </Select>
-        </div>
-        <div style="margin-bottom: 16px;">
-            <label style="display: block; color: rgba(255,255,255,0.7); font-size: 12px; font-weight: 600; margin-bottom: 6px;">Superficie Productiva</label>
-            <RadioGroup @bind-Value="_useProductiveAreaFromPrevious">
-                <Radio Value="false">Usar superficie catastral (resetear)</Radio>
-                <Radio Value="true">Mantener superficie productiva anterior</Radio>
-            </RadioGroup>
-        </div>
-        <Alert Type="@AlertType.Info"
-               Message="Los lotes que ya estén asignados a esta campaña no se duplicarán."
-               ShowIcon="true" Style="margin-top: 8px;" />
+<Modal Title="Actualizar Superficie" Visible="_editModalVisible" OnCancel="() => _editModalVisible = false" OnOk="SaveProductiveArea">
+    <AntDesign.InputNumber TValue="decimal" @bind-Value="_editProductiveArea" Style="width:100%" />
+</Modal>
+
+<Modal Title="Importar Lotes" Visible="_importModalVisible" OnCancel="() => _importModalVisible = false" OnOk="ExecuteImport">
+    <div style="display: grid; gap: 12px;">
+        <Select @bind-Value="_importFromCampaignId" TItemValue="Guid" TItem="CampaignDto" DataSource="@_otherCampaigns" LabelName="@nameof(CampaignDto.Name)" ValueName="@nameof(CampaignDto.Id)" />
+        <RadioGroup @bind-Value="_useProductiveAreaFromPrevious">
+            <Radio Value="false">Catastral</Radio>
+            <Radio Value="true">Mantener</Radio>
+        </RadioGroup>
     </div>
 </Modal>
 
-<Modal Title="@(_isEditingRotation ? "Editar Rotación" : "Nueva Rotación")"
-       Visible="_rotationModalVisible"
-       OnCancel="CloseRotationModal"
-       OnOk="SaveRotation"
-       OkText="@("Guardar")"
-       ConfirmLoading="_savingRotation"
-       Width="540">
-    <div style="display: flex; flex-direction: column; gap: 16px;">
-        <div>
-            <label style="display: block; color: rgba(255,255,255,0.7); font-size: 12px; font-weight: 600; margin-bottom: 6px;">Rango de Fechas</label>
-            <div style="display: flex; gap: 8px;">
-                <DatePicker TValue="DateOnly" @bind-Value="_rotationModel.StartDate" Style="width: 50%;" />
-                <DatePicker TValue="DateOnly" @bind-Value="_rotationModel.EndDate" Style="width: 50%;" />
-            </div>
-            @if (_campaign?.EndDate != null && _rotationModel.EndDate > _campaign.EndDate)
-            {
-                <div style="color: #F1C40F; font-size: 11px; margin-top: 4px;">
-                    <Icon Type="warning" /> La fecha de fin supera el cierre de la campaña (@_campaign.EndDate).
-                </div>
-            }
-        </div>
-        <div>
-            <label style="display: block; color: rgba(255,255,255,0.7); font-size: 12px; font-weight: 600; margin-bottom: 6px;">Actividad (Cultivo)</label>
-            <Select @bind-Value="_rotationModel.ActivityId"
-                    TItemValue="Guid" TItem="ErpActivityDto"
-                    DataSource="@_activities"
-                    LabelName="@nameof(ErpActivityDto.Name)"
-                    ValueName="@nameof(ErpActivityDto.Id)"
-                    Placeholder="Seleccionar actividad..."
-                    ShowSearch
-                    Style="width: 100%;" />
-        </div>
-        <div>
-            <label style="display: block; color: rgba(255,255,255,0.7); font-size: 12px; font-weight: 600; margin-bottom: 6px;">Notas</label>
-            <TextArea @bind-Value="_rotationModel.Notes" Rows="2" />
-        </div>
+<Modal Title="@(_isEditingRotation ? "Editar Rotación" : "Nueva Rotación")" Visible="_rotationModalVisible" OnCancel="() => _rotationModalVisible = false" OnOk="SaveRotation">
+    <div style="display: grid; gap: 12px;">
+        <DatePicker TValue="DateOnly" @bind-Value="_rotationModel.StartDate" />
+        <DatePicker TValue="DateOnly" @bind-Value="_rotationModel.EndDate" />
+        <Select @bind-Value="_rotationModel.ActivityId" TItemValue="Guid" TItem="ErpActivityDto" DataSource="_activities" LabelName="@nameof(ErpActivityDto.Name)" ValueName="@nameof(ErpActivityDto.Id)" EnableSearch />
+        <TextArea @bind-Value="_rotationModel.Notes" Rows="2" />
     </div>
 </Modal>
 
 <style>
     .summary-bar {
         display: flex;
-        gap: 24px;
-        padding: 14px 20px;
-        margin-bottom: 16px;
+        gap: 32px;
         background: rgba(255,255,255,0.03);
-        border: 1px solid rgba(255,255,255,0.06);
-        border-radius: 10px;
-        flex-wrap: wrap;
+        padding: 16px 24px;
+        border-radius: 12px;
+        border: 1px solid rgba(255,255,255,0.08);
+        margin-bottom: 24px;
     }
-
-    .summary-item {
-        display: flex;
-        flex-direction: column;
-        gap: 2px;
-    }
-
-    .summary-label {
-        font-size: 10px;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-        color: rgba(255,255,255,0.4);
-        font-weight: 600;
-    }
-
-    .summary-value {
-        font-size: 18px;
-        font-weight: 700;
-        color: #fff;
-    }
+    .summary-item { display: flex; flex-direction: column; }
+    .summary-label { font-size: 11px; color: rgba(255,255,255,0.4); text-transform: uppercase; margin-bottom: 4px; }
+    .summary-value { font-size: 18px; font-weight: 700; color: #fff; }
 </style>
 
 @code {
@@ -367,441 +170,77 @@
 
     private CampaignDto? _campaign;
     private List<CampaignLotDto> _lots = new();
-    private List<LotDto> _allLots = new();
     private List<LotDto> _availableLots = new();
     private List<CampaignDto> _otherCampaigns = new();
     private List<ErpActivityDto> _activities = new();
-    private Dictionary<Guid, List<RotationDto>> _rotationsByLot = new();
+    private Dictionary<Guid, List<RotationDto>> _rotationsByLot = new Dictionary<Guid, List<RotationDto>>();
     private bool _loading = true;
     private string? _errorMessage;
 
-    private Guid? _editingLotId;
+    private bool _editModalVisible;
+    private CampaignLotDto? _editingLot;
     private decimal _editProductiveArea;
-    private bool _savingArea;
 
     private bool _addModalVisible;
     private Guid _addLotId;
     private decimal _addProductiveArea;
-    private bool _addingLot;
 
     private bool _importModalVisible;
     private Guid _importFromCampaignId;
     private bool _useProductiveAreaFromPrevious;
-    private bool _importing;
 
-    // Rotation properties
     private bool _rotationModalVisible;
     private bool _isEditingRotation;
-    private bool _savingRotation;
-    private RotationModel _rotationModel = new();
-    private CampaignLotDto? _currentLot;
-    private IEnumerable<Guid> _expandedRows = new List<Guid>();
+    private RotationModel _rotationModel = new RotationModel();
 
-    private class RotationModel
-    {
-        public Guid Id { get; set; }
-        public Guid CampaignLotId { get; set; }
-        public Guid ActivityId { get; set; }
-        public DateOnly StartDate { get; set; } = DateOnly.FromDateTime(DateTime.Today);
-        public DateOnly EndDate { get; set; } = DateOnly.FromDateTime(DateTime.Today.AddMonths(4));
-        public string? Notes { get; set; }
-    }
+    private class RotationModel { public Guid Id, CampaignLotId, ActivityId; public DateOnly StartDate, EndDate; public string? Notes; }
 
-    protected override async Task OnInitializedAsync()
-    {
-        await LoadData();
-    }
+    protected override async Task OnInitializedAsync() => await LoadData();
 
     private async Task LoadData()
     {
-        try
-        {
+        try {
             _loading = true;
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
-
-            var campaignTask = Http.GetFromJsonAsync($"api/campaigns/{CampaignId}",
-                AppJsonSerializerContext.Default.CampaignDto, cts.Token);
-            var lotsTask = Http.GetFromJsonAsync($"api/campaigns/{CampaignId}/lots",
-                AppJsonSerializerContext.Default.ListCampaignLotDto, cts.Token);
-            var allLotsTask = Http.GetFromJsonAsync("api/lots",
-                AppJsonSerializerContext.Default.ListLotDto, cts.Token);
-            var campaignsTask = Http.GetFromJsonAsync("api/campaigns",
-                AppJsonSerializerContext.Default.ListCampaignDto, cts.Token);
-            var laborTypesTask = Http.GetFromJsonAsync("api/catalogs/labor-types",
-                AppJsonSerializerContext.Default.ListLaborTypeDto, cts.Token);
-            var activitiesTask = Http.GetFromJsonAsync("api/catalogs/activities",
-                AppJsonSerializerContext.Default.ListErpActivityDto, cts.Token);
-
-            await Task.WhenAll(campaignTask, lotsTask, allLotsTask, campaignsTask, laborTypesTask, activitiesTask);
-
-            _campaign = campaignTask.Result;
-            _lots = lotsTask.Result ?? new();
-            _allLots = allLotsTask.Result ?? new();
-            _otherCampaigns = (campaignsTask.Result ?? new())
-                .Where(c => c.Id != CampaignId)
-                .ToList();
-            _activities = activitiesTask.Result ?? new();
-            RefreshAvailableLots();
-            _errorMessage = null;
-
-            if (!string.IsNullOrEmpty(lotId) && Guid.TryParse(lotId, out var targetLotId))
-            {
-                var cl = _lots.FirstOrDefault(x => x.LotId == targetLotId);
-                if (cl != null)
-                {
-                    _expandedRows = new List<Guid> { cl.Id };
-                    await LoadRotations(cl.Id);
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            _errorMessage = $"Error de conexión: {ex.Message}";
-        }
-        finally
-        {
-            _loading = false;
-            StateHasChanged();
-        }
+            _campaign = await Http.GetFromJsonAsync<CampaignDto>($"api/campaigns/{CampaignId}");
+            _lots = await Http.GetFromJsonAsync<List<CampaignLotDto>>($"api/campaigns/{CampaignId}/lots") ?? new();
+            var all = await Http.GetFromJsonAsync<List<LotDto>>("api/lots") ?? new();
+            _availableLots = all.Where(a => !_lots.Any(l => l.LotId == a.Id)).ToList();
+            _otherCampaigns = (await Http.GetFromJsonAsync<List<CampaignDto>>("api/campaigns") ?? new()).Where(c => c.Id != CampaignId).ToList();
+            _activities = await Http.GetFromJsonAsync<List<ErpActivityDto>>("api/catalogs/activities") ?? new();
+        } catch (Exception ex) { _errorMessage = ex.Message; } finally { _loading = false; }
     }
 
-    private void RefreshAvailableLots()
-    {
-        var usedLotIds = _lots.Select(l => l.LotId).ToHashSet();
-        _availableLots = _allLots.Where(l => !usedLotIds.Contains(l.Id)).ToList();
+    private async Task OnExpandLot(RowData<CampaignLotDto> args) { if (args.Expanded) await LoadRotations(args.Data.Id); }
+    private async Task LoadRotations(Guid id) => _rotationsByLot[id] = await Http.GetFromJsonAsync<List<RotationDto>>($"api/campaigns/{CampaignId}/lots/{id}/rotations") ?? new();
+    private List<RotationDto> GetRotations(Guid id) => _rotationsByLot.TryGetValue(id, out var r) ? r : new();
+
+    private void StartEdit(CampaignLotDto lot) { _editingLot = lot; _editProductiveArea = lot.ProductiveArea; _editModalVisible = true; }
+    private async Task SaveProductiveArea() {
+        if (_editingLot == null) return;
+        var resp = await Http.PutAsJsonAsync($"api/campaigns/{CampaignId}/lots/{_editingLot.LotId}", _editingLot with { ProductiveArea = _editProductiveArea });
+        if (resp.IsSuccessStatusCode) { _editModalVisible = false; await LoadData(); }
     }
 
-    private async Task OnExpandLot(RowData<CampaignLotDto> args)
-    {
-        if (args.Expanded)
-        {
-            await LoadRotations(args.Data.Id);
-        }
+    private async Task AddLotToCampaign() {
+        var dto = new CampaignLotDto(Guid.Empty, CampaignId, _addLotId, null, null, 0, _addProductiveArea, null);
+        var resp = await Http.PostAsJsonAsync($"api/campaigns/{CampaignId}/lots", dto);
+        if (resp.IsSuccessStatusCode) { _addModalVisible = false; await LoadData(); }
     }
 
-    private async Task LoadRotations(Guid campaignLotId)
-    {
-        try
-        {
-            var rotations = await Http.GetFromJsonAsync<List<RotationDto>>(
-                $"api/campaigns/{CampaignId}/lots/{campaignLotId}/rotations");
-            
-            if (rotations != null)
-            {
-                _rotationsByLot[campaignLotId] = rotations;
-            }
-        }
-        catch (Exception ex)
-        {
-            Message.Error($"Error cargando rotaciones: {ex.Message}");
-        }
+    private async Task RemoveLot(CampaignLotDto lot) { if ((await Http.DeleteAsync($"api/campaigns/{CampaignId}/lots/{lot.LotId}")).IsSuccessStatusCode) await LoadData(); }
+
+    private void OpenAddRotationModal(CampaignLotDto lot) { _isEditingRotation = false; _rotationModel = new RotationModel { CampaignLotId = lot.Id, StartDate = _campaign?.StartDate ?? DateOnly.FromDateTime(DateTime.Today), EndDate = _campaign?.EndDate ?? DateOnly.FromDateTime(DateTime.Today.AddMonths(4)) }; _rotationModalVisible = true; }
+    private void OpenEditRotationModal(CampaignLotDto lot, RotationDto r) { _isEditingRotation = true; _rotationModel = new RotationModel { Id = r.Id, CampaignLotId = r.CampaignLotId, ActivityId = r.ActivityId, StartDate = r.StartDate, EndDate = r.EndDate, Notes = r.Notes }; _rotationModalVisible = true; }
+    private async Task SaveRotation() {
+        var dto = new RotationDto(_rotationModel.Id, _rotationModel.CampaignLotId, _rotationModel.ActivityId, null, _rotationModel.StartDate, _rotationModel.EndDate, _rotationModel.Notes);
+        var resp = _isEditingRotation ? await Http.PutAsJsonAsync($"api/campaigns/{CampaignId}/lots/{_rotationModel.CampaignLotId}/rotations/{_rotationModel.Id}", dto) : await Http.PostAsJsonAsync($"api/campaigns/{CampaignId}/lots/{_rotationModel.CampaignLotId}/rotations", dto);
+        if (resp.IsSuccessStatusCode) { _rotationModalVisible = false; await LoadRotations(_rotationModel.CampaignLotId); }
     }
+    private async Task DeleteRotation(RotationDto r) { if ((await Http.DeleteAsync($"api/campaigns/{CampaignId}/lots/{r.CampaignLotId}/rotations/{r.Id}")).IsSuccessStatusCode) await LoadRotations(r.CampaignLotId); }
 
-    private List<RotationDto> GetRotations(Guid campaignLotId)
-    {
-        return _rotationsByLot.TryGetValue(campaignLotId, out var rotations) ? rotations : new List<RotationDto>();
-    }
-
-    private void OpenAddRotationModal(CampaignLotDto lot)
-    {
-        _currentLot = lot;
-        _isEditingRotation = false;
-        _rotationModel = new RotationModel
-        {
-            CampaignLotId = lot.Id,
-            StartDate = _campaign?.StartDate ?? DateOnly.FromDateTime(DateTime.Today),
-            EndDate = _campaign?.EndDate ?? DateOnly.FromDateTime(DateTime.Today.AddMonths(6))
-        };
-        _rotationModalVisible = true;
-    }
-
-    private void OpenEditRotationModal(CampaignLotDto lot, RotationDto rotation)
-    {
-        _currentLot = lot;
-        _isEditingRotation = true;
-        _rotationModel = new RotationModel
-        {
-            Id = rotation.Id,
-            CampaignLotId = rotation.CampaignLotId,
-            ActivityId = rotation.ActivityId,
-            StartDate = rotation.StartDate,
-            EndDate = rotation.EndDate,
-            Notes = rotation.Notes
-        };
-        _rotationModalVisible = true;
-    }
-
-    private void CloseRotationModal()
-    {
-        _rotationModalVisible = false;
-    }
-
-    private async Task SaveRotation()
-    {
-        if (_rotationModel.ActivityId == Guid.Empty)
-        {
-            Message.Warning("La actividad es obligatoria.");
-            return;
-        }
-
-        _savingRotation = true;
-        try
-        {
-            var dto = new RotationDto(
-                _rotationModel.Id,
-                _rotationModel.CampaignLotId,
-                _rotationModel.ActivityId,
-                null,
-                _rotationModel.StartDate,
-                _rotationModel.EndDate,
-                _rotationModel.Notes
-            );
-
-            HttpResponseMessage response;
-            if (_isEditingRotation)
-            {
-                response = await Http.PutAsJsonAsync($"api/campaigns/{CampaignId}/lots/{_rotationModel.CampaignLotId}/rotations/{_rotationModel.Id}", dto);
-            }
-            else
-            {
-                response = await Http.PostAsJsonAsync($"api/campaigns/{CampaignId}/lots/{_rotationModel.CampaignLotId}/rotations", dto);
-            }
-
-            if (response.IsSuccessStatusCode)
-            {
-                if (!_isEditingRotation)
-                {
-                    var result = await response.Content.ReadFromJsonAsync<RotationResponse>();
-                    if (result?.Warnings.Any() == true)
-                    {
-                        foreach (var w in result.Warnings)
-                            Message.Warning(w.Message);
-                    }
-                }
-                Message.Success(_isEditingRotation ? "Rotación actualizada." : "Rotación creada.");
-                _rotationModalVisible = false;
-                if (_currentLot != null) await LoadRotations(_currentLot.Id);
-            }
-            else
-            {
-                var body = await response.Content.ReadAsStringAsync();
-                Message.Error($"Error: {body}");
-            }
-        }
-        catch (Exception ex)
-        {
-            Message.Error($"Error al guardar: {ex.Message}");
-        }
-        finally
-        {
-            _savingRotation = false;
-        }
-    }
-
-    private async Task DeleteRotation(RotationDto rotation)
-    {
-        try
-        {
-            var response = await Http.DeleteAsync($"api/campaigns/{CampaignId}/lots/{rotation.CampaignLotId}/rotations/{rotation.Id}");
-            if (response.IsSuccessStatusCode)
-            {
-                Message.Success("Rotación eliminada.");
-                if (_currentLot != null) await LoadRotations(_currentLot.Id);
-                else if (_rotationsByLot.ContainsKey(rotation.CampaignLotId)) await LoadRotations(rotation.CampaignLotId);
-            }
-            else
-            {
-                var body = await response.Content.ReadAsStringAsync();
-                Message.Error($"Error al eliminar: {body}");
-            }
-        }
-        catch (Exception ex)
-        {
-            Message.Error($"Error al eliminar: {ex.Message}");
-        }
-    }
-
-    private void StartEdit(CampaignLotDto lot)
-    {
-        _editingLotId = lot.LotId;
-        _editProductiveArea = lot.ProductiveArea;
-    }
-
-    private void CancelEdit()
-    {
-        _editingLotId = null;
-    }
-
-    private async Task SaveProductiveArea(CampaignLotDto lot)
-    {
-        if (_editProductiveArea > lot.CadastralArea && lot.CadastralArea > 0)
-        {
-            Message.Warning($"La superficie productiva no puede superar la catastral ({lot.CadastralArea:N2} ha).");
-            return;
-        }
-
-        _savingArea = true;
-        try
-        {
-            var dto = new CampaignLotDto(
-                lot.Id, lot.CampaignId, lot.LotId,
-                lot.LotName, lot.FieldName,
-                lot.CadastralArea, _editProductiveArea, lot.CropId);
-
-            var response = await Http.PutAsJsonAsync(
-                $"api/campaigns/{CampaignId}/lots/{lot.LotId}",
-                dto, AppJsonSerializerContext.Default.CampaignLotDto);
-
-            if (response.IsSuccessStatusCode)
-            {
-                Message.Success("Superficie productiva actualizada.");
-                _editingLotId = null;
-                await LoadData();
-            }
-            else
-            {
-                var body = await response.Content.ReadAsStringAsync();
-                Message.Error($"Error: {body}");
-            }
-        }
-        catch (Exception ex)
-        {
-            Message.Error($"Error: {ex.Message}");
-        }
-        finally
-        {
-            _savingArea = false;
-        }
-    }
-
-    private void OpenAddModal()
-    {
-        _addLotId = Guid.Empty;
-        _addProductiveArea = 0;
-        RefreshAvailableLots();
-        _addModalVisible = true;
-    }
-
-    private void CloseAddModal()
-    {
-        _addModalVisible = false;
-    }
-
-    private async Task AddLotToCampaign()
-    {
-        if (_addLotId == Guid.Empty)
-        {
-            Message.Warning("Seleccioná un lote para agregar.");
-            return;
-        }
-
-        _addingLot = true;
-        try
-        {
-            var dto = new CampaignLotDto(
-                Guid.Empty, CampaignId, _addLotId,
-                null, null, 0, _addProductiveArea, null);
-
-            var response = await Http.PostAsJsonAsync(
-                $"api/campaigns/{CampaignId}/lots",
-                dto, AppJsonSerializerContext.Default.CampaignLotDto);
-
-            if (response.IsSuccessStatusCode)
-            {
-                Message.Success("Lote agregado a la campaña.");
-                _addModalVisible = false;
-                await LoadData();
-            }
-            else
-            {
-                var body = await response.Content.ReadAsStringAsync();
-                Message.Error($"Error: {body}");
-            }
-        }
-        catch (Exception ex)
-        {
-            Message.Error($"Error: {ex.Message}");
-        }
-        finally
-        {
-            _addingLot = false;
-        }
-    }
-
-    private async Task RemoveLot(CampaignLotDto lot)
-    {
-        try
-        {
-            var response = await Http.DeleteAsync($"api/campaigns/{CampaignId}/lots/{lot.LotId}");
-            if (response.IsSuccessStatusCode)
-            {
-                Message.Success("Lote removido de la campaña.");
-                await LoadData();
-            }
-            else
-            {
-                var body = await response.Content.ReadAsStringAsync();
-                Message.Error($"Error: {body}");
-            }
-        }
-        catch (Exception ex)
-        {
-            Message.Error($"Error: {ex.Message}");
-        }
-    }
-
-    private void OpenImportModal()
-    {
-        _importFromCampaignId = Guid.Empty;
-        _useProductiveAreaFromPrevious = false;
-        _importModalVisible = true;
-    }
-
-    private void CloseImportModal()
-    {
-        _importModalVisible = false;
-    }
-
-    private async Task ExecuteImport()
-    {
-        if (_importFromCampaignId == Guid.Empty)
-        {
-            Message.Warning("Seleccioná una campaña origen.");
-            return;
-        }
-
-        _importing = true;
-        try
-        {
-            var request = new ImportLotsRequest(_importFromCampaignId, _useProductiveAreaFromPrevious);
-            var response = await Http.PostAsJsonAsync(
-                $"api/campaigns/{CampaignId}/lots/import",
-                request, AppJsonSerializerContext.Default.ImportLotsRequest);
-
-            if (response.IsSuccessStatusCode)
-            {
-                Message.Success("Lotes importados correctamente.");
-                _importModalVisible = false;
-                await LoadData();
-            }
-            else
-            {
-                var body = await response.Content.ReadAsStringAsync();
-                Message.Error($"Error: {body}");
-            }
-        }
-        catch (Exception ex)
-        {
-            Message.Error($"Error: {ex.Message}");
-        }
-        finally
-        {
-            _importing = false;
-        }
-    }
-
-    private void GoBack()
-    {
-        Nav.NavigateTo("/campaigns");
+    private async Task ExecuteImport() {
+        var req = new ImportLotsRequest(_importFromCampaignId, _useProductiveAreaFromPrevious);
+        var resp = await Http.PostAsJsonAsync($"api/campaigns/{CampaignId}/lots/import", req);
+        if (resp.IsSuccessStatusCode) { _importModalVisible = false; await LoadData(); }
     }
 }
