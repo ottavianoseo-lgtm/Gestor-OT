@@ -95,6 +95,9 @@ namespace GestorOT.Shared;
 [JsonSerializable(typeof(SurfaceHistoryDto))]
 [JsonSerializable(typeof(List<SurfaceHistoryDto>))]
 [JsonSerializable(typeof(ActivateContactRequest))]
+[JsonSerializable(typeof(HtmlExecutionRequest))]
+[JsonSerializable(typeof(HtmlLaborResult))]
+[JsonSerializable(typeof(HtmlSupplyResult))]
 [JsonSourceGenerationOptions(
     PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,
     WriteIndented = false,

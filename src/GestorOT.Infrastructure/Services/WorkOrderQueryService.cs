@@ -107,7 +107,8 @@ public class WorkOrderQueryService : IWorkOrderQueryService
             l.Lot?.Field?.Name,
             l.PlannedDose,
             l.RealizedDose,
-            l.ContactId
+            l.ContactId,
+            l.PlannedLaborId
         )).ToList();
 
         // Step 19: Rule of three for Realized labors

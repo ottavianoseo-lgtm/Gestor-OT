@@ -121,6 +121,27 @@ public class LotQueryService : ILotQueryService
             .ToListAsync(ct);
     }
 
+    public async Task<List<CampaignLotDto>> GetCampaignsByLotAsync(Guid lotId, CancellationToken ct = default)
+    {
+        return await _context.CampaignLots
+            .AsNoTracking()
+            .Include(cl => cl.Campaign)
+            .Include(cl => cl.Lot)
+            .Where(cl => cl.LotId == lotId)
+            .OrderByDescending(cl => cl.Campaign!.StartDate)
+            .Select(cl => new CampaignLotDto(
+                cl.Id,
+                cl.CampaignId,
+                cl.LotId,
+                cl.Campaign!.Name,
+                null,
+                cl.Lot!.CadastralArea,
+                cl.ProductiveArea,
+                cl.CropId
+            ))
+            .ToListAsync(ct);
+    }
+
     private async Task<Dictionary<Guid, double>> GetLotAreasAsync(CancellationToken ct = default)
     {
         var areas = await _context.Database

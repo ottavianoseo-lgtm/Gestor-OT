@@ -49,5 +49,10 @@ Al abrir el chat de OpenCode en tu terminal, el agente la descubrirá automátic
 
 "Usa la skill nombre-de-tu-skill para..."
 
-paths para context7 Repo principal para Context7: microsoft/agent-framework
-Repo secundario de apoyo: microsoft/semantic-kernel
+“Usar siempre la documentación oficial más reciente de .NET (Microsoft Learn / dotnet/docs) como fuente primaria. Evitar ejemplos obsoletos o versiones anteriores.”
+
+Y si usás Context7, asegurate de:
+
+Indexar dotnet/docs
+Priorizar esa fuente sobre otras
+(Ideal) filtrar por versión → .NET 10

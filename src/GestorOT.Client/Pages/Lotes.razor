@@ -6,6 +6,7 @@
 @using AntDesign.TableModels
 @inject HttpClient Http
 @inject IMessageService Message
+@inject NavigationManager Nav
 @inject GestorOT.Client.Services.CampaignState CampaignState
 @inject GestorOT.Client.Services.TenantState TenantState
 @implements IDisposable
@@ -177,32 +178,98 @@
 <Modal Title="@(_isEditing ? "Editar Lote" : "Nuevo Lote")"
        Visible="_modalVisible"
        OnCancel="CloseModal"
-       OnOk="SaveLot"
-       OkText="@(_isEditing ? "Guardar" : "Crear")"
-       ConfirmLoading="_saving"
-       Width="520">
-    <Form @ref="_form" Model="_formModel" Layout="@FormLayout.Vertical">
-        <FormItem Label="Nombre del Lote">
-            <Input @bind-Value="_formModel.Name" Placeholder="Ej: Lote Norte A1" />
-        </FormItem>
-        <FormItem Label="Campo">
-            <Select TItem="FieldDto"
-                    TItemValue="Guid"
-                    DataSource="_availableFields"
-                    @bind-Value="_formModel.FieldId"
-                    LabelName="@nameof(FieldDto.Name)"
-                    ValueName="@nameof(FieldDto.Id)"
-                    Placeholder="Seleccionar campo"
-                    Style="width: 100%;"
-                    EnableSearch />
-        </FormItem>
-        <FormItem Label="Estado">
+       Footer="null"
+       Width="520"
+       BodyStyle="background: #1E1E2E; padding: 24px; color: #fff;">
+    <div style="font-size: 16px; font-weight: 700; color: #fff; margin-bottom: 24px;">@(_isEditing ? "Editar Lote" : "Nuevo Lote")</div>
+
+    <div style="display: grid; gap: 20px;">
+        <div>
+            <label style="display: block; color: rgba(255,255,255,0.6); font-size: 13px; margin-bottom: 8px;">Nombre de Lote</label>
+            <Input @bind-Value="_formModel.Name" Placeholder="Nombre" 
+                   Style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15); border-radius: 12px; height: 42px; color: #fff;" />
+        </div>
+
+        <div>
+            <label style="display: block; color: rgba(255,255,255,0.6); font-size: 13px; margin-bottom: 8px;">Campo</label>
+            <Select TItem="FieldDto" TItemValue="Guid" DataSource="_availableFields" @bind-Value="_formModel.FieldId"
+                    LabelName="@nameof(FieldDto.Name)" ValueName="@nameof(FieldDto.Id)" Placeholder="Campo"
+                    Style="width: 100%;" EnableSearch />
+        </div>
+
+        @if (_isEditing)
+        {
+            <div>
+                <div style="font-weight: 700; color: #fff; margin-bottom: 12px; font-size: 14px;">Campañas Asignadas</div>
+                <div style="display: grid; gap: 8px;">
+                    <div style="display: grid; grid-template-columns: 1fr 60px 40px 85px; gap: 8px; font-size: 11px; color: rgba(255,255,255,0.4); text-transform: uppercase; padding: 0 4px;">
+                        <span>Campaña</span>
+                        <span>Ha</span>
+                        <span></span>
+                        <span></span>
+                    </div>
+
+                    @foreach (var c in _lotCampaigns)
+                    {
+                        <div style="display: grid; grid-template-columns: 1fr 60px 40px 85px; gap: 8px; align-items: center;">
+                            <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; padding: 8px 12px; color: #fff; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                                @c.LotName
+                            </div>
+                            <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; padding: 8px; color: #fff; text-align: center; font-size: 13px;">
+                                @c.ProductiveArea.ToString("N1")
+                            </div>
+                            <Button Size="@ButtonSize.Small" OnClick="() => GoToGis(c.LotId)"
+                                    Style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; color: #fff; height: 36px; font-size: 11px; font-weight: 600;">
+                                GIS
+                            </Button>
+                            <Button Size="@ButtonSize.Small" OnClick="() => GoToRotations(c.CampaignId, c.LotId)"
+                                    Style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; color: #fff; height: 36px; font-size: 11px; font-weight: 600;">
+                                Rotaciones
+                            </Button>
+                        </div>
+                    }
+
+                    <Button OnClick="() => _addCampaignModalVisible = true"
+                            Style="background: transparent; border: 1px dashed rgba(255,255,255,0.2); border-radius: 10px; color: rgba(255,255,255,0.6); height: 40px; margin-top: 4px; font-size: 13px;">
+                        +Campaña
+                    </Button>
+                </div>
+            </div>
+        }
+
+        <div style="margin-top: 10px;">
             <RadioGroup @bind-Value="_formModel.Status">
-                <Radio Value="@("Active")">Activo</Radio>
-                <Radio Value="@("Inactive")">Inactivo</Radio>
+                <Radio Value="@("Active")" Style="color: #fff;">Activo</Radio>
+                <Radio Value="@("Inactive")" Style="color: #fff;">Inactivo</Radio>
             </RadioGroup>
-        </FormItem>
-    </Form>
+        </div>
+    </div>
+
+    <div style="display: flex; justify-content: flex-end; gap: 12px; padding-top: 30px;">
+        <Button OnClick="SaveLot" Loading="_saving" 
+                Style="background: #fff; color: #000; border: none; border-radius: 20px; padding: 0 24px; font-weight: 700; height: 40px;">
+            Guardar
+        </Button>
+        <Button OnClick="CloseModal"
+                Style="background: rgba(255,255,255,0.05); color: #fff; border: 1px solid rgba(255,255,255,0.1); border-radius: 20px; padding: 0 24px; font-weight: 600; height: 40px;">
+            Cancelar
+        </Button>
+    </div>
+</Modal>
+
+<Modal Title="Asignar a Campaña" Visible="_addCampaignModalVisible" OnCancel="() => _addCampaignModalVisible = false" OnOk="AddLotToLotCampaign" Width="400">
+    <div style="display: grid; gap: 16px; padding: 10px 0;">
+        <div>
+            <label style="display: block; margin-bottom: 8px; font-size: 12px; color: rgba(255,255,255,0.5);">Seleccionar Campaña</label>
+            <Select TItem="CampaignSummaryDto" TItemValue="Guid" DataSource="_allCampaigns" @bind-Value="_selectedCampaignId"
+                    LabelName="@nameof(CampaignSummaryDto.Name)" ValueName="@nameof(CampaignSummaryDto.Id)"
+                    Placeholder="Campaña" Style="width: 100%;" />
+        </div>
+        <div>
+            <label style="display: block; margin-bottom: 8px; font-size: 12px; color: rgba(255,255,255,0.5);">Superficie Productiva (ha)</label>
+            <AntDesign.InputNumber @bind-Value="_newCampaignProductiveArea" Style="width: 100%;" />
+        </div>
+    </div>
 </Modal>
 
 @code {
@@ -219,6 +286,11 @@
     private Guid _editingId;
     private LotFormModel _formModel = new();
     private Form<LotFormModel>? _form;
+    private List<CampaignLotDto> _lotCampaigns = new();
+    private List<CampaignSummaryDto> _allCampaigns = new();
+    private bool _addCampaignModalVisible;
+    private Guid _selectedCampaignId;
+    private decimal _newCampaignProductiveArea;
 
     private IEnumerable<LotDto> FilteredLots =>
         _filterByCampaign && CampaignState.IsSelected
@@ -284,9 +356,12 @@
                 AppJsonSerializerContext.Default.ListLotDto, cts.Token);
             var fieldsTask = Http.GetFromJsonAsync("api/fields",
                 AppJsonSerializerContext.Default.ListFieldDto, cts.Token);
+            var campTask = Http.GetFromJsonAsync("api/campaigns",
+                AppJsonSerializerContext.Default.ListCampaignSummaryDto, cts.Token);
 
             _lots = await lotsTask ?? new();
             _availableFields = await fieldsTask ?? new();
+            _allCampaigns = await campTask ?? new();
 
             if (CampaignState.IsSelected)
             {
@@ -321,7 +396,7 @@
         _modalVisible = true;
     }
 
-    private void OpenEditModal(LotDto lot)
+    private async Task OpenEditModal(LotDto lot)
     {
         _isEditing = true;
         _editingId = lot.Id;
@@ -331,7 +406,57 @@
             FieldId = lot.FieldId,
             Status = lot.Status
         };
+        
+        await LoadLotCampaigns(lot.Id);
         _modalVisible = true;
+    }
+
+    private async Task LoadLotCampaigns(Guid lotId)
+    {
+        try
+        {
+            _lotCampaigns = await Http.GetFromJsonAsync<List<CampaignLotDto>>($"api/lots/{lotId}/campaigns") ?? new();
+        }
+        catch (Exception ex)
+        {
+            Message.Error("Error al cargar campañas del lote.");
+        }
+    }
+
+    private void GoToGis(Guid lotId)
+    {
+        Nav.NavigateTo($"/mapa?lotId={lotId}");
+    }
+
+    private void GoToRotations(Guid campaignId, Guid lotId)
+    {
+        Nav.NavigateTo($"/campaigns/{campaignId}/lots?lotId={lotId}");
+    }
+
+    private async Task AddLotToLotCampaign()
+    {
+        if (_selectedCampaignId == Guid.Empty) return;
+        
+        try
+        {
+            var dto = new CampaignLotDto(Guid.Empty, _selectedCampaignId, _editingId, null, null, 0, _newCampaignProductiveArea, null);
+            var response = await Http.PostAsJsonAsync($"api/campaigns/{_selectedCampaignId}/lots", dto);
+            if (response.IsSuccessStatusCode)
+            {
+                Message.Success("Asignado a campaña.");
+                _addCampaignModalVisible = false;
+                await LoadLotCampaigns(_editingId);
+            }
+            else
+            {
+                var err = await response.Content.ReadAsStringAsync();
+                Message.Error($"Error: {err}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Message.Error($"Error: {ex.Message}");
+        }
     }
 
     private void CloseModal()

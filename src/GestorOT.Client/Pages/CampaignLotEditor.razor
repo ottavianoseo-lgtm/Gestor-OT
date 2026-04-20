@@ -103,9 +103,10 @@
                DataSource="@_lots"
                Size="TableSize.Small"
                ScrollX="900"
-               OnExpand="OnExpandLot">
+               OnExpand="OnExpandLot"
+               @bind-ExpandedRowKeys="_expandedRows">
             <ExpandTemplate Context="lot">
-                <div style="padding: 16px; background: rgba(0,0,0,0.2); border-radius: 8px; margin: 8px 0;">
+                <div style="padding: 16px; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06); border-radius: 8px; margin: 8px 0;">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
                         <h4 style="margin: 0; color: #fff;">Rotaciones Proyectadas</h4>
                         @if (_campaign?.Status != CampaignStatus.Locked)
@@ -362,6 +363,7 @@
 
 @code {
     [Parameter] public Guid CampaignId { get; set; }
+    [Parameter][SupplyParameterFromQuery] public string? lotId { get; set; }
 
     private CampaignDto? _campaign;
     private List<CampaignLotDto> _lots = new();
@@ -393,6 +395,7 @@
     private bool _savingRotation;
     private RotationModel _rotationModel = new();
     private CampaignLotDto? _currentLot;
+    private IEnumerable<Guid> _expandedRows = new List<Guid>();
 
     private class RotationModel
     {
@@ -440,10 +443,16 @@
             _activities = activitiesTask.Result ?? new();
             RefreshAvailableLots();
             _errorMessage = null;
-        }
-        catch (OperationCanceledException)
-        {
-            _errorMessage = "La solicitud tardó demasiado tiempo. Intente recargar la página.";
+
+            if (!string.IsNullOrEmpty(lotId) && Guid.TryParse(lotId, out var targetLotId))
+            {
+                var cl = _lots.FirstOrDefault(x => x.LotId == targetLotId);
+                if (cl != null)
+                {
+                    _expandedRows = new List<Guid> { cl.Id };
+                    await LoadRotations(cl.Id);
+                }
+            }
         }
         catch (Exception ex)
         {

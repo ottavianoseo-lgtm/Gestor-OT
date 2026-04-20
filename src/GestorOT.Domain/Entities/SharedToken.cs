@@ -8,6 +8,7 @@ public class SharedToken
     public string TokenHash { get; set; } = string.Empty;
     public DateTime ExpiresAt { get; set; }
     public bool IsRevoked { get; set; }
+    public bool IsUsed { get; set; }
     public DateTime CreatedAt { get; set; }
     public WorkOrder? WorkOrder { get; set; }
 }

@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using GestorOT.Application.Interfaces;
 using GestorOT.Domain.Entities;
+using GestorOT.Domain.Enums;
 using GestorOT.Shared.Dtos;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -177,6 +178,97 @@ public class ShareController : ControllerBase
 
         await _context.SaveChangesAsync();
         return NoContent();
+    }
+
+    [HttpPost("realize-from-html")]
+    public async Task<IActionResult> RealizeFromHtml([FromBody] HtmlExecutionRequest request)
+    {
+        var sharedToken = await _context.SharedTokens
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(t => t.TokenHash == request.Token && t.WorkOrderId == request.WorkOrderId);
+
+        if (sharedToken == null) return NotFound("Token inválido.");
+        if (sharedToken.IsRevoked || sharedToken.IsUsed || sharedToken.ExpiresAt < DateTime.UtcNow)
+            return BadRequest("El enlace no es válido, ya fue usado o expiró.");
+
+        var strategy = _context.Database.CreateExecutionStrategy();
+
+        return await strategy.ExecuteAsync<IActionResult>(async () =>
+        {
+            using var transaction = await _context.Database.BeginTransactionAsync();
+            try
+            {
+                foreach (var laborReq in request.Labors)
+                {
+                    var source = await _context.Labors
+                        .IgnoreQueryFilters()
+                        .Include(l => l.Supplies)
+                        .FirstOrDefaultAsync(l => l.Id == laborReq.Id && l.WorkOrderId == request.WorkOrderId);
+
+                    if (source == null || source.Mode != LaborMode.Planned || source.Status == "Realized")
+                        continue;
+
+                    var newLabor = new Labor
+                    {
+                        Id = Guid.NewGuid(),
+                        WorkOrderId = source.WorkOrderId,
+                        LotId = source.LotId,
+                        CampaignLotId = source.CampaignLotId,
+                        ErpActivityId = source.ErpActivityId,
+                        LaborTypeId = source.LaborTypeId,
+                        ContactId = source.ContactId,
+                        IsExternalBilling = source.IsExternalBilling,
+                        Mode = LaborMode.Realized,
+                        Status = "Realized",
+                        ExecutionDate = DateTime.UtcNow,
+                        Hectares = laborReq.RealHectares,
+                        EffectiveArea = laborReq.RealHectares,
+                        Rate = source.Rate,
+                        RateUnit = source.RateUnit,
+                        PlannedDose = source.PlannedDose,
+                        RealizedDose = source.PlannedDose,
+                        PlannedLaborId = source.Id,
+                        CreatedAt = DateTime.UtcNow,
+                        TenantId = sharedToken.TenantId
+                    };
+
+                    foreach (var s in source.Supplies)
+                    {
+                        var realS = laborReq.Supplies.FirstOrDefault(rs => rs.Id == s.Id);
+                        var dose = realS?.RealDose ?? s.PlannedDose;
+
+                        newLabor.Supplies.Add(new LaborSupply
+                        {
+                            Id = Guid.NewGuid(),
+                            LaborId = newLabor.Id,
+                            SupplyId = s.SupplyId,
+                            PlannedDose = s.PlannedDose,
+                            PlannedTotal = s.PlannedTotal,
+                            PlannedHectares = s.PlannedHectares,
+                            RealDose = dose,
+                            RealTotal = dose * newLabor.Hectares,
+                            RealHectares = newLabor.Hectares,
+                            UnitOfMeasure = s.UnitOfMeasure,
+                            TankMixOrder = s.TankMixOrder,
+                            IsSubstitute = s.IsSubstitute
+                        });
+                    }
+
+                    _context.Labors.Add(newLabor);
+                }
+
+                sharedToken.IsUsed = true;
+                await _context.SaveChangesAsync();
+                await transaction.CommitAsync();
+
+                return Ok(new { Message = "Labores registradas con éxito." });
+            }
+            catch (Exception)
+            {
+                await transaction.RollbackAsync();
+                throw;
+            }
+        });
     }
 
     private static string ComputeHash(string input)

@@ -1,6 +1,7 @@
 using GestorOT.Application.Interfaces;
 using GestorOT.Application.Services;
 using GestorOT.Domain.Entities;
+using GestorOT.Domain.Enums;
 using GestorOT.Shared.Dtos;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -350,6 +351,89 @@ public class LaborsController : ControllerBase
         return CreatedAtAction(nameof(GetLabor), new { id = newLabor.Id }, MapToDto(created));
     }
 
+    [HttpPost("{id:guid}/execute-standalone")]
+    public async Task<ActionResult<Guid>> ExecuteStandalone(Guid id, [FromBody] List<LaborSupplyDto> realSupplies)
+    {
+        var strategy = _context.Database.CreateExecutionStrategy();
+
+        return await strategy.ExecuteAsync(async () =>
+        {
+            using var transaction = await _context.Database.BeginTransactionAsync();
+            try
+            {
+                var source = await _context.Labors
+                    .Include(l => l.Supplies)
+                    .FirstOrDefaultAsync(l => l.Id == id);
+
+                if (source == null) return (ActionResult<Guid>)NotFound();
+                if (source.Mode != LaborMode.Planned) return (ActionResult<Guid>)BadRequest("Solo se pueden ejecutar labores planeadas.");
+                if (source.Status == "Realized") return (ActionResult<Guid>)BadRequest("La labor ya fue realizada.");
+
+                var newLabor = new Labor
+                {
+                    Id = Guid.NewGuid(),
+                    WorkOrderId = source.WorkOrderId,
+                    LotId = source.LotId,
+                    CampaignLotId = source.CampaignLotId,
+                    ErpActivityId = source.ErpActivityId,
+                    LaborTypeId = source.LaborTypeId,
+                    ContactId = source.ContactId,
+                    IsExternalBilling = source.IsExternalBilling,
+                    Mode = LaborMode.Realized,
+                    Status = "Realized",
+                    ExecutionDate = DateTime.UtcNow,
+                    Hectares = source.Hectares,
+                    EffectiveArea = source.Hectares, // Default to hectares
+                    Rate = source.Rate,
+                    RateUnit = source.RateUnit,
+                    PlannedDose = source.PlannedDose,
+                    RealizedDose = source.PlannedDose,
+                    PlannedLaborId = source.Id,
+                    CreatedAt = DateTime.UtcNow,
+                    Notes = source.Notes,
+                    PrescriptionMapUrl = source.PrescriptionMapUrl,
+                    MachineryUsedId = source.MachineryUsedId,
+                    WeatherLogJson = source.WeatherLogJson,
+                    EvidencePhotosJson = source.EvidencePhotosJson,
+                    MetadataExterna = source.MetadataExterna
+                };
+
+                foreach (var s in source.Supplies)
+                {
+                    var realSupply = realSupplies.FirstOrDefault(rs => rs.SupplyId == s.SupplyId);
+                    var dose = realSupply?.RealDose ?? s.PlannedDose;
+
+                    newLabor.Supplies.Add(new LaborSupply
+                    {
+                        Id = Guid.NewGuid(),
+                        LaborId = newLabor.Id,
+                        SupplyId = s.SupplyId,
+                        PlannedDose = s.PlannedDose,
+                        PlannedTotal = s.PlannedTotal,
+                        PlannedHectares = s.PlannedHectares,
+                        RealDose = dose,
+                        RealTotal = dose * newLabor.Hectares,
+                        RealHectares = newLabor.Hectares,
+                        UnitOfMeasure = s.UnitOfMeasure,
+                        TankMixOrder = s.TankMixOrder,
+                        IsSubstitute = s.IsSubstitute
+                    });
+                }
+
+                _context.Labors.Add(newLabor);
+                await _context.SaveChangesAsync();
+                await transaction.CommitAsync();
+
+                return (ActionResult<Guid>)Ok(newLabor.Id);
+            }
+            catch (Exception)
+            {
+                await transaction.RollbackAsync();
+                throw;
+            }
+        });
+    }
+
     [HttpDelete("{id:guid}")]
     public async Task<IActionResult> DeleteLabor(Guid id)
     {
@@ -518,7 +602,8 @@ public class LaborsController : ControllerBase
             labor.Lot?.Field?.Name,
             labor.PlannedDose,
             labor.RealizedDose,
-            labor.ContactId
+            labor.ContactId,
+            labor.PlannedLaborId
         );
     }
 }

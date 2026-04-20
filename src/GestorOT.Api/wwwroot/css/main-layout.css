@@ -281,6 +281,23 @@ input::placeholder, textarea::placeholder {
 }
 
 /* --- Picker --- */
+.ant-picker {
+    background: rgba(255,255,255,0.06) !important;
+    border-color: rgba(255,255,255,0.12) !important;
+}
+
+.ant-picker-input > input {
+    color: rgba(255,255,255,0.85) !important;
+}
+
+.ant-picker-suffix {
+    color: rgba(255,255,255,0.45) !important;
+}
+
+.ant-picker-clear {
+    background: #1E1E2E !important;
+    color: rgba(255,255,255,0.45) !important;
+}
 
 .ant-picker-panel-container {
     background: #1E1E2E !important;

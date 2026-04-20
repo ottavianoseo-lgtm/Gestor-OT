@@ -48,6 +48,12 @@ public class LotsController : ControllerBase
         return await _queryService.GetSurfaceHistoryAsync(id, ct);
     }
 
+    [HttpGet("{id:guid}/campaigns")]
+    public async Task<ActionResult<List<CampaignLotDto>>> GetLotCampaigns(Guid id, CancellationToken ct)
+    {
+        return await _queryService.GetCampaignsByLotAsync(id, ct);
+    }
+
     [HttpPost]
     public async Task<ActionResult<LotDto>> CreateLot(LotDto dto)
     {

@@ -126,9 +126,32 @@ else
                     @(labor.ExecutionDate?.ToString("dd/MM") ?? labor.EstimatedDate?.ToString("dd/MM") ?? labor.CreatedAt.ToString("dd/MM"))
                 </div>
                 <div class="labor-status">
-                    <Tag Color="@(labor.Status == "Pending" ? "orange" : "blue")">@labor.Status</Tag>
+                    @{
+                        var statusLabel = labor.Status switch
+                        {
+                            "Planned" => "Planeada",
+                            "Realized" => "Realizada",
+                            "Pending" => "Pendiente",
+                            _ => labor.Status
+                        };
+                        var statusColor = labor.Status switch
+                        {
+                            "Realized" => "blue",
+                            "Planned" => "orange",
+                            _ => "orange"
+                        };
+                    }
+                    <Tag Color="@statusColor">@statusLabel</Tag>
                 </div>
                 <div class="labor-actions" @onclick:stopPropagation="true">
+                    @if (labor.Status != "Realized")
+                    {
+                        <Tooltip Title="@("Ejecutar")">
+                            <Button Type="@ButtonType.Text" Size="@ButtonSize.Small" OnClick="() => OpenExecuteModal(labor)">
+                                <Icon Type="play-circle" Theme="IconThemeType.Outline" Style="color: #2ECC71;" />
+                            </Button>
+                        </Tooltip>
+                    }
                     <Tooltip Title="@("Eliminar")">
                         <Popconfirm Title="Eliminar esta labor?" OnConfirm="() => DeleteLabor(labor.Id)"
                                     OkText="Si" CancelText="No">
@@ -171,6 +194,44 @@ else
             Disabled="@(_assignTargetOT == Guid.Empty)">
         <Icon Type="link" Theme="IconThemeType.Outline" /> Asignar a OT
     </Button>
+</Modal>
+
+<Modal Title="@("Ejecutar Labor (Realizada)")" Visible="@_executeModalOpen"
+       OnCancel="() => _executeModalOpen = false" OnOk="ExecuteStandalone"
+       OkText="@("Confirmar Ejecución")" ConfirmLoading="_executing" Width="600"
+       BodyStyle="background: #1E1E2E; padding: 24px;">
+    @if (_laborToExecute != null)
+    {
+        <div style="margin-bottom: 20px;">
+            <div style="font-weight: 700; color: #fff; font-size: 16px;">@_laborToExecute.LaborTypeName</div>
+            <div style="font-size: 13px; color: rgba(255,255,255,0.5);">@(_laborToExecute.LotName ?? "Sin Lote") - @_laborToExecute.Hectares ha</div>
+        </div>
+
+        <div style="margin-bottom: 16px; font-weight: 600; color: #fff; font-size: 12px; text-transform: uppercase;">Ajustar Insumos Reales</div>
+        <div style="display: grid; gap: 12px; max-height: 400px; overflow-y: auto; padding-right: 8px;">
+            @foreach (var supply in _laborToExecute.Supplies)
+            {
+                <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 12px;">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                        <span style="color: #fff; font-weight: 600;">@supply.SupplyName</span>
+                        <span style="color: rgba(255,255,255,0.4); font-size: 11px;">Plan: @supply.PlannedDose @supply.UnitOfMeasure/ha</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 12px;">
+                        <div style="flex: 1;">
+                            <div style="font-size: 10px; color: rgba(255,255,255,0.4); margin-bottom: 4px;">DOSIS REAL (@supply.UnitOfMeasure/ha)</div>
+                            <AntDesign.InputNumber TValue="decimal?" @bind-Value="supply.RealDose" Style="width: 100%;" />
+                        </div>
+                        <div style="flex: 1;">
+                            <div style="font-size: 10px; color: rgba(255,255,255,0.4); margin-bottom: 4px;">TOTAL REAL (@supply.UnitOfMeasure)</div>
+                            <div style="padding: 6px; background: rgba(0,0,0,0.2); border-radius: 4px; color: #fff; font-weight: 600;">
+                                @((supply.RealDose ?? supply.PlannedDose) * _laborToExecute.Hectares)
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    }
 </Modal>
 
 <style>
@@ -275,12 +336,54 @@ else
     private Guid _editingLaborId = Guid.Empty;
     private bool _assignModalOpen;
     private Guid _assignTargetOT;
+    private bool _executeModalOpen;
+    private bool _executing;
+    private LaborDto? _laborToExecute;
 
     private bool _allSelected => _labors.Count > 0 && _selectedIds.Count == _labors.Count;
 
     private List<LaborDto> FilteredLabors => _filterTypeId == null
         ? _labors
         : _labors.Where(l => l.LaborTypeId == _filterTypeId).ToList();
+
+    private void OpenExecuteModal(LaborDto labor)
+    {
+        _laborToExecute = labor;
+        foreach (var s in _laborToExecute.Supplies)
+        {
+            if (s.RealDose == null) s.RealDose = s.PlannedDose;
+        }
+        _executeModalOpen = true;
+    }
+
+    private async Task ExecuteStandalone()
+    {
+        if (_laborToExecute == null) return;
+        try
+        {
+            _executing = true;
+            var response = await Http.PostAsJsonAsync($"api/labors/{_laborToExecute.Id}/execute-standalone", _laborToExecute.Supplies);
+            if (response.IsSuccessStatusCode)
+            {
+                Message.Success("Labor ejecutada correctamente.");
+                _executeModalOpen = false;
+                await LoadData();
+            }
+            else
+            {
+                var error = await response.Content.ReadAsStringAsync();
+                Message.Error($"Error: {error}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Message.Error($"Error: {ex.Message}");
+        }
+        finally
+        {
+            _executing = false;
+        }
+    }
 
     protected override async Task OnInitializedAsync()
     {
