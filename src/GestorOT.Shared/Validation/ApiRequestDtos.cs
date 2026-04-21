@@ -26,8 +26,8 @@ public class CreateLotRequest
 
 public class CreateWorkOrderRequest
 {
-    [Required(ErrorMessage = "El LotId es obligatorio.")]
-    public Guid LotId { get; set; }
+    [Required(ErrorMessage = "El FieldId es obligatorio.")]
+    public Guid FieldId { get; set; }
 
     [Required(ErrorMessage = "La descripción es obligatoria.")]
     [StringLength(1000, MinimumLength = 3, ErrorMessage = "La descripción debe tener entre 3 y 1000 caracteres.")]
@@ -36,8 +36,6 @@ public class CreateWorkOrderRequest
     [StringLength(50, ErrorMessage = "El estado no puede exceder 50 caracteres.")]
     public string Status { get; set; } = "Draft";
 
-    [Required(ErrorMessage = "El campo 'Asignado a' es obligatorio.")]
-    [StringLength(200, ErrorMessage = "El nombre no puede exceder 200 caracteres.")]
     public string AssignedTo { get; set; } = string.Empty;
 
     public DateTime DueDate { get; set; }
@@ -48,12 +46,11 @@ public class CreateWorkOrderRequest
     public DateTime? PlannedDate { get; set; }
     public DateTime? ExpirationDate { get; set; }
 
-    [Range(0, double.MaxValue, ErrorMessage = "El costo estimado debe ser mayor o igual a 0.")]
-    public decimal EstimatedCostUSD { get; set; }
-
     public bool StockReserved { get; set; }
     public Guid? ContractorId { get; set; }
     public Guid? CampaignId { get; set; }
+    public bool AcceptsMultiplePeople { get; set; }
+    public bool AcceptsMultipleDates { get; set; }
 }
 
 public class CreateCampaignRequest

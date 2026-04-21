@@ -14,11 +14,13 @@ public class LaborsController : ControllerBase
 {
     private readonly IApplicationDbContext _context;
     private readonly IAgronomicValidationService _validationService;
+    private readonly IWorkOrderService _workOrderService;
 
-    public LaborsController(IApplicationDbContext context, IAgronomicValidationService validationService)
+    public LaborsController(IApplicationDbContext context, IAgronomicValidationService validationService, IWorkOrderService workOrderService)
     {
         _context = context;
         _validationService = validationService;
+        _workOrderService = workOrderService;
     }
 
     [HttpGet("by-workorder/{workOrderId:guid}")]
@@ -155,6 +157,11 @@ public class LaborsController : ControllerBase
         _context.Labors.Add(labor);
         await _context.SaveChangesAsync();
 
+        if (labor.WorkOrderId.HasValue)
+        {
+            await _workOrderService.ConsolidateSuppliesAsync(labor.WorkOrderId.Value);
+        }
+
         var created = await _context.Labors
             .AsNoTracking()
             .Include(l => l.Lot)
@@ -263,6 +270,11 @@ public class LaborsController : ControllerBase
         }
 
         await _context.SaveChangesAsync();
+        
+        if (labor.WorkOrderId.HasValue)
+        {
+            await _workOrderService.ConsolidateSuppliesAsync(labor.WorkOrderId.Value);
+        }
         
         var updated = await _context.Labors
             .AsNoTracking()
@@ -452,8 +464,15 @@ public class LaborsController : ControllerBase
         if (labor == null)
             return NotFound();
 
+        var woId = labor.WorkOrderId;
         _context.Labors.Remove(labor);
         await _context.SaveChangesAsync();
+
+        if (woId.HasValue)
+        {
+            await _workOrderService.ConsolidateSuppliesAsync(woId.Value);
+        }
+
         return NoContent();
     }
 

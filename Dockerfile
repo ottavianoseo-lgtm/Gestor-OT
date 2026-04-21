@@ -4,9 +4,10 @@ USER app
 WORKDIR /app
 
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+RUN apt-get update && apt-get install -y python3 --no-install-recommends && rm -rf /var/lib/apt/lists/*
 WORKDIR /src
 
-# Instalar herramientas de WASM antes de copiar el código para aprovechar el cache
+# Instalar herramientas de WASM
 RUN dotnet workload install wasm-tools
 
 COPY ["src/GestorOT.Api/GestorOT.Api.csproj", "src/GestorOT.Api/"]
