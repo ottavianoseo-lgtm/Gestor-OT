@@ -104,7 +104,9 @@ public class LaborsController : ControllerBase
             ErpActivityId = dto.ErpActivityId,
             LaborTypeId = dto.LaborTypeId,
             ContactId = dto.ContactId,
-            Status = "Planned",
+            IsExternalBilling = dto.IsExternalBilling,
+            Status = dto.Status ?? "Planned",
+            Mode = Enum.TryParse<LaborMode>(dto.Mode, out var m) ? m : (dto.Status == "Realized" ? LaborMode.Realized : LaborMode.Planned),
             ExecutionDate = dto.ExecutionDate,
             EstimatedDate = dto.EstimatedDate,
             Hectares = dto.Hectares,
@@ -123,14 +125,26 @@ public class LaborsController : ControllerBase
         {
             foreach (var supplyDto in dto.Supplies)
             {
+                var pDose = supplyDto.PlannedDose;
+                var pHa = supplyDto.PlannedHectares > 0 ? supplyDto.PlannedHectares : labor.Hectares;
+                
+                // Si se crea como realizada y no trae dosis planeada, usamos la real
+                if (labor.Status == "Realized" && pDose == 0 && supplyDto.RealDose.HasValue)
+                {
+                    pDose = supplyDto.RealDose.Value;
+                }
+
                 labor.Supplies.Add(new LaborSupply
                 {
                     Id = Guid.NewGuid(),
                     LaborId = labor.Id,
                     SupplyId = supplyDto.SupplyId,
-                    PlannedDose = supplyDto.PlannedDose,
-                    PlannedTotal = supplyDto.PlannedTotal > 0 ? supplyDto.PlannedTotal : supplyDto.PlannedDose * labor.Hectares,
-                    PlannedHectares = supplyDto.PlannedHectares > 0 ? supplyDto.PlannedHectares : labor.Hectares,
+                    PlannedDose = pDose,
+                    PlannedTotal = supplyDto.PlannedTotal > 0 ? supplyDto.PlannedTotal : pDose * pHa,
+                    PlannedHectares = pHa,
+                    RealDose = supplyDto.RealDose,
+                    RealHectares = supplyDto.RealHectares,
+                    RealTotal = supplyDto.RealTotal ?? (supplyDto.RealDose.HasValue ? supplyDto.RealDose.Value * (supplyDto.RealHectares ?? labor.Hectares) : null),
                     UnitOfMeasure = supplyDto.UnitOfMeasure,
                     TankMixOrder = supplyDto.TankMixOrder,
                     IsSubstitute = supplyDto.IsSubstitute
@@ -182,6 +196,12 @@ public class LaborsController : ControllerBase
         labor.CampaignLotId = campaignLotId;
         labor.ErpActivityId = dto.ErpActivityId;
         labor.LaborTypeId = dto.LaborTypeId;
+        labor.ContactId = dto.ContactId;
+        labor.IsExternalBilling = dto.IsExternalBilling;
+        labor.Status = dto.Status ?? labor.Status;
+        if (Enum.TryParse<LaborMode>(dto.Mode, out var m2)) labor.Mode = m2;
+        else if (dto.Status == "Realized") labor.Mode = LaborMode.Realized;
+        
         labor.ExecutionDate = dto.ExecutionDate;
         labor.EstimatedDate = dto.EstimatedDate;
         labor.Hectares = dto.Hectares;
@@ -214,7 +234,9 @@ public class LaborsController : ControllerBase
                     existing.PlannedDose = supplyDto.PlannedDose;
                     existing.PlannedTotal = supplyDto.PlannedTotal > 0 ? supplyDto.PlannedTotal : supplyDto.PlannedDose * supplyDto.PlannedHectares;
                     existing.PlannedHectares = supplyDto.PlannedHectares > 0 ? supplyDto.PlannedHectares : labor.Hectares;
+                    existing.RealDose = supplyDto.RealDose;
                     existing.RealHectares = supplyDto.RealHectares;
+                    existing.RealTotal = supplyDto.RealTotal ?? (supplyDto.RealDose.HasValue ? supplyDto.RealDose.Value * (supplyDto.RealHectares ?? labor.Hectares) : null);
                     existing.UnitOfMeasure = supplyDto.UnitOfMeasure;
                     existing.TankMixOrder = supplyDto.TankMixOrder;
                     existing.IsSubstitute = supplyDto.IsSubstitute;
@@ -229,6 +251,9 @@ public class LaborsController : ControllerBase
                         PlannedDose = supplyDto.PlannedDose,
                         PlannedTotal = supplyDto.PlannedTotal > 0 ? supplyDto.PlannedTotal : supplyDto.PlannedDose * (supplyDto.PlannedHectares > 0 ? supplyDto.PlannedHectares : labor.Hectares),
                         PlannedHectares = supplyDto.PlannedHectares > 0 ? supplyDto.PlannedHectares : labor.Hectares,
+                        RealDose = supplyDto.RealDose,
+                        RealHectares = supplyDto.RealHectares,
+                        RealTotal = supplyDto.RealTotal ?? (supplyDto.RealDose.HasValue ? supplyDto.RealDose.Value * (supplyDto.RealHectares ?? labor.Hectares) : null),
                         UnitOfMeasure = supplyDto.UnitOfMeasure,
                         TankMixOrder = supplyDto.TankMixOrder,
                         IsSubstitute = supplyDto.IsSubstitute
@@ -522,7 +547,54 @@ public class LaborsController : ControllerBase
     {
         var warnings = new List<string>();
         
-        // 1.1 Validation of Surface
+        // 1. OT Context Validations
+        if (dto.WorkOrderId.HasValue && dto.WorkOrderId != Guid.Empty)
+        {
+            var ot = await _context.WorkOrders
+                .Include(w => w.Labors)
+                .FirstOrDefaultAsync(w => w.Id == dto.WorkOrderId.Value);
+
+            if (ot != null)
+            {
+                // Check Responsible policy
+                if (!ot.AcceptsMultiplePeople)
+                {
+                    // If OT has a responsible, labor should match or OT should be updated
+                    if (ot.ContactId.HasValue && dto.ContactId.HasValue && ot.ContactId != dto.ContactId)
+                    {
+                        warnings.Add("La OT no acepta múltiples personas. El responsable de la labor difiere del responsable de la OT.");
+                    }
+                    
+                    // Check other labors in this OT
+                    var otherContacts = ot.Labors
+                        .Where(l => l.Id != dto.Id && l.ContactId.HasValue)
+                        .Select(l => l.ContactId)
+                        .Distinct()
+                        .ToList();
+
+                    if (dto.ContactId.HasValue && otherContacts.Any(c => c != dto.ContactId))
+                    {
+                        warnings.Add("Ya existen labores con otros responsables asignados a esta OT.");
+                    }
+                }
+
+                // Check Date policy
+                if (!ot.AcceptsMultipleDates)
+                {
+                    var laborDate = dto.ExecutionDate ?? dto.EstimatedDate;
+                    if (laborDate.HasValue)
+                    {
+                        var otDate = ot.PlannedDate;
+                        if (Math.Abs((laborDate.Value - otDate).TotalDays) > 1) // Tolerance of 1 day
+                        {
+                            warnings.Add("La OT no acepta múltiples fechas. La fecha de la labor difiere significativamente de la fecha planificada de la OT.");
+                        }
+                    }
+                }
+            }
+        }
+
+        // 2. Agronomic Validations
         if (dto.CampaignLotId.HasValue && dto.CampaignLotId != Guid.Empty)
         {
             var isSurfaceValid = await _validationService.ValidateLaborSurfaceAsync(dto.CampaignLotId.Value, dto.Hectares);
@@ -589,6 +661,7 @@ public class LaborsController : ControllerBase
             labor.PlannedDose,
             labor.RealizedDose,
             labor.ContactId,
+            labor.IsExternalBilling,
             labor.PlannedLaborId
         );
     }

@@ -60,12 +60,12 @@ public class WorkOrdersController : ControllerBase
             OTNumber = dto.OTNumber ?? string.Empty,
             PlannedDate = dto.PlannedDate ?? dto.DueDate,
             ExpirationDate = dto.ExpirationDate ?? dto.DueDate,
-            EstimatedCostUSD = dto.EstimatedCostUSD,
             StockReserved = dto.StockReserved,
             ContractorId = dto.ContractorId,
             ContactId = dto.ContactId,
-            AgreedRate = dto.AgreedRate,
-            CampaignId = dto.CampaignId
+            CampaignId = dto.CampaignId,
+            AcceptsMultiplePeople = dto.AcceptsMultiplePeople,
+            AcceptsMultipleDates = dto.AcceptsMultipleDates
         };
 
         _context.WorkOrders.Add(workOrder);
@@ -74,9 +74,9 @@ public class WorkOrdersController : ControllerBase
         var result = new WorkOrderDto(
             workOrder.Id, workOrder.FieldId, workOrder.Description, workOrder.Status,
             workOrder.AssignedTo, workOrder.DueDate, null, workOrder.OTNumber,
-            workOrder.PlannedDate, workOrder.ExpirationDate, workOrder.EstimatedCostUSD,
-            workOrder.AgreedRate,
-            workOrder.StockReserved, workOrder.ContractorId, workOrder.ContactId, workOrder.CampaignId);
+            workOrder.PlannedDate, workOrder.ExpirationDate,
+            workOrder.StockReserved, workOrder.ContractorId, workOrder.ContactId, workOrder.CampaignId,
+            workOrder.AcceptsMultiplePeople, workOrder.AcceptsMultipleDates);
 
         return CreatedAtAction(nameof(GetWorkOrder), new { id = workOrder.Id }, result);
     }
@@ -95,12 +95,12 @@ public class WorkOrdersController : ControllerBase
         workOrder.OTNumber = dto.OTNumber ?? workOrder.OTNumber;
         workOrder.PlannedDate = dto.PlannedDate ?? workOrder.PlannedDate;
         workOrder.ExpirationDate = dto.ExpirationDate ?? workOrder.ExpirationDate;
-        workOrder.EstimatedCostUSD = dto.EstimatedCostUSD;
         workOrder.StockReserved = dto.StockReserved;
         workOrder.ContractorId = dto.ContractorId;
         workOrder.ContactId = dto.ContactId;
-        workOrder.AgreedRate = dto.AgreedRate;
         workOrder.CampaignId = dto.CampaignId;
+        workOrder.AcceptsMultiplePeople = dto.AcceptsMultiplePeople;
+        workOrder.AcceptsMultipleDates = dto.AcceptsMultipleDates;
 
         await _context.SaveChangesAsync();
         return NoContent();
