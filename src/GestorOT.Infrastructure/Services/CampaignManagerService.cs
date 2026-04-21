@@ -51,6 +51,32 @@ public class CampaignManagerService : ICampaignManagerService
                 ? prev.ProductiveArea
                 : prev.Lot?.CadastralArea ?? prev.ProductiveArea;
 
+            // Asegurar que el Campo de este lote esté en la campaña
+            if (prev.Lot != null)
+            {
+                var fieldExists = await _context.CampaignFields
+                    .AnyAsync(cf => cf.CampaignId == newCampaignId && cf.FieldId == prev.Lot.FieldId, ct);
+
+                if (!fieldExists)
+                {
+                    // Verificar si ya lo agregamos en este loop (localmente en el ChangeTracker)
+                    var alreadyInTracker = _context.CampaignFields.Local
+                        .Any(cf => cf.CampaignId == newCampaignId && cf.FieldId == prev.Lot.FieldId);
+
+                    if (!alreadyInTracker)
+                    {
+                        _context.CampaignFields.Add(new CampaignField
+                        {
+                            Id = Guid.NewGuid(),
+                            CampaignId = newCampaignId,
+                            FieldId = prev.Lot.FieldId,
+                            TargetYieldTonHa = 0,
+                            AllocatedHectares = 0
+                        });
+                    }
+                }
+            }
+
             _context.CampaignLots.Add(new CampaignLot
             {
                 Id = Guid.NewGuid(),
@@ -64,8 +90,36 @@ public class CampaignManagerService : ICampaignManagerService
         }
 
         if (imported > 0)
+        {
             await _context.SaveChangesAsync(ct);
+            
+            // Recalcular hectáreas para todos los campos afectados
+            var affectedFieldIds = previousLots
+                .Where(cl => cl.Lot != null)
+                .Select(cl => cl.Lot!.FieldId)
+                .Distinct();
+
+            foreach (var fieldId in affectedFieldIds)
+            {
+                await RecalculateFieldHectares(newCampaignId, fieldId, ct);
+            }
+        }
 
         return imported;
+    }
+
+    private async Task RecalculateFieldHectares(Guid campaignId, Guid fieldId, CancellationToken ct)
+    {
+        var campaignField = await _context.CampaignFields
+            .FirstOrDefaultAsync(cf => cf.CampaignId == campaignId && cf.FieldId == fieldId, ct);
+
+        if (campaignField == null) return;
+
+        var totalHa = await _context.CampaignLots
+            .Where(cl => cl.CampaignId == campaignId && cl.Lot!.FieldId == fieldId)
+            .SumAsync(cl => cl.ProductiveArea, ct);
+
+        campaignField.AllocatedHectares = totalHa;
+        await _context.SaveChangesAsync(ct);
     }
 }

@@ -33,12 +33,12 @@ public class WorkOrderQueryService : IWorkOrderQueryService
             w.OTNumber,
             w.PlannedDate,
             w.ExpirationDate,
-            w.EstimatedCostUSD,
-            w.AgreedRate,
             w.StockReserved,
             w.ContractorId,
             w.ContactId,
-            w.CampaignId
+            w.CampaignId,
+            w.AcceptsMultiplePeople,
+            w.AcceptsMultipleDates
         )).ToList();
     }
 
@@ -108,6 +108,7 @@ public class WorkOrderQueryService : IWorkOrderQueryService
             l.PlannedDose,
             l.RealizedDose,
             l.ContactId,
+            l.IsExternalBilling,
             l.PlannedLaborId
         )).ToList();
 
@@ -169,13 +170,13 @@ public class WorkOrderQueryService : IWorkOrderQueryService
             workOrder.OTNumber,
             workOrder.PlannedDate,
             workOrder.ExpirationDate,
-            workOrder.EstimatedCostUSD,
-            workOrder.AgreedRate,
             workOrder.StockReserved,
             workOrder.CampaignId,
             workOrder.ContractorId,
             workOrder.ContactId,
-            supplyApprovalsDto
+            supplyApprovalsDto,
+            workOrder.AcceptsMultiplePeople,
+            workOrder.AcceptsMultipleDates
         );
     }
 }

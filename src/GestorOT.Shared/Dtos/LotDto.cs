@@ -26,17 +26,17 @@ public record WorkOrderDto
     public string? OTNumber { get; set; }
     public DateTime? PlannedDate { get; set; }
     public DateTime? ExpirationDate { get; set; }
-    public decimal EstimatedCostUSD { get; set; }
-    public decimal AgreedRate { get; set; }
     public bool StockReserved { get; set; }
     public Guid? ContractorId { get; set; }
     public Guid? ContactId { get; set; }
     public Guid? CampaignId { get; set; }
+    public bool AcceptsMultiplePeople { get; set; }
+    public bool AcceptsMultipleDates { get; set; }
 
     public WorkOrderDto() { }
-    public WorkOrderDto(Guid id, Guid fieldId, string description, string status, string assignedTo, DateTime dueDate, string? fieldName, string? otNumber, DateTime? plannedDate, DateTime? expirationDate, decimal estimatedCost, decimal agreedRate, bool stockReserved, Guid? contractorId, Guid? contactId, Guid? campaignId)
+    public WorkOrderDto(Guid id, Guid fieldId, string description, string status, string assignedTo, DateTime dueDate, string? fieldName, string? otNumber, DateTime? plannedDate, DateTime? expirationDate, bool stockReserved, Guid? contractorId, Guid? contactId, Guid? campaignId, bool acceptsMultiplePeople = false, bool acceptsMultipleDates = false)
     {
-        Id = id; FieldId = fieldId; Description = description; Status = status; AssignedTo = assignedTo; DueDate = dueDate; FieldName = fieldName; OTNumber = otNumber; PlannedDate = plannedDate; ExpirationDate = expirationDate; EstimatedCostUSD = estimatedCost; AgreedRate = agreedRate; StockReserved = stockReserved; ContractorId = contractorId; ContactId = contactId; CampaignId = campaignId;
+        Id = id; FieldId = fieldId; Description = description; Status = status; AssignedTo = assignedTo; DueDate = dueDate; FieldName = fieldName; OTNumber = otNumber; PlannedDate = plannedDate; ExpirationDate = expirationDate; StockReserved = stockReserved; ContractorId = contractorId; ContactId = contactId; CampaignId = campaignId; AcceptsMultiplePeople = acceptsMultiplePeople; AcceptsMultipleDates = acceptsMultipleDates;
     }
 }
 

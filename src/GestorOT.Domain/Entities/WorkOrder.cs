@@ -13,11 +13,11 @@ public class WorkOrder : TenantEntity
     public Guid? ContractorId { get; set; }
     public Guid? ContactId { get; set; } // Default Responsible for associated labors
     public bool IsExternalBilling { get; set; } // Header level default
-    public decimal AgreedRate { get; set; }
     public DateTime PlannedDate { get; set; }
     public DateTime ExpirationDate { get; set; }
-    public decimal EstimatedCostUSD { get; set; }
     public bool StockReserved { get; set; }
+    public bool AcceptsMultiplePeople { get; set; }
+    public bool AcceptsMultipleDates { get; set; }
     
     // Navigation
     public Field? Field { get; set; }

@@ -141,17 +141,12 @@
                 </FormItem>
             </AntDesign.Col>
             <AntDesign.Col Span="12">
-                <FormItem Label="Costo Estimado (USD)">
-                    <AntDesign.InputNumber TValue="decimal" @bind-Value="_formModel.EstimatedCostUSD" Min="0" Style="width: 100%;" />
-                </FormItem>
-            </AntDesign.Col>
-        </AntDesign.Row>
-        <AntDesign.Row Gutter="16">
-            <AntDesign.Col Span="12">
                 <FormItem Label="Fecha Límite">
                     <DatePicker @bind-Value="_formModel.DueDate" Style="width: 100%;" Format="dd/MM/yyyy" />
                 </FormItem>
             </AntDesign.Col>
+        </AntDesign.Row>
+        <AntDesign.Row Gutter="16">
             <AntDesign.Col Span="12">
                 <FormItem Label="Estado">
                     <Select TItem="string" TItemValue="string" @bind-Value="_formModel.Status" Style="width: 100%;">
@@ -160,6 +155,12 @@
                         <SelectOption Value="@("InProgress")" Label="En Progreso" />
                     </Select>
                 </FormItem>
+            </AntDesign.Col>
+            <AntDesign.Col Span="12">
+                <div style="display: flex; gap: 8px; height: 100%; align-items: center; padding-top: 24px;">
+                    <Checkbox @bind-Checked="_formModel.AcceptsMultiplePeople">Mult. Pers.</Checkbox>
+                    <Checkbox @bind-Checked="_formModel.AcceptsMultipleDates">Mult. Fechas</Checkbox>
+                </div>
             </AntDesign.Col>
         </AntDesign.Row>
     </Form>
@@ -207,9 +208,10 @@
         public Guid CampaignId { get; set; }
         public Guid FieldId { get; set; }
         public Guid ContactId { get; set; }
-        public decimal EstimatedCostUSD { get; set; }
         public DateTime DueDate { get; set; } = DateTime.Today.AddDays(7);
         public string Status { get; set; } = "Draft";
+        public bool AcceptsMultiplePeople { get; set; }
+        public bool AcceptsMultipleDates { get; set; }
     }
 
     protected override async Task OnInitializedAsync()
@@ -292,9 +294,10 @@
             CampaignId = wo.CampaignId ?? Guid.Empty,
             FieldId = wo.FieldId,
             ContactId = wo.ContactId ?? Guid.Empty,
-            EstimatedCostUSD = wo.EstimatedCostUSD,
             DueDate = wo.DueDate,
-            Status = wo.Status
+            Status = wo.Status,
+            AcceptsMultiplePeople = wo.AcceptsMultiplePeople,
+            AcceptsMultipleDates = wo.AcceptsMultipleDates
         };
         _modalVisible = true;
     }
@@ -328,9 +331,10 @@
                 Description = _formModel.Description,
                 Status = _formModel.Status,
                 ContactId = _formModel.ContactId,
-                EstimatedCostUSD = _formModel.EstimatedCostUSD,
                 OTNumber = _isEditing ? null : $"OT_{Guid.NewGuid().ToString().Substring(0, 5).ToUpper()}",
-                DueDate = _formModel.DueDate
+                DueDate = _formModel.DueDate,
+                AcceptsMultiplePeople = _formModel.AcceptsMultiplePeople,
+                AcceptsMultipleDates = _formModel.AcceptsMultipleDates
             };
 
             HttpResponseMessage response;

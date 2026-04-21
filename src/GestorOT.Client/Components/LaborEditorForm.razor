@@ -21,14 +21,14 @@
                 </Select>
             </FormItem>
 
-            <FormItem Label="Responsable (Contacto)">
-                <Select TItemValue="Guid?" TItem="ContactDto" @bind-Value="_model.ContactId"
-                        Placeholder="Seleccionar responsable" EnableSearch>
-                    @foreach (var contact in _contacts)
-                    {
-                        <SelectOption TItemValue="Guid?" TItem="ContactDto" Value="@((Guid?)contact.Id)" Label="@contact.FullName" />
-                    }
-                </Select>
+            <FormItem Label="Hectáreas">
+                <AntDesign.InputNumber TValue="decimal" Value="@_model.Hectares" OnChange="OnHectareasChanged" Min="0m" Step="0.1m" Style="width: 100%;" />
+                @if (_haSuperaLote)
+                {
+                    <div style="color: #E74C3C; font-size: 11px; margin-top: 4px;">
+                        <Icon Type="warning" /> La superficie supera el área productiva del lote (@_lotProductiveArea ha).
+                    </div>
+                }
             </FormItem>
         </div>
         
@@ -64,27 +64,51 @@
             </FormItem>
         </div>
 
-        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px;">
-            <FormItem Label="Hectáreas">
-                <AntDesign.InputNumber TValue="decimal" Value="@_model.Hectares" OnChange="OnHectareasChanged" Min="0m" Step="0.1m" Style="width: 100%;" />
-                @if (_haSuperaLote)
-                {
-                    <div style="color: #E74C3C; font-size: 11px; margin-top: 4px;">
-                        <Icon Type="warning" /> La superficie supera el área productiva del lote (@_lotProductiveArea ha).
-                    </div>
-                }
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+            <FormItem Label="Persona Responsable">
+                <div style="display: flex; align-items: center; gap: 16px;">
+                    <Select TItemValue="Guid?" TItem="ContactDto" @bind-Value="_model.ContactId"
+                            Placeholder="Seleccionar responsable" EnableSearch Style="flex: 1;">
+                        @foreach (var contact in _contacts)
+                        {
+                            <SelectOption TItemValue="Guid?" TItem="ContactDto" Value="@((Guid?)contact.Id)" Label="@contact.FullName" />
+                        }
+                    </Select>
+                    <RadioGroup @bind-Value="_model.IsExternalBilling">
+                        <Radio Value="@false">Propio</Radio>
+                        <Radio Value="@true">Contratista</Radio>
+                    </RadioGroup>
+                </div>
             </FormItem>
-            <FormItem Label="Fecha Est.">
-                <DatePicker TValue="DateTime?" Value="@_model.EstimatedDate" OnChange="OnFechaEstimadaChanged" Style="width: 100%;" />
-                @if (_fechaFueraRotacion)
+
+            <FormItem Label="@($"Fecha {(_model.Status == "Realized" ? "Ejecución" : "Estimada")}")">
+                <DatePicker TValue="DateTime?" Value="@(_model.Status == "Realized" ? _model.ExecutionDate : _model.EstimatedDate)" 
+                            OnChange="@(async args => { if (_model.Status == "Realized") _model.ExecutionDate = args.Date; else await OnFechaEstimadaChanged(args); })" 
+                            Style="width: 100%;" />
+                @if (_fechaFueraRotacion && _model.Status != "Realized")
                 {
                     <div style="color: #F1C40F; font-size: 11px; margin-top: 4px;">
                         <Icon Type="warning" /> Fecha fuera del rango de rotación.
                     </div>
                 }
             </FormItem>
-            <FormItem Label="Fecha Ejec.">
-                <DatePicker TValue="DateTime?" @bind-Value="_model.ExecutionDate" Style="width: 100%;" />
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+            <FormItem Label="Orden de Trabajo">
+                <Select TItemValue="Guid?" TItem="WorkOrderDto" @bind-Value="_model.WorkOrderId"
+                        Placeholder="Sin asignar" EnableSearch AllowClear
+                        DataSource="@_workOrders"
+                        LabelName="@nameof(WorkOrderDto.OTNumber)"
+                        ValueName="@nameof(WorkOrderDto.Id)">
+                </Select>
+            </FormItem>
+
+            <FormItem Label="Estado de la Labor">
+                <RadioGroup @bind-Value="_model.Status" OnChange="@((string val) => OnStatusChanged(val))">
+                    <Radio ButtonStyle="@RadioButtonStyle.Solid" Value="@("Planned")">Planeada</Radio>
+                    <Radio ButtonStyle="@RadioButtonStyle.Solid" Value="@("Realized")">Realizada</Radio>
+                </RadioGroup>
             </FormItem>
         </div>
 
@@ -110,15 +134,24 @@
                                 }
                             </Select>
                         </FormItem>
-                        <FormItem Label="Hectáreas" Style="margin-bottom: 0;">
-                            <AntDesign.InputNumber TValue="decimal" @bind-Value="supply.PlannedHectares" Min="0m" Step="0.1m" Style="width: 100%;" />
+                        <FormItem Label="@(_model.Status == "Realized" ? "Ha. Reales" : "Hectáreas")" Style="margin-bottom: 0;">
+                            <AntDesign.InputNumber TValue="decimal" Value="@(_model.Status == "Realized" ? (supply.RealHectares ?? supply.PlannedHectares) : supply.PlannedHectares)" 
+                                                   OnChange="@(v => { if (_model.Status == "Realized") supply.RealHectares = v; else supply.PlannedHectares = v; })"
+                                                   Min="0m" Step="0.1m" Style="width: 100%;" />
                         </FormItem>
-                        <FormItem Label="Dosis Plan." Style="margin-bottom: 0;">
-                            <AntDesign.InputNumber TValue="decimal" @bind-Value="supply.PlannedDose" Min="0m" Step="0.01m" Style="width: 100%;" />
+                        <FormItem Label="@(_model.Status == "Realized" ? "Dosis Real" : "Dosis Plan.")" Style="margin-bottom: 0;">
+                            <AntDesign.InputNumber TValue="decimal" Value="@(_model.Status == "Realized" ? (supply.RealDose ?? supply.PlannedDose) : supply.PlannedDose)" 
+                                                   OnChange="@(v => { if (_model.Status == "Realized") supply.RealDose = v; else supply.PlannedDose = v; })"
+                                                   Min="0m" Step="0.01m" Style="width: 100%;" />
                         </FormItem>
                         <FormItem Label="Cantidad" Style="margin-bottom: 0;">
                             <div style="display: flex; align-items: center; gap: 4px;">
-                                <span style="color: #fff; font-weight: 600;">@((supply.PlannedDose * supply.PlannedHectares).ToString("N2"))</span>
+                                @{
+                                    var dose = _model.Status == "Realized" ? (supply.RealDose ?? supply.PlannedDose) : supply.PlannedDose;
+                                    var has = _model.Status == "Realized" ? (supply.RealHectares ?? supply.PlannedHectares) : supply.PlannedHectares;
+                                    var total = dose * has;
+                                }
+                                <span style="color: #fff; font-weight: 600;">@total.ToString("N2")</span>
                                 <span style="font-size: 11px; color: rgba(255,255,255,0.4);">@supply.UnitOfMeasure</span>
                             </div>
                         </FormItem>
@@ -158,6 +191,7 @@
     private List<ErpActivityDto> _activities = new();
     private List<InventoryDto> _inventories = new();
     private List<ContactDto> _contacts = new();
+    private List<WorkOrderDto> _workOrders = new();
     private bool _loading;
 
     private bool _actividadLocked;
@@ -200,6 +234,7 @@
         var activitiesTask = Http.GetFromJsonAsync<List<ErpActivityDto>>("api/catalogs/activities");
         var itemsTask = Http.GetFromJsonAsync<List<InventoryDto>>("api/inventory");
         var contactsTask = Http.GetFromJsonAsync<List<ContactDto>>("api/catalogs/contacts");
+        var workOrdersTask = Http.GetFromJsonAsync<List<WorkOrderDto>>("api/workorders");
 
         Task<List<CampaignLotDto>>? lotsTask = null;
         if (CampaignState.CurrentCampaign != null)
@@ -208,7 +243,7 @@
                 $"api/campaigns/{CampaignState.CurrentCampaign.Id}/lots");
         }
 
-        var tasks = new List<Task> { typesTask, activitiesTask, itemsTask, contactsTask };
+        var tasks = new List<Task> { typesTask, activitiesTask, itemsTask, contactsTask, workOrdersTask };
         if (lotsTask != null)
         {
             tasks.Add(lotsTask);
@@ -221,11 +256,21 @@
         _activities = activitiesTask.Result ?? new();
         _inventories = itemsTask.Result ?? new();
         _contacts = contactsTask.Result ?? new();
+        _workOrders = workOrdersTask.Result ?? new();
     }
 
     private async Task LoadLabor()
     {
         _model = await Http.GetFromJsonAsync<LaborDto>($"api/labors/{LaborId}") ?? new();
+    }
+
+    private void OnStatusChanged(string status)
+    {
+        _model.Mode = status;
+        if (status == "Realized" && !_model.ExecutionDate.HasValue)
+        {
+            _model.ExecutionDate = DateTime.Today;
+        }
     }
 
     private async Task OnLotChanged(CampaignLotDto lot)
@@ -373,7 +418,8 @@
         { 
             Id = Guid.NewGuid(), 
             LaborId = LaborId,
-            PlannedHectares = _model.Hectares // Default to labor hectares
+            PlannedHectares = _model.Hectares, // Default to labor hectares
+            RealHectares = _model.Status == "Realized" ? _model.Hectares : null
         });
         StateHasChanged();
     }
