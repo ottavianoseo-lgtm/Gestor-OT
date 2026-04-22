@@ -67,11 +67,11 @@
             @{
                 var (color, label) = context.Status switch
                 {
-                    "Approved" => ("#2ECC71", "Aprobada"),
-                    "Completed" or "Done" => ("#3498DB", "Completada"),
-                    "InProgress" => ("#F1C40F", "En Progreso"),
+                    "Approved" => ("#52C41A", "Aprobada"),
+                    "Completed" or "Done" => ("#1890FF", "Completada"),
+                    "InProgress" => ("#FAAD14", "En Progreso"),
                     "Cancelled" => ("#95A5A6", "Cancelada"),
-                    "Draft" => ("#9B59B6", "Borrador"),
+                    "Draft" => ("#FA8C16", "Borrador"),
                     _ => ("#E74C3C", "Pendiente")
                 };
             }
@@ -121,11 +121,6 @@
     <Form @ref="_form" Model="_formModel" Layout="@FormLayout.Vertical">
         <FormItem Label="Descripción">
             <TextArea @bind-Value="_formModel.Description" Placeholder="Descripción de la orden" Rows="3" />
-        </FormItem>
-        <FormItem Label="Campaña">
-            <Select TItem="CampaignSummaryDto" TItemValue="Guid" DataSource="_availableCampaigns" @bind-Value="_formModel.CampaignId"
-                    LabelName="@nameof(CampaignSummaryDto.Name)" ValueName="@nameof(CampaignSummaryDto.Id)" Placeholder="Seleccionar campaña"
-                    Style="width: 100%;" EnableSearch />
         </FormItem>
         <FormItem Label="Campo">
             <Select TItem="FieldDto" TItemValue="Guid" DataSource="_availableFields" @bind-Value="_formModel.FieldId"
@@ -204,9 +199,13 @@
 
     public class WoFormModel
     {
+        [System.ComponentModel.DataAnnotations.Required(ErrorMessage = "La descripción es obligatoria")]
         public string Description { get; set; } = string.Empty;
-        public Guid CampaignId { get; set; }
+        
+        [System.ComponentModel.DataAnnotations.Required(ErrorMessage = "Debe seleccionar un campo")]
         public Guid FieldId { get; set; }
+        
+        public Guid CampaignId { get; set; }
         public Guid ContactId { get; set; }
         public DateTime DueDate { get; set; } = DateTime.Today.AddDays(7);
         public string Status { get; set; } = "Draft";
@@ -273,13 +272,16 @@
 
     private void OpenCreateModal()
     {
+        if (CampaignState.CurrentCampaign == null)
+        {
+            Message.Warning("Debe seleccionar una campaña activa para crear una OT.");
+            return;
+        }
+
         _isEditing = false;
         _formModel = new WoFormModel();
         
-        if (CampaignState.IsSelected)
-            _formModel.CampaignId = CampaignState.CurrentCampaign!.Id;
-        else if (_availableCampaigns.Count > 0)
-            _formModel.CampaignId = _availableCampaigns[0].Id;
+        _formModel.CampaignId = CampaignState.CurrentCampaign?.Id ?? Guid.Empty;
 
         _modalVisible = true;
     }
@@ -357,7 +359,8 @@
             }
             else
             {
-                Message.Error($"Error al guardar: {response.StatusCode}");
+                var body = await response.Content.ReadAsStringAsync();
+                Message.Error($"No se pudo guardar: {body}");
             }
         }
         catch (Exception ex)

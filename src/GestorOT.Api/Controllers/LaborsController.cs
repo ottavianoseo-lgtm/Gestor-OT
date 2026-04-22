@@ -1,3 +1,4 @@
+using System.Text.Json;
 using GestorOT.Application.Interfaces;
 using GestorOT.Application.Services;
 using GestorOT.Domain.Entities;
@@ -100,15 +101,16 @@ public class LaborsController : ControllerBase
         var labor = new Labor
         {
             Id = Guid.NewGuid(),
-            WorkOrderId = dto.WorkOrderId,
+            WorkOrderId = (dto.WorkOrderId == Guid.Empty) ? null : dto.WorkOrderId,
             LotId = lotId,
             CampaignLotId = campaignLotId,
             ErpActivityId = dto.ErpActivityId,
             LaborTypeId = dto.LaborTypeId,
             ContactId = dto.ContactId,
             IsExternalBilling = dto.IsExternalBilling,
-            Status = dto.Status ?? "Planned",
+            Status = Enum.TryParse<LaborStatus>(dto.Status, out var status) ? status : LaborStatus.Planned,
             Mode = Enum.TryParse<LaborMode>(dto.Mode, out var m) ? m : (dto.Status == "Realized" ? LaborMode.Realized : LaborMode.Planned),
+            PlannedLaborId = dto.PlannedLaborId,
             ExecutionDate = dto.ExecutionDate,
             EstimatedDate = dto.EstimatedDate,
             Hectares = dto.Hectares,
@@ -131,7 +133,7 @@ public class LaborsController : ControllerBase
                 var pHa = supplyDto.PlannedHectares > 0 ? supplyDto.PlannedHectares : labor.Hectares;
                 
                 // Si se crea como realizada y no trae dosis planeada, usamos la real
-                if (labor.Status == "Realized" && pDose == 0 && supplyDto.RealDose.HasValue)
+                if (labor.Status == LaborStatus.Realized && pDose == 0 && supplyDto.RealDose.HasValue)
                 {
                     pDose = supplyDto.RealDose.Value;
                 }
@@ -151,6 +153,20 @@ public class LaborsController : ControllerBase
                     TankMixOrder = supplyDto.TankMixOrder,
                     IsSubstitute = supplyDto.IsSubstitute
                 });
+            }
+        }
+
+        if (labor.Mode == LaborMode.Realized)
+        {
+            labor.Status = LaborStatus.Realized;
+            
+            if (labor.PlannedLaborId.HasValue)
+            {
+                var planned = await _context.Labors.FindAsync(labor.PlannedLaborId.Value);
+                if (planned != null)
+                {
+                    planned.Status = LaborStatus.Validated;
+                }
             }
         }
 
@@ -189,6 +205,7 @@ public class LaborsController : ControllerBase
             return BadRequest(validation.Error);
         }
 
+        labor.WorkOrderId = (dto.WorkOrderId == Guid.Empty) ? null : dto.WorkOrderId;
         labor.LotId = dto.LotId;
         
         var campaignLotId = dto.CampaignLotId;
@@ -205,7 +222,7 @@ public class LaborsController : ControllerBase
         labor.LaborTypeId = dto.LaborTypeId;
         labor.ContactId = dto.ContactId;
         labor.IsExternalBilling = dto.IsExternalBilling;
-        labor.Status = dto.Status ?? labor.Status;
+        if (Enum.TryParse<LaborStatus>(dto.Status, out var st)) labor.Status = st;
         if (Enum.TryParse<LaborMode>(dto.Mode, out var m2)) labor.Mode = m2;
         else if (dto.Status == "Realized") labor.Mode = LaborMode.Realized;
         
@@ -239,7 +256,7 @@ public class LaborsController : ControllerBase
                 {
                     existing.SupplyId = supplyDto.SupplyId;
                     existing.PlannedDose = supplyDto.PlannedDose;
-                    existing.PlannedTotal = supplyDto.PlannedTotal > 0 ? supplyDto.PlannedTotal : supplyDto.PlannedDose * supplyDto.PlannedHectares;
+                    existing.PlannedTotal = supplyDto.PlannedTotal > 0 ? supplyDto.PlannedTotal : supplyDto.PlannedDose * (supplyDto.PlannedHectares > 0 ? supplyDto.PlannedHectares : labor.Hectares);
                     existing.PlannedHectares = supplyDto.PlannedHectares > 0 ? supplyDto.PlannedHectares : labor.Hectares;
                     existing.RealDose = supplyDto.RealDose;
                     existing.RealHectares = supplyDto.RealHectares;
@@ -296,10 +313,13 @@ public class LaborsController : ControllerBase
         if (labor == null)
             return NotFound();
 
-        if (labor.Status == "Realized")
+        if (labor.Status == LaborStatus.Realized)
             return BadRequest("La labor ya fue realizada.");
 
-        labor.Status = "Realized";
+        if (labor.Status != LaborStatus.AwaitingValidation)
+            return BadRequest("La labor debe estar en estado 'AwaitingValidation' para ser realizada.");
+
+        labor.Status = LaborStatus.Realized;
         labor.ExecutionDate = DateTime.UtcNow;
 
         foreach (var realSupply in realSupplies)
@@ -336,7 +356,7 @@ public class LaborsController : ControllerBase
             ErpActivityId = source.ErpActivityId,
             LaborTypeId = source.LaborTypeId,
             ContactId = source.ContactId,
-            Status = "Realized",
+            Status = LaborStatus.Realized,
             ExecutionDate = DateTime.UtcNow,
             Hectares = source.Hectares,
             PlannedDose = source.PlannedDose,
@@ -390,7 +410,7 @@ public class LaborsController : ControllerBase
 
                 if (source == null) return (ActionResult<Guid>)NotFound();
                 if (source.Mode != LaborMode.Planned) return (ActionResult<Guid>)BadRequest("Solo se pueden ejecutar labores planeadas.");
-                if (source.Status == "Realized") return (ActionResult<Guid>)BadRequest("La labor ya fue realizada.");
+                if (source.Status == LaborStatus.Realized) return (ActionResult<Guid>)BadRequest("La labor ya fue realizada.");
 
                 var newLabor = new Labor
                 {
@@ -403,7 +423,7 @@ public class LaborsController : ControllerBase
                     ContactId = source.ContactId,
                     IsExternalBilling = source.IsExternalBilling,
                     Mode = LaborMode.Realized,
-                    Status = "Realized",
+                    Status = LaborStatus.Realized,
                     ExecutionDate = DateTime.UtcNow,
                     Hectares = source.Hectares,
                     EffectiveArea = source.Hectares, // Default to hectares
@@ -457,6 +477,48 @@ public class LaborsController : ControllerBase
         });
     }
 
+    [HttpPost("{id:guid}/submit-for-validation")]
+    public async Task<ActionResult<object>> SubmitForValidation(Guid id)
+    {
+        var labor = await _context.Labors.FindAsync(id);
+        if (labor == null) return NotFound();
+
+        if (labor.Mode != LaborMode.Planned || labor.Status != LaborStatus.Planned)
+        {
+            return BadRequest("Solo se pueden enviar para validación labores planeadas que estén en estado 'Planned'.");
+        }
+
+        labor.Status = LaborStatus.AwaitingValidation;
+
+        var rawToken = Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32))
+            .Replace("+", "-").Replace("/", "_").TrimEnd('=');
+        
+        var bytes = System.Text.Encoding.UTF8.GetBytes(rawToken);
+        var hash = System.Security.Cryptography.SHA256.HashData(bytes);
+        var tokenHash = Convert.ToHexStringLower(hash);
+
+        var sharedToken = new SharedToken
+        {
+            Id = Guid.NewGuid(),
+            WorkOrderId = (labor.WorkOrderId == Guid.Empty) ? null : labor.WorkOrderId, // Sanitize Guid.Empty to null
+            TenantId = labor.TenantId,
+            TokenHash = tokenHash,
+            ExpiresAt = DateTime.UtcNow.AddHours(72),
+            IsRevoked = false,
+            IsUsed = false,
+            CreatedAt = DateTime.UtcNow,
+            Metadata = JsonSerializer.Serialize(new { laborId = labor.Id, action = "validate" })
+        };
+
+        _context.SharedTokens.Add(sharedToken);
+        await _context.SaveChangesAsync();
+
+        var baseUrl = $"{Request.Scheme}://{Request.Host}";
+        var publicUrl = $"{baseUrl}/public/labor-execution/{rawToken}";
+
+        return Ok(new { Url = publicUrl, Token = rawToken });
+    }
+
     [HttpDelete("{id:guid}")]
     public async Task<IActionResult> DeleteLabor(Guid id)
     {
@@ -496,7 +558,7 @@ public class LaborsController : ControllerBase
                 l.Id,
                 $"{(l.Type != null ? l.Type.Name : "Labor")} - {(l.Lot != null ? l.Lot.Name : "Sin lote")}",
                 l.EstimatedDate ?? l.ExecutionDate ?? l.CreatedAt,
-                l.Status,
+                l.Status.ToString(),
                 l.WorkOrderId == null ? "#FFA500" : "#4CAF50",
                 l.WorkOrderId != null,
                 l.Type != null ? l.Type.Name : "Labor",
@@ -510,19 +572,25 @@ public class LaborsController : ControllerBase
     }
 
     [HttpGet("unassigned")]
-    public async Task<ActionResult<List<LaborDto>>> GetUnassignedLabors()
+    public async Task<ActionResult<List<LaborDto>>> GetUnassignedLabors([FromQuery] string? sortBy = null)
     {
-        var labors = await _context.Labors
+        var query = _context.Labors
             .AsNoTracking()
             .Include(l => l.Lot)
                 .ThenInclude(l => l!.Field)
             .Include(l => l.Type)
             .Include(l => l.Supplies)
                 .ThenInclude(s => s.Supply)
-            .Where(l => l.WorkOrderId == null)
-            .OrderByDescending(l => l.CreatedAt)
-            .ToListAsync();
+            .Where(l => l.WorkOrderId == null);
 
+        query = sortBy?.ToLower() switch
+        {
+            "priority" => query.OrderBy(l => l.Priority).ThenBy(l => l.EstimatedDate),
+            "date" => query.OrderBy(l => l.EstimatedDate).ThenBy(l => l.Priority),
+            _ => query.OrderByDescending(l => l.CreatedAt)
+        };
+
+        var labors = await query.ToListAsync();
         return labors.Select(MapToDto).ToList();
     }
 
@@ -545,9 +613,20 @@ public class LaborsController : ControllerBase
             .Where(l => request.LaborIds.Contains(l.Id) && l.WorkOrderId == null)
             .ExecuteUpdateAsync(setters => setters
                 .SetProperty(l => l.WorkOrderId, request.WorkOrderId)
-                .SetProperty(l => l.Status, "Planned"));
+                .SetProperty(l => l.Status, LaborStatus.Planned));
 
         return Ok(new { Updated = updated });
+    }
+
+    [HttpPatch("{id:guid}/priority")]
+    public async Task<IActionResult> UpdatePriority(Guid id, [FromBody] PriorityRequest request)
+    {
+        var labor = await _context.Labors.FindAsync(id);
+        if (labor == null) return NotFound();
+
+        labor.Priority = request.Priority;
+        await _context.SaveChangesAsync();
+        return NoContent();
     }
 
     [HttpPatch("{id:guid}/unassign")]
@@ -557,7 +636,7 @@ public class LaborsController : ControllerBase
         if (labor == null) return NotFound();
 
         labor.WorkOrderId = null;
-        labor.Status = "Pending";
+        labor.Status = LaborStatus.Pending;
         await _context.SaveChangesAsync();
         return NoContent();
     }
@@ -660,7 +739,7 @@ public class LaborsController : ControllerBase
             labor.CampaignLotId ?? Guid.Empty,
             labor.LaborTypeId,
             labor.ErpActivityId,
-            labor.Status,
+            labor.Status.ToString(),
             labor.Mode.ToString(),
             labor.ExecutionDate,
             labor.EstimatedDate,
@@ -681,9 +760,16 @@ public class LaborsController : ControllerBase
             labor.RealizedDose,
             labor.ContactId,
             labor.IsExternalBilling,
-            labor.PlannedLaborId
+            labor.PlannedLaborId,
+            labor.Priority,
+            labor.SupplyWithdrawalNotes
         );
     }
+}
+
+public class PriorityRequest
+{
+    public int Priority { get; set; }
 }
 
 public class BulkAssignRequest

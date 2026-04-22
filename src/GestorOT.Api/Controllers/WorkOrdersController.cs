@@ -2,6 +2,7 @@ using System.Text;
 using GestorOT.Application.Interfaces;
 using GestorOT.Application.Services;
 using GestorOT.Domain.Entities;
+using GestorOT.Domain.Enums;
 using GestorOT.Shared.Dtos;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -117,7 +118,7 @@ public class WorkOrdersController : ControllerBase
         if (workOrder.Status == "Approved") return BadRequest("La OT ya fue aprobada.");
         if (workOrder.Status == "Cancelled") return BadRequest("No se puede aprobar una OT cancelada.");
 
-        var unrealizedLabors = workOrder.Labors.Where(l => l.Status != "Realized").ToList();
+        var unrealizedLabors = workOrder.Labors.Where(l => l.Status != LaborStatus.Realized).ToList();
         if (unrealizedLabors.Count > 0)
             return BadRequest($"Hay {unrealizedLabors.Count} labor(es) sin realizar.");
 
@@ -149,7 +150,7 @@ public class WorkOrdersController : ControllerBase
         if (workOrder == null) return NotFound();
 
         var laborDiscrepancies = workOrder.Labors
-            .Where(l => l.Status == "Realized")
+            .Where(l => l.Status == LaborStatus.Realized)
             .Select(l => new LaborDiscrepancyDto(
                 l.Id, l.Type?.Name ?? "Labor",
                 l.EffectiveArea > 0 ? l.EffectiveArea : l.Hectares,

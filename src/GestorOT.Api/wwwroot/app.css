@@ -9,6 +9,304 @@
     --secondary: #C0392B;
     --text-main: rgba(255, 255, 255, 0.85);
     --text-dim: rgba(255, 255, 255, 0.45);
+    --text-primary: #E0E0E0;
+    --text-secondary: #A0A0A0;
+    --text-muted: #666680;
+}
+
+/* AntDesign overrides */
+.ant-picker, .ant-picker input,
+.ant-select-selection-item,
+.ant-input-number-input,
+.ant-input,
+.ant-select-selection-placeholder,
+.ant-picker-input > input::placeholder,
+.ant-input-number-handler-wrap,
+.ant-input-affix-wrapper,
+.ant-input-affix-wrapper input {
+  color: var(--text-primary) !important;
+  background-color: transparent !important;
+}
+
+.ant-form-item-label > label, 
+.ant-modal-title,
+.ant-card-head-title {
+  color: #FFFFFF !important;
+}
+
+.ant-select-arrow, .ant-select-clear {
+  color: var(--text-dim) !important;
+}
+
+.ant-radio-wrapper {
+  color: var(--text-primary) !important;
+}
+
+.ant-divider-inner-text {
+  color: var(--text-primary) !important;
+}
+
+.ant-collapse-header-text, .ant-collapse-expand-icon {
+  color: var(--text-primary) !important;
+}
+
+/* Fix for black text in buttons and tags */
+.ant-btn-primary {
+    color: #fff !important;
+}
+
+.ant-tag {
+    color: #fff !important;
+    border: none !important;
+    font-weight: 600 !important;
+    padding: 2px 10px !important;
+    border-radius: 12px !important;
+}
+
+/* AntDesign Tag semantic colors overrides for dark theme */
+.ant-tag-processing, .ant-tag-blue {
+    background: #1890FF !important;
+}
+
+.ant-tag-warning, .ant-tag-orange, .ant-tag-gold {
+    background: #FAAD14 !important;
+}
+
+.ant-tag-success, .ant-tag-green {
+    background: #52C41A !important;
+}
+
+.ant-tag-error, .ant-tag-red {
+    background: #F5222D !important;
+}
+
+.ant-tag-default {
+    background: rgba(255, 255, 255, 0.2) !important;
+}
+
+/* Ensure tooltips are readable */
+.ant-tooltip-inner {
+    background-color: #31314d !important;
+    color: #fff !important;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.5) !important;
+}
+
+.ant-tooltip-arrow-content {
+    background-color: #31314d !important;
+}
+
+/* Ensure no black text in any input or form element */
+input, textarea, select {
+    color: var(--text-primary) !important;
+}
+
+::placeholder {
+    color: var(--text-dim) !important;
+}
+
+.ant-divider-inner-text {
+  color: var(--text-primary) !important;
+}
+
+.ant-radio-wrapper {
+  color: var(--text-primary) !important;
+}
+
+.ant-collapse-header-text, .ant-collapse-expand-icon {
+  color: var(--text-primary) !important;
+}
+
+.ant-collapse-content {
+  background-color: rgba(255, 255, 255, 0.02) !important;
+  color: var(--text-primary) !important;
+  border-top: 1px solid rgba(255, 255, 255, 0.08) !important;
+}
+
+.ant-collapse > .ant-collapse-item {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+}
+
+.ant-collapse {
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+}
+
+/* General AntDesign Content Backround Fix */
+.ant-timeline-item-content {
+  color: var(--text-primary) !important;
+}
+
+.ant-popover-inner, .ant-popover-inner-content, .ant-popover-arrow-content {
+  background-color: var(--bg-card) !important;
+  color: var(--text-primary) !important;
+}
+
+.ant-modal-content, .ant-modal-header {
+  background-color: var(--bg-card) !important;
+  color: var(--text-primary) !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+}
+
+.ant-drawer-content, .ant-drawer-header {
+  background-color: var(--bg-card) !important;
+  color: var(--text-primary) !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+}
+
+.ant-dropdown-menu {
+  background-color: var(--bg-card) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+}
+
+.ant-dropdown-menu-item {
+  color: var(--text-primary) !important;
+}
+
+.ant-dropdown-menu-item:hover {
+  background-color: rgba(255, 255, 255, 0.05) !important;
+}
+
+/* Fix for Tabs white background */
+.ant-tabs, .ant-tabs-nav, .ant-tabs-content, .ant-tabs-tabpane {
+    background: transparent !important;
+    color: var(--text-primary) !important;
+}
+
+.ant-tabs-card > .ant-tabs-nav .ant-tabs-tab {
+  background: rgba(255, 255, 255, 0.03) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  color: var(--text-dim) !important;
+}
+
+.ant-tabs-card > .ant-tabs-nav .ant-tabs-tab-active {
+  background: #1E1E2E !important;
+  color: #fff !important;
+  border-bottom: 1px solid #1E1E2E !important;
+}
+
+.ant-tabs-nav-list {
+    background: transparent !important;
+}
+
+.ant-tabs-ink-bar {
+    background: #E74C3C !important;
+}
+
+/* Fix for KPI Card in WorkOrderDetail */
+.kpi-card-new {
+    background: rgba(255, 255, 255, 0.04) !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    border-radius: 12px;
+    padding: 20px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+
+.kpi-card-new .kpi-label {
+    color: var(--text-dim) !important;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 8px;
+}
+
+.kpi-card-new .kpi-value {
+    color: #fff !important;
+    font-size: 24px;
+    font-weight: 700;
+}
+
+/* Ensure no white background in cards or sections */
+.glass-card {
+    background: rgba(255, 255, 255, 0.03);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 16px;
+}
+
+/* AntDesign Table improvements */
+.ant-table {
+    color: var(--text-primary) !important;
+}
+
+.ant-table-thead > tr > th {
+    background: rgba(255, 255, 255, 0.05) !important;
+    color: var(--text-secondary) !important;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+}
+
+.ant-table-tbody > tr > td {
+    border-bottom: 1px solid rgba(255, 255, 255, 0.03) !important;
+}
+
+.ant-table-tbody > tr.ant-table-row:hover > td, 
+.ant-table-tbody > tr > td.ant-table-cell-row-hover {
+    background: rgba(255, 255, 255, 0.02) !important;
+}
+
+/* Fix for Expanded Rows white background */
+.ant-table-expanded-row > .ant-table-cell,
+.ant-table-expanded-row:hover > .ant-table-cell,
+.ant-table-expanded-row-fixed,
+.ant-table-expanded-row-fixed::after,
+.ant-table-expand-icon-cell {
+  background: #1E1E2E !important;
+  background-color: #1E1E2E !important;
+}
+
+.ant-table-wrapper .ant-table-expanded-row-fixed {
+  margin: -16px -16px;
+}
+
+/* Ensure the inner content of expand doesn't have default light theme backgrounds */
+.ant-table-expanded-row .ant-table-content,
+.ant-table-expanded-row .ant-table {
+  background: transparent !important;
+}
+
+.ant-table-expanded-row .ant-table-thead > tr > th {
+  background: rgba(255, 255, 255, 0.05) !important;
+  color: var(--text-secondary) !important;
+}
+
+.ant-table-expanded-row .ant-table-tbody > tr > td {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05) !important;
+}
+
+.ant-collapse-content-box {
+  background-color: transparent !important;
+}
+
+.ant-collapse-item {
+  background-color: transparent !important;
+}
+
+.ant-collapse-content {
+  background-color: rgba(255, 255, 255, 0.02) !important;
+  color: var(--text-primary) !important;
+  border-top: 1px solid rgba(255, 255, 255, 0.08) !important;
+}
+
+.ant-table-expanded-row-fixed::after {
+  border-width: 0 !important;
+}
+
+/* Ensure child tables also look dark */
+.ant-table-expanded-row .ant-table {
+  background: transparent !important;
+}
+
+.ant-table-expanded-row .ant-table-thead > tr > th {
+  background: rgba(255, 255, 255, 0.05) !important;
+}
+
+.ant-form-item-label > label {
+  color: var(--text-secondary) !important;
+}
+
+/* Calendarios internos del DatePicker */
+.ant-picker-calendar-date-value,
+.ant-picker-cell-inner {
+  color: var(--text-primary) !important;
 }
 
 * {

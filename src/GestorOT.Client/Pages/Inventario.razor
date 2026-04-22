@@ -16,10 +16,13 @@
         <h2 class="page-title">Inventario de Insumos</h2>
         <span class="page-subtitle">@_items.Count insumos registrados</span>
     </div>
-    <Button Type="@ButtonType.Primary" OnClick="OpenCreateModal"
-            Style="background: #E74C3C; border-color: #E74C3C; border-radius: 8px; font-weight: 600;">
-        <Icon Type="plus" Theme="IconThemeType.Outline" /> Nuevo Insumo
-    </Button>
+    <div style="display: flex; gap: 8px;">
+        <Button Icon="sync" OnClick="SyncFromErp" Loading="_syncing">Sincronizar con ERP</Button>
+        <Button Type="@ButtonType.Primary" OnClick="OpenCreateModal"
+                Style="background: #E74C3C; border-color: #E74C3C; border-radius: 8px; font-weight: 600;">
+            <Icon Type="plus" Theme="IconThemeType.Outline" /> Nuevo Insumo
+        </Button>
+    </div>
 </div>
 
 @if (!string.IsNullOrEmpty(_errorMessage))
@@ -220,6 +223,7 @@
     private bool _modalVisible;
     private bool _isEditing;
     private bool _saving;
+    private bool _syncing;
     private Guid _editingId;
     private InvFormModel _formModel = new();
     private System.Timers.Timer? _debounceTimer;
@@ -410,6 +414,33 @@
         catch (Exception ex)
         {
             Message.Error($"Error: {ex.Message}");
+        }
+    }
+
+    private async Task SyncFromErp()
+    {
+        _syncing = true;
+        try
+        {
+            var response = await Http.PostAsync($"api/sync/erp/{TenantState.CurrentTenant?.Id}", null);
+            if (response.IsSuccessStatusCode)
+            {
+                Message.Success("Sincronización de inventario (y datos ERP) completada.");
+                await LoadData();
+            }
+            else
+            {
+                var error = await response.Content.ReadAsStringAsync();
+                Message.Error($"Error sincronizando: {error}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Message.Error($"Error: {ex.Message}");
+        }
+        finally
+        {
+            _syncing = false;
         }
     }
 }

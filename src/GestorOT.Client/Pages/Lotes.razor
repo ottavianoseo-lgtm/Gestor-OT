@@ -211,12 +211,15 @@
 
                     @foreach (var c in _lotCampaigns)
                     {
-                        <div style="display: grid; grid-template-columns: 1fr 60px 40px 85px; gap: 8px; align-items: center;">
+                        <div style="display: grid; grid-template-columns: 1fr 80px 40px 85px; gap: 8px; align-items: center;">
                             <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; padding: 8px 12px; color: #fff; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
                                 @c.LotName
                             </div>
-                            <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; padding: 8px; color: #fff; text-align: center; font-size: 13px;">
-                                @c.ProductiveArea.ToString("N1")
+                            <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; padding: 4px; display: flex; align-items: center;">
+                                <AntDesign.InputNumber TValue="decimal" Value="@c.ProductiveArea" 
+                                           ValueChanged="@((decimal v) => UpdateCampaignLotArea(c, v))"
+                                           Size="InputSize.Small" Bordered="false"
+                                           Style="width: 100%; background: transparent; color: #2ECC71; font-weight: 700; text-align: center;" />
                             </div>
                             <Button Size="@ButtonSize.Small" OnClick="() => GoToGis(c.LotId)"
                                     Style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; color: #fff; height: 36px; font-size: 11px; font-weight: 600;">
@@ -237,6 +240,12 @@
             </div>
         }
 
+        <div>
+            <label style="display: block; color: rgba(255,255,255,0.6); font-size: 13px; margin-bottom: 8px;">Superficie Catastral (ha)</label>
+            <AntDesign.InputNumber TValue="decimal" @bind-Value="_formModel.CadastralArea" Min="0m" Step="0.1m"
+                       Style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15); border-radius: 12px; height: 42px; color: #fff; width: 100%;" />
+        </div>
+
         <div style="margin-top: 10px;">
             <RadioGroup @bind-Value="_formModel.Status">
                 <Radio Value="@("Active")" Style="color: #fff;">Activo</Radio>
@@ -247,7 +256,7 @@
 
     <div style="display: flex; justify-content: flex-end; gap: 12px; padding-top: 30px;">
         <Button OnClick="SaveLot" Loading="_saving" 
-                Style="background: #fff; color: #000; border: none; border-radius: 20px; padding: 0 24px; font-weight: 700; height: 40px;">
+                Style="background: #1890FF; color: #fff; border: none; border-radius: 20px; padding: 0 24px; font-weight: 700; height: 40px;">
             Guardar
         </Button>
         <Button OnClick="CloseModal"
@@ -268,10 +277,103 @@
         </div>
         <div>
             <label style="display: block; margin-bottom: 8px; font-size: 12px; color: rgba(255,255,255,0.5);">Superficie Productiva (ha)</label>
-            <AntDesign.InputNumber @bind-Value="_newCampaignProductiveArea" Style="width: 100%;" />
+            <AntDesign.InputNumber TValue="decimal" @bind-Value="_newCampaignProductiveArea" Style="width: 100%;" />
         </div>
     </div>
 </Modal>
+
+<Drawer Title="@($"Rotaciones del Lote: {_selectedLotForRotation?.Name}")"
+        Visible="_rotationsDrawerVisible"
+        OnClose="() => _rotationsDrawerVisible = false"
+        Width='800'
+        ZIndex="2000"
+        BodyStyle="background: #0f0f1a; padding: 24px;">
+    @if (_loadingRotations)
+    {
+        <div style="text-align: center; padding: 40px;">
+            <Spin Tip="Cargando rotaciones..." />
+        </div>
+    }
+    else
+    {
+        <div class="rotations-timeline-wrapper" style="margin-top: 10px;">
+            <Timeline Mode="TimelineMode.Alternate">
+                @foreach (var rot in _rotations.OrderByDescending(r => r.StartDate))
+                {
+                    <TimelineItem Color="@(rot.EndDate >= DateOnly.FromDateTime(DateTime.Today) ? "green" : "gray")">
+                        <div style="background: rgba(255,255,255,0.03); padding: 16px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.08);">
+                            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px;">
+                                <div>
+                                    <h4 style="color: #fff; margin: 0; font-size: 16px;">@rot.ActivityName</h4>
+                                    <span style="font-size: 12px; color: rgba(255,255,255,0.4);">@rot.CampaignName</span>
+                                </div>
+                                <Popconfirm Title="¿Eliminar esta rotación?" OnConfirm="() => DeleteRotation(rot.Id)">
+                                    <Button Danger Icon="delete" Size="@ButtonSize.Small" Ghost Type="@ButtonType.Text" />
+                                </Popconfirm>
+                            </div>
+                            
+                            <div style="display: flex; gap: 16px; margin-top: 8px;">
+                                <div>
+                                    <div style="font-size: 10px; color: rgba(255,255,255,0.3); text-transform: uppercase;">Período</div>
+                                    <div style="color: rgba(255,255,255,0.8); font-size: 13px;">
+                                        @rot.StartDate.ToString("MMM yyyy") - @rot.EndDate.ToString("MMM yyyy")
+                                    </div>
+                                </div>
+                                <div style="flex: 1;">
+                                    @{
+                                        var totalDays = (rot.EndDate.ToDateTime(TimeOnly.MinValue) - rot.StartDate.ToDateTime(TimeOnly.MinValue)).TotalDays;
+                                        var elapsed = (DateTime.Today - rot.StartDate.ToDateTime(TimeOnly.MinValue)).TotalDays;
+                                        var percent = totalDays > 0 ? Math.Clamp((elapsed / totalDays) * 100, 0, 100) : 0.0;
+                                        var strokeColor = "#2ECC71";
+                                    }
+                                    <div style="font-size: 10px; color: rgba(255,255,255,0.3); text-transform: uppercase; margin-bottom: 4px;">Progreso Ciclo</div>
+                                    <Progress Percent="@percent" Size="ProgressSize.Small" Status="@ProgressStatus.Active" StrokeColor="@strokeColor" />
+                                </div>
+                            </div>
+                        </div>
+                    </TimelineItem>
+                }
+                @if (!_rotations.Any())
+                {
+                    <TimelineItem Color="@("gray")">
+                        <div style="color: rgba(255,255,255,0.3); padding: 20px; text-align: center;">
+                            No hay rotaciones registradas para este lote en esta campaña.
+                        </div>
+                    </TimelineItem>
+                }
+            </Timeline>
+            
+            <div style="margin-top: 32px; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 24px;">
+                <h4 style="color: #fff; margin-bottom: 20px; display: flex; align-items: center; gap: 8px;">
+                    <Icon Type="plus-circle" /> Agregar Cultivo a la Rotación
+                </h4>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+                    <div>
+                        <label style="color: rgba(255,255,255,0.4); font-size: 11px; display: block; margin-bottom: 8px;">ACTIVIDAD / CULTIVO (ERP)</label>
+                        <Select TItem="ErpActivityDto" TItemValue="Guid" DataSource="_allActivities"
+                                LabelName="@nameof(ErpActivityDto.Name)" ValueName="@nameof(ErpActivityDto.Id)"
+                                @bind-Value="_newRotationActivityId" EnableSearch Placeholder="Seleccionar..." 
+                                Style="width: 100%;" />
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                        <div>
+                            <label style="color: rgba(255,255,255,0.4); font-size: 11px; display: block; margin-bottom: 8px;">INICIO</label>
+                            <DatePicker TValue="DateTime?" @bind-Value="_newRotationStart" Format="MMM yyyy" Picker="@DatePickerType.Month" Style="width: 100%;" />
+                        </div>
+                        <div>
+                            <label style="color: rgba(255,255,255,0.4); font-size: 11px; display: block; margin-bottom: 8px;">FIN</label>
+                            <DatePicker TValue="DateTime?" @bind-Value="_newRotationEnd" Format="MMM yyyy" Picker="@DatePickerType.Month" Style="width: 100%;" />
+                        </div>
+                    </div>
+                </div>
+                <Button Type="@ButtonType.Primary" Block OnClick="AddRotation" Loading="_savingRotation" 
+                        Style="background: #E74C3C; border-color: #E74C3C; height: 40px; font-weight: 600; border-radius: 8px;">
+                    Registrar Rotación
+                </Button>
+            </div>
+        </div>
+    }
+</Drawer>
 
 @code {
     private List<LotDto> _lots = new();
@@ -286,12 +388,23 @@
     private bool _saving;
     private Guid _editingId;
     private LotFormModel _formModel = new();
-    private Form<LotFormModel>? _form;
+    // private Form<LotFormModel>? _form; // Unused
     private List<CampaignLotDto> _lotCampaigns = new();
     private List<CampaignSummaryDto> _allCampaigns = new();
+    private List<ErpActivityDto> _allActivities = new();
     private bool _addCampaignModalVisible;
     private Guid _selectedCampaignId;
     private decimal _newCampaignProductiveArea;
+
+    private bool _rotationsDrawerVisible;
+    private bool _loadingRotations;
+    private bool _savingRotation;
+    private LotDto? _selectedLotForRotation;
+    private List<RotationDto> _rotations = new();
+    private Guid _newRotationActivityId;
+    private DateTime? _newRotationStart;
+    private DateTime? _newRotationEnd;
+    private Guid _currentRotationCampaignId;
 
     private IEnumerable<LotDto> FilteredLots =>
         _filterByCampaign && CampaignState.IsSelected
@@ -303,6 +416,7 @@
         public string Name { get; set; } = string.Empty;
         public Guid FieldId { get; set; }
         public string Status { get; set; } = "Active";
+        public decimal CadastralArea { get; set; }
     }
 
     protected override async Task OnInitializedAsync()
@@ -341,7 +455,7 @@
                 _historyByLot[lotId] = history;
             }
         }
-        catch (Exception ex)
+        catch (Exception)
         {
             Message.Error("Error al cargar historial.");
         }
@@ -363,6 +477,8 @@
             _lots = await lotsTask ?? new();
             _availableFields = await fieldsTask ?? new();
             _allCampaigns = await campTask ?? new();
+            
+            _allActivities = await Http.GetFromJsonAsync<List<ErpActivityDto>>("api/catalogs/activities") ?? new();
 
             if (CampaignState.IsSelected)
             {
@@ -377,9 +493,9 @@
 
             _errorMessage = null;
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            _errorMessage = $"Error: {ex.Message}";
+            _errorMessage = $"Error al cargar datos.";
         }
         finally
         {
@@ -405,7 +521,8 @@
         {
             Name = lot.Name,
             FieldId = lot.FieldId,
-            Status = lot.Status
+            Status = lot.Status,
+            CadastralArea = lot.CadastralArea
         };
         
         await LoadLotCampaigns(lot.Id);
@@ -422,7 +539,7 @@
         {
             _lotCampaigns = await Http.GetFromJsonAsync<List<CampaignLotDto>>($"api/lots/{lotId}/campaigns") ?? new();
         }
-        catch (Exception ex)
+        catch (Exception)
         {
             Message.Error("Error al cargar campañas del lote.");
         }
@@ -433,9 +550,104 @@
         Nav.NavigateTo($"/mapa?lotId={lotId}");
     }
 
-    private void GoToRotations(Guid campaignId, Guid lotId)
+    private async Task GoToRotations(Guid campaignId, Guid lotId)
     {
-        Nav.NavigateTo($"/campaigns/{campaignId}/lots?lotId={lotId}");
+        _selectedLotForRotation = _lots.FirstOrDefault(l => l.Id == lotId);
+        _currentRotationCampaignId = campaignId;
+        _rotationsDrawerVisible = true;
+        await LoadRotations();
+    }
+
+    private async Task LoadRotations()
+    {
+        if (_selectedLotForRotation == null) return;
+        _loadingRotations = true;
+        try
+        {
+            // Find CampaignLotId for the selected lot and campaign
+            var cl = _lotCampaigns.FirstOrDefault(x => x.LotId == _selectedLotForRotation.Id && x.CampaignId == _currentRotationCampaignId);
+            if (cl != null)
+            {
+                _rotations = await Http.GetFromJsonAsync<List<RotationDto>>($"api/campaigns/{_currentRotationCampaignId}/lots/{cl.Id}/rotations") ?? new();
+            }
+        }
+        catch (Exception) { Message.Error("Error al cargar rotaciones."); }
+        finally { _loadingRotations = false; }
+    }
+
+    private async Task AddRotation()
+    {
+        if (_newRotationActivityId == Guid.Empty || _newRotationStart == null || _newRotationEnd == null || _selectedLotForRotation == null)
+        {
+            Message.Warning("Complete todos los campos de la rotación.");
+            return;
+        }
+
+        _savingRotation = true;
+        try
+        {
+            var cl = _lotCampaigns.FirstOrDefault(x => x.LotId == _selectedLotForRotation.Id && x.CampaignId == _currentRotationCampaignId);
+            if (cl == null) return;
+
+            var dto = new RotationDto(
+                Guid.Empty, cl.Id, _newRotationActivityId, null,
+                DateOnly.FromDateTime(_newRotationStart.Value),
+                DateOnly.FromDateTime(_newRotationEnd.Value),
+                null);
+
+            var response = await Http.PostAsJsonAsync($"api/campaigns/{_currentRotationCampaignId}/lots/{cl.Id}/rotations", dto);
+            if (response.IsSuccessStatusCode)
+            {
+                Message.Success("Rotación agregada.");
+                _newRotationActivityId = Guid.Empty;
+                await LoadRotations();
+            }
+            else
+            {
+                var err = await response.Content.ReadAsStringAsync();
+                Message.Error(err);
+            }
+        }
+        catch (Exception) { Message.Error($"Error al agregar rotación."); }
+        finally { _savingRotation = false; }
+    }
+
+    private async Task DeleteRotation(Guid id)
+    {
+        try
+        {
+            var cl = _lotCampaigns.FirstOrDefault(x => x.LotId == _selectedLotForRotation?.Id && x.CampaignId == _currentRotationCampaignId);
+            if (cl == null) return;
+
+            var response = await Http.DeleteAsync($"api/campaigns/{_currentRotationCampaignId}/lots/{cl.Id}/rotations/{id}");
+            if (response.IsSuccessStatusCode)
+            {
+                Message.Success("Rotación eliminada.");
+                await LoadRotations();
+            }
+        }
+        catch (Exception) { Message.Error("Error al eliminar."); }
+    }
+
+    private async Task UpdateCampaignLotArea(CampaignLotDto item, decimal newArea)
+    {
+        try
+        {
+            var updated = item with { ProductiveArea = newArea };
+            var response = await Http.PutAsJsonAsync($"api/campaigns/{item.CampaignId}/lots/{item.LotId}", updated);
+            if (response.IsSuccessStatusCode)
+            {
+                Message.Success("Superficie productiva actualizada.");
+                await LoadLotCampaigns(_editingId);
+                await LoadData();
+            }
+            else
+            {
+                var err = await response.Content.ReadAsStringAsync();
+                Message.Error(err);
+            }
+        }
+        catch (Exception ex) { Message.Error($"Error: {ex.Message}"); }
     }
 
     private void OnAddCampaignChanged(CampaignSummaryDto campaign)
@@ -470,9 +682,9 @@
                 Message.Error($"Error: {err}");
             }
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            Message.Error($"Error: {ex.Message}");
+            Message.Error($"Error al asignar campaña.");
         }
     }
 
@@ -550,9 +762,9 @@
                 Message.Error($"Error al guardar: {body}");
             }
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            Message.Error($"Error: {ex.Message}");
+            Message.Error($"Error al asignar campaña.");
         }
         finally
         {
@@ -576,9 +788,9 @@
                 Message.Error($"Error al eliminar: {body}");
             }
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            Message.Error($"Error: {ex.Message}");
+            Message.Error($"Error al asignar campaña.");
         }
     }
 }

@@ -178,6 +178,22 @@ public class ErpSyncService : IErpSyncService
         await SyncCatalogAsync(overrideTenantId, ct);
     }
 
+    public async Task TotalSyncAsync(Guid tenantId, CancellationToken ct = default)
+    {
+        _logger.LogInformation($"Iniciando Sincronización Total para el Tenant {tenantId}...");
+        
+        // 1. Sincronizar Catálogo (Labores e Insumos)
+        await SyncCatalogAsync(tenantId, ct);
+        
+        // 2. Sincronizar Contactos
+        await SyncContactsAsync(tenantId, ct);
+        
+        // 3. Actividades (si aplica en el futuro)
+        await SyncActivitiesAsync(tenantId, ct);
+
+        _logger.LogInformation($"Sincronización Total finalizada para el Tenant {tenantId}.");
+    }
+
     public async Task SyncContactsAsync(Guid? overrideTenantId = null, CancellationToken ct = default)
     {
         var tenantId = overrideTenantId ?? _currentTenantService.TenantId;

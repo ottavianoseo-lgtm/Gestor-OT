@@ -17,6 +17,7 @@
     </div>
     <div style="display: flex; gap: 8px;">
         <Input @bind-Value="@_searchText" Placeholder="Buscar por nombre o CUIT..." Style="width: 250px;" />
+        <Button Icon="sync" OnClick="SyncFromErp" Loading="_syncing">Sincronizar con ERP</Button>
     </div>
 </div>
 
@@ -170,6 +171,7 @@ else
     private ErpPersonDto? _selectedPerson;
     private ContactRole _selectedRole = ContactRole.InternalStaff;
     private bool _activating = false;
+    private bool _syncing = false;
 
     private IEnumerable<ErpPersonDto> FilteredPeople => string.IsNullOrWhiteSpace(_searchText)
         ? _people
@@ -255,6 +257,33 @@ else
         {
             _activating = false;
             StateHasChanged();
+        }
+    }
+
+    private async Task SyncFromErp()
+    {
+        _syncing = true;
+        try
+        {
+            var response = await Http.PostAsync($"api/tenants/{TenantState.CurrentTenant?.Id}/sync-contacts", null);
+            if (response.IsSuccessStatusCode)
+            {
+                Message.Success("Sincronización completada.");
+                await LoadData();
+            }
+            else
+            {
+                var error = await response.Content.ReadAsStringAsync();
+                Message.Error($"Error sincronizando: {error}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Message.Error($"Error: {ex.Message}");
+        }
+        finally
+        {
+            _syncing = false;
         }
     }
 }

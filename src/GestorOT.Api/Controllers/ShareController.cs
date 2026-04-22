@@ -89,7 +89,7 @@ public class ShareController : ControllerBase
         var labors = wo.Labors.OrderBy(l => l.CreatedAt).Select(l => new PublicLaborDto(
             l.Id,
             l.Type?.Name ?? "Labor",
-            l.Status,
+            l.Status.ToString(),
             l.Hectares,
             l.LotId,
             l.Lot?.Name,
@@ -141,10 +141,10 @@ public class ShareController : ControllerBase
         if (labor == null)
             return NotFound("Labor no encontrada.");
 
-        if (labor.Status == "Realized")
+        if (labor.Status == LaborStatus.Realized)
             return BadRequest("La labor ya fue realizada.");
 
-        labor.Status = "Realized";
+        labor.Status = LaborStatus.Realized;
         labor.ExecutionDate = DateTime.UtcNow;
 
         foreach (var realSupply in realSupplies)
@@ -205,7 +205,7 @@ public class ShareController : ControllerBase
                         .Include(l => l.Supplies)
                         .FirstOrDefaultAsync(l => l.Id == laborReq.Id && l.WorkOrderId == request.WorkOrderId);
 
-                    if (source == null || source.Mode != LaborMode.Planned || source.Status == "Realized")
+                    if (source == null || source.Mode != LaborMode.Planned || source.Status == LaborStatus.Realized)
                         continue;
 
                     var newLabor = new Labor
@@ -219,7 +219,7 @@ public class ShareController : ControllerBase
                         ContactId = source.ContactId,
                         IsExternalBilling = source.IsExternalBilling,
                         Mode = LaborMode.Realized,
-                        Status = "Realized",
+                        Status = LaborStatus.Realized,
                         ExecutionDate = DateTime.UtcNow,
                         Hectares = laborReq.RealHectares,
                         EffectiveArea = laborReq.RealHectares,

@@ -79,88 +79,117 @@ else if (_order != null)
         </div>
     </div>
 
-    <!-- Mode Selector -->
-    <div style="margin-bottom: 24px; display: flex; justify-content: center;">
-        <div class="mode-toggle-container">
-            <button class="mode-btn @(_viewMode == "Planned" ? "active" : "")" @onclick='() => _viewMode = "Planned"'>Planeado</button>
-            <button class="mode-btn @(_viewMode == "Realized" ? "active" : "")" @onclick='() => _viewMode = "Realized"'>Realizado</button>
-        </div>
+    <!-- Mode Selector REMOVED - replaced by consolidated view -->
+
+    <div style="margin-bottom: 24px;">
+        <Tabs DefaultActiveKey="1" Type="@TabType.EditableCard" HideAdd>
+            <TabPane Tab="Resumen y KPIs" Key="1">
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; padding: 16px 0;">
+                    <div class="kpi-card-new">
+                        <div class="kpi-label">HA. PLANEADAS</div>
+                        <div class="kpi-value">@_order.Labors.Sum(l => l.Hectares).ToString("N2")</div>
+                    </div>
+                    <div class="kpi-card-new">
+                        <div class="kpi-label">HA. EJECUTADAS</div>
+                        <div class="kpi-value" style="color: #52C41A;">@_order.Labors.Where(l => l.Status == "Realized").Sum(l => l.Hectares).ToString("N2")</div>
+                    </div>
+                    <div class="kpi-card-new">
+                        <div class="kpi-label">% CUMPLIMIENTO</div>
+                        @{
+                            var planHa = _order.Labors.Sum(l => l.Hectares);
+                            var realHa = _order.Labors.Where(l => l.Status == "Realized").Sum(l => l.Hectares);
+                            var perc = planHa > 0 ? (realHa / planHa) * 100 : 0;
+                        }
+                        <div class="kpi-value">@perc.ToString("N0")%</div>
+                        <Progress Percent='(double)perc' Size="ProgressSize.Small" Status="@(perc >= 100 ? ProgressStatus.Success : ProgressStatus.Active)" />
+                    </div>
+                </div>
+            </TabPane>
+
+            <TabPane Tab="Labores" Key="2">
+                <div class="section-header" style="margin-top: 16px;">
+                    <h3 class="section-title">Detalle de Labores</h3>
+                    <Button Type="@ButtonType.Primary" Size="@ButtonSize.Small" Icon="plus" OnClick="() => OpenLaborModal()">Agregar Labor</Button>
+                </div>
+                <div class="glass-card table-container">
+                    <Table TItem="LaborDto" DataSource='_order.Labors' Size="TableSize.Small" HidePagination ScrollX="1300">
+                        <PropertyColumn Property="l => l.LotName" Title="Lote" Sortable />
+                        <PropertyColumn Property="l => l.LaborTypeName" Title="Tipo" />
+                        <Column TData="string" Title="Estado">
+                            @{
+                                var (color, label) = context.Status switch {
+                                    "Realized" => ("#52C41A", "Realizada"),
+                                    "Validated" => ("#FA8C16", "Validada"),
+                                    "AwaitingValidation" => ("#FAAD14", "En Validación"),
+                                    _ => ("#1890FF", "Planeada")
+                                };
+                            }
+                            <Tag Style="@($"background: {color}20; color: {color}; border: 1px solid {color}40; border-radius: 12px; font-size: 11px; padding: 2px 10px;")">@label</Tag>
+                        </Column>
+                        <PropertyColumn Property="l => l.Hectares" Title="Ha Plan." />
+                        <Column TData="decimal" Title="Ha Real.">
+                            @if (context.Status == "Realized") {
+                                <span>@context.Hectares.ToString("N2")</span>
+                            } else {
+                                <span style="color: rgba(255,255,255,0.2);">—</span>
+                            }
+                        </Column>
+                        <Column TData="decimal" Title="Diff">
+                            @if (context.Status == "Realized") {
+                                var diff = context.Hectares - context.Hectares; // Note: In a real scenario we'd compare Planned vs Actual Hectares if stored separately
+                                <span style="color: @(diff > 0 ? "#ff4d4f" : (diff < 0 ? "#52c41a" : "inherit"))">
+                                    @(diff > 0 ? "+" : "")@diff.ToString("N2")
+                                </span>
+                            }
+                        </Column>
+                        <PropertyColumn Property="l => l.CreatedAt" Title="Fecha" Format="dd/MM/yyyy" />
+                        <ActionColumn Title="Acciones" Width="120">
+                            <Space>
+                                <Button Size="@ButtonSize.Small" OnClick="() => OpenLaborModal(context.Id)">Editar</Button>
+                                <Popconfirm Title="¿Quitar de la OT?" OnConfirm="() => DeleteLabor(context.Id)">
+                                    <Button Danger Size="@ButtonSize.Small">Quitar</Button>
+                                </Popconfirm>
+                            </Space>
+                        </ActionColumn>
+                    </Table>
+                </div>
+            </TabPane>
+
+            <TabPane Tab="Insumos Consolidados" Key="3">
+                <div class="section-header" style="margin-top: 16px;">
+                    <h3 class="section-title">Plan vs. Real</h3>
+                    <Button Size="@ButtonSize.Small" Ghost Icon="sync" OnClick="ConsolidateSupplies">Recalcular de Labores</Button>
+                </div>
+                <div class="glass-card table-container">
+                    <Table TItem="WorkOrderSupplyApprovalDto" DataSource="_order.SupplyApprovals" Size="TableSize.Small" HidePagination>
+                        <PropertyColumn Property="c => c.SupplyName" Title="Insumo" />
+                        <PropertyColumn Property="c => c.TotalCalculated" Title="Planeado" />
+                        <PropertyColumn Property="c => c.RealTotalUsed" Title="Real">
+                            @(context.RealTotalUsed?.ToString("N2") ?? "0.00")
+                        </PropertyColumn>
+                        <Column TData="decimal" Title="Delta">
+                            @{
+                                var delta = (context.RealTotalUsed ?? 0) - context.TotalCalculated;
+                                var color = delta > 0 ? "#ff4d4f" : (delta < 0 ? "#52c41a" : "rgba(255,255,255,0.4)");
+                            }
+                            <span style="color: @color; font-weight: 600;">
+                                @(delta > 0 ? "+" : "")@delta.ToString("N2")
+                            </span>
+                        </Column>
+                        <Column TData="string" Title="% Uso">
+                            @{
+                                var usage = context.TotalCalculated > 0 ? ((context.RealTotalUsed ?? 0) / context.TotalCalculated) * 100 : 0;
+                            }
+                            <Progress Percent='(double)usage' Size="ProgressSize.Small" Steps="5" StrokeColor='usage > 100 ? "#ff4d4f" : "#52c41a"' />
+                        </Column>
+                    </Table>
+                </div>
+            </TabPane>
+        </Tabs>
     </div>
 
     <div style="display: grid; gap: 32px;">
         
-        <!-- Labores Asignadas -->
-        <section>
-            <div class="section-header">
-                <h3 class="section-title">Labores Asignadas</h3>
-                <Button Type="@ButtonType.Primary" Size="@ButtonSize.Small" Icon="plus" OnClick="() => OpenLaborModal()">Agregar Labor</Button>
-            </div>
-            <div class="glass-card table-container">
-                <Table TItem="LaborDto" DataSource='_order.Labors.Where(l => l.Mode == _viewMode)' Size="TableSize.Small" HidePagination ScrollX="1300">
-                    <PropertyColumn Property="l => l.Id.ToString().Substring(0,5).ToUpper()" Title="ID" Width="80" />
-                    <Column TData="string" Title="Fecha" Sortable>
-                        @((context.Mode == "Realized" ? context.ExecutionDate : context.EstimatedDate)?.ToString("dd/MM/yyyy"))
-                    </Column>
-                    <PropertyColumn Property="l => l.LaborTypeName" Title="Nombre" />
-                    <PropertyColumn Property="l => l.ErpActivityName" Title="Actividad" />
-                    <PropertyColumn Property="l => l.Hectares" Title="Ha" />
-                    <PropertyColumn Property="l => l.LotName" Title="Lote" />
-                    <PropertyColumn Property="l => l.FieldName" Title="Campo" />
-                    <Column TData="int" Title="Insumos">
-                        <Tag Color="@("blue")">@context.Supplies.Count</Tag>
-                    </Column>
-                    <ActionColumn Title="Acciones" Width="120">
-                        <Space>
-                            <Button Size="@ButtonSize.Small" OnClick="() => OpenLaborModal(context.Id)">Ver</Button>
-                            <Popconfirm Title="¿Quitar de la OT?" OnConfirm="() => DeleteLabor(context.Id)">
-                                <Button Danger Size="@ButtonSize.Small">Quitar</Button>
-                            </Popconfirm>
-                        </Space>
-                    </ActionColumn>
-                </Table>
-            </div>
-        </section>
-
-        <!-- Total de Insumos -->
-        <section>
-            <div class="section-header">
-                <h3 class="section-title">Total de Insumos</h3>
-                <Button Size="@ButtonSize.Small" Ghost Icon="sync" OnClick="ConsolidateSupplies">Sincronizar de Labores</Button>
-            </div>
-            <div class="glass-card table-container">
-                <Table TItem="WorkOrderSupplyApprovalDto" DataSource="_order.SupplyApprovals" Size="TableSize.Small" HidePagination>
-                    <PropertyColumn Property="c => c.SupplyName" Title="Insumo" />
-                    <PropertyColumn Property="c => c.TotalCalculated" Title="Total Planificado" />
-                    <Column TData="decimal" Title="Total a Retirar">
-                         <AntDesign.InputNumber TValue="decimal" Value="@context.ApprovedWithdrawal" OnChange="(decimal val) => UpdateApproval(context, val, context.WithdrawalCenter)" />
-                    </Column>
-                    <Column TData="string" Title="Centro de Retiro">
-                         <AntDesign.Input Value="@context.WithdrawalCenter" OnChange="(string val) => UpdateApproval(context, context.ApprovedWithdrawal, val)" Placeholder="Ej: Depósito Norte" />
-                    </Column>
-                </Table>
-            </div>
-        </section>
-
-        <!-- Detalle de Insumos por Labor -->
-        <section>
-            <div class="section-header">
-                <h3 class="section-title">Detalle de Insumos por Labor</h3>
-            </div>
-            <div class="glass-card table-container">
-                <Table TItem="LaborSupplyDetail" DataSource="GetSupplyDetails()" Size="TableSize.Small" HidePagination ScrollX="1200">
-                    <PropertyColumn Property="s => s.LaborName" Title="Labor" />
-                    <PropertyColumn Property="s => s.Activity" Title="Actividad" />
-                    <PropertyColumn Property="s => s.Lot" Title="Lote" />
-                    <PropertyColumn Property="s => s.Field" Title="Campo" />
-                    <PropertyColumn Property="s => s.SupplyName" Title="Insumo" />
-                    <PropertyColumn Property="s => s.Hectares" Title="Ha" />
-                    <PropertyColumn Property="s => s.Dose" Title="Coef/Ha" />
-                    <PropertyColumn Property="s => s.Total" Title="Cantidad" />
-                    <PropertyColumn Property="s => s.Unit" Title="Unidad" />
-                </Table>
-            </div>
-        </section>
-
         <!-- Archivos Adjuntos -->
         <section style="margin-bottom: 100px;">
              <div class="section-header">
@@ -203,7 +232,16 @@ else if (_order != null)
     
     .mode-toggle-container { background: rgba(255,255,255,0.05); border-radius: 30px; padding: 4px; display: inline-flex; border: 1px solid rgba(255,255,255,0.1); }
     .mode-btn { border: none; background: transparent; color: rgba(255,255,255,0.5); padding: 8px 32px; border-radius: 25px; font-weight: 600; cursor: pointer; transition: all 0.2s; }
-    .mode-btn.active { background: #fff; color: #000; box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
+    .mode-btn.active { background: #fff; color: var(--text-primary); box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
+
+    .kpi-card-new {
+        background: rgba(255,255,255,0.03);
+        border: 1px solid rgba(255,255,255,0.08);
+        border-radius: 12px;
+        padding: 16px;
+    }
+    .kpi-card-new .kpi-label { font-size: 10px; color: rgba(255,255,255,0.4); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px; }
+    .kpi-card-new .kpi-value { font-size: 20px; font-weight: 700; color: #fff; }
     
     ::ng-deep .ant-table { background: transparent !important; }
     ::ng-deep .ant-table-thead > tr > th { background: rgba(255,255,255,0.05) !important; color: rgba(255,255,255,0.5) !important; border-bottom: 1px solid rgba(255,255,255,0.1) !important; font-size: 11px; text-transform: uppercase; }

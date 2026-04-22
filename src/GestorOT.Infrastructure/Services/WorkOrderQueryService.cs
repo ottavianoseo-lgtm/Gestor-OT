@@ -71,7 +71,7 @@ public class WorkOrderQueryService : IWorkOrderQueryService
             l.CampaignLotId ?? Guid.Empty,
             l.LaborTypeId,
             l.ErpActivityId,
-            l.Status,
+            l.Status.ToString(),
             l.Mode.ToString(),
             l.ExecutionDate,
             l.EstimatedDate,
@@ -109,7 +109,9 @@ public class WorkOrderQueryService : IWorkOrderQueryService
             l.RealizedDose,
             l.ContactId,
             l.IsExternalBilling,
-            l.PlannedLaborId
+            l.PlannedLaborId,
+            l.Priority,
+            l.SupplyWithdrawalNotes
         )).ToList();
 
         // Step 19: Rule of three for Realized labors

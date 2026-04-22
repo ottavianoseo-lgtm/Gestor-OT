@@ -1,4 +1,5 @@
 @inherits LayoutComponentBase
+@implements IDisposable
 @using AntDesign
 @inject NavigationManager Nav
 @inject GestorOT.Client.Services.TenantState TenantState
@@ -40,134 +41,109 @@ else if (!string.IsNullOrEmpty(Loading.SuccessMessage))
                 <TenantSelector ShowBadge="true" />
             }
 
-            @if (!_collapsed)
-            {
-                <div style="padding: 16px 20px 8px; font-size: 10px; text-transform: uppercase; letter-spacing: 1.5px; color: rgba(255,255,255,0.3); font-weight: 600;">
-                    Principal
-                </div>
-            }
-
-            <Menu Theme="MenuTheme.Dark" Mode="MenuMode.Inline" DefaultSelectedKeys="@(new[] { _activeKey })"
-                  Style="background: transparent; border-right: none;">
+            <Menu Theme="MenuTheme.Dark" Mode="MenuMode.Inline" @bind-SelectedKeys="_selectedKeys"
+                  Style="background: transparent; border-right: none; margin-bottom: 48px;">
+                
                 <MenuItem Key="1" RouterLink="/" Style="@MenuItemStyle">
                     <Icon Type="dashboard" Theme="IconThemeType.Outline" />
                     <span>Dashboard</span>
                 </MenuItem>
-            </Menu>
 
-            @if (!_collapsed)
-            {
-                <div style="padding: 16px 20px 8px; font-size: 10px; text-transform: uppercase; letter-spacing: 1.5px; color: rgba(255,255,255,0.3); font-weight: 600;">
-                    Operaciones
-                </div>
-            }
+                <SubMenu Key="sub1">
+                    <TitleTemplate>
+                        <Icon Type="project" Theme="IconThemeType.Outline" />
+                        @if (!_collapsed) { <span>Órdenes y Labores</span> }
+                    </TitleTemplate>
+                    <ChildContent>
+                        <MenuItem Key="10" RouterLink="/planner" Style="@MenuItemStyle">
+                            <Icon Type="schedule" Theme="IconThemeType.Outline" />
+                            <span>Work Planner</span>
+                        </MenuItem>
+                        <MenuItem Key="4" RouterLink="/workorders" Style="@MenuItemStyle">
+                            <Icon Type="file-text" Theme="IconThemeType.Outline" />
+                            <span>Órdenes de Trabajo</span>
+                        </MenuItem>
+                        <MenuItem Key="11" RouterLink="/labores-sueltas" Style="@MenuItemStyle">
+                            <Icon Type="thunderbolt" Theme="IconThemeType.Outline" />
+                            <span>Labores Sueltas</span>
+                            @if (_unassignedCount > 0)
+                            {
+                                <Badge Count="_unassignedCount" Style="margin-left: 8px;" />
+                            }
+                        </MenuItem>
+                    </ChildContent>
+                </SubMenu>
 
-            <Menu Theme="MenuTheme.Dark" Mode="MenuMode.Inline" DefaultSelectedKeys="@(new[] { _activeKey })"
-                  Style="background: transparent; border-right: none;">
-                <MenuItem Key="10" RouterLink="/planner" Style="@MenuItemStyle">
-                    <Icon Type="schedule" Theme="IconThemeType.Outline" />
-                    <span>Work Planner</span>
-                </MenuItem>
-                <MenuItem Key="4" RouterLink="/workorders" Style="@MenuItemStyle">
-                    <Icon Type="file-text" Theme="IconThemeType.Outline" />
-                    <span>Órdenes de Trabajo</span>
-                </MenuItem>
-                <MenuItem Key="11" RouterLink="/labores-sueltas" Style="@MenuItemStyle">
-                    <Icon Type="thunderbolt" Theme="IconThemeType.Outline" />
-                    <span>Labores Sueltas</span>
-                    @if (_unassignedCount > 0)
-                    {
-                        <Badge Count="_unassignedCount" Style="margin-left: 8px;" />
-                    }
-                </MenuItem>
-            </Menu>
+                <SubMenu Key="sub2">
+                    <TitleTemplate>
+                        <Icon Type="environment" Theme="IconThemeType.Outline" />
+                        @if (!_collapsed) { <span>Gestión Agrícola</span> }
+                    </TitleTemplate>
+                    <ChildContent>
+                        <MenuItem Key="9" RouterLink="/campaigns" Style="@MenuItemStyle">
+                            <Icon Type="calendar" Theme="IconThemeType.Outline" />
+                            <span>Campañas</span>
+                        </MenuItem>
+                        <MenuItem Key="7" RouterLink="/estrategias" Style="@MenuItemStyle">
+                            <Icon Type="experiment" Theme="IconThemeType.Outline" />
+                            <span>Estrategias</span>
+                        </MenuItem>
+                        <MenuItem Key="2" RouterLink="/fields" Style="@MenuItemStyle">
+                            <Icon Type="environment" Theme="IconThemeType.Outline" />
+                            <span>Campos</span>
+                        </MenuItem>
+                        <MenuItem Key="3" RouterLink="/lots" Style="@MenuItemStyle">
+                            <Icon Type="appstore" Theme="IconThemeType.Outline" />
+                            <span>Lotes</span>
+                        </MenuItem>
+                        <MenuItem Key="5" RouterLink="/mapa" Style="@MenuItemStyle">
+                            <Icon Type="global" Theme="IconThemeType.Outline" />
+                            <span>Explorador GIS</span>
+                        </MenuItem>
+                    </ChildContent>
+                </SubMenu>
 
-            @if (!_collapsed)
-            {
-                <div style="padding: 16px 20px 8px; font-size: 10px; text-transform: uppercase; letter-spacing: 1.5px; color: rgba(255,255,255,0.3); font-weight: 600;">
-                    Gestión Agrícola
-                </div>
-            }
+                <SubMenu Key="sub3">
+                    <TitleTemplate>
+                        <Icon Type="api" Theme="IconThemeType.Outline" />
+                        @if (!_collapsed) { <span>Integración ERP</span> }
+                    </TitleTemplate>
+                    <ChildContent>
+                        <MenuItem Key="6" RouterLink="/inventory" Style="@MenuItemStyle">
+                            <Icon Type="database" Theme="IconThemeType.Outline" />
+                            <span>Inventario</span>
+                        </MenuItem>
+                        <MenuItem Key="12" RouterLink="/erp-directory" Style="@MenuItemStyle">
+                            <Icon Type="contacts" Theme="IconThemeType.Outline" />
+                            <span>Directorio ERP</span>
+                        </MenuItem>
+                        <MenuItem Key="14" RouterLink="/admin/labor-catalog" Style="@MenuItemStyle">
+                            <Icon Type="bars" Theme="IconThemeType.Outline" />
+                            <span>Catálogo de Labores</span>
+                        </MenuItem>
+                    </ChildContent>
+                </SubMenu>
 
-            <Menu Theme="MenuTheme.Dark" Mode="MenuMode.Inline" DefaultSelectedKeys="@(new[] { _activeKey })"
-                  Style="background: transparent; border-right: none;">
-                <MenuItem Key="9" RouterLink="/campaigns" Style="@MenuItemStyle">
-                    <Icon Type="calendar" Theme="IconThemeType.Outline" />
-                    <span>Campañas</span>
-                </MenuItem>
-                <MenuItem Key="7" RouterLink="/estrategias" Style="@MenuItemStyle">
-                    <Icon Type="experiment" Theme="IconThemeType.Outline" />
-                    <span>Estrategias</span>
-                </MenuItem>
-                <MenuItem Key="2" RouterLink="/fields" Style="@MenuItemStyle">
-                    <Icon Type="environment" Theme="IconThemeType.Outline" />
-                    <span>Campos</span>
-                </MenuItem>
-                <MenuItem Key="3" RouterLink="/lots" Style="@MenuItemStyle">
-                    <Icon Type="appstore" Theme="IconThemeType.Outline" />
-                    <span>Lotes</span>
-                </MenuItem>
-            </Menu>
-
-            @if (!_collapsed)
-            {
-                <div style="padding: 16px 20px 8px; font-size: 10px; text-transform: uppercase; letter-spacing: 1.5px; color: rgba(255,255,255,0.3); font-weight: 600;">
-                    Análisis
-                </div>
-            }
-
-            <Menu Theme="MenuTheme.Dark" Mode="MenuMode.Inline" DefaultSelectedKeys="@(new[] { _activeKey })"
-                  Style="background: transparent; border-right: none;">
-                <MenuItem Key="5" RouterLink="/mapa" Style="@MenuItemStyle">
-                    <Icon Type="global" Theme="IconThemeType.Outline" />
-                    <span>Explorador GIS</span>
-                </MenuItem>
-            </Menu>
-
-            @if (!_collapsed)
-            {
-                <div style="padding: 16px 20px 8px; font-size: 10px; text-transform: uppercase; letter-spacing: 1.5px; color: rgba(255,255,255,0.3); font-weight: 600;">
-                    Recursos y Logística
-                </div>
-            }
-
-            <Menu Theme="MenuTheme.Dark" Mode="MenuMode.Inline" DefaultSelectedKeys="@(new[] { _activeKey })"
-                  Style="background: transparent; border-right: none;">
-                <MenuItem Key="6" RouterLink="/inventory" Style="@MenuItemStyle">
-                    <Icon Type="database" Theme="IconThemeType.Outline" />
-                    <span>Inventario</span>
-                </MenuItem>
-                <MenuItem Key="12" RouterLink="/erp-directory" Style="@MenuItemStyle">
-                    <Icon Type="contacts" Theme="IconThemeType.Outline" />
-                    <span>Directorio ERP</span>
-                </MenuItem>
-                <MenuItem Key="13" RouterLink="/personal" Style="@MenuItemStyle">
-                    <Icon Type="team" Theme="IconThemeType.Outline" />
-                    <span>Personal Activo</span>
-                </MenuItem>
-            </Menu>
-
-            @if (!_collapsed)
-            {
-                <div style="padding: 16px 20px 8px; font-size: 10px; text-transform: uppercase; letter-spacing: 1.5px; color: rgba(255,255,255,0.3); font-weight: 600;">
-                    Sistema
-                </div>
-            }
-
-            <Menu Theme="MenuTheme.Dark" Mode="MenuMode.Inline" DefaultSelectedKeys="@(new[] { _activeKey })"
-                  Style="background: transparent; border-right: none; margin-bottom: 48px;">
-                <MenuItem Key="8" RouterLink="/admin" Style="@MenuItemStyle">
-                    <Icon Type="setting" Theme="IconThemeType.Outline" />
-                    <span>Administración</span>
-                </MenuItem>
-                <MenuItem Key="14" RouterLink="/admin/labor-catalog" Style="@MenuItemStyle">
-                    <Icon Type="bars" Theme="IconThemeType.Outline" />
-                    <span>Catálogo de Labores</span>
-                </MenuItem>
-                <MenuItem Key="15" RouterLink="/admin/workorder-statuses" Style="@MenuItemStyle">
-                    <Icon Type="tags" Theme="IconThemeType.Outline" />
-                    <span>Estados de OT</span>
-                </MenuItem>
+                <SubMenu Key="sub4">
+                    <TitleTemplate>
+                        <Icon Type="setting" Theme="IconThemeType.Outline" />
+                        @if (!_collapsed) { <span>Sistema</span> }
+                    </TitleTemplate>
+                    <ChildContent>
+                        <MenuItem Key="13" RouterLink="/personal" Style="@MenuItemStyle">
+                            <Icon Type="team" Theme="IconThemeType.Outline" />
+                            <span>Personal Activo</span>
+                        </MenuItem>
+                        <MenuItem Key="8" RouterLink="/admin" Style="@MenuItemStyle">
+                            <Icon Type="setting" Theme="IconThemeType.Outline" />
+                            <span>Administración</span>
+                        </MenuItem>
+                        <MenuItem Key="15" RouterLink="/admin/workorder-statuses" Style="@MenuItemStyle">
+                            <Icon Type="tags" Theme="IconThemeType.Outline" />
+                            <span>Estados de OT</span>
+                        </MenuItem>
+                    </ChildContent>
+                </SubMenu>
             </Menu>
         </div>
     </Sider>
@@ -181,7 +157,7 @@ else if (!string.IsNullOrEmpty(Loading.SuccessMessage))
 
 @code {
     private bool _collapsed = false;
-    private string _activeKey = "1";
+    private string[] _selectedKeys = Array.Empty<string>();
     private int _unassignedCount;
     private const string MenuItemStyle = "font-size: 13px;";
 
@@ -196,6 +172,39 @@ else if (!string.IsNullOrEmpty(Loading.SuccessMessage))
         TenantState.OnChange += StateHasChanged;
         CampaignState.OnChange += StateHasChanged;
         Loading.OnChange += StateHasChanged;
+        
+        Nav.LocationChanged += OnLocationChanged;
+        UpdateSelectedKey(Nav.Uri);
+    }
+
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
+    {
+        UpdateSelectedKey(e.Location);
+        StateHasChanged();
+    }
+
+    private void UpdateSelectedKey(string uri)
+    {
+        var path = new Uri(uri).AbsolutePath;
+        _selectedKeys = path switch
+        {
+            "/" or "" => new[] { "1" },
+            var p when p.StartsWith("/planner") => new[] { "10" },
+            var p when p.StartsWith("/workorders") => new[] { "4" },
+            var p when p.StartsWith("/labores-sueltas") => new[] { "11" },
+            var p when p.StartsWith("/campaigns") => new[] { "9" },
+            var p when p.StartsWith("/estrategias") => new[] { "7" },
+            var p when p.StartsWith("/fields") => new[] { "2" },
+            var p when p.StartsWith("/lots") => new[] { "3" },
+            var p when p.StartsWith("/mapa") => new[] { "5" },
+            var p when p.StartsWith("/inventory") => new[] { "6" },
+            var p when p.StartsWith("/erp-directory") => new[] { "12" },
+            var p when p.StartsWith("/personal") => new[] { "13" },
+            var p when p.StartsWith("/admin/labor-catalog") => new[] { "14" },
+            var p when p.StartsWith("/admin/workorder-statuses") => new[] { "15" },
+            var p when p.StartsWith("/admin") => new[] { "8" },
+            _ => Array.Empty<string>()
+        };
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -218,5 +227,13 @@ else if (!string.IsNullOrEmpty(Loading.SuccessMessage))
         {
             Console.Error.WriteLine($"Error loading unassigned count: {ex.Message}");
         }
+    }
+
+    public void Dispose()
+    {
+        TenantState.OnChange -= StateHasChanged;
+        CampaignState.OnChange -= StateHasChanged;
+        Loading.OnChange -= StateHasChanged;
+        Nav.LocationChanged -= OnLocationChanged;
     }
 }

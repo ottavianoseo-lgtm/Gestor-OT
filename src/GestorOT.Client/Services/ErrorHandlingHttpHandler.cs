@@ -33,6 +33,20 @@ public class ErrorHandlingHttpHandler : DelegatingHandler
             {
                 _loading.ShowError("No tiene permisos para esta acción.");
             }
+            else if (response.StatusCode == HttpStatusCode.BadRequest)
+            {
+                var errorMsg = await response.Content.ReadAsStringAsync();
+                if (string.IsNullOrEmpty(errorMsg)) errorMsg = "Solicitud inválida.";
+                
+                // If it's JSON, try to extract 'error' or 'message' field
+                try {
+                    using var doc = System.Text.Json.JsonDocument.Parse(errorMsg);
+                    if (doc.RootElement.TryGetProperty("error", out var errProp)) errorMsg = errProp.GetString() ?? errorMsg;
+                    else if (doc.RootElement.TryGetProperty("message", out var msgProp)) errorMsg = msgProp.GetString() ?? errorMsg;
+                } catch { /* Not JSON or different format, keep original string */ }
+
+                _loading.ShowError(errorMsg);
+            }
             else if (response.StatusCode == HttpStatusCode.TooManyRequests)
             {
                 _loading.ShowError("Demasiadas solicitudes. Espere un momento.");

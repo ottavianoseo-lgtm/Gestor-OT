@@ -66,32 +66,23 @@
             }
 
             <div class="campaign-list">
-                @foreach (var campaign in _campaigns)
+                @foreach (var campaign in _campaigns.OrderByDescending(c => c.Name))
                 {
-                    var isSelected = CampaignState.CurrentCampaign?.Id == campaign.Id;
+                    var isSelected = campaign.Id == CampaignState.CurrentCampaign?.Id;
                     <div class="campaign-item @(isSelected ? "campaign-item-selected" : "")" @onclick="() => SelectCampaign(campaign)">
-                        <div style="flex: 1;">
-                            <div style="color: #fff; font-weight: 600; font-size: 13px;">@campaign.Name</div>
-                            <div style="color: rgba(255,255,255,0.4); font-size: 11px; margin-top: 2px;">
-                                @campaign.Status
+                        <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <span>@campaign.Name</span>
+                                @if (campaign.IsActive)
+                                {
+                                    <Badge Status="@BadgeStatus.Success" />
+                                }
                             </div>
+                            @if (campaign.Id == CampaignState.CurrentCampaign?.Id)
+                            {
+                                <Icon Type="check" Theme="IconThemeType.Outline" Style="color: #2ECC71; font-size: 16px;" />
+                            }
                         </div>
-                        @if (campaign.Status == CampaignStatus.Locked)
-                        {
-                            <Tag Color="@("red")" Style="margin: 0;">Cerrada</Tag>
-                        }
-                        else if (campaign.Status == CampaignStatus.Active)
-                        {
-                            <Tag Color="@("green")" Style="margin: 0;">Activa</Tag>
-                        }
-                        else
-                        {
-                            <Tag Style="margin: 0;">Planificación</Tag>
-                        }
-                        @if (isSelected)
-                        {
-                            <Icon Type="check" Theme="IconThemeType.Outline" Style="color: #2ECC71; font-size: 16px;" />
-                        }
                     </div>
                 }
             </div>

@@ -25,7 +25,9 @@
                 <div class="sync-indicator @(_isConnected ? "sync-online" : "sync-offline")"></div>
                 <span class="sync-text">@(_isConnected ? "En Vivo" : "Sin conexión")</span>
                 <span class="sync-time">@_lastSync</span>
-                <Button Type="@ButtonType.Text" Icon="sync" Size="@ButtonSize.Small" OnClick="ForceSync" Loading="_isFetching" Style="color: rgba(255,255,255,0.7); margin-left: 8px;" title="Forzar Sincronización" />
+                <Tooltip Title="Forzar Sincronización">
+                    <Button Type="@ButtonType.Text" Icon="sync" Size="@ButtonSize.Small" OnClick="ForceSync" Loading="_isFetching" Style="color: rgba(255,255,255,0.7);" />
+                </Tooltip>
             </div>
         </div>
 

@@ -12,7 +12,9 @@ public class Labor : TenantEntity
     public Guid? ContactId { get; set; } // The actual Responsible
     public bool IsExternalBilling { get; set; } // Specific to this labor
     public LaborMode Mode { get; set; } = LaborMode.Planned;
-    public string Status { get; set; } = "Planned";
+    public LaborStatus Status { get; set; } = LaborStatus.Planned;
+    public int Priority { get; set; } = 0;
+    public string? SupplyWithdrawalNotes { get; set; }
     public DateTime? ExecutionDate { get; set; }
     public DateTime? EstimatedDate { get; set; }
     public decimal Hectares { get; set; }

@@ -177,7 +177,7 @@ public class StrategiesController : ControllerBase
                     LotId = lot.Id,
                     LaborTypeId = item.LaborTypeId,
                     Mode = LaborMode.Planned,
-                    Status = "Planned",
+                    Status = LaborStatus.Planned,
                     ExecutionDate = request.StartDate.AddDays(item.DayOffset),
                     Hectares = lot.CadastralArea,
                     EffectiveArea = lot.CadastralArea,

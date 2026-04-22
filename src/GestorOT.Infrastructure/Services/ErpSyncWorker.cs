@@ -1,8 +1,12 @@
-using Microsoft.EntityFrameworkCore;
+using System;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using GestorOT.Application.Interfaces;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.EntityFrameworkCore;
 
 namespace GestorOT.Infrastructure.Services;
 
@@ -10,7 +14,6 @@ public class ErpSyncWorker : BackgroundService
 {
     private readonly IServiceProvider _serviceProvider;
     private readonly ILogger<ErpSyncWorker> _logger;
-    private readonly TimeSpan _syncInterval = TimeSpan.FromHours(1);
 
     public ErpSyncWorker(IServiceProvider serviceProvider, ILogger<ErpSyncWorker> logger)
     {
@@ -20,49 +23,57 @@ public class ErpSyncWorker : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        _logger.LogInformation("ERP Sync Worker is starting.");
+        _logger.LogInformation("ERP Sync Worker iniciado.");
 
         while (!stoppingToken.IsCancellationRequested)
         {
             try
             {
-                _logger.LogInformation("Starting global ERP synchronization...");
-
-                using (var scope = _serviceProvider.CreateScope())
-                {
-                    var syncService = scope.ServiceProvider.GetRequiredService<IErpSyncService>();
-                    var context = scope.ServiceProvider.GetRequiredService<IApplicationDbContext>();
-
-                    // El worker debe iterar sobre todos los tenants que tengan configuracion de ERP
-                    var tenants = await context.Tenants
-                        .Where(t => !string.IsNullOrEmpty(t.GestorMaxApiKeyEncrypted))
-                        .ToListAsync(stoppingToken);
-
-                    foreach (var tenant in tenants)
-                    {
-                        try
-                        {
-                            _logger.LogInformation("Syncing data for tenant {TenantId} ({TenantName})...", tenant.Id, tenant.Name);
-                            
-                            await syncService.SyncActivitiesAsync(tenant.Id, stoppingToken);
-                            await syncService.SyncCatalogAsync(tenant.Id, stoppingToken);
-                            await syncService.SyncContactsAsync(tenant.Id, stoppingToken);
-                        }
-                        catch (Exception ex)
-                        {
-                            _logger.LogError(ex, "Error syncing tenant {TenantId}.", tenant.Id);
-                        }
-                    }
-                }
-
-                _logger.LogInformation("Global ERP synchronization completed. Sleeping for {Interval}.", _syncInterval);
-                await Task.Delay(_syncInterval, stoppingToken);
+                // Esperar a que pase el tiempo configurado (ej. una vez al día a las 2 AM)
+                // Para pruebas, podrías bajarlo a 1 hora o usar un cron
+                await SynchronizeAllTenants(stoppingToken);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error in ErpSyncWorker execution loop.");
-                await Task.Delay(TimeSpan.FromMinutes(5), stoppingToken);
+                _logger.LogError(ex, "Error crítico en el ERP Sync Worker.");
+            }
+
+            // Esperar 24 horas antes de la próxima ejecución
+            await Task.Delay(TimeSpan.FromHours(24), stoppingToken);
+        }
+    }
+
+    private async Task SynchronizeAllTenants(CancellationToken ct)
+    {
+        using var scope = _serviceProvider.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<IApplicationDbContext>();
+        var erpSyncService = scope.ServiceProvider.GetRequiredService<IErpSyncService>();
+
+        _logger.LogInformation("Iniciando sincronización masiva de todos los tenants...");
+
+        var tenants = await context.Tenants
+            .AsNoTracking()
+            .Where(t => !string.IsNullOrEmpty(t.GestorMaxApiKeyEncrypted) && !string.IsNullOrEmpty(t.GestorMaxDatabaseId))
+            .ToListAsync(ct);
+
+        foreach (var tenant in tenants)
+        {
+            if (ct.IsCancellationRequested) break;
+
+            try
+            {
+                _logger.LogInformation($"Sincronizando Tenant: {tenant.Name} ({tenant.Id})");
+                
+                await erpSyncService.TotalSyncAsync(tenant.Id, ct);
+
+                _logger.LogInformation($"Sincronización exitosa para {tenant.Name}");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Falló la sincronización para el tenant {tenant.Id}");
             }
         }
+
+        _logger.LogInformation("Sincronización masiva finalizada.");
     }
 }

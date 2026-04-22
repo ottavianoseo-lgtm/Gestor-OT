@@ -98,22 +98,6 @@ public class CampaignsController : ControllerBase
         };
 
         _context.Campaigns.Add(campaign);
-
-        if (dto.Fields != null)
-        {
-            foreach (var cf in dto.Fields)
-            {
-                _context.CampaignFields.Add(new CampaignField
-                {
-                    Id = Guid.NewGuid(),
-                    CampaignId = campaign.Id,
-                    FieldId = cf.FieldId,
-                    TargetYieldTonHa = cf.TargetYieldTonHa,
-                    AllocatedHectares = cf.AllocatedHectares
-                });
-            }
-        }
-
         await _context.SaveChangesAsync();
 
         return CreatedAtAction(nameof(GetCampaign), new { id = campaign.Id },
@@ -121,6 +105,34 @@ public class CampaignsController : ControllerBase
                 campaign.IsActive, ParseStatus(campaign.Status),
                 campaign.BudgetTotalUSD, campaign.BusinessRulesJson, campaign.CreatedAt, new List<CampaignFieldDto>()));
     }
+
+    [HttpGet("available-seasons")]
+    public async Task<ActionResult<List<SeasonInfo>>> GetAvailableSeasons()
+    {
+        var seasons = new List<SeasonInfo>();
+        var currentYear = DateTime.Today.Year;
+        
+        var existingCampaigns = await _context.Campaigns
+            .AsNoTracking()
+            .Select(c => new { c.StartDate, c.EndDate })
+            .ToListAsync();
+
+        for (int i = -3; i <= 2; i++)
+        {
+            var year = currentYear + i;
+            var start = new DateOnly(year, 6, 1);
+            var end = new DateOnly(year + 1, 6, 30);
+            var name = $"{year % 100}/{(year + 1) % 100}";
+            
+            var exists = existingCampaigns.Any(c => c.StartDate == start && c.EndDate == end);
+            
+            seasons.Add(new SeasonInfo(name, start, end, exists));
+        }
+
+        return seasons;
+    }
+
+    public record SeasonInfo(string Name, DateOnly StartDate, DateOnly EndDate, bool AlreadyExists);
 
     [HttpPut("{id:guid}")]
     public async Task<IActionResult> UpdateCampaign(Guid id, CampaignDto dto)
@@ -142,22 +154,6 @@ public class CampaignsController : ControllerBase
         campaign.Status = dto.Status.ToString();
         campaign.BudgetTotalUSD = dto.BudgetTotalUSD;
         campaign.BusinessRulesJson = dto.BusinessRulesJson;
-
-        if (dto.Fields != null)
-        {
-            _context.CampaignFields.RemoveRange(campaign.CampaignFields);
-            foreach (var cf in dto.Fields)
-            {
-                _context.CampaignFields.Add(new CampaignField
-                {
-                    Id = Guid.NewGuid(),
-                    CampaignId = campaign.Id,
-                    FieldId = cf.FieldId,
-                    TargetYieldTonHa = cf.TargetYieldTonHa,
-                    AllocatedHectares = cf.AllocatedHectares
-                });
-            }
-        }
 
         await _context.SaveChangesAsync();
         return NoContent();

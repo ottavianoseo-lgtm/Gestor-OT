@@ -21,9 +21,15 @@
         <span class="page-subtitle">Labores registradas sin Orden de Trabajo asignada</span>
     </div>
     <div style="display: flex; gap: 8px; align-items: center;">
+        <Select TItemValue="string" TItem="string" Value="@_sortBy" ValueChanged="OnSortChanged" Style="width: 160px;">
+            <SelectOption TItemValue="string" TItem="string" Value="@("default")" Label="Fecha Creación" />
+            <SelectOption TItemValue="string" TItem="string" Value="@("priority")" Label="Prioridad" />
+            <SelectOption TItemValue="string" TItem="string" Value="@("date")" Label="Fecha Estimada" />
+        </Select>
+        <Button Icon="sync" OnClick="LoadData" />
         <Button Type="@ButtonType.Primary" OnClick="() => OpenQuickCreator()"
                 Style="background: #2ECC71; border-color: #2ECC71; border-radius: 8px; font-weight: 600;">
-            <Icon Type="plus" Theme="IconThemeType.Outline" /> Labor Rapida
+            <Icon Type="plus" Theme="IconThemeType.Outline" /> Labor Rápida
         </Button>
         @if (_selectedIds.Count > 0)
         {
@@ -105,7 +111,13 @@ else
                     @labor.LaborTypeName
                 </div>
                 <div class="labor-info">
-                    <div class="labor-lot">
+                    <div class="labor-priority" @onclick:stopPropagation="true">
+                    <label style="color: rgba(255,255,255,0.3); font-size: 9px; display: block;">PRIORIDAD</label>
+                    <AntDesign.InputNumber TValue="int" Value="@labor.Priority" 
+                               ValueChanged="@((int v) => UpdatePriority(labor, v))"
+                               Size="InputSize.Small" Style="width: 60px;" />
+                </div>
+                <div class="labor-lot">
                         <Icon Type="environment" Theme="IconThemeType.Outline" Style="font-size: 11px;" />
                         @(labor.LotName ?? "—")
                         @if (!string.IsNullOrEmpty(labor.FieldName))
@@ -127,21 +139,19 @@ else
                 </div>
                 <div class="labor-status">
                     @{
-                        var statusLabel = labor.Status switch
+                        var (statusLabel, statusColor) = labor.Status switch
                         {
-                            "Planned" => "Planeada",
-                            "Realized" => "Realizada",
-                            "Pending" => "Pendiente",
-                            _ => labor.Status
-                        };
-                        var statusColor = labor.Status switch
-                        {
-                            "Realized" => "blue",
-                            "Planned" => "orange",
-                            _ => "orange"
+                            "Planned" => ("Planeada", "#1890FF"),
+                            "AwaitingValidation" => ("En Validación", "#FAAD14"),
+                            "Validated" => ("Validada", "#FA8C16"),
+                            "Realized" => ("Realizada", "#52C41A"),
+                            "Pending" => ("Pendiente", "#FAAD14"),
+                            _ => (labor.Status, "default")
                         };
                     }
-                    <Tag Color="@statusColor">@statusLabel</Tag>
+                    <Tag Style="@($"background: {statusColor}20; color: {statusColor}; border: 1px solid {statusColor}40; border-radius: 12px; font-size: 11px; padding: 2px 10px;")">
+                        @statusLabel
+                    </Tag>
                 </div>
                 <div class="labor-actions" @onclick:stopPropagation="true">
                     @if (labor.Status != "Realized")
@@ -332,6 +342,7 @@ else
     private bool _saving;
     private HashSet<Guid> _selectedIds = new();
     private Guid? _filterTypeId;
+    private string _sortBy = "default";
     private bool _drawerVisible;
     private Guid _editingLaborId = Guid.Empty;
     private bool _assignModalOpen;
@@ -410,7 +421,7 @@ else
             _loading = true;
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
 
-            var laborsTask = Http.GetFromJsonAsync("api/labors/unassigned",
+            var laborsTask = Http.GetFromJsonAsync($"api/labors/unassigned?sortBy={_sortBy}",
                 AppJsonSerializerContext.Default.ListLaborDto, cts.Token);
             var woTask = Http.GetFromJsonAsync("api/workorders",
                 AppJsonSerializerContext.Default.ListWorkOrderDto, cts.Token);
@@ -443,6 +454,32 @@ else
             _loading = false;
             _selectedIds.Clear();
             StateHasChanged();
+        }
+    }
+
+    private async Task OnSortChanged(string value)
+    {
+        _sortBy = value;
+        await LoadData();
+    }
+
+    private async Task UpdatePriority(LaborDto labor, int newPriority)
+    {
+        var oldPriority = labor.Priority;
+        labor.Priority = newPriority; // Optimistic update
+        try
+        {
+            var response = await Http.PatchAsJsonAsync($"api/labors/{labor.Id}/priority", new PriorityRequest { Priority = newPriority });
+            if (!response.IsSuccessStatusCode)
+            {
+                labor.Priority = oldPriority;
+                Message.Error("No se pudo actualizar la prioridad.");
+            }
+        }
+        catch
+        {
+            labor.Priority = oldPriority;
+            Message.Error("Error de conexión al actualizar prioridad.");
         }
     }
 
@@ -603,6 +640,11 @@ else
     {
         _drawerVisible = false;
         await LoadData();
+    }
+
+    public class PriorityRequest
+    {
+        public int Priority { get; set; }
     }
 }
 

@@ -20,6 +20,9 @@ builder.Services.AddScoped<CampaignState>();
 builder.Services.AddScoped<LoadingService>();
 builder.Services.AddHttpClient();
 
+// ERP Background Sync Worker
+builder.Services.AddHostedService<GestorOT.Infrastructure.Services.ErpSyncWorker>();
+
 builder.Services.AddControllers()
     .AddJsonOptions(options =>
     {

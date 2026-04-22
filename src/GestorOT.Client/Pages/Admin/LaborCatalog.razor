@@ -4,6 +4,7 @@
 @using AntDesign
 @inject HttpClient Http
 @inject IMessageService Message
+@inject GestorOT.Client.Services.TenantState TenantState
 
 <PageTitle>Catálogo de Labores - Admin</PageTitle>
 
@@ -98,7 +99,7 @@
         _syncing = true;
         try
         {
-            var response = await Http.PostAsync("api/sync/catalog", null);
+            var response = await Http.PostAsync($"api/sync/catalog?tenantId={TenantState.CurrentTenant?.Id}", null);
             if (response.IsSuccessStatusCode)
             {
                 Message.Success("Sincronización completada.");

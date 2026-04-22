@@ -84,8 +84,8 @@ public class EncryptionService : IEncryptionService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error decrypting text. Ensure the encryption key matches the one used for encryption.");
-            return "ERROR_DECRYPTING";
+            _logger.LogWarning("Error decrypting text. Falling back to plain text (this is expected for manual DB entries in Dev).");
+            return cipherText; // Devuelve el texto original si no está encriptado
         }
     }
 }

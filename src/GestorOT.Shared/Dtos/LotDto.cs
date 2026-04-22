@@ -18,6 +18,7 @@ public record WorkOrderDto
 {
     public Guid Id { get; set; }
     public Guid FieldId { get; set; } // OTs now target a Field
+    [System.ComponentModel.DataAnnotations.Required(ErrorMessage = "La descripción es obligatoria")]
     public string Description { get; set; } = string.Empty;
     public string Status { get; set; } = "Draft";
     public string AssignedTo { get; set; } = string.Empty;

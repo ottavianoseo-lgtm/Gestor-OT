@@ -49,19 +49,21 @@ public class SyncController : ControllerBase
     [HttpPost("erp/{tenantId:guid}")]
     public async Task<IActionResult> TriggerSync(Guid tenantId)
     {
-        // Ejecutamos en segundo plano para no bloquear al usuario, o esperamos segun prefiera el user
-        // En este caso, lo ejecutaremos para devolver el resultado
         try 
         {
-            await _erpSyncService.SyncLaborTypesAsync(tenantId);
-            await _erpSyncService.SyncContactsAsync(tenantId);
-            await _erpSyncService.SyncStockAsync(tenantId);
-            return Ok(new { Message = "Sincronización completada para el tenant " + tenantId });
+            await _erpSyncService.TotalSyncAsync(tenantId);
+            return Ok(new { Message = "Sincronización total completada para el tenant " + tenantId });
         }
         catch (Exception ex)
         {
             return StatusCode(500, new { Error = ex.Message });
         }
+    }
+
+    [HttpPost("total-sync/{tenantId:guid}")]
+    public async Task<IActionResult> ForceTotalSync(Guid tenantId)
+    {
+        return await TriggerSync(tenantId);
     }
 
     [HttpPost("erp/all")]

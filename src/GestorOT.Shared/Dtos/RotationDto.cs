@@ -7,7 +7,8 @@ public record RotationDto(
     string? ActivityName,
     DateOnly StartDate,
     DateOnly EndDate,
-    string? Notes
+    string? Notes,
+    string? CampaignName = null
 );
 
 public record RotationWarning(

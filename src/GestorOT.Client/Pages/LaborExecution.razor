@@ -1,4 +1,6 @@
 @page "/execution/{WorkOrderId:guid}"
+@page "/public/labor-execution/{Token}"
+@layout GestorOT.Client.Layout.PublicLayout
 @using GestorOT.Shared.Dtos
 @using GestorOT.Shared
 @using System.Net.Http.Json
@@ -26,10 +28,13 @@
     {
         <div class="glass-card wo-header">
             <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px;">
-                <Button Type="@ButtonType.Text" OnClick="GoBack"
-                        Style="color: rgba(255,255,255,0.7); padding: 4px 8px; min-width: auto;">
-                    <Icon Type="arrow-left" Theme="IconThemeType.Outline" />
-                </Button>
+                @if (!IsPublic)
+                {
+                    <Button Type="@ButtonType.Text" OnClick="GoBack"
+                            Style="color: rgba(255,255,255,0.7); padding: 4px 8px; min-width: auto;">
+                        <Icon Type="arrow-left" Theme="IconThemeType.Outline" />
+                    </Button>
+                }
                 <h2 class="page-title" style="margin: 0; font-size: 18px;">Ejecución de Labores</h2>
             </div>
             <div style="margin-bottom: 4px;">
@@ -46,9 +51,9 @@
             </div>
         </div>
 
-        @if (_order.Labors != null && _order.Labors.Any())
+        @if (_labors != null && _labors.Any())
         {
-            @foreach (var labor in _order.Labors)
+            @foreach (var labor in _labors)
             {
                 var currentLabor = labor;
                 var isRealized = currentLabor.Status == "Realized" || currentLabor.Status == "Done";
@@ -56,9 +61,22 @@
                     <div class="labor-header">
                         <div>
                             <span style="font-weight: 700; color: #fff; font-size: 15px;">@currentLabor.LaborTypeName</span>
-                            <div style="margin-top: 4px; display: flex; gap: 8px; flex-wrap: wrap;">
+                            <div style="margin-top: 4px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
                                 <Tag Style="@GetStatusTagStyle(currentLabor.Status)">@currentLabor.Status</Tag>
-                                <span style="color: rgba(255,255,255,0.6); font-size: 13px;">@currentLabor.Hectares.ToString("N2") ha</span>
+                                <span style="color: rgba(255,255,255,0.4); font-size: 11px;">Planificado: @currentLabor.Hectares.ToString("N2") ha</span>
+                                @if (!isRealized)
+                                {
+                                    <div style="display: flex; align-items: center; gap: 4px; margin-left: 8px;">
+                                        <span style="color: #fff; font-size: 11px; font-weight: 600;">HA. REALES:</span>
+                                        <AntDesign.InputNumber TValue="decimal" @bind-Value="_realHectares[currentLabor.Id]"
+                                                   Min="0.01m" Step="0.1m" Size="InputSize.Small"
+                                                   Style="width: 80px;" />
+                                    </div>
+                                }
+                                else
+                                {
+                                    <span style="color: #2ECC71; font-size: 12px; font-weight: 600; margin-left: 8px;">Real: @currentLabor.Hectares.ToString("N2") ha</span>
+                                }
                             </div>
                         </div>
                         @if (!isRealized)
@@ -158,15 +176,29 @@
                                            Style="width: 100%;"
                                            Disabled="@isRealized" />
                             </div>
-                            <div class="weather-field">
-                                <label>Viento (km/h)</label>
-                                <AntDesign.InputNumber TValue="double?" Value="@wl.WindSpeed"
-                                           ValueChanged="@((double? v) => { wl.WindSpeed = v; })"
-                                           Min="0" Placeholder="km/h"
-                                           Style="width: 100%;"
-                                           Disabled="@isRealized" />
-                            </div>
-                        </div>
+                             <div class="weather-field">
+                                 <label>Viento (km/h)</label>
+                                 <AntDesign.InputNumber TValue="double?" Value="@wl.WindSpeed"
+                                            ValueChanged="@((double? v) => { wl.WindSpeed = v; })"
+                                            Min="0" Placeholder="km/h"
+                                            Style="width: 100%;"
+                                            Disabled="@isRealized" />
+                             </div>
+                             <div class="weather-field">
+                                 <label>Dir. Viento</label>
+                                 <Select TItemValue="string" TItem="string" @bind-Value="wl.WindDirection"
+                                         Placeholder="Dir." Style="width: 100%;" Disabled="@isRealized">
+                                     <SelectOption TItemValue="string" TItem="string" Value="@("N")" Label="N" />
+                                     <SelectOption TItemValue="string" TItem="string" Value="@("NE")" Label="NE" />
+                                     <SelectOption TItemValue="string" TItem="string" Value="@("E")" Label="E" />
+                                     <SelectOption TItemValue="string" TItem="string" Value="@("SE")" Label="SE" />
+                                     <SelectOption TItemValue="string" TItem="string" Value="@("S")" Label="S" />
+                                     <SelectOption TItemValue="string" TItem="string" Value="@("SO")" Label="SO" />
+                                     <SelectOption TItemValue="string" TItem="string" Value="@("O")" Label="O" />
+                                     <SelectOption TItemValue="string" TItem="string" Value="@("NO")" Label="NO" />
+                                 </Select>
+                             </div>
+                         </div>
                         <div style="margin-top: 8px;">
                             <label style="color: rgba(255,255,255,0.6); font-size: 12px; display: block; margin-bottom: 4px;">Notas</label>
                             <TextArea @bind-Value="wl.Notes"
@@ -296,7 +328,7 @@
 
     .weather-grid {
         display: grid;
-        grid-template-columns: 1fr 1fr 1fr;
+        grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
         gap: 12px;
     }
 
@@ -329,19 +361,25 @@
 
 @code {
     [Parameter] public Guid WorkOrderId { get; set; }
+    [Parameter] public string? Token { get; set; }
 
     private WorkOrderDetailDto? _order;
+    private List<LaborDto> _labors = new();
     private bool _loading = true;
     private string? _errorMessage;
     private Guid? _realizingLaborId;
     private Dictionary<string, decimal> _realDoses = new();
+    private Dictionary<Guid, decimal> _realHectares = new();
     private Dictionary<Guid, WeatherLogModel> _weatherLogs = new();
+
+    private bool IsPublic => !string.IsNullOrEmpty(Token);
 
     public class WeatherLogModel
     {
         public double? Temperature { get; set; }
         public double? Humidity { get; set; }
         public double? WindSpeed { get; set; }
+        public string? WindDirection { get; set; }
         public string? Notes { get; set; }
     }
 
@@ -362,13 +400,76 @@
             _loading = true;
             _errorMessage = null;
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
-            _order = await Http.GetFromJsonAsync($"api/workorders/{WorkOrderId}",
-                AppJsonSerializerContext.Default.WorkOrderDetailDto, cts.Token);
 
-            if (_order?.Labors != null)
+            if (IsPublic)
             {
-                foreach (var labor in _order.Labors)
+                var response = await Http.GetAsync($"api/share/validate/{Token}", cts.Token);
+                if (response.IsSuccessStatusCode)
                 {
+                    var publicOrder = await response.Content.ReadFromJsonAsync<PublicWorkOrderDto>(
+                        AppJsonSerializerContext.Default.PublicWorkOrderDto, cts.Token);
+                    
+                    if (publicOrder != null)
+                    {
+                        // Map PublicWorkOrderDto to WorkOrderDetailDto for internal logic reuse
+                        _order = new WorkOrderDetailDto
+                        {
+                            Id = publicOrder.Id,
+                            Description = publicOrder.Description,
+                            Status = publicOrder.Status,
+                            AssignedTo = publicOrder.AssignedTo,
+                            DueDate = publicOrder.DueDate,
+                            FieldName = publicOrder.FieldName
+                        };
+                        
+                        _labors = publicOrder.Labors?.Select(l => new LaborDto
+                        {
+                            Id = l.Id,
+                            LaborTypeName = l.LaborType,
+                            Status = l.Status,
+                            Hectares = l.Hectares,
+                            LotId = l.LotId,
+                            LotName = l.LotName,
+                            Supplies = l.Supplies?.Select(s => new LaborSupplyDto
+                            {
+                                Id = s.Id,
+                                SupplyId = s.SupplyId,
+                                SupplyName = s.SupplyName,
+                                PlannedDose = s.PlannedDose,
+                                RealDose = s.RealDose,
+                                PlannedTotal = s.PlannedTotal,
+                                RealTotal = s.RealTotal,
+                                UnitOfMeasure = s.DoseUnit,
+                                SupplyUnit = s.SupplyUnit
+                            }).ToList() ?? new()
+                        }).ToList() ?? new();
+                    }
+                }
+                else
+                {
+                    var errorText = await response.Content.ReadAsStringAsync();
+                    _errorMessage = errorText.Contains("expirado") ? "Este enlace ha expirado."
+                        : errorText.Contains("revocado") ? "Este enlace ha sido revocado."
+                        : "El enlace no es válido o ha expirado.";
+                    return;
+                }
+            }
+            else
+            {
+                _order = await Http.GetFromJsonAsync($"api/workorders/{WorkOrderId}",
+                    AppJsonSerializerContext.Default.WorkOrderDetailDto, cts.Token);
+                _labors = _order?.Labors ?? new();
+            }
+
+            if (_labors != null)
+            {
+                foreach (var labor in _labors)
+                {
+                    if (!_realHectares.ContainsKey(labor.Id))
+                    {
+                        _realHectares[labor.Id] = labor.Hectares;
+                    }
+
                     if (labor.Supplies != null)
                     {
                         foreach (var supply in labor.Supplies)
@@ -431,9 +532,10 @@
 
     private string GetStatusTagStyle(string status) => status switch
     {
-        "Planned" => "background: #F1C40F20; color: #F1C40F; border: 1px solid #F1C40F40; border-radius: 12px; font-size: 11px; padding: 2px 10px;",
-        "Realized" or "Done" => "background: #2ECC7120; color: #2ECC71; border: 1px solid #2ECC7140; border-radius: 12px; font-size: 11px; padding: 2px 10px;",
-        "InProgress" => "background: #3498DB20; color: #3498DB; border: 1px solid #3498DB40; border-radius: 12px; font-size: 11px; padding: 2px 10px;",
+        "Planned" => "background: #1890FF20; color: #1890FF; border: 1px solid #1890FF40; border-radius: 12px; font-size: 11px; padding: 2px 10px;",
+        "AwaitingValidation" => "background: #FAAD1420; color: #FAAD14; border: 1px solid #FAAD1440; border-radius: 12px; font-size: 11px; padding: 2px 10px;",
+        "Validated" => "background: #FA8C1620; color: #FA8C16; border: 1px solid #FA8C1640; border-radius: 12px; font-size: 11px; padding: 2px 10px;",
+        "Realized" or "Done" => "background: #52C41A20; color: #52C41A; border: 1px solid #52C41A40; border-radius: 12px; font-size: 11px; padding: 2px 10px;",
         _ => "background: rgba(255,255,255,0.1); color: rgba(255,255,255,0.7); border: 1px solid rgba(255,255,255,0.2); border-radius: 12px; font-size: 11px; padding: 2px 10px;"
     };
 
@@ -442,6 +544,8 @@
         _realizingLaborId = labor.Id;
         try
         {
+            var realHa = _realHectares.TryGetValue(labor.Id, out var h) ? h : labor.Hectares;
+            
             var realSupplies = labor.Supplies?.Select(s =>
             {
                 var realDose = GetRealDose(labor.Id, s.Id, s.PlannedDose);
@@ -453,7 +557,9 @@
                     PlannedDose = s.PlannedDose,
                     RealDose = realDose,
                     PlannedTotal = s.PlannedDose * labor.Hectares,
-                    RealTotal = realDose * labor.Hectares,
+                    RealTotal = realDose * realHa,
+                    PlannedHectares = labor.Hectares,
+                    RealHectares = realHa,
                     UnitOfMeasure = s.UnitOfMeasure,
                     SupplyName = s.SupplyName,
                     SupplyUnit = s.SupplyUnit,
@@ -462,19 +568,43 @@
                 };
             }).ToList() ?? new();
 
+            // 1. Update Weather/Hectares first via standard PUT if not public (or we might need a public endpoint for this)
+            // For simplicity and following requirements, we'll send everything to the realize endpoint if possible
+            // but the current realize endpoint only takes supplies.
+            
             var weatherLog = _weatherLogs.TryGetValue(labor.Id, out var wl) ? wl : null;
-            if (weatherLog != null && (weatherLog.Temperature.HasValue || weatherLog.Humidity.HasValue || weatherLog.WindSpeed.HasValue || !string.IsNullOrEmpty(weatherLog.Notes)))
+            var weatherJson = weatherLog != null ? JsonSerializer.Serialize(weatherLog) : labor.WeatherLogJson;
+
+            HttpResponseMessage response;
+            if (IsPublic)
             {
-                var weatherJson = JsonSerializer.Serialize(weatherLog);
-                var updatedLabor = labor with { WeatherLogJson = weatherJson };
+                // Public endpoint (doesn't handle weather yet, but we'll use what's available)
+                var publicSupplies = realSupplies.Select(s => new PublicLaborSupplyDto(
+                    s.Id, s.SupplyId, s.SupplyName ?? "", s.PlannedDose, s.RealDose ?? s.PlannedDose,
+                    s.PlannedTotal, s.RealTotal ?? s.PlannedTotal, s.SupplyUnit ?? "u", s.SupplyUnit
+                )).ToList();
+
+                response = await Http.PostAsJsonAsync(
+                    $"api/share/realize/{Token}/labor/{labor.Id}",
+                    publicSupplies,
+                    AppJsonSerializerContext.Default.ListPublicLaborSupplyDto);
+            }
+            else
+            {
+                // Update hectares and weather first
+                var updatedLabor = labor with { 
+                    WeatherLogJson = weatherJson,
+                    Hectares = realHa
+                };
+                
                 await Http.PutAsJsonAsync($"api/labors/{labor.Id}",
                     updatedLabor, AppJsonSerializerContext.Default.LaborDto);
-            }
 
-            var response = await Http.PostAsJsonAsync(
-                $"api/labors/{labor.Id}/realize",
-                realSupplies,
-                AppJsonSerializerContext.Default.ListLaborSupplyDto);
+                response = await Http.PostAsJsonAsync(
+                    $"api/labors/{labor.Id}/realize",
+                    realSupplies,
+                    AppJsonSerializerContext.Default.ListLaborSupplyDto);
+            }
 
             if (response.IsSuccessStatusCode)
             {

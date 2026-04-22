@@ -136,21 +136,22 @@
        ConfirmLoading="_saving"
        Width="560">
     <Form @ref="_form" Model="_formModel" Layout="@FormLayout.Vertical">
+        @if (!_isEditing)
+        {
+            <FormItem Label="Seleccionar Temporada">
+                <Select TItem="SeasonInfo" TItemValue="string" DataSource="_availableSeasons"
+                        LabelName="@nameof(SeasonInfo.Name)" ValueName="@nameof(SeasonInfo.Name)"
+                        OnSelectedItemChanged="OnSeasonSelected"
+                        Placeholder="Seleccionar temporada predefinida..."
+                        Disabled="@(_availableSeasons == null || !_availableSeasons.Any(s => !s.AlreadyExists))">
+                </Select>
+            </FormItem>
+        }
+        
         <FormItem Label="Nombre de la Campaña">
             <Input @bind-Value="_formModel.Name" Placeholder="Ej: Campaña 2025/2026" />
         </FormItem>
-        <AntDesign.Row Gutter="16">
-            <AntDesign.Col Span="12">
-                <FormItem Label="Fecha de Inicio">
-                    <DatePicker @bind-Value="_formModel.StartDate" Style="width: 100%;" Format="dd/MM/yyyy" />
-                </FormItem>
-            </AntDesign.Col>
-            <AntDesign.Col Span="12">
-                <FormItem Label="Fecha de Fin">
-                    <DatePicker @bind-Value="_formModel.EndDate" Style="width: 100%;" Format="dd/MM/yyyy" />
-                </FormItem>
-            </AntDesign.Col>
-        </AntDesign.Row>
+        
         <AntDesign.Row Gutter="16">
             <AntDesign.Col Span="12">
                 <FormItem Label="Estado">
@@ -274,6 +275,7 @@
     private bool _fieldsModalVisible;
     private CampaignDto? _fieldsModalCampaign;
     private List<FieldDto> _availableFields = new();
+    private List<SeasonInfo> _availableSeasons = new();
     private Guid _addFieldId;
     private decimal _addAllocatedHa;
     private decimal _addTargetYield;
@@ -282,11 +284,23 @@
     public class CampaignFormModel
     {
         public string Name { get; set; } = string.Empty;
-        public DateTime? StartDate { get; set; } = DateTime.Today;
+        public DateTime? StartDate { get; set; }
         public DateTime? EndDate { get; set; }
         public CampaignStatus Status { get; set; } = CampaignStatus.Active;
         public decimal BudgetTotalUSD { get; set; }
         public bool IsActive { get; set; } = true;
+    }
+
+    public record SeasonInfo(string Name, DateOnly StartDate, DateOnly EndDate, bool AlreadyExists);
+
+    private void OnSeasonSelected(SeasonInfo season)
+    {
+        if (season != null)
+        {
+            _formModel.Name = $"Campaña {season.Name}";
+            _formModel.StartDate = season.StartDate.ToDateTime(TimeOnly.MinValue);
+            _formModel.EndDate = season.EndDate.ToDateTime(TimeOnly.MinValue);
+        }
     }
 
     protected override async Task OnInitializedAsync()
@@ -326,10 +340,22 @@
         }
     }
 
-    private void OpenCreateModal()
+    private async Task OpenCreateModal()
     {
         _isEditing = false;
         _formModel = new CampaignFormModel();
+        
+        try 
+        {
+            var seasons = await Http.GetFromJsonAsync<List<SeasonInfo>>("api/campaigns/available-seasons");
+            _availableSeasons = seasons?.Where(s => !s.AlreadyExists).ToList() ?? new();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading seasons: {ex.Message}");
+            _availableSeasons = new();
+        }
+
         _modalVisible = true;
     }
 
