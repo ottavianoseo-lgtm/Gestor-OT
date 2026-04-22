@@ -8,17 +8,29 @@ namespace GestorOT.Infrastructure.Services;
 public class WorkOrderQueryService : IWorkOrderQueryService
 {
     private readonly IApplicationDbContext _context;
+    private readonly ICampaignContextService _campaignContext;
 
-    public WorkOrderQueryService(IApplicationDbContext context)
+    public WorkOrderQueryService(IApplicationDbContext context, ICampaignContextService campaignContext)
     {
         _context = context;
+        _campaignContext = campaignContext;
     }
 
     public async Task<List<WorkOrderDto>> GetAllAsync(CancellationToken ct = default)
     {
-        var workOrders = await _context.WorkOrders
+        var campaignId = _campaignContext.CurrentCampaignId;
+        
+        var query = _context.WorkOrders
             .AsNoTracking()
             .Include(w => w.Field)
+            .AsQueryable();
+
+        if (campaignId.HasValue && campaignId != Guid.Empty)
+        {
+            query = query.Where(w => w.CampaignId == campaignId);
+        }
+
+        var workOrders = await query
             .OrderByDescending(w => w.DueDate)
             .ToListAsync(ct);
 

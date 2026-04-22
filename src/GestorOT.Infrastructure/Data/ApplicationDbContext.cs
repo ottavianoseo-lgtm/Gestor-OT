@@ -92,9 +92,7 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
 
         modelBuilder.Entity<WorkOrder>(entity =>
         {
-            entity.HasQueryFilter(e =>
-                (CurrentTenantId == Guid.Empty || e.TenantId == CurrentTenantId) &&
-                (CurrentCampaignId == null || e.CampaignId == CurrentCampaignId));
+            entity.HasQueryFilter(e => CurrentTenantId == Guid.Empty || e.TenantId == CurrentTenantId);
         });
 
         modelBuilder.Entity<Inventory>(entity =>
