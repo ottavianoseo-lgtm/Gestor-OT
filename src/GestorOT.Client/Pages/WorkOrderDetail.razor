@@ -125,76 +125,90 @@ else if (_order != null)
                     </div>
                 </div>
                 <div class="glass-card table-container">
-                    <Table @ref="_laborTable" TItem="LaborDto" DataSource='_order.Labors' Context="labor" Size="TableSize.Small" HidePagination ScrollX="1300" ExpandIcon="null" OnRowClick="OnLaborRowClick" @bind-ExpandedRows="_expandedRows">
+                    <style>
+                        /* Forzar fondo oscuro en columnas fijas para evitar el fondo blanco */
+                        .ant-table-cell-fix-right {
+                            background-color: #1a1a2e !important;
+                            border-left: 1px solid rgba(255,255,255,0.05) !important;
+                        }
+                        .ant-table-row:hover .ant-table-cell-fix-right {
+                            background-color: #252545 !important;
+                        }
+                        /* Estilo para el icono de expansión nativo cuando está a la derecha */
+                        .ant-table-row-expand-icon {
+                            color: #ffffff !important;
+                            border-color: #ffffff !important;
+                            background: transparent !important;
+                        }
+                    </style>
+                    <Table @ref="_laborTable" TItem="LaborDto" DataSource='_order.Labors' Size="TableSize.Small" HidePagination ScrollX="1300" 
+                           ExpandIconColumnIndex="8" RowKey="l => l.Id">
                         <ChildContent>
                             <Column TData="bool" Title="" Width="50">
-                            <Checkbox Checked="_selectedLabors.Contains(labor.Id)" 
-                                      CheckedChanged='(val) => ToggleLaborSelection(labor.Id, val)' />
-                        </Column>
-                        <PropertyColumn Property="l => l.LotName" Title="Lote" Sortable />
-                        <PropertyColumn Property="l => l.LaborTypeName" Title="Tipo" />
-                        <Column TData="string" Title="Estado">
-                            @{
-                                var (color, label) = labor.Status switch {
-                                    "Realized" => ("#52C41A", "Realizada"),
-                                    "Validated" => ("#FA8C16", "Validada"),
-                                    "AwaitingValidation" => ("#FAAD14", "En Validación"),
-                                    _ => ("#1890FF", "Planeada")
-                                };
-                            }
-                            <Tag Style="@($"background: {color}20; color: {color}; border: 1px solid {color}40; border-radius: 12px; font-size: 11px; padding: 2px 10px;")">@label</Tag>
-                        </Column>
-                        <PropertyColumn Property="l => l.Hectares" Title="Ha Plan." />
-                        <Column TData="decimal" Title="Ha Real.">
-                            @if (labor.Status == "Realized") {
-                                <span>@labor.EffectiveArea.ToString("N2")</span>
-                            } else {
-                                <span style="color: rgba(255,255,255,0.2);">—</span>
-                            }
-                        </Column>
-                        <Column TData="decimal" Title="Diff">
-                            @if (labor.Status == "Realized") {
-                                var diff = labor.EffectiveArea - labor.Hectares;
-                                <span style="color: @(diff > 0 ? "#ff4d4f" : (diff < 0 ? "#52c41a" : "inherit"))">
-                                    @(diff > 0 ? "+" : "")@diff.ToString("N2")
-                                </span>
-                            }
-                        </Column>
-                        <PropertyColumn Property="l => l.CreatedAt" Title="Fecha" Format="dd/MM/yyyy" />
-                        <ActionColumn Title="Acciones" Width="100" Fixed="ActionColumnFixed.Right">
-                            <div style="display: flex; align-items: center; gap: 12px;">
-                                <Dropdown>
-                                    <Overlay>
-                                        <Menu Style="background: #1E1E2E; border: 1px solid rgba(255,255,255,0.1); border-radius: 8px;">
-                                            <MenuItem OnClick="() => OpenLaborModal(labor.Id)" Style="color: #fff;">
-                                                <Icon Type="edit" /> Editar
-                                            </MenuItem>
-                                            <MenuItem OnClick="() => SubmitSingleLabor(labor.Id)" Style="color: #fff;">
-                                                <Icon Type="share-alt" /> Validar
-                                            </MenuItem>
-                                            <MenuItem OnClick="() => DeleteLabor(labor.Id)" Style="color: #ff4d4f;">
-                                                <Icon Type="delete" /> Quitar
-                                            </MenuItem>
-                                        </Menu>
-                                    </Overlay>
-                                    <ChildContent>
-                                        <Button Type="@ButtonType.Text" Icon="more" Style="color: rgba(255,255,255,0.6);" />
-                                    </ChildContent>
-                                </Dropdown>
-                                
-                                @* Icono para indicar que se puede expandir *@
-                                <Tooltip Title="Ver detalle de insumos">
-                                    <Icon Type="down-circle" Theme="IconThemeType.Outline" 
-                                          Style="color: rgba(59, 130, 246, 0.8); cursor: pointer; font-size: 16px;" 
-                                          OnClick="@(() => { /* AntDesign Table maneja el click en la fila si está configurado, sino esto es visual */ })" />
-                                </Tooltip>
-                            </div>
-                        </ActionColumn>
+                                <Checkbox Checked="_selectedLabors.Contains(context.Id)" 
+                                          CheckedChanged='(val) => ToggleLaborSelection(context.Id, val)' />
+                            </Column>
+                            <PropertyColumn Property="l => l.LotName" Title="Lote" Sortable />
+                            <PropertyColumn Property="l => l.LaborTypeName" Title="Tipo" />
+                            <Column TData="string" Title="Estado">
+                                @{
+                                    var (color, label) = context.Status switch {
+                                        "Realized" => ("#52C41A", "Realizada"),
+                                        "Validated" => ("#FA8C16", "Validada"),
+                                        "AwaitingValidation" => ("#FAAD14", "En Validación"),
+                                        _ => ("#1890FF", "Planeada")
+                                    };
+                                }
+                                <Tag Style="@($"background: {color}20; color: {color}; border: 1px solid {color}40; border-radius: 12px; font-size: 11px; padding: 2px 10px;")">@label</Tag>
+                            </Column>
+                            <PropertyColumn Property="l => l.Hectares" Title="Ha Plan." />
+                            <Column TData="decimal" Title="Ha Real.">
+                                @if (context.Status == "Realized") {
+                                    <span>@context.EffectiveArea.ToString("N2")</span>
+                                } else {
+                                    <span style="color: rgba(255,255,255,0.2);">—</span>
+                                }
+                            </Column>
+                            <Column TData="decimal" Title="Diff">
+                                @if (context.Status == "Realized") {
+                                    var diff = context.EffectiveArea - context.Hectares;
+                                    <span style="color: @(diff > 0 ? "#ff4d4f" : (diff < 0 ? "#52c41a" : "inherit"))">
+                                        @(diff > 0 ? "+" : "")@diff.ToString("N2")
+                                    </span>
+                                }
+                            </Column>
+                            <PropertyColumn Property="l => l.CreatedAt" Title="Fecha" Format="dd/MM/yyyy" />
+                            <Column TData="string" Title="Acciones" Width="120" Fixed="@ColumnFixPlacement.Right">
+                                <div style="display: flex; align-items: center; gap: 4px; justify-content: flex-start;">
+                                    @* El icono de expansión nativo se insertará aquí automáticamente *@
+                                    <Dropdown Trigger="@(new AntDesign.Trigger[] { AntDesign.Trigger.Click })">
+                                        <Overlay>
+                                            <Menu Style="background: #1E1E2E; border: 1px solid rgba(255,255,255,0.1); border-radius: 8px;">
+                                                <MenuItem OnClick="() => OpenLaborModal(context.Id)" Style="color: #fff;">
+                                                    <Icon Type="edit" /> Editar
+                                                </MenuItem>
+                                                <MenuItem OnClick="() => SubmitSingleLabor(context.Id)" Style="color: #fff;">
+                                                    <Icon Type="share-alt" /> Validar
+                                                </MenuItem>
+                                                <MenuItem OnClick="() => DeleteLabor(context.Id)" Style="color: #ff4d4f;">
+                                                    <Icon Type="delete" /> Quitar
+                                                </MenuItem>
+                                            </Menu>
+                                        </Overlay>
+                                        <ChildContent>
+                                            <Button Type="@ButtonType.Text" 
+                                                    Style="height: 32px; width: 32px; border: none; background: transparent; display: flex; align-items: center; justify-content: center; padding: 0;">
+                                                <Icon Type="more" Style="color: #ffffff !important; font-size: 22px;" />
+                                            </Button>
+                                        </ChildContent>
+                                    </Dropdown>
+                                </div>
+                            </Column>
                         </ChildContent>
-                        <ExpandTemplate>
+                        <ExpandTemplate Context="laborRow">
                             <div style="padding: 12px; background: rgba(255,255,255,0.02); border-radius: 8px; border: 1px solid rgba(255,255,255,0.05);">
                                 <h4 style="color: #fff; font-size: 13px; margin-bottom: 12px;"><Icon Type="experiment" /> Desvío de Insumos (Detalle Técnico)</h4>
-                                <Table TItem="LaborSupplyDto" DataSource="labor.Supplies" Context="supply" Size="TableSize.Small" HidePagination>
+                                <Table TItem="LaborSupplyDto" DataSource="laborRow.Data.Supplies" Context="supply" Size="TableSize.Small" HidePagination>
                                     <ChildContent>
                                     <PropertyColumn Property="s => s.SupplyName" Title="Insumo" />
                                     <PropertyColumn Property="s => s.UnitOfMeasure" Title="Unidad" />
@@ -347,7 +361,6 @@ else if (_order != null)
     private bool _showLaborModal;
     private Guid _editingLaborId;
     private List<Guid> _selectedLabors = new();
-    private IEnumerable<LaborDto> _expandedRows = Enumerable.Empty<LaborDto>();
     private ITable? _laborTable;
 
     private bool _showValidationModal;
@@ -356,17 +369,6 @@ else if (_order != null)
     protected override async Task OnInitializedAsync()
     {
         await LoadData();
-    }
-
-    private void OnLaborRowClick(RowData<LaborDto> row)
-    {
-        var list = _expandedRows.ToList();
-        if (list.Any(x => x.Id == row.Data.Id))
-            list.RemoveAll(x => x.Id == row.Data.Id);
-        else
-            list.Add(row.Data);
-        
-        _expandedRows = list;
     }
 
     private void ToggleLaborSelection(Guid id, bool selected)
