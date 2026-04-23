@@ -1,15 +1,18 @@
 using System.Security.Cryptography;
+using System.Text.Json;
 using GestorOT.Application.Interfaces;
 using GestorOT.Domain.Entities;
 using GestorOT.Domain.Enums;
 using GestorOT.Shared.Dtos;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.EntityFrameworkCore;
 
 namespace GestorOT.Api.Controllers;
 
 [ApiController]
 [Route("api/share")]
+[IgnoreAntiforgeryToken]
 public class ShareController : ControllerBase
 {
     private readonly IApplicationDbContext _context;
@@ -20,8 +23,9 @@ public class ShareController : ControllerBase
     }
 
     [HttpPost("generate/{workOrderId:guid}")]
-    public async Task<ActionResult<ShareLinkDto>> GenerateLink(Guid workOrderId, [FromQuery] int expiryDays = 7)
+    public async Task<ActionResult<ShareLinkDto>> GenerateLink(Guid workOrderId, [FromBody] GenerateShareLinkRequest request)
     {
+        var expiryDays = request.ExpiryDays > 0 ? request.ExpiryDays : 7;
         var wo = await _context.WorkOrders.FindAsync(workOrderId);
         if (wo == null)
             return NotFound("Orden de trabajo no encontrada.");
@@ -39,7 +43,10 @@ public class ShareController : ControllerBase
             TokenHash = tokenHash,
             ExpiresAt = DateTime.UtcNow.AddDays(expiryDays),
             IsRevoked = false,
-            CreatedAt = DateTime.UtcNow
+            CreatedAt = DateTime.UtcNow,
+            Metadata = request.LaborIds != null && request.LaborIds.Any() 
+                ? JsonSerializer.Serialize(new { laborIds = request.LaborIds }) 
+                : null
         };
 
         _context.SharedTokens.Add(sharedToken);
@@ -86,7 +93,33 @@ public class ShareController : ControllerBase
         if (wo == null)
             return NotFound("Orden de trabajo no encontrada.");
 
-        var labors = wo.Labors.OrderBy(l => l.CreatedAt).Select(l => new PublicLaborDto(
+        // Filter labors if metadata has specific IDs
+        List<Labor> filteredLabors = wo.Labors.ToList();
+        if (!string.IsNullOrEmpty(sharedToken.Metadata))
+        {
+            try
+            {
+                var meta = JsonSerializer.Deserialize<JsonElement>(sharedToken.Metadata);
+                var allowedIds = new HashSet<Guid>();
+
+                if (meta.TryGetProperty("laborIds", out var idsProp))
+                {
+                    foreach (var id in idsProp.EnumerateArray()) allowedIds.Add(id.GetGuid());
+                }
+                else if (meta.TryGetProperty("laborId", out var idProp))
+                {
+                    allowedIds.Add(idProp.GetGuid());
+                }
+
+                if (allowedIds.Any())
+                {
+                    filteredLabors = wo.Labors.Where(l => allowedIds.Contains(l.Id)).ToList();
+                }
+            }
+            catch { /* Ignore malformed metadata */ }
+        }
+
+        var labors = filteredLabors.OrderBy(l => l.CreatedAt).Select(l => new PublicLaborDto(
             l.Id,
             l.Type?.Name ?? "Labor",
             l.Status.ToString(),
@@ -118,7 +151,8 @@ public class ShareController : ControllerBase
     }
 
     [HttpPost("realize/{token}/labor/{laborId:guid}")]
-    public async Task<IActionResult> RealizeLaborPublic(string token, Guid laborId, [FromBody] List<PublicLaborSupplyDto> realSupplies)
+    [IgnoreAntiforgeryToken]
+    public async Task<IActionResult> RealizeLaborPublic(string token, Guid laborId, [FromBody] PublicLaborExecutionRequest request)
     {
         var tokenHash = ComputeHash(token);
 
@@ -146,14 +180,17 @@ public class ShareController : ControllerBase
 
         labor.Status = LaborStatus.Realized;
         labor.ExecutionDate = DateTime.UtcNow;
+        labor.EffectiveArea = request.RealHectares;
+        labor.RealizedDose = request.Supplies.FirstOrDefault()?.RealDose ?? labor.PlannedDose;
 
-        foreach (var realSupply in realSupplies)
+        foreach (var realSupply in request.Supplies)
         {
             var existing = labor.Supplies.FirstOrDefault(s => s.Id == realSupply.Id);
             if (existing != null)
             {
                 existing.RealDose = realSupply.RealDose ?? realSupply.PlannedDose;
                 existing.RealTotal = (realSupply.RealDose ?? realSupply.PlannedDose) * labor.Hectares;
+                existing.RealHectares = labor.Hectares;
             }
         }
 
@@ -181,6 +218,7 @@ public class ShareController : ControllerBase
     }
 
     [HttpPost("realize-from-html")]
+    [IgnoreAntiforgeryToken]
     public async Task<IActionResult> RealizeFromHtml([FromBody] HtmlExecutionRequest request)
     {
         var sharedToken = await _context.SharedTokens
@@ -205,63 +243,32 @@ public class ShareController : ControllerBase
                         .Include(l => l.Supplies)
                         .FirstOrDefaultAsync(l => l.Id == laborReq.Id && l.WorkOrderId == request.WorkOrderId);
 
-                    if (source == null || source.Mode != LaborMode.Planned || source.Status == LaborStatus.Realized)
+                    if (source == null || source.Status == LaborStatus.Realized)
                         continue;
 
-                    var newLabor = new Labor
-                    {
-                        Id = Guid.NewGuid(),
-                        WorkOrderId = source.WorkOrderId,
-                        LotId = source.LotId,
-                        CampaignLotId = source.CampaignLotId,
-                        ErpActivityId = source.ErpActivityId,
-                        LaborTypeId = source.LaborTypeId,
-                        ContactId = source.ContactId,
-                        IsExternalBilling = source.IsExternalBilling,
-                        Mode = LaborMode.Realized,
-                        Status = LaborStatus.Realized,
-                        ExecutionDate = DateTime.UtcNow,
-                        Hectares = laborReq.RealHectares,
-                        EffectiveArea = laborReq.RealHectares,
-                        Rate = source.Rate,
-                        RateUnit = source.RateUnit,
-                        PlannedDose = source.PlannedDose,
-                        RealizedDose = source.PlannedDose,
-                        PlannedLaborId = source.Id,
-                        CreatedAt = DateTime.UtcNow,
-                        TenantId = sharedToken.TenantId
-                    };
+                    // Update existing labor instead of creating a new one
+                    source.Status = LaborStatus.Realized;
+                    source.ExecutionDate = DateTime.UtcNow;
+                    source.EffectiveArea = laborReq.RealHectares; // This is the REAL area
+                    
+                    source.RealizedDose = laborReq.Supplies.FirstOrDefault()?.RealDose ?? source.PlannedDose;
 
                     foreach (var s in source.Supplies)
                     {
                         var realS = laborReq.Supplies.FirstOrDefault(rs => rs.Id == s.Id);
                         var dose = realS?.RealDose ?? s.PlannedDose;
 
-                        newLabor.Supplies.Add(new LaborSupply
-                        {
-                            Id = Guid.NewGuid(),
-                            LaborId = newLabor.Id,
-                            SupplyId = s.SupplyId,
-                            PlannedDose = s.PlannedDose,
-                            PlannedTotal = s.PlannedTotal,
-                            PlannedHectares = s.PlannedHectares,
-                            RealDose = dose,
-                            RealTotal = dose * newLabor.Hectares,
-                            RealHectares = newLabor.Hectares,
-                            UnitOfMeasure = s.UnitOfMeasure,
-                            TankMixOrder = s.TankMixOrder,
-                            IsSubstitute = s.IsSubstitute
-                        });
+                        s.RealDose = dose;
+                        s.RealTotal = dose * source.Hectares;
+                        s.RealHectares = source.Hectares;
                     }
-
-                    _context.Labors.Add(newLabor);
                 }
 
                 sharedToken.IsUsed = true;
                 await _context.SaveChangesAsync();
                 await transaction.CommitAsync();
 
-                return Ok(new { Message = "Labores registradas con éxito." });
+                return Ok(new { Message = "Labores actualizadas con éxito." });
             }
             catch (Exception)
             {

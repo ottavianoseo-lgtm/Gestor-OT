@@ -88,6 +88,7 @@ public class WorkOrderQueryService : IWorkOrderQueryService
             l.ExecutionDate,
             l.EstimatedDate,
             l.Hectares,
+            l.EffectiveArea,
             l.CreatedAt,
             l.Rate,
             l.RateUnit,

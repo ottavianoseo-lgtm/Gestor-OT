@@ -136,7 +136,7 @@
         {
             _attachments = await Http.GetFromJsonAsync<List<LaborAttachmentDto>>($"api/laborattachments/labor/{LaborId}") ?? new();
         }
-        catch (Exception ex)
+        catch (Exception)
         {
             Message.Error("Error al cargar adjuntos.");
         }
@@ -170,7 +170,7 @@
                 Message.Error("Error al subir archivo.");
             }
         }
-        catch (Exception ex)
+        catch (Exception)
         {
             Message.Error("Archivo demasiado grande o error de red.");
         }

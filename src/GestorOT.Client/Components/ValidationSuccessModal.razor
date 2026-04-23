@@ -1,0 +1,35 @@
+@using GestorOT.Shared.Dtos
+@using AntDesign
+@inject IJSRuntime JS
+@inject IMessageService Message
+
+<Modal Visible="Visible" Footer="null" OnCancel="OnClose" Width="600" Centered>
+    <div style="text-align: center; padding: 20px;">
+        <div style="background: #22c55e; width: 60px; height: 60px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 20px;">
+            <Icon Type="check" Theme="IconThemeType.Outline" Style="font-size: 30px; color: white;" />
+        </div>
+        <h2 style="color: white; margin-bottom: 10px;">@Title</h2>
+        <p style="color: rgba(255,255,255,0.6); margin-bottom: 30px;">Comparte este enlace con el ejecutor para que registre la labor:</p>
+        
+        <div style="background: rgba(255,255,255,0.05); padding: 20px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.1); margin-bottom: 20px; word-break: break-all;">
+            <code style="color: #3b82f6; font-size: 14px;">@ValidationUrl</code>
+        </div>
+        
+        <Button Type="@ButtonType.Primary" Block Size="@ButtonSize.Large" Icon="copy" OnClick="CopyLink">
+            Copiar Enlace
+        </Button>
+    </div>
+</Modal>
+
+@code {
+    [Parameter] public bool Visible { get; set; }
+    [Parameter] public string ValidationUrl { get; set; } = "";
+    [Parameter] public string Title { get; set; } = "Labor enviada para validación";
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    private async Task CopyLink()
+    {
+        await JS.InvokeVoidAsync("utilsInterop.copyToClipboard", ValidationUrl);
+        Message.Success("Enlace copiado al portapapeles");
+    }
+}

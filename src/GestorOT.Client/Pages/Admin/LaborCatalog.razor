@@ -84,7 +84,7 @@
         {
             _concepts = await Http.GetFromJsonAsync<List<ErpConceptDto>>("api/erpconcepts?group=LABOR") ?? new();
         }
-        catch (Exception ex)
+        catch (Exception)
         {
             Message.Error("Error al cargar el catálogo.");
         }

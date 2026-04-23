@@ -33,6 +33,16 @@ public record ShareLinkDto(
     public ShareLinkDto() : this(string.Empty, DateTime.MinValue) { }
 }
 
+public record GenerateShareLinkRequest(
+    List<Guid>? LaborIds = null,
+    int ExpiryDays = 7
+);
+
+public record PublicLaborExecutionRequest(
+    decimal RealHectares,
+    List<PublicLaborSupplyDto> Supplies
+);
+
 public record PublicWorkOrderDto(
     Guid Id,
     string Description,

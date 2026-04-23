@@ -48,7 +48,12 @@ else
 }
 
 app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true);
-app.UseAntiforgery();
+app.UseStaticFiles();
+app.UseRouting();
+app.UseWhen(context => !context.Request.Path.StartsWithSegments("/api"), appBuilder =>
+{
+    appBuilder.UseAntiforgery();
+});
 
 app.Use(async (context, next) =>
 {
@@ -65,6 +70,7 @@ app.Use(async (context, next) =>
 });
 
 app.MapStaticAssets();
+app.MapGroup("/api").DisableAntiforgery();
 app.MapControllers();
 app.MapRazorComponents<GestorOT.Api.Components.App>()
     .AddInteractiveWebAssemblyRenderMode()

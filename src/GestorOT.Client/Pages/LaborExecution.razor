@@ -579,15 +579,15 @@
             if (IsPublic)
             {
                 // Public endpoint (doesn't handle weather yet, but we'll use what's available)
-                var publicSupplies = realSupplies.Select(s => new PublicLaborSupplyDto(
+                var executionRequest = new PublicLaborExecutionRequest(realHa, realSupplies.Select(s => new PublicLaborSupplyDto(
                     s.Id, s.SupplyId, s.SupplyName ?? "", s.PlannedDose, s.RealDose ?? s.PlannedDose,
                     s.PlannedTotal, s.RealTotal ?? s.PlannedTotal, s.SupplyUnit ?? "u", s.SupplyUnit
-                )).ToList();
+                )).ToList());
 
                 response = await Http.PostAsJsonAsync(
                     $"api/share/realize/{Token}/labor/{labor.Id}",
-                    publicSupplies,
-                    AppJsonSerializerContext.Default.ListPublicLaborSupplyDto);
+                    executionRequest);
+
             }
             else
             {

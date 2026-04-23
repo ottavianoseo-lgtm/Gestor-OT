@@ -225,19 +225,9 @@
     }
 </Card>
 
-<Modal Title="Labor enviada para validación" Visible="@_magicLinkModalVisible" OnCancel="() => _magicLinkModalVisible = false" Footer="null">
-    <div style="text-align: center; padding: 10px 0;">
-        <Icon Type="check-circle" Theme="IconThemeType.Fill" Style="font-size: 48px; color: #52C41A; margin-bottom: 16px;" />
-        <p style="color: #fff; font-size: 16px;">La labor se ha enviado correctamente.</p>
-        <p style="color: rgba(255,255,255,0.5);">Comparte este enlace con el ejecutor para que registre la labor:</p>
-        
-        <div style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 12px; margin: 16px 0; word-break: break-all; color: #1890FF; font-family: monospace;">
-            @_magicLinkUrl
-        </div>
-
-        <Button Type="@ButtonType.Primary" OnClick="CopyMagicLink" Block Icon="copy">Copiar Enlace</Button>
-    </div>
-</Modal>
+<ValidationSuccessModal Visible="_magicLinkModalVisible" 
+                        ValidationUrl="@_magicLinkUrl" 
+                        OnClose="() => _magicLinkModalVisible = false" />
 
 @code {
     [Parameter] public Guid? WorkOrderId { get; set; }
@@ -317,13 +307,13 @@
                 $"api/campaigns/{CampaignState.CurrentCampaign.Id}/lots");
         }
 
-        var tasks = new List<Task> { typesTask, activitiesTask, itemsTask, contactsTask, workOrdersTask };
+        var tasks = new List<Task?> { typesTask, activitiesTask, itemsTask, contactsTask, workOrdersTask };
         if (lotsTask != null)
         {
             tasks.Add(lotsTask);
         }
 
-        await Task.WhenAll(tasks);
+        await Task.WhenAll(tasks.Where(t => t != null).Select(t => t!));
         
         _laborTypes = (await typesTask) ?? new();
         _activities = (await activitiesTask) ?? new();
@@ -356,7 +346,7 @@
             var response = await Http.PostAsync($"api/labors/{LaborId}/submit-for-validation", null);
             if (response.IsSuccessStatusCode)
             {
-                var result = await response.Content.ReadFromJsonAsync<SubmitValidationResponse>();
+                var result = await response.Content.ReadFromJsonAsync<LaborValidationResponse>();
                 _magicLinkUrl = result?.Url ?? "";
                 _magicLinkModalVisible = true;
                 _model.Status = "AwaitingValidation";
@@ -378,18 +368,8 @@
         }
     }
 
-    private async Task CopyMagicLink()
-    {
-        await JSRuntime.InvokeVoidAsync("navigator.clipboard.writeText", _magicLinkUrl);
-        Message.Success("Enlace copiado al portapapeles.");
-    }
-
-    public class SubmitValidationResponse
-    {
-        public string Url { get; set; } = "";
-        public string Token { get; set; } = "";
-    }
-
+    // Validation methods handled by ValidationSuccessModal
+    
     private void OnStatusChanged(string status)
     {
         _model.Mode = status;

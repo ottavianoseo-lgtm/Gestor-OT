@@ -46,7 +46,7 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
     public DbSet<LaborAttachment> LaborAttachments => Set<LaborAttachment>();
     public DbSet<WorkOrderSupplyApproval> WorkOrderSupplyApprovals => Set<WorkOrderSupplyApproval>();
 
-    private Guid CurrentTenantId
+    public Guid CurrentTenantId
     {
         get
         {
@@ -230,12 +230,23 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
 
     private void SetTenantId()
     {
-        if (CurrentTenantId == Guid.Empty) return;
+        var tenantId = CurrentTenantId;
+        if (tenantId == Guid.Empty) return;
 
-        foreach (var entry in ChangeTracker.Entries<ITenantEntity>()
-            .Where(e => e.State == EntityState.Added && e.Entity.TenantId == Guid.Empty))
+        foreach (var entry in ChangeTracker.Entries<ITenantEntity>())
         {
-            entry.Entity.TenantId = CurrentTenantId;
+            if (entry.State == EntityState.Added && entry.Entity.TenantId == Guid.Empty)
+            {
+                entry.Entity.TenantId = tenantId;
+            }
+            else if (entry.State == EntityState.Modified)
+            {
+                // Prevent TenantId from being changed to Empty if it was already set
+                if (entry.Entity.TenantId == Guid.Empty)
+                {
+                    entry.Property(x => x.TenantId).IsModified = false;
+                }
+            }
         }
     }
 }

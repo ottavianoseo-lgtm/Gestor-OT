@@ -436,13 +436,14 @@ else
                     AppJsonSerializerContext.Default.ListCampaignLotDto, cts.Token);
             }
 
-            await Task.WhenAll(laborsTask, woTask, typesTask);
+            var tasks = new List<Task?> { laborsTask, woTask, typesTask, lotsTask };
+            await Task.WhenAll(tasks.Where(t => t != null).Select(t => t!));
 
-            _labors = laborsTask.Result ?? new();
+            _labors = await laborsTask ?? new();
             if (lotsTask != null)
-                _lots = lotsTask.Result ?? new();
-            _workOrders = woTask.Result ?? new();
-            _laborTypes = typesTask.Result ?? new();
+                _lots = await lotsTask ?? new();
+            _workOrders = await woTask ?? new();
+            _laborTypes = await typesTask ?? new();
             _errorMessage = null;
         }
         catch (Exception ex)

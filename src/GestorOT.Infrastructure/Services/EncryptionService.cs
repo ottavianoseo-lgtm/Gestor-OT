@@ -82,7 +82,7 @@ public class EncryptionService : IEncryptionService
 
             return sr.ReadToEnd();
         }
-        catch (Exception ex)
+        catch (Exception)
         {
             _logger.LogWarning("Error decrypting text. Falling back to plain text (this is expected for manual DB entries in Dev).");
             return cipherText; // Devuelve el texto original si no está encriptado

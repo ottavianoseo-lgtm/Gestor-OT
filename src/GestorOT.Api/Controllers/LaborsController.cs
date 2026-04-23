@@ -237,10 +237,9 @@ public class LaborsController : ControllerBase
         labor.PrescriptionMapUrl = dto.PrescriptionMapUrl;
         labor.MachineryUsedId = dto.MachineryUsedId;
         labor.WeatherLogJson = dto.WeatherLogJson;
-
         if (dto.Supplies != null)
         {
-            // 1. Remover insumos que ya no están en el DTO
+            // 1. Remove supplies not in the DTO
             var incomingIds = dto.Supplies.Where(s => s.Id != Guid.Empty).Select(s => s.Id).ToHashSet();
             var toRemove = labor.Supplies.Where(s => !incomingIds.Contains(s.Id)).ToList();
             foreach (var r in toRemove)
@@ -248,40 +247,43 @@ public class LaborsController : ControllerBase
                 _context.LaborSupplies.Remove(r);
             }
 
-            // 2. Actualizar existentes o agregar nuevos
+            // 2. Update or Add
             foreach (var supplyDto in dto.Supplies)
             {
                 var existing = labor.Supplies.FirstOrDefault(s => s.Id == supplyDto.Id && s.Id != Guid.Empty);
                 if (existing != null)
                 {
+                    // Update existing
                     existing.SupplyId = supplyDto.SupplyId;
                     existing.PlannedDose = supplyDto.PlannedDose;
-                    existing.PlannedTotal = supplyDto.PlannedTotal > 0 ? supplyDto.PlannedTotal : supplyDto.PlannedDose * (supplyDto.PlannedHectares > 0 ? supplyDto.PlannedHectares : labor.Hectares);
                     existing.PlannedHectares = supplyDto.PlannedHectares > 0 ? supplyDto.PlannedHectares : labor.Hectares;
+                    existing.PlannedTotal = supplyDto.PlannedTotal > 0 ? supplyDto.PlannedTotal : supplyDto.PlannedDose * existing.PlannedHectares;
                     existing.RealDose = supplyDto.RealDose;
                     existing.RealHectares = supplyDto.RealHectares;
                     existing.RealTotal = supplyDto.RealTotal ?? (supplyDto.RealDose.HasValue ? supplyDto.RealDose.Value * (supplyDto.RealHectares ?? labor.Hectares) : null);
-                    existing.UnitOfMeasure = supplyDto.UnitOfMeasure;
+                    existing.UnitOfMeasure = supplyDto.UnitOfMeasure ?? "";
                     existing.TankMixOrder = supplyDto.TankMixOrder;
                     existing.IsSubstitute = supplyDto.IsSubstitute;
                 }
                 else
                 {
-                    labor.Supplies.Add(new LaborSupply
+                    // Always treat as new if not found in the loaded collection
+                    var newSupply = new LaborSupply
                     {
-                        Id = Guid.NewGuid(),
+                        Id = Guid.NewGuid(), // Ignore client ID for new supplies to be safe
                         LaborId = labor.Id,
                         SupplyId = supplyDto.SupplyId,
                         PlannedDose = supplyDto.PlannedDose,
-                        PlannedTotal = supplyDto.PlannedTotal > 0 ? supplyDto.PlannedTotal : supplyDto.PlannedDose * (supplyDto.PlannedHectares > 0 ? supplyDto.PlannedHectares : labor.Hectares),
                         PlannedHectares = supplyDto.PlannedHectares > 0 ? supplyDto.PlannedHectares : labor.Hectares,
+                        PlannedTotal = supplyDto.PlannedTotal > 0 ? supplyDto.PlannedTotal : supplyDto.PlannedDose * (supplyDto.PlannedHectares > 0 ? supplyDto.PlannedHectares : labor.Hectares),
                         RealDose = supplyDto.RealDose,
                         RealHectares = supplyDto.RealHectares,
                         RealTotal = supplyDto.RealTotal ?? (supplyDto.RealDose.HasValue ? supplyDto.RealDose.Value * (supplyDto.RealHectares ?? labor.Hectares) : null),
-                        UnitOfMeasure = supplyDto.UnitOfMeasure,
+                        UnitOfMeasure = supplyDto.UnitOfMeasure ?? "",
                         TankMixOrder = supplyDto.TankMixOrder,
                         IsSubstitute = supplyDto.IsSubstitute
-                    });
+                    };
+                    _context.LaborSupplies.Add(newSupply); // Use the DbSet.Add to be explicit
                 }
             }
         }
@@ -483,9 +485,14 @@ public class LaborsController : ControllerBase
         var labor = await _context.Labors.FindAsync(id);
         if (labor == null) return NotFound();
 
-        if (labor.Mode != LaborMode.Planned || labor.Status != LaborStatus.Planned)
+        if (labor.Status == LaborStatus.Realized || labor.Status == LaborStatus.Validated)
         {
-            return BadRequest("Solo se pueden enviar para validación labores planeadas que estén en estado 'Planned'.");
+            return BadRequest("Esta labor ya ha sido realizada o validada.");
+        }
+
+        if (labor.Status == LaborStatus.AwaitingValidation)
+        {
+            return BadRequest("Esta labor ya se encuentra en proceso de validación.");
         }
 
         labor.Status = LaborStatus.AwaitingValidation;
@@ -500,8 +507,8 @@ public class LaborsController : ControllerBase
         var sharedToken = new SharedToken
         {
             Id = Guid.NewGuid(),
-            WorkOrderId = (labor.WorkOrderId == Guid.Empty) ? null : labor.WorkOrderId, // Sanitize Guid.Empty to null
-            TenantId = labor.TenantId,
+            WorkOrderId = (labor.WorkOrderId == null || labor.WorkOrderId == Guid.Empty) ? null : labor.WorkOrderId,
+            TenantId = labor.TenantId == Guid.Empty ? _context.CurrentTenantId : labor.TenantId,
             TokenHash = tokenHash,
             ExpiresAt = DateTime.UtcNow.AddHours(72),
             IsRevoked = false,
@@ -744,6 +751,7 @@ public class LaborsController : ControllerBase
             labor.ExecutionDate,
             labor.EstimatedDate,
             labor.Hectares,
+            labor.EffectiveArea,
             labor.CreatedAt,
             labor.Rate,
             labor.RateUnit,

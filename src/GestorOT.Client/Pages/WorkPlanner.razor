@@ -536,11 +536,13 @@ else if (_viewMode == "month")
                     AppJsonSerializerContext.Default.ListCampaignLotDto, cts.Token);
             }
 
-            await Task.WhenAll(laborsTask, typesTask);
-            _labors = laborsTask.Result ?? new();
-            _laborTypes = typesTask.Result ?? new();
+            var tasks = new List<Task?> { laborsTask, typesTask, lotsTask };
+            await Task.WhenAll(tasks.Where(t => t != null).Select(t => t!));
+
+            _labors = await laborsTask ?? new();
+            _laborTypes = await typesTask ?? new();
             if (lotsTask != null)
-                _lots = lotsTask.Result ?? new();
+                _lots = await lotsTask ?? new();
             _errorMessage = null;
         }
         catch (OperationCanceledException)

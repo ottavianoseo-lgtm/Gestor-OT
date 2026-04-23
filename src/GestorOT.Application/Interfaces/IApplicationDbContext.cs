@@ -32,5 +32,6 @@ public interface IApplicationDbContext
     DbSet<LaborAttachment> LaborAttachments { get; }
     DbSet<WorkOrderSupplyApproval> WorkOrderSupplyApprovals { get; }
     DatabaseFacade Database { get; }
+    Guid CurrentTenantId { get; }
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 }
