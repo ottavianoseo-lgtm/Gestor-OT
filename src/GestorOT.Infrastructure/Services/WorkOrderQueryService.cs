@@ -49,9 +49,9 @@ public class WorkOrderQueryService : IWorkOrderQueryService
             w.ContractorId,
             w.ContactId,
             w.CampaignId,
+            w.Name,
             w.AcceptsMultiplePeople,
-            w.AcceptsMultipleDates
-        )).ToList();
+            w.AcceptsMultipleDates)).ToList();
     }
 
     public async Task<WorkOrderDetailDto?> GetByIdAsync(Guid id, CancellationToken ct = default)
@@ -190,6 +190,7 @@ public class WorkOrderQueryService : IWorkOrderQueryService
             workOrder.ContractorId,
             workOrder.ContactId,
             supplyApprovalsDto,
+            workOrder.Name,
             workOrder.AcceptsMultiplePeople,
             workOrder.AcceptsMultipleDates
         );

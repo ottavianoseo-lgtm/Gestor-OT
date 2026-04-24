@@ -10,6 +10,7 @@ public class WorkOrderConfiguration : IEntityTypeConfiguration<WorkOrder>
     {
         builder.ToTable("WorkOrders", "public");
         builder.HasKey(e => e.Id);
+        builder.Property(e => e.Name).HasMaxLength(100);
         builder.Property(e => e.Description).HasMaxLength(1000);
         builder.Property(e => e.Status).HasMaxLength(50);
         builder.Property(e => e.AssignedTo).HasMaxLength(200);

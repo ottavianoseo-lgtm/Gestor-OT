@@ -2,9 +2,10 @@ namespace GestorOT.Domain.Entities;
 
 public class WorkOrder : TenantEntity
 {
+    public Guid Id { get; set; }
+    public string? Name { get; set; } // #24: Human-readable identifier
     public Guid FieldId { get; set; } // OTs are now linked to a Field (Campo)
     public Guid? CampaignId { get; set; }
-    public string? Name { get; set; }  // #21: Optional human-readable name
     public string Description { get; set; } = string.Empty;
     public Guid? WorkOrderStatusId { get; set; }
     public string Status { get; set; } = "Draft";

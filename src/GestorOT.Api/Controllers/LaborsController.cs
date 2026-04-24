@@ -122,7 +122,8 @@ public class LaborsController : ControllerBase
             Notes = dto.Notes,
             PrescriptionMapUrl = dto.PrescriptionMapUrl,
             MachineryUsedId = dto.MachineryUsedId,
-            WeatherLogJson = dto.WeatherLogJson
+            WeatherLogJson = dto.WeatherLogJson,
+            Priority = dto.Priority
         };
 
         if (dto.Supplies != null)
@@ -237,6 +238,7 @@ public class LaborsController : ControllerBase
         labor.PrescriptionMapUrl = dto.PrescriptionMapUrl;
         labor.MachineryUsedId = dto.MachineryUsedId;
         labor.WeatherLogJson = dto.WeatherLogJson;
+        labor.Priority = dto.Priority;
         if (dto.Supplies != null)
         {
             // 1. Remove supplies not in the DTO
@@ -631,7 +633,7 @@ public class LaborsController : ControllerBase
         var labor = await _context.Labors.FindAsync(id);
         if (labor == null) return NotFound();
 
-        labor.Priority = request.Priority;
+        labor.Priority = (LaborPriority)request.Priority;
         await _context.SaveChangesAsync();
         return NoContent();
     }

@@ -25,7 +25,7 @@ public class LaborConfiguration : IEntityTypeConfiguration<Labor>
             .OnDelete(DeleteBehavior.Restrict);
 
         builder.Property(e => e.Status).IsRequired().HasMaxLength(50).HasDefaultValue(LaborStatus.Planned).HasConversion<string>();
-        builder.Property(e => e.Priority).HasDefaultValue(0);
+        builder.Property(e => e.Priority).HasDefaultValue(LaborPriority.Regular);
         builder.Property(e => e.SupplyWithdrawalNotes).IsRequired(false);
         builder.Property(e => e.Hectares).HasPrecision(18, 4);
         builder.Property(e => e.EffectiveArea).HasPrecision(18, 4);

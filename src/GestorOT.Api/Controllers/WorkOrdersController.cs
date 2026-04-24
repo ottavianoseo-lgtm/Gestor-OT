@@ -78,7 +78,7 @@ public class WorkOrdersController : ControllerBase
             workOrder.AssignedTo, workOrder.DueDate, null, workOrder.OTNumber,
             workOrder.PlannedDate, workOrder.ExpirationDate,
             workOrder.StockReserved, workOrder.ContractorId, workOrder.ContactId, workOrder.CampaignId,
-            workOrder.AcceptsMultiplePeople, workOrder.AcceptsMultipleDates);
+            workOrder.Name, workOrder.AcceptsMultiplePeople, workOrder.AcceptsMultipleDates);
 
         return CreatedAtAction(nameof(GetWorkOrder), new { id = workOrder.Id }, result);
     }

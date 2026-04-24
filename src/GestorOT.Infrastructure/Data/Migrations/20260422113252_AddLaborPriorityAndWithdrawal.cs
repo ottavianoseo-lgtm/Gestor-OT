@@ -1,4 +1,4 @@
-﻿using Microsoft.EntityFrameworkCore.Migrations;
+using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
@@ -10,20 +10,9 @@ namespace GestorOT.Infrastructure.Data.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.AddColumn<int>(
-                name: "Priority",
-                schema: "public",
-                table: "Labors",
-                type: "integer",
-                nullable: false,
-                defaultValue: 0);
+            migrationBuilder.Sql("DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='Labors' AND column_name='Priority') THEN ALTER TABLE public.\"Labors\" ADD \"Priority\" integer NOT NULL DEFAULT 0; END IF; END $$;");
 
-            migrationBuilder.AddColumn<string>(
-                name: "SupplyWithdrawalNotes",
-                schema: "public",
-                table: "Labors",
-                type: "text",
-                nullable: true);
+            migrationBuilder.Sql("DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='Labors' AND column_name='SupplyWithdrawalNotes') THEN ALTER TABLE public.\"Labors\" ADD \"SupplyWithdrawalNotes\" text; END IF; END $$;");
         }
 
         /// <inheritdoc />

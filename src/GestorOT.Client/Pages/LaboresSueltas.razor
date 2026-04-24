@@ -1,4 +1,5 @@
 @page "/labores-sueltas"
+@using GestorOT.Domain.Enums
 @using GestorOT.Shared.Dtos
 @using GestorOT.Shared
 @using GestorOT.Client.Components
@@ -113,9 +114,9 @@ else
                 <div class="labor-info">
                     <div class="labor-priority" @onclick:stopPropagation="true">
                         <label style="color: rgba(255,255,255,0.3); font-size: 9px; display: block;">PRIORIDAD</label>
-                        <Select TItemValue="int" TItem="PriorityOption"
+                        <Select TItemValue="LaborPriority" TItem="PriorityOption"
                                 Value="@labor.Priority"
-                                ValueChanged="@((int v) => UpdatePriority(labor, v))"
+                                ValueChanged="@((LaborPriority v) => UpdatePriority(labor, v))"
                                 Size="InputSize.Small"
                                 Style="width: 90px; font-size: 12px;"
                                 DataSource="@_priorityOptions"
@@ -479,13 +480,13 @@ else
         await LoadData();
     }
 
-    private async Task UpdatePriority(LaborDto labor, int newPriority)
+    private async Task UpdatePriority(LaborDto labor, LaborPriority newPriority)
     {
         var oldPriority = labor.Priority;
         labor.Priority = newPriority; // Optimistic update
         try
         {
-            var response = await Http.PatchAsJsonAsync($"api/labors/{labor.Id}/priority", new PriorityRequest { Priority = newPriority });
+            var response = await Http.PatchAsJsonAsync($"api/labors/{labor.Id}/priority", new PriorityRequest { Priority = (int)newPriority });
             if (!response.IsSuccessStatusCode)
             {
                 labor.Priority = oldPriority;
@@ -658,13 +659,13 @@ else
         await LoadData();
     }
 
-    public class PriorityOption { public int Value { get; set; } public string Label { get; set; } = ""; }
+    public class PriorityOption { public LaborPriority Value { get; set; } public string Label { get; set; } = ""; }
     private static readonly List<PriorityOption> _priorityOptions = new()
     {
-        new PriorityOption { Value = 0, Label = "Baja" },
-        new PriorityOption { Value = 1, Label = "Regular" },
-        new PriorityOption { Value = 2, Label = "Alta" },
-        new PriorityOption { Value = 3, Label = "Urgente" }
+        new PriorityOption { Value = LaborPriority.Baja, Label = "Baja" },
+        new PriorityOption { Value = LaborPriority.Regular, Label = "Regular" },
+        new PriorityOption { Value = LaborPriority.Alta, Label = "Alta" },
+        new PriorityOption { Value = LaborPriority.Urgente, Label = "Urgente" }
     };
 
     public class PriorityRequest

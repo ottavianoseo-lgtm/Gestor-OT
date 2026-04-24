@@ -25,7 +25,7 @@ else if (_order != null)
         <div style="display: flex; align-items: center; gap: 12px;">
             <Button OnClick="BackToList" Icon="arrow-left" Shape="@ButtonShape.Circle" />
             <div>
-                <h2 class="page-title" style="margin-bottom: 0;">@_order.OTNumber</h2>
+                <h2 class="page-title" style="margin-bottom: 0;">@(string.IsNullOrWhiteSpace(_order.Name) ? _order.OTNumber : _order.Name)</h2>
                 <span class="page-subtitle">Campaña: @(CampaignState.CurrentCampaign?.Name ?? "—") · @_order.Description</span>
             </div>
         </div>
@@ -522,7 +522,7 @@ else if (_order != null)
                 _order.AssignedTo, _order.DueDate, null, _order.OTNumber,
                 _order.PlannedDate, _order.ExpirationDate,
                 _order.StockReserved, _order.ContractorId, _order.ContactId, _order.CampaignId,
-                _order.AcceptsMultiplePeople, _order.AcceptsMultipleDates
+                _order.Name, _order.AcceptsMultiplePeople, _order.AcceptsMultipleDates
             );
 
             var resp = await Http.PutAsJsonAsync($"api/workorders/{Id}", dto);

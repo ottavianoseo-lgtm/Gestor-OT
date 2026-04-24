@@ -47,9 +47,9 @@ public record WorkOrderDto
                 .Where(s => !string.IsNullOrWhiteSpace(s)));
 
     public WorkOrderDto() { }
-    public WorkOrderDto(Guid id, Guid fieldId, string description, string status, string assignedTo, DateTime dueDate, string? fieldName, string? otNumber, DateTime? plannedDate, DateTime? expirationDate, bool stockReserved, Guid? contractorId, Guid? contactId, Guid? campaignId, bool acceptsMultiplePeople = false, bool acceptsMultipleDates = false)
+    public WorkOrderDto(Guid id, Guid fieldId, string description, string status, string assignedTo, DateTime dueDate, string? fieldName, string? otNumber, DateTime? plannedDate, DateTime? expirationDate, bool stockReserved, Guid? contractorId, Guid? contactId, Guid? campaignId, string? name = null, bool acceptsMultiplePeople = false, bool acceptsMultipleDates = false)
     {
-        Id = id; FieldId = fieldId; Description = description; Status = status; AssignedTo = assignedTo; DueDate = dueDate; FieldName = fieldName; OTNumber = otNumber; PlannedDate = plannedDate; ExpirationDate = expirationDate; StockReserved = stockReserved; ContractorId = contractorId; ContactId = contactId; CampaignId = campaignId; AcceptsMultiplePeople = acceptsMultiplePeople; AcceptsMultipleDates = acceptsMultipleDates;
+        Id = id; FieldId = fieldId; Description = description; Status = status; AssignedTo = assignedTo; DueDate = dueDate; FieldName = fieldName; OTNumber = otNumber; PlannedDate = plannedDate; ExpirationDate = expirationDate; StockReserved = stockReserved; ContractorId = contractorId; ContactId = contactId; CampaignId = campaignId; Name = name; AcceptsMultiplePeople = acceptsMultiplePeople; AcceptsMultipleDates = acceptsMultipleDates;
     }
 }
 

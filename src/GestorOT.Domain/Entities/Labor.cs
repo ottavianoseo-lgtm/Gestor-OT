@@ -13,7 +13,7 @@ public class Labor : TenantEntity
     public bool IsExternalBilling { get; set; } // Specific to this labor
     public LaborMode Mode { get; set; } = LaborMode.Planned;
     public LaborStatus Status { get; set; } = LaborStatus.Planned;
-    public int Priority { get; set; } = 0;
+    public LaborPriority Priority { get; set; } = LaborPriority.Regular;
     public string? SupplyWithdrawalNotes { get; set; }
     public DateTime? ExecutionDate { get; set; }
     public DateTime? EstimatedDate { get; set; }
