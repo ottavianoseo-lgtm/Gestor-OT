@@ -64,8 +64,12 @@
 }
 
 /* AntDesign Tag semantic colors overrides for dark theme */
-.ant-tag-processing, .ant-tag-blue {
+.ant-tag-processing, .ant-tag-blue, .ant-tag-geekblue {
     background: #1890FF !important;
+}
+
+.ant-tag-purple, .ant-tag-magenta {
+    background: #722ED1 !important;
 }
 
 .ant-tag-warning, .ant-tag-orange, .ant-tag-gold {

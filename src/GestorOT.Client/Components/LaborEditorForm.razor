@@ -408,7 +408,7 @@
             var response = await Http.PostAsync($"api/labors/{LaborId}/submit-for-validation", null);
             if (response.IsSuccessStatusCode)
             {
-                var result = await response.Content.ReadFromJsonAsync<LaborValidationResponse>();
+                var result = await response.Content.ReadFromJsonAsync<LaborValidationResponse>(AppJsonSerializerContext.Default.LaborValidationResponse);
                 _magicLinkUrl = result?.Url ?? "";
                 _magicLinkModalVisible = true;
                 _model.Status = "AwaitingValidation";
@@ -545,7 +545,7 @@
             
             if (response.IsSuccessStatusCode)
             {
-                _activeRotation = await response.Content.ReadFromJsonAsync<RotationDto>();
+                _activeRotation = await response.Content.ReadFromJsonAsync<RotationDto>(AppJsonSerializerContext.Default.RotationDto);
                 if (_activeRotation != null)
                 {
                     _showNoRotacionWarning = false;

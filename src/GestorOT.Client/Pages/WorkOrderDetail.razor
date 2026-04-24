@@ -405,7 +405,7 @@ else if (_order != null)
             var response = await Http.PostAsync($"api/labors/{laborId}/submit-for-validation", null);
             if (response.IsSuccessStatusCode)
             {
-                var result = await response.Content.ReadFromJsonAsync<LaborValidationResponse>();
+                var result = await response.Content.ReadFromJsonAsync<LaborValidationResponse>(AppJsonSerializerContext.Default.LaborValidationResponse);
                 if (result != null)
                 {
                     _validationUrl = result.Url;
@@ -434,7 +434,7 @@ else if (_order != null)
             var response = await Http.PostAsJsonAsync($"api/share/generate/{Id}", request);
             if (response.IsSuccessStatusCode)
             {
-                var result = await response.Content.ReadFromJsonAsync<ShareLinkDto>();
+                var result = await response.Content.ReadFromJsonAsync<ShareLinkDto>(AppJsonSerializerContext.Default.ShareLinkDto);
                 if (result != null)
                 {
                     _validationUrl = result.Url;
@@ -611,7 +611,7 @@ else if (_order != null)
             var response = await Http.PostAsJsonAsync($"api/share/generate/{Id}", request);
             if (response.IsSuccessStatusCode)
             {
-                var result = await response.Content.ReadFromJsonAsync<ShareLinkDto>();
+                var result = await response.Content.ReadFromJsonAsync<ShareLinkDto>(AppJsonSerializerContext.Default.ShareLinkDto);
                 if (result != null)
                 {
                     await JS.InvokeVoidAsync("utilsInterop.copyToClipboard", result.Url);
