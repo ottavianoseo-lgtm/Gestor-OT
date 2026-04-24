@@ -71,6 +71,8 @@ namespace GestorOT.Shared;
 [JsonSerializable(typeof(CampaignLotDto))]
 [JsonSerializable(typeof(List<CampaignLotDto>))]
 [JsonSerializable(typeof(ImportLotsRequest))]
+[JsonSerializable(typeof(BatchAssignLotsRequest))]
+[JsonSerializable(typeof(BatchAssignLotsResult))]
 [JsonSerializable(typeof(RotationDto))]
 [JsonSerializable(typeof(List<RotationDto>))]
 [JsonSerializable(typeof(RotationWarning))]

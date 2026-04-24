@@ -90,7 +90,7 @@ public class FieldsController : ControllerBase
     [HttpPut("{id:guid}")]
     public async Task<IActionResult> UpdateField(Guid id, FieldDto dto)
     {
-        var field = await _context.Fields.FindAsync(id);
+        var field = await _context.Fields.FirstOrDefaultAsync(f => f.Id == id);
         if (field == null)
             return NotFound();
 
@@ -103,7 +103,7 @@ public class FieldsController : ControllerBase
     [HttpDelete("{id:guid}")]
     public async Task<IActionResult> DeleteField(Guid id)
     {
-        var field = await _context.Fields.FindAsync(id);
+        var field = await _context.Fields.FirstOrDefaultAsync(f => f.Id == id);
         if (field == null)
             return NotFound("El campo no existe.");
 

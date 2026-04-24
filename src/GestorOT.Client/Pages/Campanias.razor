@@ -202,16 +202,40 @@
                         <PropertyColumn Property="cf => cf.TargetYieldTonHa" Title="Rendimiento Obj.">
                             @context.TargetYieldTonHa.ToString("N2") tn/ha
                         </PropertyColumn>
-                <ActionColumn Title="" Width="60">
+                <ActionColumn Title="" Width="120">
                     @if (_fieldsModalCampaign.Status != CampaignStatus.Locked)
                     {
-                        <Popconfirm Title="¿Quitar este campo de la campaña?"
-                                    OnConfirm="() => RemoveField(context.CampaignId, context.FieldId)"
-                                    OkText="Quitar" CancelText="Cancelar">
-                            <Button Danger Size="@ButtonSize.Small" Style="border-radius: 6px;">
-                                <Icon Type="close" Theme="IconThemeType.Outline" />
-                            </Button>
-                        </Popconfirm>
+                        <Space>
+                            <SpaceItem>
+                                @{
+                                    var fieldInfo = _allFields.FirstOrDefault(f => f.Id == context.FieldId);
+                                    var lotCount = fieldInfo?.Lots?.Count ?? 0;
+                                    var confirmTitle = $"¿Asignar la campaña '{_fieldsModalCampaign.Name}' a todos los lotes del campo '{context.FieldName ?? "?"}'? Esta acción afectará {lotCount} lote(s).";
+                                }
+                                <Popconfirm Title="@confirmTitle"
+                                            OnConfirm="() => BatchAssignLots(context.CampaignId, context.FieldId)"
+                                            OkText="Asignar" CancelText="Cancelar"
+                                            Disabled="@(lotCount == 0)">
+                                    <Tooltip Title="@("Asignar todos los lotes del campo")">
+                                        <Button Size="@ButtonSize.Small"
+                                                Style="border-radius: 6px; border-color: #2ECC7140; color: #2ECC71;"
+                                                Loading="@(_batchAssigningFieldId == context.FieldId)"
+                                                Disabled="@(lotCount == 0)">
+                                            <Icon Type="thunderbolt" Theme="IconThemeType.Outline" />
+                                        </Button>
+                                    </Tooltip>
+                                </Popconfirm>
+                            </SpaceItem>
+                            <SpaceItem>
+                                <Popconfirm Title="¿Quitar este campo de la campaña?"
+                                            OnConfirm="() => RemoveField(context.CampaignId, context.FieldId)"
+                                            OkText="Quitar" CancelText="Cancelar">
+                                    <Button Danger Size="@ButtonSize.Small" Style="border-radius: 6px;">
+                                        <Icon Type="close" Theme="IconThemeType.Outline" />
+                                    </Button>
+                                </Popconfirm>
+                            </SpaceItem>
+                        </Space>
                     }
                 </ActionColumn>
             </Table>
@@ -280,6 +304,7 @@
     private decimal _addAllocatedHa;
     private decimal _addTargetYield;
     private bool _addingField;
+    private Guid _batchAssigningFieldId;
 
     public class CampaignFormModel
     {
@@ -572,6 +597,41 @@
         finally
         {
             _addingField = false;
+        }
+    }
+
+    private async Task BatchAssignLots(Guid campaignId, Guid fieldId)
+    {
+        _batchAssigningFieldId = fieldId;
+        try
+        {
+            var req = new BatchAssignLotsRequest(fieldId);
+            var response = await Http.PostAsJsonAsync(
+                $"api/campaigns/{campaignId}/lots/batch",
+                req, AppJsonSerializerContext.Default.BatchAssignLotsRequest);
+
+            if (response.IsSuccessStatusCode)
+            {
+                var result = await response.Content.ReadFromJsonAsync<BatchAssignLotsResult>(
+                    AppJsonSerializerContext.Default.BatchAssignLotsResult);
+                Message.Success($"Se asignaron {result?.Assigned ?? 0} lote(s) correctamente. ({result?.Skipped ?? 0} ya estaban asignados)");
+                await LoadData();
+                _fieldsModalCampaign = _campaigns.FirstOrDefault(c => c.Id == campaignId);
+                RefreshAvailableFields();
+            }
+            else
+            {
+                var body = await response.Content.ReadAsStringAsync();
+                Message.Error($"Error: {body}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Message.Error($"Error: {ex.Message}");
+        }
+        finally
+        {
+            _batchAssigningFieldId = Guid.Empty;
         }
     }
 

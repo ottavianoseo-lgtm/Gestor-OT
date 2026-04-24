@@ -6,6 +6,7 @@
 @using AntDesign
 @inject HttpClient Http
 @inject IJSRuntime JS
+@inject IMessageService Message
 @inject GestorOT.Client.Services.CampaignState CampaignState
 @inject GestorOT.Client.Services.TenantState TenantState
 @inject GestorOT.Client.Services.DashboardState DashboardState
@@ -70,7 +71,7 @@
                 <div class="widget-glass widget-system">
                     <div class="stats-title">Estado del Sistema</div>
                     <div class="stat-row">
-                        <span class="stat-label">Supabase</span>
+                        <span class="stat-label">Servidor API</span>
                         @{ var connClass = _isConnected ? "badge-success" : "badge-error"; }
                         <span class="stat-badge @connClass">@(_isConnected ? "Conectado" : "Error")</span>
                     </div>
@@ -606,12 +607,14 @@
         {
             _errorMessage = "Timeout de conexión al obtener datos.";
             _isConnected = false;
+            Message.Error("No se pudo conectar con el servidor. Verifique su conexión.");
         }
         catch (Exception ex)
         {
             _errorMessage = $"Error: {ex.Message}";
             _isConnected = false;
             _lastSync = "Error";
+            Message.Error($"Error al cargar el dashboard: {ex.Message}");
         }
         finally
         {
@@ -653,13 +656,60 @@
             }
             catch
             {
+                // JS interop for map init can fail if the DOM element is not ready.
+                // Non-critical: dashboard works without map background.
             }
         }
     }
 
     private void OnCampaignChanged()
     {
-        InvokeAsync(async () => { await LoadData(); StateHasChanged(); });
+        // Always clear cache when campaign/tenant changes so LoadData fetches fresh data (#17)
+        DashboardState.Clear();
+        InvokeAsync(async () =>
+        {
+            await LoadData();
+            // Reload dashboard map with lots for the new context
+            await ReloadDashboardMap();
+            StateHasChanged();
+        });
+    }
+
+    private async Task ReloadDashboardMap()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("mapInterop.destroyDashboardMap");
+            _mapInitialized = false;
+            await Task.Delay(100);
+            await JS.InvokeVoidAsync("mapInterop.initDashboardMap", "dashboardMap", -34.6, -58.4, 6);
+
+            var geojson = DashboardState.CachedGeoJson;
+            if (geojson?.Features != null)
+            {
+                foreach (var feature in geojson.Features)
+                {
+                    if (feature.Geometry?.Coordinates != null)
+                    {
+                        var leafletCoords = feature.Geometry.Coordinates[0]
+                            .Select(c => new double[] { c[1], c[0] })
+                            .ToArray();
+                        var coordsJson = System.Text.Json.JsonSerializer.Serialize(leafletCoords);
+                        var status = feature.Properties?.ContainsKey("status") == true
+                            ? feature.Properties["status"]?.ToString() ?? "Active"
+                            : "Active";
+                        await JS.InvokeVoidAsync("mapInterop.addDashboardLotPolygon", coordsJson, status);
+                    }
+                }
+                await JS.InvokeVoidAsync("mapInterop.fitDashboardLots");
+            }
+
+            _mapInitialized = true;
+        }
+        catch
+        {
+            // Map reload failures are non-critical; do not surface to user
+        }
     }
 
     public void Dispose()
@@ -676,6 +726,7 @@
         }
         catch
         {
+            // Disposing after navigation: JS runtime may already be gone — safe to ignore.
         }
     }
 }

@@ -245,20 +245,26 @@ window.mapInterop = {
                 weight: 2
             }).addTo(this.map);
 
-            polygon.bindPopup(`
-                <div style="min-width: 180px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;">
-                    <strong style="font-size: 14px; display: block; margin-bottom: 8px;">${lotName}</strong>
-                    <div style="font-size: 12px; color: #666; margin-bottom: 8px;">${fieldName}</div>
-                    <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+            const popupContent = `
+                <div style="min-width: 200px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #1a1a2e;">
+                    <strong style="font-size: 14px; display: block; margin-bottom: 6px;">${lotName}</strong>
+                    <div style="font-size: 12px; color: #555; margin-bottom: 10px;">${fieldName || '—'}</div>
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 4px; font-size: 12px;">
                         <span style="color: #888;">Estado</span>
                         <span style="color: ${color}; font-weight: 600;">${isActive ? 'Activo' : 'Inactivo'}</span>
                     </div>
-                    <div style="display: flex; justify-content: space-between;">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 12px; font-size: 12px;">
                         <span style="color: #888;">Área</span>
                         <span style="font-weight: 600;">${area.toFixed(2)} ha</span>
                     </div>
+                    <a href="/lots" onclick="window._gisEditLotId='${lotId}'; return true;"
+                       style="display: block; text-align: center; background: #E74C3C; color: #fff; border-radius: 6px; padding: 6px 12px; font-size: 12px; font-weight: 600; text-decoration: none; cursor: pointer;"
+                       id="gis-edit-btn-${lotId}">
+                        Ver / Editar Lote
+                    </a>
                 </div>
-            `);
+            `;
+            polygon.bindPopup(popupContent, { maxWidth: 240 });
 
             polygon.on('click', () => {
                 this.highlightLot(lotId);
@@ -453,6 +459,25 @@ window.mapInterop = {
             console.error('Error adding imported polygon:', e);
             return false;
         }
+    },
+
+    getCurrentBounds: function () {
+        if (!this.map) return null;
+        var b = this.map.getBounds();
+        return {
+            southWestLat: b.getSouthWest().lat,
+            southWestLng: b.getSouthWest().lng,
+            northEastLat: b.getNorthEast().lat,
+            northEastLng: b.getNorthEast().lng
+        };
+    },
+
+    restoreBounds: function (bounds) {
+        if (!this.map || !bounds) return;
+        this.map.fitBounds([
+            [bounds.southWestLat, bounds.southWestLng],
+            [bounds.northEastLat, bounds.northEastLng]
+        ]);
     },
 
     searchCity: async function (query) {

@@ -58,11 +58,20 @@ public class LotsController : ControllerBase
     public async Task<ActionResult<LotDto>> CreateLot(LotDto dto)
     {
         Polygon? geometry = null;
+        double areaHa = 0;
+        var cadastralArea = dto.CadastralArea;
+
         if (!string.IsNullOrEmpty(dto.WktGeometry))
         {
             var reader = new WKTReader();
             geometry = (Polygon)reader.Read(dto.WktGeometry);
             geometry.SRID = 4326;
+
+            areaHa = await _queryService.CalculateAreaFromWktAsync(dto.WktGeometry);
+            if (cadastralArea == 0)
+            {
+                cadastralArea = (decimal)areaHa;
+            }
         }
 
         var lot = new Lot
@@ -71,41 +80,53 @@ public class LotsController : ControllerBase
             FieldId = dto.FieldId,
             Name = dto.Name,
             Status = dto.Status,
-            Geometry = geometry
+            Geometry = geometry,
+            CadastralArea = cadastralArea
         };
 
         _context.Lots.Add(lot);
-
-        if (!string.IsNullOrEmpty(dto.WktGeometry))
-        {
-            var areaHa = await _queryService.CalculateAreaFromWktAsync(dto.WktGeometry);
-            lot.CadastralArea = (decimal)areaHa;
-        }
-
         await _context.SaveChangesAsync();
 
         return CreatedAtAction(nameof(GetLot), new { id = lot.Id },
-            new LotDto(lot.Id, lot.FieldId, lot.Name, lot.Status, dto.WktGeometry, null, 0, lot.CadastralArea));
+            new LotDto(lot.Id, lot.FieldId, lot.Name, lot.Status, dto.WktGeometry, null, areaHa, lot.CadastralArea));
     }
 
     [HttpPut("{id:guid}")]
     public async Task<IActionResult> UpdateLot(Guid id, LotDto dto)
     {
-        var lot = await _context.Lots.FindAsync(id);
+        // Use FirstOrDefaultAsync (not FindAsync) so tenant query filter is applied
+        var lot = await _context.Lots.FirstOrDefaultAsync(l => l.Id == id);
         if (lot == null) return NotFound("El lote no existe.");
 
         lot.Name = dto.Name;
         lot.Status = dto.Status;
         lot.FieldId = dto.FieldId;
-        
+
         if (!string.IsNullOrEmpty(dto.WktGeometry))
         {
             var reader = new WKTReader();
             lot.Geometry = (Polygon)reader.Read(dto.WktGeometry);
             lot.Geometry.SRID = 4326;
-            
-            var areaHa = await _queryService.CalculateAreaFromWktAsync(dto.WktGeometry);
-            lot.CadastralArea = (decimal)areaHa;
+
+            // #20: Only update CadastralArea from GIS if explicitly provided as 0
+            // AND the lot had no catastral area before (first time assigning geometry).
+            // A user-provided value (even from the form) always wins.
+            if (dto.CadastralArea > 0)
+            {
+                lot.CadastralArea = dto.CadastralArea;
+            }
+            else if (lot.CadastralArea == 0)
+            {
+                // Lot had no area at all — use calculated GIS area as initial value
+                var areaHa = await _queryService.CalculateAreaFromWktAsync(dto.WktGeometry);
+                lot.CadastralArea = (decimal)areaHa;
+            }
+            // If dto.CadastralArea == 0 but lot already has a value → keep existing (no silent overwrite)
+        }
+        else if (dto.CadastralArea > 0)
+        {
+            // Geometry not updated, but user explicitly edited the cadastral area
+            lot.CadastralArea = dto.CadastralArea;
         }
 
         await _context.SaveChangesAsync();
@@ -115,7 +136,7 @@ public class LotsController : ControllerBase
     [HttpDelete("{id:guid}")]
     public async Task<IActionResult> DeleteLot(Guid id)
     {
-        var lot = await _context.Lots.FindAsync(id);
+        var lot = await _context.Lots.FirstOrDefaultAsync(l => l.Id == id);
         if (lot == null) return NotFound("El lote no existe.");
 
         var hasWorkOrders = await _context.Labors.AnyAsync(l => l.LotId == id);

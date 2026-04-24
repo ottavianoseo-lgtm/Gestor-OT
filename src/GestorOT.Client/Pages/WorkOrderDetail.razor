@@ -56,7 +56,10 @@ else if (_order != null)
                     @foreach (var s in _availableStatuses)
                     {
                         <SelectOption Value="@s.Name" Label="@s.Name">
-                            <Badge Color="@s.ColorHex" Text="@s.Name" />
+                            <span style="@StatusBadgeStyle(s.ColorHex)">
+                                <span style="@($"width:8px;height:8px;border-radius:50%;background:{s.ColorHex};flex-shrink:0;display:inline-block;")"></span>
+                                @s.Name
+                            </span>
                         </SelectOption>
                     }
                 </Select>
@@ -83,7 +86,7 @@ else if (_order != null)
     <!-- Mode Selector REMOVED - replaced by consolidated view -->
 
     <div style="margin-bottom: 24px;">
-        <Tabs DefaultActiveKey="1" Type="@TabType.EditableCard" HideAdd>
+        <Tabs DefaultActiveKey="1" Type="@TabType.Card">
             <TabPane Tab="Resumen y KPIs" Key="1">
                 <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; padding: 16px 0;">
                     <div class="kpi-card-new">
@@ -159,7 +162,7 @@ else if (_order != null)
                                         _ => ("#1890FF", "Planeada")
                                     };
                                 }
-                                <Tag Style="@($"background: {color}20; color: {color}; border: 1px solid {color}40; border-radius: 12px; font-size: 11px; padding: 2px 10px;")">@label</Tag>
+                                <Tag Style="@StatusTagStyle(color)">@label</Tag>
                             </Column>
                             <PropertyColumn Property="l => l.Hectares" Title="Ha Plan." />
                             <Column TData="decimal" Title="Ha Real.">
@@ -366,6 +369,24 @@ else if (_order != null)
     private bool _showValidationModal;
     private string _validationUrl = "";
 
+    /// <summary>
+    /// Returns an inline style for a status Tag that guarantees WCAG AA contrast
+    /// on dark backgrounds. Uses white text on a colored semi-opaque background.
+    /// </summary>
+    private static string StatusTagStyle(string colorHex) =>
+        $"background: {colorHex}33; color: #fff; border: 1px solid {colorHex}80; " +
+        "border-radius: 12px; font-size: 11px; font-weight: 600; padding: 2px 10px; " +
+        "text-shadow: 0 1px 2px rgba(0,0,0,0.4);";
+
+    /// <summary>
+    /// Returns inline style for a WorkOrderStatus Badge/Tag from admin-configured hex.
+    /// </summary>
+    private static string StatusBadgeStyle(string colorHex) =>
+        $"display: inline-flex; align-items: center; gap: 6px; " +
+        $"background: {colorHex}33; color: #fff; border: 1px solid {colorHex}80; " +
+        "border-radius: 12px; font-size: 12px; font-weight: 600; padding: 3px 10px; " +
+        "text-shadow: 0 1px 2px rgba(0,0,0,0.4);";
+
     protected override async Task OnInitializedAsync()
     {
         await LoadData();
@@ -457,19 +478,37 @@ else if (_order != null)
 
     private async Task ConsolidateSupplies()
     {
-        var response = await Http.PostAsync($"api/workorders/{Id}/consolidate-supplies", null);
-        if (response.IsSuccessStatusCode)
+        try
         {
-            Message.Success("Insumos consolidados.");
-            await LoadData();
+            var response = await Http.PostAsync($"api/workorders/{Id}/consolidate-supplies", null);
+            if (response.IsSuccessStatusCode)
+            {
+                Message.Success("Insumos consolidados.");
+                await LoadData();
+            }
+            else
+            {
+                var body = await response.Content.ReadAsStringAsync();
+                Message.Error($"Error al consolidar insumos: {body}");
+            }
         }
+        catch (Exception ex) { Message.Error($"Error al consolidar insumos: {ex.Message}"); }
     }
 
     private async Task UpdateApproval(WorkOrderSupplyApprovalDto item, decimal withdrawal, string? center)
     {
         item.ApprovedWithdrawal = withdrawal;
         item.WithdrawalCenter = center;
-        await Http.PutAsJsonAsync($"api/workorders/{Id}/approvals", new List<WorkOrderSupplyApprovalDto> { item });
+        try
+        {
+            var resp = await Http.PutAsJsonAsync($"api/workorders/{Id}/approvals", new List<WorkOrderSupplyApprovalDto> { item });
+            if (!resp.IsSuccessStatusCode)
+            {
+                var body = await resp.Content.ReadAsStringAsync();
+                Message.Error($"Error al actualizar aprobación: {body}");
+            }
+        }
+        catch (Exception ex) { Message.Error($"Error al actualizar aprobación: {ex.Message}"); }
     }
 
     private async Task SaveAllChanges()
@@ -492,7 +531,13 @@ else if (_order != null)
                 Message.Success("Orden de Trabajo actualizada correctamente.");
                 await LoadData();
             }
+            else
+            {
+                var body = await resp.Content.ReadAsStringAsync();
+                Message.Error($"Error al guardar cambios: {body}");
+            }
         }
+        catch (Exception ex) { Message.Error($"Error al guardar cambios: {ex.Message}"); }
         finally { _savingGlobal = false; }
     }
 
@@ -504,12 +549,21 @@ else if (_order != null)
 
     private async Task DeleteLabor(Guid id)
     {
-        var response = await Http.DeleteAsync($"api/labors/{id}");
-        if (response.IsSuccessStatusCode)
+        try
         {
-            Message.Success("Labor eliminada.");
-            await LoadData();
+            var response = await Http.DeleteAsync($"api/labors/{id}");
+            if (response.IsSuccessStatusCode)
+            {
+                Message.Success("Labor eliminada.");
+                await LoadData();
+            }
+            else
+            {
+                var body = await response.Content.ReadAsStringAsync();
+                Message.Error($"Error al eliminar labor: {body}");
+            }
         }
+        catch (Exception ex) { Message.Error($"Error al eliminar labor: {ex.Message}"); }
     }
 
     private async Task OnLaborSaved()

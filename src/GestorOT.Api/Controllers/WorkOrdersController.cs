@@ -54,6 +54,7 @@ public class WorkOrdersController : ControllerBase
         {
             Id = Guid.NewGuid(),
             FieldId = dto.FieldId,
+            Name = dto.Name,
             Description = dto.Description,
             Status = dto.Status,
             AssignedTo = dto.AssignedTo,
@@ -85,9 +86,10 @@ public class WorkOrdersController : ControllerBase
     [HttpPut("{id:guid}")]
     public async Task<IActionResult> UpdateWorkOrder(Guid id, WorkOrderDto dto)
     {
-        var workOrder = await _context.WorkOrders.FindAsync(id);
+        var workOrder = await _context.WorkOrders.FirstOrDefaultAsync(w => w.Id == id);
         if (workOrder == null) return NotFound();
 
+        workOrder.Name = dto.Name;
         workOrder.Description = dto.Description;
         workOrder.Status = dto.Status;
         workOrder.AssignedTo = dto.AssignedTo;
@@ -226,7 +228,7 @@ public class WorkOrdersController : ControllerBase
     [HttpPut("{id:guid}/status")]
     public async Task<IActionResult> UpdateStatus(Guid id, [FromBody] Guid statusId)
     {
-        var workOrder = await _context.WorkOrders.FindAsync(id);
+        var workOrder = await _context.WorkOrders.FirstOrDefaultAsync(w => w.Id == id);
         if (workOrder == null) return NotFound();
 
         var status = await _context.WorkOrderStatuses.FindAsync(statusId);
@@ -319,7 +321,7 @@ public class WorkOrdersController : ControllerBase
     [HttpDelete("{id:guid}")]
     public async Task<IActionResult> DeleteWorkOrder(Guid id)
     {
-        var workOrder = await _context.WorkOrders.FindAsync(id);
+        var workOrder = await _context.WorkOrders.FirstOrDefaultAsync(w => w.Id == id);
         if (workOrder == null) return NotFound();
 
         _context.WorkOrders.Remove(workOrder);

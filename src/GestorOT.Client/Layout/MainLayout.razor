@@ -37,8 +37,8 @@ else if (!string.IsNullOrEmpty(Loading.SuccessMessage))
 
             @if (!_collapsed)
             {
-                <CampaignSelector />
                 <TenantSelector ShowBadge="true" />
+                <CampaignSelector />
             }
 
             <Menu Theme="MenuTheme.Dark" Mode="MenuMode.Inline" @bind-SelectedKeys="_selectedKeys"
@@ -119,7 +119,7 @@ else if (!string.IsNullOrEmpty(Loading.SuccessMessage))
                         </MenuItem>
                         <MenuItem Key="14" RouterLink="/admin/labor-catalog" Style="@MenuItemStyle">
                             <Icon Type="bars" Theme="IconThemeType.Outline" />
-                            <span>Catálogo de Labores</span>
+                            <span>Tipo de Labores</span>
                         </MenuItem>
                     </ChildContent>
                 </SubMenu>

@@ -41,7 +41,7 @@
 
 <div class="summary-bar" style="display: flex; gap: 24px; background: rgba(255,255,255,0.03); padding: 16px 24px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.08); margin-bottom: 16px;">
     <div class="summary-item">
-        <div style="font-size: 11px; color: rgba(255,255,255,0.4); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">Total Catastral</div>
+                        <div style="font-size: 11px; color: rgba(255,255,255,0.4); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">Total ha</div>
         <div style="font-size: 18px; font-weight: 700; color: #fff;">@FilteredLots.Sum(l => (decimal)l.CadastralArea).ToString("N2") ha</div>
     </div>
     @if (CampaignState.IsSelected)
@@ -76,7 +76,7 @@
                     <Table TItem="SurfaceHistoryDto" DataSource="history" Size="TableSize.Small" PageSize="10" HidePagination>
                         <PropertyColumn Property="h => h.CampaignName" Title="Campaña" />
                         <PropertyColumn Property="h => h.StartDate" Title="Inicio" />
-                        <PropertyColumn Property="h => h.CadastralArea" Title="Sup. Catastral" />
+                        <PropertyColumn Property="h => h.CadastralArea" Title="Ha" />
                         <PropertyColumn Property="h => h.ProductiveArea" Title="Sup. Productiva" />
                         <PropertyColumn Property="h => h.Variation" Title="Variación">
                             @{
@@ -105,7 +105,7 @@
                     @(context.Status == "Active" ? "Activo" : "Inactivo")
                 </Tag>
             </PropertyColumn>
-            <PropertyColumn Property="c => c.CadastralArea" Title="Área Catastral (ha)">
+            <PropertyColumn Property="c => c.CadastralArea" Title="Hectáreas">
                 <span style="font-weight: 600;">@context.CadastralArea.ToString("N2") ha</span>
             </PropertyColumn>
             @if (CampaignState.IsSelected)
@@ -147,7 +147,7 @@
                 }
                 else
                 {
-                    <a href="/mapa" class="ant-tag ant-tag-red" style="border-radius: 12px; font-size: 11px; padding: 2px 10px; cursor: pointer;">
+                    <a href="@($"/mapa?lotId={context.Id}")" class="ant-tag ant-tag-red" style="border-radius: 12px; font-size: 11px; padding: 2px 10px; cursor: pointer;">
                         Sin geometría (Configurar)
                     </a>
                 }
@@ -241,7 +241,7 @@
         }
 
         <div>
-            <label style="display: block; color: rgba(255,255,255,0.6); font-size: 13px; margin-bottom: 8px;">Superficie Catastral (ha)</label>
+            <label style="display: block; color: rgba(255,255,255,0.6); font-size: 13px; margin-bottom: 8px;">Hectáreas</label>
             <AntDesign.InputNumber TValue="decimal" @bind-Value="_formModel.CadastralArea" Min="0m" Step="0.1m"
                        Style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15); border-radius: 12px; height: 42px; color: #fff; width: 100%;" />
         </div>
@@ -428,6 +428,7 @@
 
     private void OnCampaignChanged()
     {
+        if (_saving) return;
         InvokeAsync(async () => { await LoadData(); StateHasChanged(); });
     }
 
@@ -682,9 +683,9 @@
                 Message.Error($"Error: {err}");
             }
         }
-        catch (Exception)
+        catch (Exception ex)
         {
-            Message.Error($"Error al asignar campaña.");
+            Message.Error($"Error al actualizar la superficie productiva: {ex.Message}");
         }
     }
 
@@ -713,12 +714,23 @@
                 ? _lots.FirstOrDefault(l => l.Id == _editingId)?.WktGeometry
                 : null;
 
+            var formSnapshot = new LotFormModel
+            {
+                Name = _formModel.Name,
+                FieldId = _formModel.FieldId,
+                Status = _formModel.Status,
+                CadastralArea = _formModel.CadastralArea
+            };
+
             var dto = new LotDto(
                 _isEditing ? _editingId : Guid.Empty,
-                _formModel.FieldId,
-                _formModel.Name,
-                _formModel.Status,
-                existingWkt
+                formSnapshot.FieldId,
+                formSnapshot.Name,
+                formSnapshot.Status,
+                existingWkt,
+                null,
+                0,
+                formSnapshot.CadastralArea
             );
 
             HttpResponseMessage response;
@@ -762,9 +774,9 @@
                 Message.Error($"Error al guardar: {body}");
             }
         }
-        catch (Exception)
+        catch (Exception ex)
         {
-            Message.Error($"Error al asignar campaña.");
+            Message.Error($"Error al guardar el lote: {ex.Message}");
         }
         finally
         {
@@ -788,9 +800,9 @@
                 Message.Error($"Error al eliminar: {body}");
             }
         }
-        catch (Exception)
+        catch (Exception ex)
         {
-            Message.Error($"Error al asignar campaña.");
+            Message.Error($"Error al eliminar el lote: {ex.Message}");
         }
     }
 }

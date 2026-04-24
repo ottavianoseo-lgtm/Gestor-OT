@@ -1,5 +1,6 @@
 @using GestorOT.Shared.Dtos
 @inject GestorOT.Client.Services.CampaignState CampaignState
+@implements IDisposable
 
 @ChildContent
 
@@ -29,18 +30,27 @@
 
     private void OnCampaignChanged()
     {
-        if (CampaignState.CurrentCampaign != null)
+        _ = InvokeAsync(() =>
         {
-            PersistedCampaignId = CampaignState.CurrentCampaign.Id.ToString();
-            PersistedCampaignName = CampaignState.CurrentCampaign.Name;
-            PersistedCampaignStatus = CampaignState.CurrentCampaign.Status.ToString();
-        }
-        else
-        {
-            PersistedCampaignId = null;
-            PersistedCampaignName = null;
-            PersistedCampaignStatus = null;
-        }
-        StateHasChanged();
+            if (CampaignState.CurrentCampaign != null)
+            {
+                PersistedCampaignId = CampaignState.CurrentCampaign.Id.ToString();
+                PersistedCampaignName = CampaignState.CurrentCampaign.Name;
+                PersistedCampaignStatus = CampaignState.CurrentCampaign.Status.ToString();
+            }
+            else
+            {
+                PersistedCampaignId = null;
+                PersistedCampaignName = null;
+                PersistedCampaignStatus = null;
+            }
+
+            StateHasChanged();
+        });
+    }
+
+    public void Dispose()
+    {
+        CampaignState.OnChange -= OnCampaignChanged;
     }
 }

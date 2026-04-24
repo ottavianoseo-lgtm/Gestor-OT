@@ -18,6 +18,8 @@ public record WorkOrderDto
 {
     public Guid Id { get; set; }
     public Guid FieldId { get; set; } // OTs now target a Field
+    /// <summary>#21: Optional human-readable name. If null, use DisplayName fallback.</summary>
+    public string? Name { get; set; }
     [System.ComponentModel.DataAnnotations.Required(ErrorMessage = "La descripción es obligatoria")]
     public string Description { get; set; } = string.Empty;
     public string Status { get; set; } = "Draft";
@@ -33,6 +35,16 @@ public record WorkOrderDto
     public Guid? CampaignId { get; set; }
     public bool AcceptsMultiplePeople { get; set; }
     public bool AcceptsMultipleDates { get; set; }
+
+    /// <summary>
+    /// #21: Human-readable display name.
+    /// Returns Name if set, otherwise "[OTNumber] - [Description] - [FieldName]".
+    /// </summary>
+    public string DisplayName =>
+        !string.IsNullOrWhiteSpace(Name)
+            ? Name
+            : string.Join(" - ", new[] { OTNumber, Description, FieldName }
+                .Where(s => !string.IsNullOrWhiteSpace(s)));
 
     public WorkOrderDto() { }
     public WorkOrderDto(Guid id, Guid fieldId, string description, string status, string assignedTo, DateTime dueDate, string? fieldName, string? otNumber, DateTime? plannedDate, DateTime? expirationDate, bool stockReserved, Guid? contractorId, Guid? contactId, Guid? campaignId, bool acceptsMultiplePeople = false, bool acceptsMultipleDates = false)

@@ -64,3 +64,13 @@ public record ImportLotsRequest(
 {
     public ImportLotsRequest() : this(Guid.Empty, false) { }
 }
+
+/// <summary>Request for batch-assigning all lots of a field to a campaign.</summary>
+public record BatchAssignLotsRequest(Guid FieldId)
+{
+    public BatchAssignLotsRequest() : this(Guid.Empty) { }
+}
+
+/// <summary>Result of the batch assign operation.</summary>
+public record BatchAssignLotsResult(int Assigned, int Skipped);
+

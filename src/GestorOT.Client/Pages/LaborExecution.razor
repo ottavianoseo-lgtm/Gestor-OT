@@ -489,7 +489,7 @@
                             var wl = JsonSerializer.Deserialize<WeatherLogModel>(labor.WeatherLogJson);
                             if (wl != null) _weatherLogs[labor.Id] = wl;
                         }
-                        catch { }
+                        catch { /* Malformed WeatherLogJson — skip silently */ }
                     }
                 }
             }

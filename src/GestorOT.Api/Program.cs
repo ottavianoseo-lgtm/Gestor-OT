@@ -36,6 +36,9 @@ builder.Services.ConfigureHttpJsonOptions(options =>
 
 var app = builder.Build();
 
+// Auto-migrate on startup in Development / Staging only (#migrations-pipe)
+await app.ApplyMigrationsAsync();
+
 app.UseMiddleware<GlobalExceptionMiddleware>();
 
 if (app.Environment.IsDevelopment())

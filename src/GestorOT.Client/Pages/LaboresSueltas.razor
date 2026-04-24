@@ -112,11 +112,17 @@ else
                 </div>
                 <div class="labor-info">
                     <div class="labor-priority" @onclick:stopPropagation="true">
-                    <label style="color: rgba(255,255,255,0.3); font-size: 9px; display: block;">PRIORIDAD</label>
-                    <AntDesign.InputNumber TValue="int" Value="@labor.Priority" 
-                               ValueChanged="@((int v) => UpdatePriority(labor, v))"
-                               Size="InputSize.Small" Style="width: 60px;" />
-                </div>
+                        <label style="color: rgba(255,255,255,0.3); font-size: 9px; display: block;">PRIORIDAD</label>
+                        <Select TItemValue="int" TItem="PriorityOption"
+                                Value="@labor.Priority"
+                                ValueChanged="@((int v) => UpdatePriority(labor, v))"
+                                Size="InputSize.Small"
+                                Style="width: 90px; font-size: 12px;"
+                                DataSource="@_priorityOptions"
+                                LabelName="@nameof(PriorityOption.Label)"
+                                ValueName="@nameof(PriorityOption.Value)">
+                        </Select>
+                    </div>
                 <div class="labor-lot">
                         <Icon Type="environment" Theme="IconThemeType.Outline" Style="font-size: 11px;" />
                         @(labor.LotName ?? "—")
@@ -279,11 +285,20 @@ else
         gap: 12px;
         padding: 12px 16px;
         border-bottom: 1px solid rgba(255,255,255,0.04);
-        transition: background 0.15s;
+        transition: background 0.15s, border-left 0.15s;
         cursor: pointer;
+        border-left: 3px solid transparent;
+        user-select: none;
     }
-    .labor-row:hover { background: rgba(255,255,255,0.03); }
-    .labor-selected { background: rgba(52,152,219,0.08) !important; }
+    .labor-row:hover {
+        background: rgba(255,255,255,0.06);
+        border-left: 3px solid rgba(255,255,255,0.2);
+    }
+    .labor-row:hover .labor-lot { color: #fff; }
+    .labor-selected {
+        background: rgba(52,152,219,0.10) !important;
+        border-left: 3px solid #3498DB !important;
+    }
     .labor-type-badge {
         padding: 3px 10px;
         border-radius: 6px;
@@ -642,6 +657,15 @@ else
         _drawerVisible = false;
         await LoadData();
     }
+
+    public class PriorityOption { public int Value { get; set; } public string Label { get; set; } = ""; }
+    private static readonly List<PriorityOption> _priorityOptions = new()
+    {
+        new PriorityOption { Value = 0, Label = "Baja" },
+        new PriorityOption { Value = 1, Label = "Regular" },
+        new PriorityOption { Value = 2, Label = "Alta" },
+        new PriorityOption { Value = 3, Label = "Urgente" }
+    };
 
     public class PriorityRequest
     {

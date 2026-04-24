@@ -162,7 +162,7 @@ public class CampaignsController : ControllerBase
     [HttpPut("{id:guid}/status")]
     public async Task<IActionResult> UpdateCampaignStatus(Guid id, [FromBody] CampaignStatus newStatus)
     {
-        var campaign = await _context.Campaigns.FindAsync(id);
+        var campaign = await _context.Campaigns.FirstOrDefaultAsync(c => c.Id == id);
         if (campaign == null)
             return NotFound();
 
@@ -180,7 +180,7 @@ public class CampaignsController : ControllerBase
     [HttpDelete("{id:guid}")]
     public async Task<IActionResult> DeleteCampaign(Guid id)
     {
-        var campaign = await _context.Campaigns.FindAsync(id);
+        var campaign = await _context.Campaigns.FirstOrDefaultAsync(c => c.Id == id);
         if (campaign == null)
             return NotFound("La campaña no existe.");
 
@@ -202,7 +202,7 @@ public class CampaignsController : ControllerBase
     [HttpPost("{id:guid}/fields")]
     public async Task<IActionResult> AddField(Guid id, CampaignFieldDto dto)
     {
-        var campaign = await _context.Campaigns.FindAsync(id);
+        var campaign = await _context.Campaigns.FirstOrDefaultAsync(c => c.Id == id);
         if (campaign == null)
             return NotFound("La campaña no existe.");
 
@@ -239,7 +239,7 @@ public class CampaignsController : ControllerBase
         if (cf == null)
             return NotFound("El campo no está asociado a esta campaña.");
 
-        var campaign = await _context.Campaigns.FindAsync(id);
+        var campaign = await _context.Campaigns.FirstOrDefaultAsync(c => c.Id == id);
         if (campaign?.Status == "Locked")
             return BadRequest("No se pueden modificar campos en una campaña cerrada.");
 
@@ -275,7 +275,7 @@ public class CampaignsController : ControllerBase
     [HttpPost("{id:guid}/lots")]
     public async Task<IActionResult> AddLot(Guid id, CampaignLotDto dto)
     {
-        var campaign = await _context.Campaigns.FindAsync(id);
+        var campaign = await _context.Campaigns.FirstOrDefaultAsync(c => c.Id == id);
         if (campaign == null)
             return NotFound("La campaña no existe.");
 
@@ -290,7 +290,7 @@ public class CampaignsController : ControllerBase
         if (exists)
             return BadRequest("El lote ya está asignado a esta campaña.");
 
-        var lot = await _context.Lots.FindAsync(lotId);
+        var lot = await _context.Lots.FirstOrDefaultAsync(l => l.Id == lotId);
         if (lot == null)
             return BadRequest("El lote no existe.");
 
@@ -366,7 +366,7 @@ public class CampaignsController : ControllerBase
         if (cl == null)
             return NotFound("El lote no está asignado a esta campaña.");
 
-        var campaign = await _context.Campaigns.FindAsync(campaignId);
+        var campaign = await _context.Campaigns.FirstOrDefaultAsync(c => c.Id == campaignId);
         if (campaign?.Status == "Locked")
             return BadRequest("No se pueden modificar lotes en una campaña bloqueada.");
 
@@ -401,7 +401,7 @@ public class CampaignsController : ControllerBase
         if (cl == null)
             return NotFound("El lote no está asignado a esta campaña.");
 
-        var campaign = await _context.Campaigns.FindAsync(campaignId);
+        var campaign = await _context.Campaigns.FirstOrDefaultAsync(c => c.Id == campaignId);
         if (campaign?.Status == "Locked")
             return BadRequest("No se pueden modificar lotes en una campaña bloqueada.");
 
@@ -426,6 +426,27 @@ public class CampaignsController : ControllerBase
                 id, request.PreviousCampaignId, request.UseProductiveAreaFromPrevious);
 
             return Ok(new { imported, message = $"Se importaron {imported} lotes correctamente." });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// Batch-assigns all lots from a field to the campaign. Idempotent.
+    /// POST /api/campaigns/{id}/lots/batch  Body: { fieldId: "..." }
+    /// </summary>
+    [HttpPost("{id:guid}/lots/batch")]
+    public async Task<ActionResult<BatchAssignLotsResult>> BatchAssignLots(Guid id, BatchAssignLotsRequest request)
+    {
+        if (request.FieldId == Guid.Empty)
+            return BadRequest("El campo es obligatorio.");
+
+        try
+        {
+            var result = await _campaignManager.BatchAssignLotsByFieldAsync(id, request.FieldId);
+            return Ok(result);
         }
         catch (InvalidOperationException ex)
         {

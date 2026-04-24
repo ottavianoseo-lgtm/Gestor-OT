@@ -54,6 +54,9 @@ public class RotationService : GestorOT.Application.Services.IRotationService
 
     public async Task<RotationResponse> CreateRotationAsync(RotationDto dto, CancellationToken ct = default)
     {
+        if (dto.StartDate >= dto.EndDate)
+            throw new InvalidOperationException("La fecha de inicio debe ser anterior a la fecha de fin.");
+
         // Step 16: Overlapping Rotation validation
         var hasOverlap = await _context.Rotations
             .AnyAsync(r => r.CampaignLotId == dto.CampaignLotId 
@@ -96,6 +99,9 @@ public class RotationService : GestorOT.Application.Services.IRotationService
     {
         var rotation = await _context.Rotations.FindAsync(new object[] { id }, ct);
         if (rotation == null) return;
+
+        if (dto.StartDate >= dto.EndDate)
+            throw new InvalidOperationException("La fecha de inicio debe ser anterior a la fecha de fin.");
 
         // Step 16: Overlapping Rotation validation (excluding self)
         var hasOverlap = await _context.Rotations

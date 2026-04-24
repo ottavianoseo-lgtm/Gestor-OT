@@ -1,6 +1,7 @@
 using GestorOT.Application.Interfaces;
 using GestorOT.Application.Services;
 using GestorOT.Domain.Entities;
+using GestorOT.Shared.Dtos;
 using Microsoft.EntityFrameworkCore;
 
 namespace GestorOT.Infrastructure.Services;
@@ -106,6 +107,81 @@ public class CampaignManagerService : ICampaignManagerService
         }
 
         return imported;
+    }
+
+    public async Task<BatchAssignLotsResult> BatchAssignLotsByFieldAsync(
+        Guid campaignId,
+        Guid fieldId,
+        CancellationToken ct = default)
+    {
+        var campaign = await _context.Campaigns.FindAsync([campaignId], ct);
+        if (campaign == null)
+            throw new InvalidOperationException("La campaña no existe.");
+
+        if (campaign.Status == "Locked")
+            throw new InvalidOperationException("No se pueden asignar lotes a una campaña bloqueada.");
+
+        // All active lots from the requested field
+        var fieldLots = await _context.Lots
+            .AsNoTracking()
+            .Where(l => l.FieldId == fieldId)
+            .ToListAsync(ct);
+
+        if (fieldLots.Count == 0)
+            throw new InvalidOperationException("El campo no tiene lotes registrados.");
+
+        // Already-assigned lot IDs for this campaign
+        var existingLotIds = await _context.CampaignLots
+            .Where(cl => cl.CampaignId == campaignId)
+            .Select(cl => cl.LotId)
+            .ToHashSetAsync(ct);
+
+        // Ensure CampaignField exists (auto-create if absent)
+        var campaignFieldExists = await _context.CampaignFields
+            .AnyAsync(cf => cf.CampaignId == campaignId && cf.FieldId == fieldId, ct);
+
+        if (!campaignFieldExists)
+        {
+            _context.CampaignFields.Add(new CampaignField
+            {
+                Id = Guid.NewGuid(),
+                CampaignId = campaignId,
+                FieldId = fieldId,
+                TargetYieldTonHa = 0,
+                AllocatedHectares = 0
+            });
+        }
+
+        int assigned = 0;
+        int skipped = 0;
+
+        foreach (var lot in fieldLots)
+        {
+            if (existingLotIds.Contains(lot.Id))
+            {
+                skipped++;
+                continue;
+            }
+
+            _context.CampaignLots.Add(new CampaignLot
+            {
+                Id = Guid.NewGuid(),
+                CampaignId = campaignId,
+                LotId = lot.Id,
+                ProductiveArea = lot.CadastralArea > 0 ? lot.CadastralArea : 0,
+                CropId = null
+            });
+
+            assigned++;
+        }
+
+        if (assigned > 0)
+        {
+            await _context.SaveChangesAsync(ct);
+            await RecalculateFieldHectares(campaignId, fieldId, ct);
+        }
+
+        return new BatchAssignLotsResult(assigned, skipped);
     }
 
     private async Task RecalculateFieldHectares(Guid campaignId, Guid fieldId, CancellationToken ct)

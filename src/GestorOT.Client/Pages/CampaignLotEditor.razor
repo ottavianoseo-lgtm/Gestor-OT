@@ -50,7 +50,7 @@
     {
         <div class="summary-bar">
             <div class="summary-item">
-                <span class="summary-label">Total Catastral</span>
+                <span class="summary-label">Total ha</span>
                 <span class="summary-value">@(_lots?.Sum(l => l.CadastralArea).ToString("N2") ?? "0") ha</span>
             </div>
             <div class="summary-item">
@@ -80,7 +80,7 @@
             <ColumnDefinitions>
                 <PropertyColumn Property="l => l.LotName" Title="Lote" Sortable />
                 <PropertyColumn Property="l => l.FieldName" Title="Campo" Sortable />
-                <PropertyColumn Property="l => l.CadastralArea" Title="Sup. Catastral" Sortable />
+                <PropertyColumn Property="l => l.CadastralArea" Title="Ha" Sortable />
                 <Column TData="decimal" Title="Sup. Productiva">
                     @{ var lotData = context; }
                     <div style="display: flex; align-items: center; gap: 8px;">
@@ -121,8 +121,28 @@
 
 <Modal Title="Agregar Lote" Visible="_addModalVisible" OnCancel="() => _addModalVisible = false" OnOk="AddLotToCampaign">
     <div style="display: grid; gap: 12px;">
-        <Select @bind-Value="_addLotId" TItemValue="Guid" TItem="LotDto" DataSource="@_availableLots" LabelName="@nameof(LotDto.Name)" ValueName="@nameof(LotDto.Id)" EnableSearch />
-        <AntDesign.InputNumber TValue="decimal" @bind-Value="_addProductiveArea" Placeholder="Superficie Productiva" Style="width:100%" />
+        <div>
+            <label style="display: block; font-size: 12px; color: rgba(255,255,255,0.5); margin-bottom: 6px;">Filtrar por Campo (opcional)</label>
+            <Select TItemValue="Guid" TItem="FieldDto"
+                    DataSource="@_addFields"
+                    Value="@_addFilterFieldId"
+                    ValueChanged="@((Guid v) => OnAddFilterFieldChanged(v))"
+                    LabelName="@nameof(FieldDto.Name)"
+                    ValueName="@nameof(FieldDto.Id)"
+                    Placeholder="— Todos los campos —"
+                    AllowClear
+                    Style="width: 100%;" />
+        </div>
+        <div>
+            <label style="display: block; font-size: 12px; color: rgba(255,255,255,0.5); margin-bottom: 6px;">Lote</label>
+            <Select @bind-Value="_addLotId" TItemValue="Guid" TItem="LotDto"
+                    DataSource="@FilteredAvailableLots"
+                    LabelName="@nameof(LotDto.Name)"
+                    ValueName="@nameof(LotDto.Id)"
+                    EnableSearch
+                    Style="width: 100%;" />
+        </div>
+        <AntDesign.InputNumber TValue="decimal" @bind-Value="_addProductiveArea" Placeholder="Hectáreas productivas" Style="width:100%" />
     </div>
 </Modal>
 
@@ -140,12 +160,24 @@
     </div>
 </Modal>
 
-<Modal Title="@(_isEditingRotation ? "Editar Rotación" : "Nueva Rotación")" Visible="_rotationModalVisible" OnCancel="() => _rotationModalVisible = false" OnOk="SaveRotation">
+<Modal Title="@(_isEditingRotation ? "Editar Rotación" : "Nueva Rotación")"
+       Visible="_rotationModalVisible"
+       OnCancel="() => _rotationModalVisible = false"
+       Footer="RotationModalFooter">
     <div style="display: grid; gap: 12px;">
         <DatePicker TValue="DateOnly" @bind-Value="_rotationModel.StartDate" />
         <DatePicker TValue="DateOnly" @bind-Value="_rotationModel.EndDate" />
         <Select @bind-Value="_rotationModel.ActivityId" TItemValue="Guid" TItem="ErpActivityDto" DataSource="_activities" LabelName="@nameof(ErpActivityDto.Name)" ValueName="@nameof(ErpActivityDto.Id)" EnableSearch />
         <TextArea @bind-Value="_rotationModel.Notes" Rows="2" />
+
+        @if (RotationDatesInvalid)
+        {
+            <Alert Type="@AlertType.Error" Message="La fecha de inicio debe ser anterior a la fecha de fin" ShowIcon="true" />
+        }
+        else if (!string.IsNullOrEmpty(_rotationError))
+        {
+            <Alert Type="@AlertType.Error" Message="@_rotationError" ShowIcon="true" />
+        }
     </div>
 </Modal>
 
@@ -184,6 +216,8 @@
     private bool _addModalVisible;
     private Guid _addLotId;
     private decimal _addProductiveArea;
+    private Guid _addFilterFieldId;
+    private List<FieldDto> _addFields = new();
 
     private bool _importModalVisible;
     private Guid _importFromCampaignId;
@@ -191,9 +225,32 @@
 
     private bool _rotationModalVisible;
     private bool _isEditingRotation;
+    private bool _savingRotation;
+    private string? _rotationError;
     private RotationModel _rotationModel = new RotationModel();
 
     private class RotationModel { public Guid Id, CampaignLotId, ActivityId; public DateOnly StartDate, EndDate; public string? Notes; }
+
+    private bool RotationDatesInvalid => _rotationModel.StartDate >= _rotationModel.EndDate;
+
+    private IEnumerable<LotDto> FilteredAvailableLots =>
+        _addFilterFieldId == Guid.Empty
+            ? _availableLots
+            : _availableLots.Where(l => l.FieldId == _addFilterFieldId);
+
+    private void OnAddFilterFieldChanged(Guid fieldId)
+    {
+        _addFilterFieldId = fieldId;
+        // Reset lot selection if it's no longer in the filtered list
+        if (_addLotId != Guid.Empty && !FilteredAvailableLots.Any(l => l.Id == _addLotId))
+        {
+            _addLotId = Guid.Empty;
+        }
+    }
+    private RenderFragment RotationModalFooter => @<div style="display: flex; justify-content: flex-end; gap: 8px;">
+            <Button OnClick="() => _rotationModalVisible = false">Cancelar</Button>
+            <Button Type="@ButtonType.Primary" OnClick="SaveRotation" Disabled="@RotationDatesInvalid" Loading="@_savingRotation">Guardar</Button>
+        </div>;
 
     protected override async Task OnInitializedAsync() => await LoadData();
 
@@ -205,6 +262,12 @@
             _lots = await Http.GetFromJsonAsync<List<CampaignLotDto>>($"api/campaigns/{CampaignId}/lots") ?? new();
             var all = await Http.GetFromJsonAsync<List<LotDto>>("api/lots") ?? new();
             _availableLots = all.Where(a => !_lots.Any(l => l.LotId == a.Id)).ToList();
+            // Build field list for filter from available lots (distinct fields)
+            _addFields = _availableLots
+                .GroupBy(l => l.FieldId)
+                .Select(g => new FieldDto(g.Key, g.First().FieldName ?? g.Key.ToString("N"), DateTime.MinValue, new()))
+                .OrderBy(f => f.Name)
+                .ToList();
             _otherCampaigns = (await Http.GetFromJsonAsync<List<CampaignDto>>("api/campaigns") ?? new()).Where(c => c.Id != CampaignId).ToList();
             _activities = await Http.GetFromJsonAsync<List<ErpActivityDto>>("api/catalogs/activities") ?? new();
         } catch (Exception ex) { _errorMessage = ex.Message; } finally { _loading = false; }
@@ -222,19 +285,53 @@
     }
 
     private async Task AddLotToCampaign() {
+        if (_addLotId == Guid.Empty) { Message.Warning("Seleccioná un lote."); return; }
         var dto = new CampaignLotDto(Guid.Empty, CampaignId, _addLotId, null, null, 0, _addProductiveArea, null);
         var resp = await Http.PostAsJsonAsync($"api/campaigns/{CampaignId}/lots", dto);
-        if (resp.IsSuccessStatusCode) { _addModalVisible = false; await LoadData(); }
+        if (resp.IsSuccessStatusCode)
+        {
+            _addModalVisible = false;
+            _addLotId = Guid.Empty;
+            _addFilterFieldId = Guid.Empty;
+            _addProductiveArea = 0;
+            await LoadData();
+        }
+        else
+        {
+            var err = await resp.Content.ReadAsStringAsync();
+            Message.Error($"Error: {err}");
+        }
     }
 
     private async Task RemoveLot(CampaignLotDto lot) { if ((await Http.DeleteAsync($"api/campaigns/{CampaignId}/lots/{lot.LotId}")).IsSuccessStatusCode) await LoadData(); }
 
-    private void OpenAddRotationModal(CampaignLotDto lot) { _isEditingRotation = false; _rotationModel = new RotationModel { CampaignLotId = lot.Id, StartDate = _campaign?.StartDate ?? DateOnly.FromDateTime(DateTime.Today), EndDate = _campaign?.EndDate ?? DateOnly.FromDateTime(DateTime.Today.AddMonths(4)) }; _rotationModalVisible = true; }
-    private void OpenEditRotationModal(CampaignLotDto lot, RotationDto r) { _isEditingRotation = true; _rotationModel = new RotationModel { Id = r.Id, CampaignLotId = r.CampaignLotId, ActivityId = r.ActivityId, StartDate = r.StartDate, EndDate = r.EndDate, Notes = r.Notes }; _rotationModalVisible = true; }
+    private void OpenAddRotationModal(CampaignLotDto lot) { _isEditingRotation = false; _rotationError = null; _rotationModel = new RotationModel { CampaignLotId = lot.Id, StartDate = _campaign?.StartDate ?? DateOnly.FromDateTime(DateTime.Today), EndDate = _campaign?.EndDate ?? DateOnly.FromDateTime(DateTime.Today.AddMonths(4)) }; _rotationModalVisible = true; }
+    private void OpenEditRotationModal(CampaignLotDto lot, RotationDto r) { _isEditingRotation = true; _rotationError = null; _rotationModel = new RotationModel { Id = r.Id, CampaignLotId = r.CampaignLotId, ActivityId = r.ActivityId, StartDate = r.StartDate, EndDate = r.EndDate, Notes = r.Notes }; _rotationModalVisible = true; }
     private async Task SaveRotation() {
+        _rotationError = null;
+        if (RotationDatesInvalid)
+        {
+            _rotationError = "La fecha de inicio debe ser anterior a la fecha de fin";
+            return;
+        }
+
+        _savingRotation = true;
         var dto = new RotationDto(_rotationModel.Id, _rotationModel.CampaignLotId, _rotationModel.ActivityId, null, _rotationModel.StartDate, _rotationModel.EndDate, _rotationModel.Notes);
-        var resp = _isEditingRotation ? await Http.PutAsJsonAsync($"api/campaigns/{CampaignId}/lots/{_rotationModel.CampaignLotId}/rotations/{_rotationModel.Id}", dto) : await Http.PostAsJsonAsync($"api/campaigns/{CampaignId}/lots/{_rotationModel.CampaignLotId}/rotations", dto);
-        if (resp.IsSuccessStatusCode) { _rotationModalVisible = false; await LoadRotations(_rotationModel.CampaignLotId); }
+        var resp = _isEditingRotation
+            ? await Http.PutAsJsonAsync($"api/campaigns/{CampaignId}/lots/{_rotationModel.CampaignLotId}/rotations/{_rotationModel.Id}", dto)
+            : await Http.PostAsJsonAsync($"api/campaigns/{CampaignId}/lots/{_rotationModel.CampaignLotId}/rotations", dto);
+
+        if (resp.IsSuccessStatusCode)
+        {
+            _rotationModalVisible = false;
+            await LoadRotations(_rotationModel.CampaignLotId);
+        }
+        else
+        {
+            _rotationError = await resp.Content.ReadAsStringAsync();
+        }
+
+        _savingRotation = false;
     }
     private async Task DeleteRotation(RotationDto r) { if ((await Http.DeleteAsync($"api/campaigns/{CampaignId}/lots/{r.CampaignLotId}/rotations/{r.Id}")).IsSuccessStatusCode) await LoadRotations(r.CampaignLotId); }
 

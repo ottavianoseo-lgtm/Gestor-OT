@@ -119,6 +119,9 @@
        ConfirmLoading="_saving"
        Width="560">
     <Form @ref="_form" Model="_formModel" Layout="@FormLayout.Vertical">
+        <FormItem Label="Nombre (opcional)">
+            <Input @bind-Value="_formModel.Name" Placeholder="Ej: Siembra Lote Norte — si se deja vacío se genera automáticamente" />
+        </FormItem>
         <FormItem Label="Descripción">
             <TextArea @bind-Value="_formModel.Description" Placeholder="Descripción de la orden" Rows="3" />
         </FormItem>
@@ -144,11 +147,27 @@
         <AntDesign.Row Gutter="16">
             <AntDesign.Col Span="12">
                 <FormItem Label="Estado">
-                    <Select TItem="string" TItemValue="string" @bind-Value="_formModel.Status" Style="width: 100%;">
-                        <SelectOption Value="@("Draft")" Label="Borrador" />
-                        <SelectOption Value="@("Pending")" Label="Pendiente" />
-                        <SelectOption Value="@("InProgress")" Label="En Progreso" />
-                    </Select>
+                    @if (_loadingStatuses)
+                    {
+                        <Spin Size="@SpinSize.Small" />
+                    }
+                    else if (_workOrderStatuses.Count > 0)
+                    {
+                        <Select TItem="WorkOrderStatusDto" TItemValue="string"
+                                DataSource="_workOrderStatuses"
+                                @bind-Value="_formModel.Status"
+                                LabelName="@nameof(WorkOrderStatusDto.Name)"
+                                ValueName="@nameof(WorkOrderStatusDto.Name)"
+                                Style="width: 100%;" />
+                    }
+                    else
+                    {
+                        <Select TItem="string" TItemValue="string" @bind-Value="_formModel.Status" Style="width: 100%;">
+                            <SelectOption Value="@("Draft")" Label="Borrador" />
+                            <SelectOption Value="@("Pending")" Label="Pendiente" />
+                            <SelectOption Value="@("InProgress")" Label="En Progreso" />
+                        </Select>
+                    }
                 </FormItem>
             </AntDesign.Col>
             <AntDesign.Col Span="12">
@@ -187,7 +206,9 @@
     private List<FieldDto> _availableFields = new();
     private List<CampaignSummaryDto> _availableCampaigns = new();
     private List<ContactDto> _availableContacts = new();
+    private List<WorkOrderStatusDto> _workOrderStatuses = new();
     private bool _loading;
+    private bool _loadingStatuses;
     private string? _errorMessage;
 
     private bool _modalVisible;
@@ -199,6 +220,8 @@
 
     public class WoFormModel
     {
+        public string? Name { get; set; }  // #21: Optional human-readable name
+
         [System.ComponentModel.DataAnnotations.Required(ErrorMessage = "La descripción es obligatoria")]
         public string Description { get; set; } = string.Empty;
         
@@ -217,7 +240,26 @@
     {
         CampaignState.OnChange += OnCampaignChanged;
         TenantState.OnChange += OnCampaignChanged;
-        await LoadData();
+        await Task.WhenAll(LoadData(), LoadStatuses());
+    }
+
+    private async Task LoadStatuses()
+    {
+        _loadingStatuses = true;
+        try
+        {
+            _workOrderStatuses = await Http.GetFromJsonAsync<List<WorkOrderStatusDto>>(
+                "api/workorder-statuses",
+                AppJsonSerializerContext.Default.ListWorkOrderStatusDto) ?? new();
+        }
+        catch
+        {
+            _workOrderStatuses = new();
+        }
+        finally
+        {
+            _loadingStatuses = false;
+        }
     }
 
     private void OnCampaignChanged()
@@ -292,6 +334,7 @@
         _editingId = wo.Id;
         _formModel = new WoFormModel
         {
+            Name = wo.Name,
             Description = wo.Description,
             CampaignId = wo.CampaignId ?? Guid.Empty,
             FieldId = wo.FieldId,
@@ -328,6 +371,7 @@
             var dto = new WorkOrderDto
             {
                 Id = _isEditing ? _editingId : Guid.Empty,
+                Name = string.IsNullOrWhiteSpace(_formModel.Name) ? null : _formModel.Name.Trim(),
                 CampaignId = _formModel.CampaignId != Guid.Empty ? _formModel.CampaignId : null,
                 FieldId = _formModel.FieldId,
                 Description = _formModel.Description,

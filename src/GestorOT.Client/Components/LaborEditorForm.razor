@@ -25,7 +25,13 @@
 
             <FormItem Label="Hectáreas">
                 <AntDesign.InputNumber TValue="decimal" Value="@_model.Hectares" OnChange="OnHectareasChanged" Min="0m" Step="0.1m" Style="width: 100%; color: var(--text-primary);" />
-                @if (_haSuperaLote)
+                @if (_noProductiveAreaWarning)
+                {
+                    <div style="color: #F1C40F; font-size: 11px; margin-top: 4px;">
+                        <Icon Type="warning" /> Este lote no tiene superficie productiva definida en la campaña. Se usa el área catastral como valor inicial. Revisá la configuración en la sección Campañas.
+                    </div>
+                }
+                else if (_haSuperaLote)
                 {
                     <div style="color: #E74C3C; font-size: 11px; margin-top: 4px;">
                         <Icon Type="warning" /> La superficie supera el área productiva del lote (@_lotProductiveArea ha).
@@ -38,14 +44,15 @@
             <FormItem Label="Actividad (ERP)">
                 <div style="display: flex; align-items: center; gap: 8px;">
                     <Select TItemValue="Guid?" TItem="ErpActivityDto" @bind-Value="_model.ErpActivityId"
-                            Placeholder="Seleccionar actividad" Disabled="@_actividadLocked" Style="flex: 1;"
+                            Placeholder="Seleccionar actividad" Disabled="@_actividadLocked"
+                            Style="@($"flex: 1;{(_actividadLocked ? " opacity: 0.5; pointer-events: none;" : "")}")"
                             LabelName="@nameof(ErpActivityDto.Name)" ValueName="@nameof(ErpActivityDto.Id)"
                             DataSource="@_activities" EnableSearch>
                     </Select>
                     @if (_activeRotation != null)
                     {
-                        <Tooltip Title="@($"Sugerido por rotación: {_activeRotation.ActivityName}")">
-                            <Tag Color="TagColor.Processing">Sugerido</Tag>
+                        <Tooltip Title="@("Actividad definida en el plan de Rotaciones. Para modificarla, dirigirse a la sección Rotaciones.")">
+                            <Tag Color="TagColor.Processing">Planeada</Tag>
                         </Tooltip>
                     }
                     else if (_showNoRotacionWarning)
@@ -101,7 +108,7 @@
                 <Select TItemValue="Guid?" TItem="WorkOrderDto" @bind-Value="_model.WorkOrderId"
                         Placeholder="Sin asignar" EnableSearch AllowClear
                         DataSource="@_workOrders"
-                        LabelName="@nameof(WorkOrderDto.OTNumber)"
+                        LabelName="@nameof(WorkOrderDto.DisplayName)"
                         ValueName="@nameof(WorkOrderDto.Id)">
                 </Select>
             </FormItem>
@@ -265,10 +272,59 @@
         public string? Notes { get; set; }
     }
 
+    private Guid _lastLaborId = Guid.Empty;
+    private Guid? _lastWorkOrderId;
+    private bool _initialized;
+
     protected override async Task OnInitializedAsync()
     {
         CampaignState.OnChange += OnCampaignChanged;
+        await InitializeForm();
+        _initialized = true;
+    }
+
+    /// <summary>
+    /// #23: Called when parameters change (e.g. modal re-opened with different LaborId).
+    /// Reinitializes the form when the labor being edited changes.
+    /// </summary>
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!_initialized) return;
+
+        var laborChanged = LaborId != _lastLaborId;
+        var woChanged = WorkOrderId != _lastWorkOrderId;
+
+        if (laborChanged || woChanged)
+        {
+            ResetFormState();
+            await InitializeForm();
+        }
+    }
+
+    private void ResetFormState()
+    {
+        _model = new LaborDto();
+        _weather = new WeatherLogModel();
+        _actividadLocked = false;
+        _showNoRotacionWarning = false;
+        _activeRotation = null;
+        _haSuperaLote = false;
+        _fechaFueraRotacion = false;
+        _noProductiveAreaWarning = false;
+        _lotProductiveArea = 0;
+        _loading = false;
+        _submitting = false;
+        _magicLinkModalVisible = false;
+        _magicLinkUrl = "";
+    }
+
+    private async Task InitializeForm()
+    {
+        _lastLaborId = LaborId;
+        _lastWorkOrderId = WorkOrderId;
+
         await LoadCatalogs();
+
         if (LaborId != Guid.Empty)
         {
             await LoadLabor();
@@ -277,7 +333,13 @@
         }
         else
         {
-            _model = new LaborDto { WorkOrderId = WorkOrderId, Status = "Planned", Mode = "Planned", EstimatedDate = DefaultDate ?? DateTime.Today };
+            _model = new LaborDto
+            {
+                WorkOrderId = WorkOrderId,
+                Status = "Planned",
+                Mode = "Planned",
+                EstimatedDate = DefaultDate ?? DateTime.Today
+            };
             if (_model.EstimatedDate.HasValue) await CheckRotation(_model.EstimatedDate.Value);
         }
     }
@@ -334,7 +396,7 @@
             {
                 _weather = JsonSerializer.Deserialize<WeatherLogModel>(_model.WeatherLogJson) ?? new();
             }
-            catch { }
+            catch { /* Malformed JSON in WeatherLogJson — silently ignore, use default */ }
         }
     }
 
@@ -379,16 +441,31 @@
         }
     }
 
+    // #22: flag to alert user when lot has no productive area defined
+    private bool _noProductiveAreaWarning;
+
     private async Task OnLotChanged(CampaignLotDto lot)
     {
         if (lot != null)
         {
             _model = _model with { LotId = lot.LotId, CampaignLotId = lot.Id };
             _lotProductiveArea = lot.ProductiveArea;
-            if (_model.Hectares == 0)
+
+            // #22: Productive area is the single source of truth for labor calculations
+            if (lot.ProductiveArea > 0)
             {
-                _model.Hectares = lot.ProductiveArea > 0 ? lot.ProductiveArea : lot.CadastralArea;
+                _noProductiveAreaWarning = false;
+                if (_model.Hectares == 0)
+                    _model.Hectares = lot.ProductiveArea;
             }
+            else
+            {
+                // No productive area defined — alert user and use cadastral as initial fallback
+                _noProductiveAreaWarning = true;
+                if (_model.Hectares == 0)
+                    _model.Hectares = lot.CadastralArea;
+            }
+
             CheckHectaresWarning(_model.Hectares);
             
             if (_model.EstimatedDate.HasValue) 
@@ -577,6 +654,8 @@
                 {
                     _model = result.Labor;
                     LaborId = _model.Id;
+                    // Sync tracking vars so OnParametersSetAsync doesn't re-init after parent re-renders
+                    _lastLaborId = LaborId;
                 }
 
                 if (result?.Warnings != null && result.Warnings.Any())

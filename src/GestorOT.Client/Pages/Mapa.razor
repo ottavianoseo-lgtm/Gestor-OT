@@ -37,7 +37,7 @@
         </div>
     }
 
-    <div class="gis-toolbar">
+    <div class="gis-toolbar" style="@($"z-index:{(_drawnWkt != null ? 990 : 1010)};")">
         <Tooltip Title="@("Importar archivo GeoJSON/KML")">
             <div class="toolbar-btn" @onclick="() => _showImportModal = true">
                 <Icon Type="upload" Theme="IconThemeType.Outline" />
@@ -53,7 +53,7 @@
             </div>
         </Tooltip>
         <Tooltip Title="@("Recargar mapa")">
-            <div class="toolbar-btn" @onclick="ReloadMap">
+            <div class="toolbar-btn" @onclick="() => ReloadMap()">
                 <Icon Type="reload" Theme="IconThemeType.Outline" />
             </div>
         </Tooltip>
@@ -636,7 +636,7 @@
         _creatingLot = true;
         try
         {
-            var dto = new LotDto(Guid.Empty, _newLotFieldId, _newLotName, "Active", _drawnWkt, "");
+            var dto = new LotDto(Guid.Empty, _newLotFieldId, _newLotName, "Active", _drawnWkt, "", _drawnArea, (decimal)_drawnArea);
             var response = await Http.PostAsJsonAsync("api/lots", dto);
             
             if (response.IsSuccessStatusCode)
@@ -681,6 +681,14 @@
         public string Name { get; set; } = "";
     }
 
+    private class MapBounds
+    {
+        public double SouthWestLat { get; set; }
+        public double SouthWestLng { get; set; }
+        public double NorthEastLat { get; set; }
+        public double NorthEastLng { get; set; }
+    }
+
     protected override void OnInitialized()
     {
         CampaignState.OnChange += OnCampaignChanged;
@@ -708,7 +716,7 @@
         }
     }
 
-    private async Task InitializeMapAsync()
+    private async Task InitializeMapAsync(MapBounds? preserveBounds = null)
     {
         try
         {
@@ -729,6 +737,18 @@
             _allLots = await lotsTask ?? new();
             _allFields = await fieldsTask ?? new();
             _orphanLots = _allLots.Where(l => string.IsNullOrEmpty(l.WktGeometry)).ToList();
+
+            Guid? parsedLotId = null;
+            if (!string.IsNullOrEmpty(lotId) && Guid.TryParse(lotId, out var parsed))
+            {
+                parsedLotId = parsed;
+                var orphan = _orphanLots.FirstOrDefault(l => l.Id == parsed);
+                if (orphan != null)
+                {
+                    _linkingLotId = orphan.Id;
+                    _showOrphanPanel = true;
+                }
+            }
 
             var featureCollection = await geoTask;
 
@@ -763,13 +783,18 @@
 
                 if (_lotsCount > 0)
                 {
-                    if (!string.IsNullOrEmpty(lotId) && Guid.TryParse(lotId, out var targetId))
+                    if (preserveBounds != null)
                     {
-                        var lot = _allLots.FirstOrDefault(l => l.Id == targetId);
+                        // Restore viewport after save (#7)
+                        await JS.InvokeVoidAsync("mapInterop.restoreBounds", preserveBounds);
+                    }
+                    else if (parsedLotId.HasValue)
+                    {
+                        var lot = _allLots.FirstOrDefault(l => l.Id == parsedLotId.Value);
                         if (lot != null)
                         {
                             _selectedLot = lot;
-                            await JS.InvokeAsync<bool>("mapInterop.centerOnLot", lotId);
+                            await JS.InvokeAsync<bool>("mapInterop.centerOnLot", parsedLotId.Value.ToString());
                         }
                         else
                         {
@@ -793,7 +818,7 @@
         }
     }
 
-    private async Task ReloadMap()
+    private async Task ReloadMap(MapBounds? preserveBounds = null)
     {
         _loading = true;
         _hasLoaded = false;
@@ -802,7 +827,7 @@
         StateHasChanged();
         await JS.InvokeVoidAsync("mapInterop.clearLots");
         await JS.InvokeVoidAsync("mapInterop.clearDrawn");
-        await InitializeMapAsync();
+        await InitializeMapAsync(preserveBounds);
         StateHasChanged();
     }
 
@@ -895,8 +920,19 @@
             var lot = _allLots.FirstOrDefault(l => l.Id == _linkingLotId);
             if (lot == null) return;
 
+            // Capture current viewport before reload (#7)
+            MapBounds? savedBounds = null;
+            try { savedBounds = await JS.InvokeAsync<MapBounds?>("mapInterop.getCurrentBounds"); } catch { }
+
             var dto = new LotDto(
-                lot.Id, lot.FieldId, lot.Name, lot.Status, _drawnWkt, lot.FieldName
+                lot.Id,
+                lot.FieldId,
+                lot.Name,
+                lot.Status,
+                _drawnWkt,
+                lot.FieldName,
+                lot.Area,
+                lot.CadastralArea
             );
 
             var response = await Http.PutAsJsonAsync($"api/lots/{lot.Id}",
@@ -908,7 +944,7 @@
                 _drawnWkt = null;
                 _drawnArea = 0;
                 _linkingLotId = Guid.Empty;
-                await ReloadMap();
+                await ReloadMap(savedBounds);
             }
             else
             {
@@ -994,8 +1030,19 @@
             var lot = _allLots.FirstOrDefault(l => l.Id == _linkingLotId);
             if (lot == null) return;
 
+            // Capture current viewport before reload (#7)
+            MapBounds? savedBounds = null;
+            try { savedBounds = await JS.InvokeAsync<MapBounds?>("mapInterop.getCurrentBounds"); } catch { }
+
             var dto = new LotDto(
-                lot.Id, lot.FieldId, lot.Name, lot.Status, _importLinkWkt, lot.FieldName
+                lot.Id,
+                lot.FieldId,
+                lot.Name,
+                lot.Status,
+                _importLinkWkt,
+                lot.FieldName,
+                lot.Area,
+                lot.CadastralArea
             );
 
             var response = await Http.PutAsJsonAsync($"api/lots/{lot.Id}",
@@ -1007,7 +1054,7 @@
                 _showLinkModal = false;
                 _importLinkWkt = null;
                 _linkingLotId = Guid.Empty;
-                await ReloadMap();
+                await ReloadMap(savedBounds);
             }
             else
             {
