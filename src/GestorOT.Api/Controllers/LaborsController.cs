@@ -29,9 +29,10 @@ public class LaborsController : ControllerBase
     {
         var labors = await _context.Labors
             .AsNoTracking()
-            .Include(l => l.Lot)
-            .Include(l => l.Supplies)
-                .ThenInclude(s => s.Supply)
+            .Include(l => l.Lot).ThenInclude(l => l.Field)
+            .Include(l => l.WorkOrder)
+            .Include(l => l.Supplies).ThenInclude(s => s.Supply)
+            .Include(l => l.SourceStrategy)
             .Where(l => l.WorkOrderId == workOrderId)
             .OrderBy(l => l.CreatedAt)
             .ToListAsync();
@@ -44,9 +45,10 @@ public class LaborsController : ControllerBase
     {
         var labor = await _context.Labors
             .AsNoTracking()
-            .Include(l => l.Lot)
-            .Include(l => l.Supplies)
-                .ThenInclude(s => s.Supply)
+            .Include(l => l.Lot).ThenInclude(l => l.Field)
+            .Include(l => l.WorkOrder)
+            .Include(l => l.Supplies).ThenInclude(s => s.Supply)
+            .Include(l => l.SourceStrategy)
             .FirstOrDefaultAsync(l => l.Id == id);
 
         if (labor == null)
@@ -182,6 +184,7 @@ public class LaborsController : ControllerBase
         var created = await _context.Labors
             .AsNoTracking()
             .Include(l => l.Lot)
+            .Include(l => l.Contact)
             .Include(l => l.Supplies)
                 .ThenInclude(s => s.Supply)
             .FirstAsync(l => l.Id == labor.Id);
@@ -194,10 +197,15 @@ public class LaborsController : ControllerBase
     {
         var labor = await _context.Labors
             .Include(l => l.Supplies)
+            .Include(l => l.WorkOrder)
+                .ThenInclude(wo => wo!.WorkOrderStatus)
             .FirstOrDefaultAsync(l => l.Id == id);
 
         if (labor == null)
             return NotFound();
+
+        if (labor.WorkOrder?.WorkOrderStatus?.IsEditable == false)
+            return Conflict("La labor pertenece a una OT bloqueada.");
 
         // Sprint 2 Validations
         var validation = await ValidateLaborAsync(dto);
@@ -300,6 +308,7 @@ public class LaborsController : ControllerBase
         var updated = await _context.Labors
             .AsNoTracking()
             .Include(l => l.Lot)
+            .Include(l => l.Contact)
             .Include(l => l.Supplies)
                 .ThenInclude(s => s.Supply)
             .FirstAsync(l => l.Id == labor.Id);
@@ -531,9 +540,16 @@ public class LaborsController : ControllerBase
     [HttpDelete("{id:guid}")]
     public async Task<IActionResult> DeleteLabor(Guid id)
     {
-        var labor = await _context.Labors.FindAsync(id);
+        var labor = await _context.Labors
+            .Include(l => l.WorkOrder)
+                .ThenInclude(wo => wo!.WorkOrderStatus)
+            .FirstOrDefaultAsync(l => l.Id == id);
+
         if (labor == null)
             return NotFound();
+
+        if (labor.WorkOrder?.WorkOrderStatus?.IsEditable == false)
+            return Conflict("La labor pertenece a una OT bloqueada.");
 
         var woId = labor.WorkOrderId;
         _context.Labors.Remove(labor);
@@ -573,24 +589,48 @@ public class LaborsController : ControllerBase
                 l.Type != null ? l.Type.Name : "Labor",
                 l.Hectares,
                 l.Lot != null ? l.Lot.Name : null,
-                l.WorkOrder != null ? l.WorkOrder.Description : null
+                l.WorkOrder != null ? l.WorkOrder.Description : null,
+                l.ErpActivityId
             ))
             .ToListAsync();
 
         return labors;
     }
 
-    [HttpGet("unassigned")]
-    public async Task<ActionResult<List<LaborDto>>> GetUnassignedLabors([FromQuery] string? sortBy = null)
+    [HttpGet]
+    public async Task<ActionResult<List<LaborDto>>> GetLabors(
+        [FromQuery] bool? assigned = null,
+        [FromQuery] string? status = null,
+        [FromQuery] string? sortBy = null,
+        [FromQuery] bool? isOriginalPlan = null)
     {
         var query = _context.Labors
             .AsNoTracking()
             .Include(l => l.Lot)
                 .ThenInclude(l => l!.Field)
             .Include(l => l.Type)
+            .Include(l => l.Contact)
+            .Include(l => l.WorkOrder)
             .Include(l => l.Supplies)
                 .ThenInclude(s => s.Supply)
-            .Where(l => l.WorkOrderId == null);
+            .AsQueryable();
+
+        if (assigned.HasValue)
+        {
+            if (assigned.Value) query = query.Where(l => l.WorkOrderId != null);
+            else query = query.Where(l => l.WorkOrderId == null);
+        }
+
+        if (!string.IsNullOrEmpty(status))
+        {
+            if (Enum.TryParse<LaborStatus>(status, out var s))
+                query = query.Where(l => l.Status == s);
+        }
+
+        if (isOriginalPlan.HasValue)
+        {
+            query = query.Where(l => l.IsOriginalPlan == isOriginalPlan.Value);
+        }
 
         query = sortBy?.ToLower() switch
         {
@@ -603,6 +643,12 @@ public class LaborsController : ControllerBase
         return labors.Select(MapToDto).ToList();
     }
 
+    [HttpGet("unassigned")]
+    public async Task<ActionResult<List<LaborDto>>> GetUnassignedLabors([FromQuery] string? sortBy = null)
+    {
+        return await GetLabors(assigned: false, sortBy: sortBy);
+    }
+
     [HttpGet("unassigned/count")]
     public async Task<ActionResult<int>> GetUnassignedCount()
     {
@@ -610,6 +656,91 @@ public class LaborsController : ControllerBase
             .AsNoTracking()
             .CountAsync(l => l.WorkOrderId == null);
         return count;
+    }
+
+    [HttpPost("bulk-from-strategy")]
+    public async Task<IActionResult> CreateBulkFromStrategy([FromBody] BulkFromStrategyRequest request)
+    {
+        if (request.StrategyId == Guid.Empty || request.CampaignLotIds.Count == 0)
+            return BadRequest("Estrategia y lotes son obligatorios.");
+
+        var strategy = await _context.CropStrategies
+            .Include(s => s.Items)
+
+            .FirstOrDefaultAsync(s => s.Id == request.StrategyId);
+
+        if (strategy == null) return NotFound("Estrategia no encontrada.");
+
+        var campaignLots = await _context.CampaignLots
+            .Include(cl => cl.Lot)
+            .Where(cl => request.CampaignLotIds.Contains(cl.Id))
+            .ToListAsync();
+
+        var status = Enum.TryParse<LaborStatus>(request.Status, out var st) ? st : LaborStatus.Planned;
+        var createdCount = 0;
+
+        foreach (var lot in campaignLots)
+        {
+            foreach (var sItem in strategy.Items.OrderBy(i => i.DayOffset))
+            {
+                // Find override if any
+                var ovr = request.LaborsOverride?.FirstOrDefault(o => o.CampaignLotId == lot.Id && o.StrategyItemId == sItem.Id);
+
+                var executionDate = (ovr != null) ? ovr.Date : request.BaseDate.AddDays(sItem.DayOffset);
+                var hectares = (ovr != null) ? ovr.Hectares : lot.ProductiveArea;
+                var laborTypeId = (ovr != null) ? ovr.LaborTypeId : sItem.LaborTypeId;
+                var contactId = (ovr != null) ? ovr.ContactId : null;
+                var isExternal = (ovr != null) ? ovr.IsExternalBilling : false;
+
+                var labor = new Labor
+                {
+                    Id = Guid.NewGuid(),
+                    LotId = lot.LotId,
+                    CampaignLotId = lot.Id,
+                    LaborTypeId = laborTypeId,
+                    Status = status,
+                    Mode = status == LaborStatus.Realized ? LaborMode.Realized : LaborMode.Planned,
+                    ExecutionDate = executionDate,
+                    EstimatedDate = executionDate,
+                    Hectares = hectares,
+                    ContactId = contactId,
+                    IsExternalBilling = isExternal,
+                    SourceStrategyId = strategy.Id,
+                    CreatedAt = DateTime.UtcNow,
+                    Notes = $"Generada desde estrategia: {strategy.Name}"
+                };
+
+                if (!string.IsNullOrEmpty(sItem.DefaultSuppliesJson))
+                {
+                    var defaults = System.Text.Json.JsonSerializer.Deserialize<List<StrategySupplyDefault>>(sItem.DefaultSuppliesJson);
+                    if (defaults != null)
+                    {
+                        foreach (var ds in defaults)
+                        {
+                            labor.Supplies.Add(new LaborSupply
+                            {
+                                Id = Guid.NewGuid(),
+                                LaborId = labor.Id,
+                                SupplyId = ds.SupplyId,
+                                PlannedDose = ds.Dose,
+                                PlannedHectares = labor.Hectares,
+                                PlannedTotal = ds.Dose * labor.Hectares,
+                                UnitOfMeasure = ds.DoseUnit,
+                                RealDose = status == LaborStatus.Realized ? ds.Dose : null,
+                                RealHectares = status == LaborStatus.Realized ? labor.Hectares : null,
+                                RealTotal = status == LaborStatus.Realized ? ds.Dose * labor.Hectares : null
+                            });
+                        }
+                    }
+                }
+
+                _context.Labors.Add(labor);
+                createdCount++;
+            }
+        }
+
+        await _context.SaveChangesAsync();
+        return Ok(new { Created = createdCount });
     }
 
     [HttpPatch("assign-bulk")]
@@ -707,7 +838,7 @@ public class LaborsController : ControllerBase
             var isSurfaceValid = await _validationService.ValidateLaborSurfaceAsync(dto.CampaignLotId.Value, dto.Hectares);
             if (!isSurfaceValid)
             {
-                return ("La superficie de la labor supera el área productiva del lote asignado.", warnings);
+                warnings.Add("La superficie de la labor supera el área productiva del lote asignado.");
             }
         }
 
@@ -741,7 +872,7 @@ public class LaborsController : ControllerBase
 
     private static LaborDto MapToDto(Labor labor)
     {
-        return new LaborDto(
+        var dto = new LaborDto(
             labor.Id,
             labor.WorkOrderId,
             labor.LotId,
@@ -772,8 +903,14 @@ public class LaborsController : ControllerBase
             labor.IsExternalBilling,
             labor.PlannedLaborId,
             labor.Priority,
-            labor.SupplyWithdrawalNotes
+            labor.SupplyWithdrawalNotes,
+            labor.IsOriginalPlan,
+            labor.Contact?.FullName,
+            labor.WorkOrder?.OTNumber
         );
+        dto.SourceStrategyId = labor.SourceStrategyId;
+        dto.SourceStrategyName = labor.SourceStrategy?.Name;
+        return dto;
     }
 }
 

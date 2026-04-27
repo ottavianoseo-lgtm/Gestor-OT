@@ -3,18 +3,21 @@ using System;
 using GestorOT.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using NetTopologySuite.Geometries;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
 #nullable disable
 
-namespace GestorOT.Infrastructure.Migrations
+namespace GestorOT.Infrastructure.Data.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260427114226_WorkOrderFieldIdNullable")]
+    partial class WorkOrderFieldIdNullable
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -596,9 +599,6 @@ namespace GestorOT.Infrastructure.Migrations
                     b.Property<bool>("IsExternalBilling")
                         .HasColumnType("boolean");
 
-                    b.Property<bool>("IsOriginalPlan")
-                        .HasColumnType("boolean");
-
                     b.Property<Guid>("LaborTypeId")
                         .HasColumnType("uuid");
 
@@ -651,9 +651,6 @@ namespace GestorOT.Infrastructure.Migrations
                     b.Property<decimal?>("RealizedDose")
                         .HasColumnType("numeric");
 
-                    b.Property<Guid?>("SourceStrategyId")
-                        .HasColumnType("uuid");
-
                     b.Property<string>("Status")
                         .IsRequired()
                         .ValueGeneratedOnAdd()
@@ -686,8 +683,6 @@ namespace GestorOT.Infrastructure.Migrations
                     b.HasIndex("LotId");
 
                     b.HasIndex("PlannedLaborId");
-
-                    b.HasIndex("SourceStrategyId");
 
                     b.HasIndex("WorkOrderId");
 
@@ -1320,10 +1315,6 @@ namespace GestorOT.Infrastructure.Migrations
                         .WithMany()
                         .HasForeignKey("PlannedLaborId");
 
-                    b.HasOne("GestorOT.Domain.Entities.CropStrategy", "SourceStrategy")
-                        .WithMany()
-                        .HasForeignKey("SourceStrategyId");
-
                     b.HasOne("GestorOT.Domain.Entities.WorkOrder", "WorkOrder")
                         .WithMany("Labors")
                         .HasForeignKey("WorkOrderId")
@@ -1338,8 +1329,6 @@ namespace GestorOT.Infrastructure.Migrations
                     b.Navigation("Lot");
 
                     b.Navigation("PlannedLabor");
-
-                    b.Navigation("SourceStrategy");
 
                     b.Navigation("Type");
 

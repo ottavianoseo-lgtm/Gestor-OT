@@ -133,9 +133,10 @@ public class LotQueryService : ILotQueryService
                 cl.Id,
                 cl.CampaignId,
                 cl.LotId,
+                cl.Lot!.FieldId,
                 cl.Campaign!.Name,
                 null,
-                cl.Lot!.CadastralArea,
+                cl.Lot.CadastralArea,
                 cl.ProductiveArea,
                 cl.CropId
             ))

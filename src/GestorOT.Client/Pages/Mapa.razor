@@ -8,6 +8,7 @@
 @inject IMessageService Message
 @inject GestorOT.Client.Services.CampaignState CampaignState
 @inject GestorOT.Client.Services.TenantState TenantState
+@inject NavigationManager Navigation
 @implements IDisposable
 
 <PageTitle>Explorador GIS - GestorOT</PageTitle>
@@ -262,11 +263,16 @@
                 </div>
             </div>
 
-            <div class="rail-actions">
+            <div class="rail-actions" style="display: flex; flex-direction: column; gap: 8px;">
                 <Button Type="@ButtonType.Primary" Block Size="@ButtonSize.Small"
                         Style="background: #E74C3C; border-color: #E74C3C; border-radius: 8px;"
                         OnClick="() => CenterOnSelectedLot()">
                     <Icon Type="aim" Theme="IconThemeType.Outline" /> Centrar en mapa
+                </Button>
+                <Button Block Size="@ButtonSize.Small"
+                        Style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; color: #fff;"
+                        OnClick='() => Navigation.NavigateTo($"/lots?highlight={_selectedLot.Id}")'>
+                    <Icon Type="setting" Theme="IconThemeType.Outline" /> Gestionar Lote
                 </Button>
             </div>
         }
@@ -320,7 +326,7 @@
     </div>
     <Select TItem="LotDto"
             TItemValue="Guid"
-            DataSource="_allLots"
+            DataSource="_orphanLots"
             @bind-Value="_linkingLotId"
             LabelName="@nameof(LotDto.Name)"
             ValueName="@nameof(LotDto.Id)"
@@ -820,11 +826,15 @@
 
     private async Task ReloadMap(MapBounds? preserveBounds = null)
     {
+        if (_loading && _hasLoaded) return; // Prevent double reloads
+
         _loading = true;
         _hasLoaded = false;
         _selectedLot = null;
         _drawnWkt = null;
         StateHasChanged();
+        
+        await Task.Delay(100); // Small delay to allow DOM to stabilize
         await JS.InvokeVoidAsync("mapInterop.clearLots");
         await JS.InvokeVoidAsync("mapInterop.clearDrawn");
         await InitializeMapAsync(preserveBounds);

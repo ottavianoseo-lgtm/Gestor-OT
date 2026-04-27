@@ -63,6 +63,10 @@ else if (!string.IsNullOrEmpty(Loading.SuccessMessage))
                             <Icon Type="file-text" Theme="IconThemeType.Outline" />
                             <span>Órdenes de Trabajo</span>
                         </MenuItem>
+                        <MenuItem Key="16" RouterLink="/planeamiento-original" Style="@MenuItemStyle">
+                            <Icon Type="lock" Theme="IconThemeType.Outline" />
+                            <span>Planeamiento Original</span>
+                        </MenuItem>
                         <MenuItem Key="11" RouterLink="/labores-sueltas" Style="@MenuItemStyle">
                             <Icon Type="thunderbolt" Theme="IconThemeType.Outline" />
                             <span>Labores Sueltas</span>
@@ -192,6 +196,7 @@ else if (!string.IsNullOrEmpty(Loading.SuccessMessage))
             var p when p.StartsWith("/planner") => new[] { "10" },
             var p when p.StartsWith("/workorders") => new[] { "4" },
             var p when p.StartsWith("/labores-sueltas") => new[] { "11" },
+            var p when p.StartsWith("/planeamiento-original") => new[] { "16" },
             var p when p.StartsWith("/campaigns") => new[] { "9" },
             var p when p.StartsWith("/estrategias") => new[] { "7" },
             var p when p.StartsWith("/fields") => new[] { "2" },

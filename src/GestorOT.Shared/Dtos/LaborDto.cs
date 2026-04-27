@@ -35,12 +35,17 @@ public record LaborDto
     public decimal PlannedDose { get; set; }
     public decimal? RealizedDose { get; set; }
     public bool IsExternalBilling { get; set; }
+    public bool IsOriginalPlan { get; set; }
+    public string? AssignedTo { get; set; }
+    public string? OTNumber { get; set; }
+    public Guid? SourceStrategyId { get; set; }
+    public string? SourceStrategyName { get; set; }
 
     public LaborDto() { }
-    public LaborDto(Guid id, Guid? workOrderId, Guid lotId, Guid? campaignLotId, Guid laborTypeId, Guid? erpActivityId, string status, string mode, DateTime? executionDate, DateTime? estimatedDate, decimal hectares, decimal effectiveArea, DateTime createdAt, decimal rate, string rateUnit, string? lotName, string? laborTypeName, string? erpActivityName, List<LaborSupplyDto> supplies, string? prescriptionMapUrl, string? machineryUsedId, string? weatherLogJson, string? notes, string? fieldName, decimal plannedDose, decimal? realizedDose, Guid? contactId, bool isExternalBilling = false, Guid? plannedLaborId = null, LaborPriority priority = LaborPriority.Regular, string? supplyWithdrawalNotes = null)
+    public LaborDto(Guid id, Guid? workOrderId, Guid lotId, Guid? campaignLotId, Guid laborTypeId, Guid? erpActivityId, string status, string mode, DateTime? executionDate, DateTime? estimatedDate, decimal hectares, decimal effectiveArea, DateTime createdAt, decimal rate, string rateUnit, string? lotName, string? laborTypeName, string? erpActivityName, List<LaborSupplyDto> supplies, string? prescriptionMapUrl, string? machineryUsedId, string? weatherLogJson, string? notes, string? fieldName, decimal plannedDose, decimal? realizedDose, Guid? contactId, bool isExternalBilling = false, Guid? plannedLaborId = null, LaborPriority priority = LaborPriority.Regular, string? supplyWithdrawalNotes = null, bool isOriginalPlan = false, string? assignedTo = null, string? otNumber = null)
     {
         Id = id; WorkOrderId = workOrderId; LotId = lotId; CampaignLotId = campaignLotId; LaborTypeId = laborTypeId; ErpActivityId = erpActivityId; Status = status; Mode = mode; ExecutionDate = executionDate; EstimatedDate = estimatedDate; Hectares = hectares; EffectiveArea = effectiveArea; CreatedAt = createdAt; Rate = rate; RateUnit = rateUnit; LotName = lotName; LaborTypeName = laborTypeName; ErpActivityName = erpActivityName; Supplies = supplies ?? new(); PrescriptionMapUrl = prescriptionMapUrl; MachineryUsedId = machineryUsedId; WeatherLogJson = weatherLogJson; Notes = notes; FieldName = fieldName; PlannedDose = plannedDose; RealizedDose = realizedDose; ContactId = contactId; IsExternalBilling = isExternalBilling; PlannedLaborId = plannedLaborId;
-        Priority = priority; SupplyWithdrawalNotes = supplyWithdrawalNotes;
+        Priority = priority; SupplyWithdrawalNotes = supplyWithdrawalNotes; IsOriginalPlan = isOriginalPlan; AssignedTo = assignedTo; OTNumber = otNumber;
     }
 }
 
@@ -92,11 +97,12 @@ public record LaborCalendarDto
     public decimal Hectares { get; set; }
     public string? LotName { get; set; }
     public string? WorkOrderDescription { get; set; }
+    public Guid? ErpActivityId { get; set; }
     
     public LaborCalendarDto() { }
-    public LaborCalendarDto(Guid id, string title, DateTime date, string status, string colorHex, bool hasWorkOrder, string laborType, decimal hectares, string? lotName, string? woDesc)
+    public LaborCalendarDto(Guid id, string title, DateTime date, string status, string colorHex, bool hasWorkOrder, string laborType, decimal hectares, string? lotName, string? woDesc, Guid? erpActivityId)
     {
-        Id = id; Title = title; Date = date; Status = status; ColorHex = colorHex; HasWorkOrder = hasWorkOrder; LaborType = laborType; Hectares = hectares; LotName = lotName; WorkOrderDescription = woDesc;
+        Id = id; Title = title; Date = date; Status = status; ColorHex = colorHex; HasWorkOrder = hasWorkOrder; LaborType = laborType; Hectares = hectares; LotName = lotName; WorkOrderDescription = woDesc; ErpActivityId = erpActivityId;
     }
 }
 
@@ -121,7 +127,7 @@ public class WorkOrderSupplyApprovalDto
 public record WorkOrderDetailDto
 {
     public Guid Id { get; set; }
-    public Guid FieldId { get; set; } // Header level Field
+    public Guid? FieldId { get; set; } // Header level Field
     public string Description { get; set; } = string.Empty;
     public string Status { get; set; } = "Draft";
     public string AssignedTo { get; set; } = string.Empty;
@@ -138,11 +144,32 @@ public record WorkOrderDetailDto
     public Guid? ContactId { get; set; }
     public bool AcceptsMultiplePeople { get; set; }
     public bool AcceptsMultipleDates { get; set; }
+    public bool IsLocked { get; set; }
     public List<WorkOrderSupplyApprovalDto> SupplyApprovals { get; set; } = new();
 
     public WorkOrderDetailDto() { }
-    public WorkOrderDetailDto(Guid id, Guid fieldId, string description, string status, string assignedTo, DateTime dueDate, string? fieldName, List<LaborDto> labors, string? otNumber, DateTime? plannedDate, DateTime? expirationDate, bool stockReserved, Guid? campaignId, Guid? contractorId, Guid? contactId, List<WorkOrderSupplyApprovalDto> approvals, string? name = null, bool acceptsMultiplePeople = false, bool acceptsMultipleDates = false)
+    public WorkOrderDetailDto(Guid id, Guid? fieldId, string description, string status, string assignedTo, DateTime dueDate, string? fieldName, List<LaborDto> labors, string? otNumber, DateTime? plannedDate, DateTime? expirationDate, bool stockReserved, Guid? campaignId, Guid? contractorId, Guid? contactId, List<WorkOrderSupplyApprovalDto> approvals, string? name = null, bool acceptsMultiplePeople = false, bool acceptsMultipleDates = false, bool isLocked = false)
     {
-        Id = id; FieldId = fieldId; Description = description; Status = status; AssignedTo = assignedTo; DueDate = dueDate; FieldName = fieldName; Labors = labors; OTNumber = otNumber; PlannedDate = plannedDate; ExpirationDate = expirationDate; StockReserved = stockReserved; CampaignId = campaignId; ContractorId = contractorId; ContactId = contactId; SupplyApprovals = approvals ?? new(); Name = name; AcceptsMultiplePeople = acceptsMultiplePeople; AcceptsMultipleDates = acceptsMultipleDates;
+        Id = id; FieldId = fieldId; Description = description; Status = status; AssignedTo = assignedTo; DueDate = dueDate; FieldName = fieldName; Labors = labors; OTNumber = otNumber; PlannedDate = plannedDate; ExpirationDate = expirationDate; StockReserved = stockReserved; CampaignId = campaignId; ContractorId = contractorId; ContactId = contactId; SupplyApprovals = approvals ?? new(); Name = name; AcceptsMultiplePeople = acceptsMultiplePeople; AcceptsMultipleDates = acceptsMultipleDates; IsLocked = isLocked;
     }
 }
+
+public record BulkFromStrategyRequest(
+    Guid StrategyId,
+    List<Guid> CampaignLotIds,
+    string Status,
+    DateTime BaseDate,
+    bool ForceDateSeparation,
+    List<LaborOverrideDto> LaborsOverride
+);
+
+public record LaborOverrideDto(
+    Guid CampaignLotId,
+    Guid StrategyItemId,
+    Guid LaborTypeId,
+    Guid? ContactId,
+    decimal Hectares,
+    DateTime Date,
+    bool IsExternalBilling
+);
+

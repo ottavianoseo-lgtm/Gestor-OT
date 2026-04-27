@@ -1,0 +1,374 @@
+@using System.Text.Json
+@using GestorOT.Shared.Dtos
+@using GestorOT.Shared
+@using AntDesign
+@using System.Net.Http.Json
+@inject HttpClient Http
+@inject IMessageService Message
+@inject GestorOT.Client.Services.CampaignState CampaignState
+
+<div style="min-height: 500px; display: flex; flex-direction: column;">
+    @if (_step == 1)
+    {
+        <div style="padding: 24px;">
+            <h4 style="color: #fff; margin-bottom: 24px;">Configuración General</h4>
+
+            <Form Model="_wizardModel" Layout="@FormLayout.Vertical">
+                <AntDesign.Row Gutter="16">
+                    <AntDesign.Col Span="12">
+                        <FormItem Label="Estado de las Labores">
+                            <Select TItemValue="string" TItem="string" @bind-Value="_wizardModel.Status">
+                                <SelectOption Value="@("Planned")" Label="Planeada" />
+                                <SelectOption Value="@("Realized")" Label="Realizada" />
+                            </Select>
+                        </FormItem>
+                    </AntDesign.Col>
+                    <AntDesign.Col Span="12">
+                        <FormItem Label="Fecha Base (Inicio)">
+                            <DatePicker @bind-Value="_wizardModel.BaseDate" Style="width: 100%;" Format="dd/MM/yyyy" />
+                        </FormItem>
+                    </AntDesign.Col>
+                </AntDesign.Row>
+
+                <FormItem Label="Estrategia de Cultivo">
+                    <Select TItem="CropStrategyDto" TItemValue="Guid" DataSource="_strategies"
+                            @bind-Value="_wizardModel.StrategyId"
+                            LabelName="@nameof(CropStrategyDto.Name)" ValueName="@nameof(CropStrategyDto.Id)"
+                            Placeholder="Seleccionar estrategia..." Style="width: 100%;"
+                            OnSelectedItemChanged="OnStrategyChanged" />
+                </FormItem>
+
+                @if (_selectedStrategy != null)
+                {
+                    <div style="background: rgba(46,204,113,0.06); border: 1px solid rgba(46,204,113,0.15); border-radius: 8px; padding: 12px; margin-bottom: 16px;">
+                        <div style="font-size: 11px; color: rgba(255,255,255,0.5); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;">Labores de la estrategia</div>
+                        @foreach (var item in _selectedStrategy.Items.OrderBy(i => i.DayOffset))
+                        {
+                            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+                                <div style="width: 8px; height: 8px; border-radius: 50%; background: #2ECC71; flex-shrink: 0;"></div>
+                                <span style="color: #fff; font-size: 13px;">@(item.LaborTypeName ?? "Labor")</span>
+                                @if (item.DayOffset > 0)
+                                {
+                                    <span style="color: rgba(255,255,255,0.4); font-size: 11px;">+@item.DayOffset días</span>
+                                }
+                            </div>
+                        }
+                    </div>
+                }
+
+                <FormItem Label="@($"Lotes ({_wizardModel.CampaignLotIds.Count} seleccionados)")">
+                    <div style="max-height: 250px; overflow-y: auto; border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 12px; background: rgba(255,255,255,0.02);">
+                        @if (_campaignLots.Count == 0)
+                        {
+                            <div style="text-align: center; color: rgba(255,255,255,0.3); padding: 20px;">No hay lotes disponibles en esta campaña.</div>
+                        }
+                        @foreach (var lot in _campaignLots)
+                        {
+                            <div style="margin-bottom: 8px;">
+                                <Checkbox Checked="@_wizardModel.CampaignLotIds.Contains(lot.Id)"
+                                          CheckedChanged="v => ToggleLot(lot.Id, v)">
+                                    <span style="color: #fff;">@lot.LotName</span>
+                                    <span style="color: rgba(255,255,255,0.4); font-size: 11px; margin-left: 4px;">(@lot.FieldName — @lot.ProductiveArea.ToString("N1") ha)</span>
+                                </Checkbox>
+                            </div>
+                        }
+                    </div>
+                </FormItem>
+
+                <div style="margin-top: 24px; display: flex; justify-content: flex-end; gap: 12px; align-items: center;">
+                    <Checkbox @bind-Checked="_wizardModel.ForceDateSeparation">
+                        <span style="color: rgba(255,255,255,0.7); font-size: 13px;">Forzar separación según estrategia</span>
+                    </Checkbox>
+                    <Button Type="@ButtonType.Primary" OnClick="GoToPreview"
+                            Disabled="@(_wizardModel.StrategyId == Guid.Empty || _wizardModel.CampaignLotIds.Count == 0)"
+                            Loading="_loadingPreview"
+                            Style="background: #2ECC71; border-color: #2ECC71; height: 40px; padding: 0 32px; border-radius: 8px;">
+                        Siguiente: Vista Previa
+                    </Button>
+                </div>
+            </Form>
+        </div>
+    }
+    else if (_step == 2)
+    {
+        <div style="flex: 1; overflow: hidden; display: flex; flex-direction: column;">
+            <div style="padding: 16px 24px; border-bottom: 1px solid rgba(255,255,255,0.08); display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                    <h4 style="color: #fff; margin: 0;">Vista Previa de Labores</h4>
+                    <span style="color: rgba(255,255,255,0.4); font-size: 12px;">
+                        Se crearán @(_previews.Count) labores en total.
+                        @if (_previews.Any(p => p.RotationWarning != null))
+                        {
+                            <span style="color: #F1C40F; margin-left: 8px;">
+                                <Icon Type="warning" /> @_previews.Count(p => p.RotationWarning != null) con advertencias de rotación
+                            </span>
+                        }
+                    </span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <Button OnClick="() => _step = 1">← Atrás</Button>
+                    <Button Type="@ButtonType.Primary" OnClick="ConfirmCreate" Loading="_saving"
+                            Style="background: #2ECC71; border-color: #2ECC71; border-radius: 8px;">
+                        Crear @_previews.Count Labores
+                    </Button>
+                </div>
+            </div>
+
+            <div style="flex: 1; overflow-y: auto; padding: 16px 24px;">
+                @foreach (var preview in _previews)
+                {
+                    <div style="background: rgba(255,255,255,0.03); border: 1px solid @(preview.RotationWarning != null ? "rgba(241,196,15,0.3)" : "rgba(255,255,255,0.07)"); border-radius: 10px; padding: 14px 16px; margin-bottom: 10px;">
+                        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr auto; gap: 12px; align-items: center;">
+                            <div>
+                                <div style="font-size: 10px; color: rgba(255,255,255,0.4); text-transform: uppercase; margin-bottom: 2px;">Lote</div>
+                                <div style="color: #fff; font-weight: 600; font-size: 13px;">@preview.LotName</div>
+                                <div style="color: rgba(255,255,255,0.4); font-size: 11px;">@preview.StrategyItemName</div>
+                            </div>
+                            <div>
+                                <div style="font-size: 10px; color: rgba(255,255,255,0.4); text-transform: uppercase; margin-bottom: 2px;">Fecha</div>
+                                <DatePicker @bind-Value="preview.Date" Format="dd/MM/yyyy"
+                                            Size="InputSize.Small" Style="width: 130px;"
+                                            Disabled="@_wizardModel.ForceDateSeparation" />
+                            </div>
+                            <div>
+                                <div style="font-size: 10px; color: rgba(255,255,255,0.4); text-transform: uppercase; margin-bottom: 2px;">Ha</div>
+                                <AntDesign.InputNumber TValue="decimal" @bind-Value="preview.Hectares"
+                                                       Size="InputSize.Small" Style="width: 90px;" Min="0m" />
+                            </div>
+                            <div>
+                                <div style="font-size: 10px; color: rgba(255,255,255,0.4); text-transform: uppercase; margin-bottom: 2px;">Responsable</div>
+                                <Select TItem="ContactDto" TItemValue="Guid?" DataSource="_contacts"
+                                        @bind-Value="preview.ContactId"
+                                        LabelName="@nameof(ContactDto.FullName)" ValueName="@nameof(ContactDto.Id)"
+                                        Placeholder="Sin asignar" Size="InputSize.Small" Style="width: 150px;" AllowClear />
+                            </div>
+                            <div style="display: flex; flex-direction: column; align-items: center; gap: 4px;">
+                                <div style="font-size: 10px; color: rgba(255,255,255,0.4); text-transform: uppercase;">Ext.</div>
+                                <Switch @bind-Checked="preview.IsExternal" />
+                            </div>
+                        </div>
+                        @if (preview.RotationWarning != null)
+                        {
+                            <div style="margin-top: 8px; background: rgba(241,196,15,0.08); border: 1px solid rgba(241,196,15,0.2); border-radius: 6px; padding: 6px 10px; font-size: 12px; color: #F1C40F; display: flex; align-items: center; gap: 6px;">
+                                <Icon Type="warning" />
+                                @preview.RotationWarning
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    private int _step = 1;
+    private bool _loadingPreview;
+    private bool _saving;
+
+    private List<CropStrategyDto> _strategies = new();
+    private List<CampaignLotDto> _campaignLots = new();
+    private List<ContactDto> _contacts = new();
+    private CropStrategyDto? _selectedStrategy;
+
+    private WizardModel _wizardModel = new();
+    private List<LaborPreview> _previews = new();
+
+    private class WizardModel
+    {
+        public Guid StrategyId { get; set; }
+        public List<Guid> CampaignLotIds { get; set; } = new();
+        public string Status { get; set; } = "Planned";
+        public DateTime BaseDate { get; set; } = DateTime.Today;
+        public bool ForceDateSeparation { get; set; } = true;
+    }
+
+    private class LaborPreview
+    {
+        public Guid CampaignLotId { get; set; }
+        public string LotName { get; set; } = "";
+        public Guid StrategyItemId { get; set; }
+        public string StrategyItemName { get; set; } = "";
+        public Guid LaborTypeId { get; set; }
+        public decimal Hectares { get; set; }
+        public DateTime? Date { get; set; }
+        public Guid? ContactId { get; set; }
+        public bool IsExternal { get; set; }
+        public string? RotationWarning { get; set; }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        try
+        {
+            var strategiesTask = Http.GetFromJsonAsync("api/strategies", AppJsonSerializerContext.Default.ListCropStrategyDto);
+            var contactsTask = Http.GetFromJsonAsync("api/catalogs/contacts", AppJsonSerializerContext.Default.ListContactDto);
+
+            Task<List<CampaignLotDto>?>? lotsTask = null;
+            if (CampaignState.CurrentCampaign != null)
+            {
+                lotsTask = Http.GetFromJsonAsync($"api/campaigns/{CampaignState.CurrentCampaign.Id}/lots",
+                    AppJsonSerializerContext.Default.ListCampaignLotDto);
+            }
+
+            await Task.WhenAll(strategiesTask, contactsTask,
+                lotsTask ?? Task.FromResult<List<CampaignLotDto>?>(new()));
+
+            _strategies = await strategiesTask ?? new();
+            _contacts = await contactsTask ?? new();
+            if (lotsTask != null) _campaignLots = await lotsTask ?? new();
+        }
+        catch (Exception ex)
+        {
+            Message.Error($"Error cargando datos: {ex.Message}");
+        }
+    }
+
+    private void ToggleLot(Guid id, bool selected)
+    {
+        if (selected)
+        {
+            if (!_wizardModel.CampaignLotIds.Contains(id)) _wizardModel.CampaignLotIds.Add(id);
+        }
+        else
+        {
+            _wizardModel.CampaignLotIds.Remove(id);
+        }
+    }
+
+    private void OnStrategyChanged(CropStrategyDto strategy)
+    {
+        _wizardModel.StrategyId = strategy?.Id ?? Guid.Empty;
+        _selectedStrategy = strategy;
+    }
+
+    private async Task GoToPreview()
+    {
+        var strategy = _strategies.FirstOrDefault(s => s.Id == _wizardModel.StrategyId);
+        if (strategy == null) return;
+
+        _loadingPreview = true;
+        _previews.Clear();
+
+        try
+        {
+            foreach (var lotId in _wizardModel.CampaignLotIds)
+            {
+                var lot = _campaignLots.FirstOrDefault(cl => cl.Id == lotId);
+                if (lot == null) continue;
+
+                foreach (var item in strategy.Items.OrderBy(i => i.DayOffset))
+                {
+                    var date = _wizardModel.BaseDate.AddDays(item.DayOffset);
+                    var preview = new LaborPreview
+                    {
+                        CampaignLotId = lot.Id,
+                        LotName = lot.LotName,
+                        StrategyItemId = item.Id,
+                        StrategyItemName = item.LaborTypeName ?? "Labor",
+                        LaborTypeId = item.LaborTypeId,
+                        Hectares = lot.ProductiveArea > 0 ? lot.ProductiveArea : lot.CadastralArea,
+                        Date = date,
+                        IsExternal = false
+                    };
+
+                    // Validate rotation for this lot + date
+                    preview.RotationWarning = await CheckRotationWarning(lot.Id, date);
+
+                    _previews.Add(preview);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Message.Warning($"Error al validar rotaciones: {ex.Message}");
+        }
+        finally
+        {
+            _loadingPreview = false;
+        }
+
+        _step = 2;
+    }
+
+    /// <summary>Checks if the lot has an active rotation on the given date. Returns a warning string or null.</summary>
+    private async Task<string?> CheckRotationWarning(Guid campaignLotId, DateTime date)
+    {
+        if (CampaignState.CurrentCampaign == null) return null;
+        try
+        {
+            var dateOnly = DateOnly.FromDateTime(date);
+            var response = await Http.GetAsync(
+                $"api/campaigns/{CampaignState.CurrentCampaign.Id}/lots/{campaignLotId}/rotations/active?date={dateOnly:yyyy-MM-dd}");
+
+            if (response.IsSuccessStatusCode)
+            {
+                // Has an active rotation — no issue
+                return null;
+            }
+            else if (response.StatusCode == System.Net.HttpStatusCode.NotFound ||
+                     response.StatusCode == System.Net.HttpStatusCode.NoContent)
+            {
+                return $"Sin rotación activa para la fecha {date:dd/MM/yyyy}. La labor se creará igualmente.";
+            }
+        }
+        catch
+        {
+            // Silently ignore rotation check failures
+        }
+        return null;
+    }
+
+    private async Task ConfirmCreate()
+    {
+        _saving = true;
+        try
+        {
+            var request = new BulkFromStrategyRequest(
+                _wizardModel.StrategyId,
+                _wizardModel.CampaignLotIds,
+                _wizardModel.Status,
+                _wizardModel.BaseDate,
+                _wizardModel.ForceDateSeparation,
+                _previews.Select(p => new LaborOverrideDto(
+                    p.CampaignLotId,
+                    p.StrategyItemId,
+                    p.LaborTypeId,
+                    p.ContactId,
+                    p.Hectares,
+                    p.Date ?? DateTime.Today,
+                    p.IsExternal
+                )).ToList()
+            );
+
+            var response = await Http.PostAsJsonAsync("api/labors/bulk-from-strategy", request);
+            if (response.IsSuccessStatusCode)
+            {
+                var result = await response.Content.ReadFromJsonAsync<JsonElement>();
+                var createdCount = result.GetProperty("created").GetInt32();
+                Message.Success($"Se crearon {createdCount} labores correctamente.");
+                await OnClose.InvokeAsync();
+            }
+            else
+            {
+                var body = await response.Content.ReadAsStringAsync();
+                Message.Error($"Error: {body}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Message.Error($"Error: {ex.Message}");
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+}

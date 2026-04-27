@@ -38,12 +38,18 @@
                 Style="border-radius: 6px; border-color: rgba(255,255,255,0.15); color: rgba(255,255,255,0.7);">
             <Icon Type="right" Theme="IconThemeType.Outline" />
         </Button>
-        <Select TItemValue="Guid?" TItem="LaborTypeDto" @bind-Value="_filterTypeId" Placeholder="Filtrar tipo" AllowClear
+        <Select TItemValue="Guid?" TItem="LaborTypeDto" @bind-Value="_filterTypeId" Placeholder="Tipo Labor" AllowClear
                 Style="width: 150px;" Size="@InputSize.Small">
-            <SelectOption TItemValue="Guid?" TItem="LaborTypeDto" Value="@(null)" Label="Todos las actividades" />
             @foreach(var type in _laborTypes)
             {
                 <SelectOption TItemValue="Guid?" TItem="LaborTypeDto" Value="@type.Id" Label="@type.Name" />
+            }
+        </Select>
+        <Select TItemValue="Guid?" TItem="ErpActivityDto" @bind-Value="_filterActivityId" Placeholder="Actividad" AllowClear
+                Style="width: 150px;" Size="@InputSize.Small">
+            @foreach(var act in _activities)
+            {
+                <SelectOption TItemValue="Guid?" TItem="ErpActivityDto" Value="@act.Id" Label="@act.Name" />
             }
         </Select>
         <Button Type="@ButtonType.Primary" OnClick="() => OpenCreateDrawer(DateTime.Today)"
@@ -65,12 +71,6 @@
 <div class="planner-legend" style="margin-bottom: 12px; display: flex; gap: 16px; align-items: center;">
     <span class="legend-item"><span class="legend-dot" style="background: #4CAF50;"></span> Con OT</span>
     <span class="legend-item"><span class="legend-dot" style="background: #FFA500;"></span> Sin OT (Suelta)</span>
-    <span class="legend-sep">|</span>
-    <span class="legend-item"><span class="legend-dot" style="background: #27AE60;"></span> Fertilizacion</span>
-    <span class="legend-item"><span class="legend-dot" style="background: #2980B9;"></span> Pulverizacion</span>
-    <span class="legend-item"><span class="legend-dot" style="background: #8E44AD;"></span> Siembra</span>
-    <span class="legend-item"><span class="legend-dot" style="background: #D35400;"></span> Cosecha</span>
-    <span class="legend-item"><span class="legend-dot" style="background: #16A085;"></span> Monitoreo</span>
     <span style="margin-left: auto; color: rgba(255,255,255,0.4); font-size: 12px;">
         @FilteredLabors.Count labores visibles
     </span>
@@ -445,19 +445,22 @@ else if (_viewMode == "month")
     private List<LaborCalendarDto> _labors = new();
     private List<CampaignLotDto> _lots = new();
     private List<LaborTypeDto> _laborTypes = new();
+    private List<ErpActivityDto> _activities = new();
     private bool _loading = true;
     private DateTime _currentDate = DateTime.Today;
     private string _viewMode = "month";
     private string? _errorMessage;
     private Guid? _filterTypeId;
+    private Guid? _filterActivityId;
     private bool _drawerVisible;
     private Guid _editingLaborId = Guid.Empty;
 
     private static readonly string[] _dayNames = { "Lun", "Mar", "Mie", "Jue", "Vie", "Sab", "Dom" };
 
-    private List<LaborCalendarDto> FilteredLabors => _filterTypeId == null
-        ? _labors
-        : _labors.Where(l => _laborTypes.Any(lt => lt.Id == _filterTypeId && lt.Name == l.LaborType)).ToList();
+    private List<LaborCalendarDto> FilteredLabors => _labors
+        .Where(l => _filterTypeId == null || _laborTypes.Any(lt => lt.Id == _filterTypeId && lt.Name == l.LaborType))
+        .Where(l => _filterActivityId == null || l.ErpActivityId == _filterActivityId)
+        .ToList();
 
     private List<DateTime[]> MonthWeeks
     {
@@ -527,6 +530,8 @@ else if (_viewMode == "month")
                 AppJsonSerializerContext.Default.ListLaborCalendarDto, cts.Token);
             var typesTask = Http.GetFromJsonAsync("api/catalogs/labor-types",
                 AppJsonSerializerContext.Default.ListLaborTypeDto, cts.Token);
+            var activitiesTask = Http.GetFromJsonAsync("api/catalogs/activities",
+                AppJsonSerializerContext.Default.ListErpActivityDto, cts.Token);
 
             Task<List<CampaignLotDto>>? lotsTask = null;
             if (CampaignState.CurrentCampaign != null)
@@ -536,11 +541,12 @@ else if (_viewMode == "month")
                     AppJsonSerializerContext.Default.ListCampaignLotDto, cts.Token);
             }
 
-            var tasks = new List<Task?> { laborsTask, typesTask, lotsTask };
+            var tasks = new List<Task?> { laborsTask, typesTask, activitiesTask, lotsTask };
             await Task.WhenAll(tasks.Where(t => t != null).Select(t => t!));
 
             _labors = await laborsTask ?? new();
             _laborTypes = await typesTask ?? new();
+            _activities = await activitiesTask ?? new();
             if (lotsTask != null)
                 _lots = await lotsTask ?? new();
             _errorMessage = null;

@@ -59,10 +59,12 @@
 
 <div class="glass-card">
     <Table TItem="WorkOrderDto" DataSource="_workOrders" Loading="_loading" Size="@TableSize.Small" ScrollX="1200">
+        <PropertyColumn Property="c => c.Name" Title="Nombre" Sortable>
+            <span style="font-weight: 700; color: #fff;">@(context.Name ?? context.OTNumber)</span>
+        </PropertyColumn>
         <PropertyColumn Property="c => c.Description" Title="Descripción">
             <span style="font-weight: 600;">@context.Description</span>
         </PropertyColumn>
-        <PropertyColumn Property="c => c.FieldName" Title="Campo" Sortable />
         <Column TData="string" Title="Estado">
             @{
                 var (color, label) = context.Status switch
@@ -80,7 +82,7 @@
             </Tag>
         </Column>
         <PropertyColumn Property="c => c.AssignedTo" Title="Asignado a" Sortable />
-        <PropertyColumn Property="c => c.DueDate" Title="Fecha Límite" Sortable>
+        <PropertyColumn Property="c => c.DueDate" Title="Fecha" Sortable>
             @context.DueDate.ToString("dd/MM/yyyy")
         </PropertyColumn>
         <ActionColumn Title="Acciones" Width="220">
@@ -122,26 +124,24 @@
         <FormItem Label="Nombre (opcional)">
             <Input @bind-Value="_formModel.Name" Placeholder="Ej: Siembra Lote Norte — si se deja vacío se genera automáticamente" />
         </FormItem>
-        <FormItem Label="Descripción">
-            <TextArea @bind-Value="_formModel.Description" Placeholder="Descripción de la orden" Rows="3" />
-        </FormItem>
-        <FormItem Label="Campo">
-            <Select TItem="FieldDto" TItemValue="Guid" DataSource="_availableFields" @bind-Value="_formModel.FieldId"
-                    LabelName="@nameof(FieldDto.Name)" ValueName="@nameof(FieldDto.Id)" Placeholder="Seleccionar campo"
-                    Style="width: 100%;" EnableSearch />
-        </FormItem>
         <AntDesign.Row Gutter="16">
             <AntDesign.Col Span="12">
-                <FormItem Label="Responsable (Contacto)">
-                    <Select TItem="ContactDto" TItemValue="Guid" DataSource="_availableContacts" @bind-Value="_formModel.ContactId"
-                            LabelName="@nameof(ContactDto.FullName)" ValueName="@nameof(ContactDto.Id)" Placeholder="Seleccionar contacto"
-                            Style="width: 100%;" EnableSearch />
-                </FormItem>
+                @if (!_formModel.AcceptsMultiplePeople)
+                {
+                    <FormItem Label="Responsable (Contacto)">
+                        <Select TItem="ContactDto" TItemValue="Guid" DataSource="_availableContacts" @bind-Value="_formModel.ContactId"
+                                LabelName="@nameof(ContactDto.FullName)" ValueName="@nameof(ContactDto.Id)" Placeholder="Seleccionar contacto"
+                                Style="width: 100%;" EnableSearch />
+                    </FormItem>
+                }
             </AntDesign.Col>
             <AntDesign.Col Span="12">
-                <FormItem Label="Fecha Límite">
-                    <DatePicker @bind-Value="_formModel.DueDate" Style="width: 100%;" Format="dd/MM/yyyy" />
-                </FormItem>
+                @if (!_formModel.AcceptsMultipleDates)
+                {
+                    <FormItem Label="Fecha">
+                        <DatePicker @bind-Value="_formModel.DueDate" Style="width: 100%;" Format="dd/MM/yyyy" />
+                    </FormItem>
+                }
             </AntDesign.Col>
         </AntDesign.Row>
         <AntDesign.Row Gutter="16">
@@ -172,8 +172,8 @@
             </AntDesign.Col>
             <AntDesign.Col Span="12">
                 <div style="display: flex; gap: 8px; height: 100%; align-items: center; padding-top: 24px;">
-                    <Checkbox @bind-Checked="_formModel.AcceptsMultiplePeople">Mult. Pers.</Checkbox>
-                    <Checkbox @bind-Checked="_formModel.AcceptsMultipleDates">Mult. Fechas</Checkbox>
+                    <Checkbox @bind-Checked="_formModel.AcceptsMultiplePeople" OnChange="() => StateHasChanged()">Mult. Pers.</Checkbox>
+                    <Checkbox @bind-Checked="_formModel.AcceptsMultipleDates" OnChange="() => StateHasChanged()">Mult. Fechas</Checkbox>
                 </div>
             </AntDesign.Col>
         </AntDesign.Row>
@@ -222,11 +222,9 @@
     {
         public string? Name { get; set; }  // #21: Optional human-readable name
 
-        [System.ComponentModel.DataAnnotations.Required(ErrorMessage = "La descripción es obligatoria")]
         public string Description { get; set; } = string.Empty;
         
-        [System.ComponentModel.DataAnnotations.Required(ErrorMessage = "Debe seleccionar un campo")]
-        public Guid FieldId { get; set; }
+        public Guid? FieldId { get; set; }
         
         public Guid CampaignId { get; set; }
         public Guid ContactId { get; set; }
@@ -354,16 +352,8 @@
 
     private async Task SaveWorkOrder()
     {
-        if (string.IsNullOrWhiteSpace(_formModel.Description))
-        {
-            Message.Warning("La descripción es obligatoria.");
-            return;
-        }
-        if (_formModel.FieldId == Guid.Empty)
-        {
-            Message.Warning("Debe seleccionar un campo.");
-            return;
-        }
+        if (_saving) return; // Prevent double clicks
+
 
         _saving = true;
         try

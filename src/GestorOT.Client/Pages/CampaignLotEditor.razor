@@ -286,7 +286,8 @@
 
     private async Task AddLotToCampaign() {
         if (_addLotId == Guid.Empty) { Message.Warning("Seleccioná un lote."); return; }
-        var dto = new CampaignLotDto(Guid.Empty, CampaignId, _addLotId, null, null, 0, _addProductiveArea, null);
+        var fieldId = _availableLots.FirstOrDefault(l => l.Id == _addLotId)?.FieldId;
+        var dto = new CampaignLotDto(Guid.Empty, CampaignId, _addLotId, fieldId, null, null, 0, _addProductiveArea, null);
         var resp = await Http.PostAsJsonAsync($"api/campaigns/{CampaignId}/lots", dto);
         if (resp.IsSuccessStatusCode)
         {

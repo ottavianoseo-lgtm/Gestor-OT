@@ -17,7 +17,7 @@ public record LotDto(
 public record WorkOrderDto
 {
     public Guid Id { get; set; }
-    public Guid FieldId { get; set; } // OTs now target a Field
+    public Guid? FieldId { get; set; } // OTs can target a Field or be generic
     /// <summary>#21: Optional human-readable name. If null, use DisplayName fallback.</summary>
     public string? Name { get; set; }
     [System.ComponentModel.DataAnnotations.Required(ErrorMessage = "La descripción es obligatoria")]
@@ -35,6 +35,7 @@ public record WorkOrderDto
     public Guid? CampaignId { get; set; }
     public bool AcceptsMultiplePeople { get; set; }
     public bool AcceptsMultipleDates { get; set; }
+    public bool IsLocked { get; set; }
 
     /// <summary>
     /// #21: Human-readable display name.
@@ -47,9 +48,9 @@ public record WorkOrderDto
                 .Where(s => !string.IsNullOrWhiteSpace(s)));
 
     public WorkOrderDto() { }
-    public WorkOrderDto(Guid id, Guid fieldId, string description, string status, string assignedTo, DateTime dueDate, string? fieldName, string? otNumber, DateTime? plannedDate, DateTime? expirationDate, bool stockReserved, Guid? contractorId, Guid? contactId, Guid? campaignId, string? name = null, bool acceptsMultiplePeople = false, bool acceptsMultipleDates = false)
+    public WorkOrderDto(Guid id, Guid? fieldId, string description, string status, string assignedTo, DateTime dueDate, string? fieldName, string? otNumber, DateTime? plannedDate, DateTime? expirationDate, bool stockReserved, Guid? contractorId, Guid? contactId, Guid? campaignId, string? name = null, bool acceptsMultiplePeople = false, bool acceptsMultipleDates = false, bool isLocked = false)
     {
-        Id = id; FieldId = fieldId; Description = description; Status = status; AssignedTo = assignedTo; DueDate = dueDate; FieldName = fieldName; OTNumber = otNumber; PlannedDate = plannedDate; ExpirationDate = expirationDate; StockReserved = stockReserved; ContractorId = contractorId; ContactId = contactId; CampaignId = campaignId; Name = name; AcceptsMultiplePeople = acceptsMultiplePeople; AcceptsMultipleDates = acceptsMultipleDates;
+        Id = id; FieldId = fieldId; Description = description; Status = status; AssignedTo = assignedTo; DueDate = dueDate; FieldName = fieldName; OTNumber = otNumber; PlannedDate = plannedDate; ExpirationDate = expirationDate; StockReserved = stockReserved; ContractorId = contractorId; ContactId = contactId; CampaignId = campaignId; Name = name; AcceptsMultiplePeople = acceptsMultiplePeople; AcceptsMultipleDates = acceptsMultipleDates; IsLocked = isLocked;
     }
 }
 

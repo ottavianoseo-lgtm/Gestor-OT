@@ -9,6 +9,7 @@
 @inject NavigationManager Nav
 @inject GestorOT.Client.Services.CampaignState CampaignState
 @inject GestorOT.Client.Services.TenantState TenantState
+@inject ModalService ModalService
 @implements IDisposable
 
 <PageTitle>Lotes - GestorOT</PageTitle>
@@ -67,16 +68,27 @@
 
 <div class="glass-card">
     <Table TItem="LotDto" DataSource="FilteredLots" Loading="_loading" Size="@TableSize.Small"
-           ScrollX="1200" OnExpand="OnExpandLot">
+           ScrollX="1200" OnExpand="OnExpandLot" RowKey="c => c.Id">
         <ExpandTemplate Context="lot">
             <div style="padding: 16px; background: rgba(0,0,0,0.2); border-radius: 8px;">
-                <h4 style="color: #fff; margin-bottom: 12px;">Historial de Superficies por Campaña</h4>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                    <h4 style="color: #fff; margin: 0;">Historial de Superficies por Campaña</h4>
+                    <div style="display: flex; gap: 8px;">
+                        <Button Size="@ButtonSize.Small" OnClick="() => GoToGis(lot.Data.Id)"
+                                Style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #fff;">
+                            <Icon Type="environment" /> GIS
+                        </Button>
+                        <Button Size="@ButtonSize.Small" OnClick="() => GoToRotations(CampaignState.CurrentCampaign?.Id ?? Guid.Empty, lot.Data.Id)"
+                                Style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #fff;">
+                            <Icon Type="sync" /> Rotaciones
+                        </Button>
+                    </div>
+                </div>
                 @if (_historyByLot.TryGetValue(lot.Data.Id, out var history))
                 {
                     <Table TItem="SurfaceHistoryDto" DataSource="history" Size="TableSize.Small" PageSize="10" HidePagination>
                         <PropertyColumn Property="h => h.CampaignName" Title="Campaña" />
                         <PropertyColumn Property="h => h.StartDate" Title="Inicio" />
-                        <PropertyColumn Property="h => h.CadastralArea" Title="Ha" />
                         <PropertyColumn Property="h => h.ProductiveArea" Title="Sup. Productiva" />
                         <PropertyColumn Property="h => h.Variation" Title="Variación">
                             @{
@@ -219,6 +231,7 @@
                                 <AntDesign.InputNumber TValue="decimal" Value="@c.ProductiveArea" 
                                            ValueChanged="@((decimal v) => UpdateCampaignLotArea(c, v))"
                                            Size="InputSize.Small" Bordered="false"
+                                           Precision="2" Step="0.01m"
                                            Style="width: 100%; background: transparent; color: #2ECC71; font-weight: 700; text-align: center;" />
                             </div>
                             <Button Size="@ButtonSize.Small" OnClick="() => GoToGis(c.LotId)"
@@ -242,7 +255,7 @@
 
         <div>
             <label style="display: block; color: rgba(255,255,255,0.6); font-size: 13px; margin-bottom: 8px;">Hectáreas</label>
-            <AntDesign.InputNumber TValue="decimal" @bind-Value="_formModel.CadastralArea" Min="0m" Step="0.1m"
+            <AntDesign.InputNumber TValue="decimal" @bind-Value="_formModel.CadastralArea" Min="0m" Step="0.01m" Precision="2"
                        Style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15); border-radius: 12px; height: 42px; color: #fff; width: 100%;" />
         </div>
 
@@ -277,7 +290,7 @@
         </div>
         <div>
             <label style="display: block; margin-bottom: 8px; font-size: 12px; color: rgba(255,255,255,0.5);">Superficie Productiva (ha)</label>
-            <AntDesign.InputNumber TValue="decimal" @bind-Value="_newCampaignProductiveArea" Style="width: 100%;" />
+            <AntDesign.InputNumber TValue="decimal" @bind-Value="_newCampaignProductiveArea" Precision="2" Step="0.01m" Style="width: 100%;" />
         </div>
     </div>
 </Modal>
@@ -406,6 +419,9 @@
     private DateTime? _newRotationEnd;
     private Guid _currentRotationCampaignId;
 
+
+    [SupplyParameterFromQuery] public Guid? highlight { get; set; }
+
     private IEnumerable<LotDto> FilteredLots =>
         _filterByCampaign && CampaignState.IsSelected
             ? _lots.Where(l => _campaignLots.Any(cl => cl.LotId == l.Id))
@@ -502,6 +518,12 @@
         {
             _loading = false;
             StateHasChanged();
+
+            if (highlight.HasValue)
+            {
+                await LoadHistory(highlight.Value);
+                StateHasChanged();
+            }
         }
     }
 
@@ -634,6 +656,19 @@
     {
         try
         {
+            var lot = _lots.FirstOrDefault(l => l.Id == item.LotId);
+            if (lot != null && newArea > lot.CadastralArea)
+            {
+                bool confirmed = await ModalService.ConfirmAsync(new ConfirmOptions
+                {
+                    Title = "Área productiva superior",
+                    Content = $"El área productiva ({newArea}) es superior a las hectáreas catastrales ({lot.CadastralArea}). ¿Desea continuar?",
+                    OkText = "Sí, continuar",
+                    CancelText = "No, revisar"
+                });
+                if (!confirmed) return;
+            }
+
             var updated = item with { ProductiveArea = newArea };
             var response = await Http.PutAsJsonAsync($"api/campaigns/{item.CampaignId}/lots/{item.LotId}", updated);
             if (response.IsSuccessStatusCode)
@@ -669,7 +704,20 @@
         
         try
         {
-            var dto = new CampaignLotDto(Guid.Empty, _selectedCampaignId, _editingId, null, null, 0, _newCampaignProductiveArea, null);
+            var lot = _lots.FirstOrDefault(l => l.Id == _editingId);
+            if (lot != null && _newCampaignProductiveArea > lot.CadastralArea)
+            {
+                bool confirmed = await ModalService.ConfirmAsync(new ConfirmOptions
+                {
+                    Title = "Área productiva superior",
+                    Content = $"El área productiva ({_newCampaignProductiveArea}) es superior a las hectáreas catastrales ({lot.CadastralArea}). ¿Desea continuar?",
+                    OkText = "Sí, continuar",
+                    CancelText = "No, revisar"
+                });
+                if (!confirmed) return;
+            }
+
+            var dto = new CampaignLotDto(Guid.Empty, _selectedCampaignId, _editingId, lot?.FieldId, null, null, 0, _newCampaignProductiveArea, null);
             var response = await Http.PostAsJsonAsync($"api/campaigns/{_selectedCampaignId}/lots", dto);
             if (response.IsSuccessStatusCode)
             {
@@ -753,7 +801,7 @@
                     if (createdLot != null)
                     {
                         var lotAddResp = await Http.PostAsJsonAsync($"api/campaigns/{CampaignState.CurrentCampaign!.Id}/lots",
-                            new CampaignLotDto(Guid.Empty, CampaignState.CurrentCampaign.Id, createdLot.Id, null, null, 0, 0, null),
+                            new CampaignLotDto(Guid.Empty, CampaignState.CurrentCampaign.Id, createdLot.Id, createdLot.FieldId, null, null, 0, 0, null),
                             AppJsonSerializerContext.Default.CampaignLotDto);
                         
                         if (!lotAddResp.IsSuccessStatusCode)

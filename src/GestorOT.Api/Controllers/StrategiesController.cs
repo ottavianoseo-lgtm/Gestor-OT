@@ -98,13 +98,18 @@ public class StrategiesController : ControllerBase
         strategy.Name = dto.Name;
         strategy.CropType = dto.CropType;
 
-        _context.StrategyItems.RemoveRange(strategy.Items);
+        // Snapshot existing items, clear navigation, then remove — prevents EF Core concurrency
+        // confusion when it tries to DELETE + UPDATE the same entities in one batch.
+        var existingItems = strategy.Items.ToList();
+        strategy.Items.Clear();
+        _context.StrategyItems.RemoveRange(existingItems);
 
         if (dto.Items != null)
         {
             foreach (var item in dto.Items)
             {
-                strategy.Items.Add(new StrategyItem
+                // Add directly to DbSet (not via navigation property) to avoid change-tracker conflicts
+                _context.StrategyItems.Add(new StrategyItem
                 {
                     Id = Guid.NewGuid(),
                     CropStrategyId = strategy.Id,
@@ -120,6 +125,7 @@ public class StrategiesController : ControllerBase
         await _context.SaveChangesAsync();
         return NoContent();
     }
+
 
     [HttpDelete("{id:guid}")]
     public async Task<IActionResult> DeleteStrategy(Guid id)

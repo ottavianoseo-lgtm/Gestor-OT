@@ -4,7 +4,7 @@ public class WorkOrder : TenantEntity
 {
     public Guid Id { get; set; }
     public string? Name { get; set; } // #24: Human-readable identifier
-    public Guid FieldId { get; set; } // OTs are now linked to a Field (Campo)
+    public Guid? FieldId { get; set; } // OTs can now span multiple fields via Labors
     public Guid? CampaignId { get; set; }
     public string Description { get; set; } = string.Empty;
     public Guid? WorkOrderStatusId { get; set; }

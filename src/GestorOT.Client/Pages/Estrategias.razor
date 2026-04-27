@@ -140,7 +140,7 @@
             var item = _formModel.Items[idx];
             <div class="supply-row" style="margin-bottom: 8px;">
                 <AntDesign.Row Gutter="8">
-                    <AntDesign.Col Span="7">
+                    <AntDesign.Col Span="11">
                         <Select TItem="LaborTypeDto"
                                 TItemValue="Guid"
                                 DataSource="@_laborTypes"
@@ -149,10 +149,6 @@
                                 ValueName="@nameof(LaborTypeDto.Id)"
                                 Placeholder="Tipo labor"
                                 Style="width: 100%;" />
-                    </AntDesign.Col>
-                    <AntDesign.Col Span="4">
-                        <AntDesign.InputNumber TValue="int" @bind-Value="item.DayOffset" Min="0" Step="1"
-                                    Style="width: 100%;" />
                     </AntDesign.Col>
                     <AntDesign.Col Span="11">
                         <div style="display: flex; gap: 4px; flex-wrap: wrap; align-items: center;">
@@ -197,6 +193,20 @@
                     </AntDesign.Col>
                 </AntDesign.Row>
             </div>
+
+            @if (idx < _formModel.Items.Count - 1)
+            {
+                <div class="day-separator">
+                    <div class="separator-line"></div>
+                    <div class="day-input-wrapper">
+                        <Icon Type="arrow-down" Style="color: rgba(255,255,255,0.2); font-size: 12px;" />
+                        <span style="font-size: 12px; color: rgba(255,255,255,0.5); font-weight: 500;">Días de espera</span>
+                        <AntDesign.InputNumber TValue="int" @bind-Value="_formModel.Items[idx + 1].DayOffset"
+                                                Min="0" Step="1" Style="width: 80px;" />
+                    </div>
+                    <div class="separator-line"></div>
+                </div>
+            }
         }
 
         <Button Type="@ButtonType.Dashed" OnClick="AddItem" Block
@@ -319,6 +329,27 @@
         border: 1px solid rgba(255,255,255,0.06);
         border-radius: 8px;
         padding: 10px 12px;
+    }
+    .day-separator {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        margin: 8px 0;
+        padding: 0 12px;
+    }
+    .separator-line {
+        flex: 1;
+        height: 1px;
+        background: linear-gradient(to right, transparent, rgba(255,255,255,0.1), transparent);
+    }
+    .day-input-wrapper {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        background: rgba(255,255,255,0.04);
+        padding: 4px 12px;
+        border-radius: 20px;
+        border: 1px solid rgba(255,255,255,0.08);
     }
 </style>
 

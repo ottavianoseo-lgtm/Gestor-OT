@@ -88,6 +88,21 @@
                         </Popconfirm>
                     </SpaceItem>
                 }
+                else if (context.Status == CampaignStatus.Locked)
+                {
+                    <SpaceItem>
+                        <Popconfirm Title="¿Desbloquear esta campaña?"
+                                    OnConfirm="() => UnlockCampaign(context.Id)"
+                                    OkText="Desbloquear" CancelText="Cancelar">
+                            <Tooltip Title="@("Desbloquear campaña")">
+                                <Button Size="@ButtonSize.Small"
+                                        Style="border-radius: 6px; border-color: #2ECC7140; color: #2ECC71;">
+                                    <Icon Type="unlock" Theme="IconThemeType.Outline" />
+                                </Button>
+                            </Tooltip>
+                        </Popconfirm>
+                    </SpaceItem>
+                }
                 <SpaceItem>
                     <Tooltip Title="@("Gestionar lotes")">
                         <Button Size="@ButtonSize.Small" OnClick='() => Nav.NavigateTo($"/campaigns/{context.Id}/lots")'
@@ -659,4 +674,25 @@
         }
     }
 
+    private async Task UnlockCampaign(Guid id)
+    {
+        try
+        {
+            var response = await Http.PostAsync($"api/campaigns/{id}/unlock", null);
+            if (response.IsSuccessStatusCode)
+            {
+                Message.Success("Campaña desbloqueada.");
+                await LoadData();
+            }
+            else
+            {
+                var body = await response.Content.ReadAsStringAsync();
+                Message.Error($"Error: {body}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Message.Error($"Error: {ex.Message}");
+        }
+    }
 }

@@ -14,6 +14,9 @@ public class Labor : TenantEntity
     public LaborMode Mode { get; set; } = LaborMode.Planned;
     public LaborStatus Status { get; set; } = LaborStatus.Planned;
     public LaborPriority Priority { get; set; } = LaborPriority.Regular;
+    public bool IsOriginalPlan { get; set; } = false;
+    public Guid? SourceStrategyId { get; set; }  // Set when labor is created from a CropStrategy
+    public CropStrategy? SourceStrategy { get; set; }
     public string? SupplyWithdrawalNotes { get; set; }
     public DateTime? ExecutionDate { get; set; }
     public DateTime? EstimatedDate { get; set; }

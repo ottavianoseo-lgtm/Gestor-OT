@@ -23,6 +23,7 @@ public class WorkOrderQueryService : IWorkOrderQueryService
         var query = _context.WorkOrders
             .AsNoTracking()
             .Include(w => w.Field)
+            .Include(w => w.WorkOrderStatus)
             .AsQueryable();
 
         if (campaignId.HasValue && campaignId != Guid.Empty)
@@ -51,7 +52,8 @@ public class WorkOrderQueryService : IWorkOrderQueryService
             w.CampaignId,
             w.Name,
             w.AcceptsMultiplePeople,
-            w.AcceptsMultipleDates)).ToList();
+            w.AcceptsMultipleDates,
+            w.WorkOrderStatus?.IsEditable == false)).ToList();
     }
 
     public async Task<WorkOrderDetailDto?> GetByIdAsync(Guid id, CancellationToken ct = default)
@@ -59,6 +61,7 @@ public class WorkOrderQueryService : IWorkOrderQueryService
         var workOrder = await _context.WorkOrders
             .AsNoTracking()
             .Include(w => w.Field)
+            .Include(w => w.WorkOrderStatus)
             .Include(w => w.SupplyApprovals)
                 .ThenInclude(a => a.Supply)
             .Include(w => w.Labors)
@@ -66,6 +69,8 @@ public class WorkOrderQueryService : IWorkOrderQueryService
                     .ThenInclude(lot => lot!.Field)
             .Include(w => w.Labors)
                 .ThenInclude(l => l.Type)
+            .Include(w => w.Labors)
+                .ThenInclude(l => l.Contact)
             .Include(w => w.Labors)
                 .ThenInclude(l => l.ErpActivity)
             .Include(w => w.Labors)
@@ -124,7 +129,9 @@ public class WorkOrderQueryService : IWorkOrderQueryService
             l.IsExternalBilling,
             l.PlannedLaborId,
             l.Priority,
-            l.SupplyWithdrawalNotes
+            l.SupplyWithdrawalNotes,
+            l.IsOriginalPlan,
+            l.Contact?.FullName
         )).ToList();
 
         // Step 19: Rule of three for Realized labors
@@ -192,7 +199,8 @@ public class WorkOrderQueryService : IWorkOrderQueryService
             supplyApprovalsDto,
             workOrder.Name,
             workOrder.AcceptsMultiplePeople,
-            workOrder.AcceptsMultipleDates
+            workOrder.AcceptsMultipleDates,
+            workOrder.WorkOrderStatus?.IsEditable == false
         );
     }
 }

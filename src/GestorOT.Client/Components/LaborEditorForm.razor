@@ -7,16 +7,27 @@
 @inject IMessageService Message
 @inject IJSRuntime JSRuntime
 @inject GestorOT.Client.Services.CampaignState CampaignState
+@inject ModalService ModalService
 @implements IDisposable
 
 <Card Title="@(LaborId == Guid.Empty ? "Nueva Labor" : "Editar Labor")"
       Style="border-radius: 12px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1);">
     <Form Model="@_model" OnFinish="HandleSubmit" Layout="@FormLayout.Vertical">
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+            <FormItem Label="Campo (Filtro)">
+                <Select TItemValue="Guid" TItem="FieldDto" @bind-Value="_filterFieldId"
+                        Placeholder="Filtrar por campo" EnableSearch AllowClear
+                        DataSource="@_fields"
+                        LabelName="@nameof(FieldDto.Name)"
+                        ValueName="@nameof(FieldDto.Id)"
+                        OnSelectedItemChanged="OnFieldFilterChanged">
+                </Select>
+            </FormItem>
+
             <FormItem Label="Lote">
                 <Select TItemValue="Guid" TItem="CampaignLotDto" @bind-Value="_model.LotId"
                         Placeholder="Seleccionar lote" EnableSearch 
-                        DataSource="@_lots"
+                        DataSource="@FilteredLots"
                         LabelName="@nameof(CampaignLotDto.LotName)"
                         ValueName="@nameof(CampaignLotDto.LotId)"
                         OnSelectedItemChanged="OnLotChanged">
@@ -125,7 +136,7 @@
             <TextArea @bind-Value="_model.Notes" Rows="2" Placeholder="Instrucciones para el contratista..." Style="color: var(--text-primary); background: rgba(255,255,255,0.05);" />
         </FormItem>
 
-        <Divider Style="border-color: rgba(255,255,255,0.1); color: var(--text-primary);" Text="Insumos / Mezcla de Tanque" Orientation="@DividerOrientation.Left" />
+        <Divider Style="border-color: rgba(255,255,255,0.1); color: var(--text-primary);" Text="Insumos" Orientation="@DividerOrientation.Left" />
 
         <div class="supplies-grid">
             @foreach (var supply in _model.Supplies)
@@ -219,7 +230,7 @@
                 </Button>
             }
             <Button Type="@ButtonType.Primary" HtmlType="submit" Loading="_loading" Block="@(LaborId == Guid.Empty || (_model.Mode != "Planned" && _model.Status != "Planned"))"
-                    Disabled="@(_haSuperaLote || _fechaFueraRotacion)"
+                    Disabled="@(_fechaFueraRotacion)"
                     Style="flex: 2; height: 45px; border-radius: 8px; font-weight: 600;">
                 <Icon Type="save" /> Guardar Labor
             </Button>
@@ -229,6 +240,12 @@
     @if (LaborId != Guid.Empty)
     {
         <LaborAttachments LaborId="@LaborId" />
+    }
+    else
+    {
+        <div style="text-align: center; padding: 20px; background: rgba(255,255,255,0.02); border-radius: 8px; border: 1px dashed rgba(255,255,255,0.1); margin-top: 16px;">
+            <span style="color: rgba(255,255,255,0.3); font-size: 12px;">Podés adjuntar archivos una vez guardada la labor.</span>
+        </div>
     }
 </Card>
 
@@ -240,10 +257,14 @@
     [Parameter] public Guid? WorkOrderId { get; set; }
     [Parameter] public Guid LaborId { get; set; }
     [Parameter] public DateTime? DefaultDate { get; set; }
+    [Parameter] public string? InitialStatus { get; set; }
     [Parameter] public EventCallback OnSaved { get; set; }
 
     private LaborDto _model = new();
     private List<CampaignLotDto> _lots = new();
+    private List<LotDto> _allLotsRaw = new();
+    private List<FieldDto> _fields = new();
+    private Guid _filterFieldId;
     private List<LaborTypeDto> _laborTypes = new();
     private List<ErpActivityDto> _activities = new();
     private List<InventoryDto> _inventories = new();
@@ -258,6 +279,11 @@
     private bool _haSuperaLote;
     private bool _fechaFueraRotacion;
     private decimal _lotProductiveArea;
+
+    private IEnumerable<CampaignLotDto> FilteredLots =>
+        _filterFieldId == Guid.Empty
+            ? _lots
+            : _lots.Where(l => l.FieldId == _filterFieldId);
 
     private WeatherLogModel _weather = new();
     private bool _magicLinkModalVisible;
@@ -336,12 +362,19 @@
             _model = new LaborDto
             {
                 WorkOrderId = WorkOrderId,
-                Status = "Planned",
-                Mode = "Planned",
+                Status = InitialStatus ?? "Planned",
+                Mode = InitialStatus ?? "Planned",
                 EstimatedDate = DefaultDate ?? DateTime.Today
             };
             if (_model.EstimatedDate.HasValue) await CheckRotation(_model.EstimatedDate.Value);
         }
+    }
+
+    private void OnFieldFilterChanged(FieldDto field)
+    {
+        _model.LotId = Guid.Empty;
+        _model.CampaignLotId = null;
+        StateHasChanged();
     }
 
     private void OnCampaignChanged()
@@ -361,6 +394,7 @@
         var itemsTask = Http.GetFromJsonAsync<List<InventoryDto>>("api/inventory");
         var contactsTask = Http.GetFromJsonAsync<List<ContactDto>>("api/catalogs/contacts");
         var workOrdersTask = Http.GetFromJsonAsync<List<WorkOrderDto>>("api/workorders");
+        var fieldsTask = Http.GetFromJsonAsync<List<FieldDto>>("api/catalogs/fields");
 
         Task<List<CampaignLotDto>>? lotsTask = null;
         if (CampaignState.CurrentCampaign != null)
@@ -369,7 +403,7 @@
                 $"api/campaigns/{CampaignState.CurrentCampaign.Id}/lots");
         }
 
-        var tasks = new List<Task?> { typesTask, activitiesTask, itemsTask, contactsTask, workOrdersTask };
+        var tasks = new List<Task?> { typesTask, activitiesTask, itemsTask, contactsTask, workOrdersTask, fieldsTask };
         if (lotsTask != null)
         {
             tasks.Add(lotsTask);
@@ -381,10 +415,11 @@
         _activities = (await activitiesTask) ?? new();
         _inventories = (await itemsTask) ?? new();
         _contacts = (await contactsTask) ?? new();
-        _workOrders = (await workOrdersTask) ?? new();
+        _workOrders = ((await workOrdersTask) ?? new()).GroupBy(w => w.Id).Select(g => g.First()).ToList();
+        _fields = (await fieldsTask) ?? new();
 
         if (lotsTask != null)
-            _lots = (await lotsTask) ?? new();
+            _lots = ((await lotsTask) ?? new()).GroupBy(l => l.Id).Select(g => g.First()).ToList();
     }
 
     private async Task LoadLabor()
@@ -397,6 +432,35 @@
                 _weather = JsonSerializer.Deserialize<WeatherLogModel>(_model.WeatherLogJson) ?? new();
             }
             catch { /* Malformed JSON in WeatherLogJson — silently ignore, use default */ }
+        }
+
+        // BUG-05: If the lot is not in the currently loaded _lots list, try to load lots from
+        // the labor's WorkOrder campaign, or from the first campaign associated to the labor's lot.
+        var lotInList = _lots.Any(l => l.LotId == _model.LotId);
+        if (!lotInList && _model.LotId != Guid.Empty && _model.WorkOrderId.HasValue)
+        {
+            try
+            {
+                var ot = await Http.GetFromJsonAsync<WorkOrderDetailDto>($"api/workorders/{_model.WorkOrderId}");
+                if (ot?.CampaignId.HasValue == true)
+                {
+                    var otLots = await Http.GetFromJsonAsync<List<CampaignLotDto>>(
+                        $"api/campaigns/{ot.CampaignId}/lots");
+                    if (otLots != null)
+                    {
+                        // Merge: add lots from OT's campaign that aren't already in the list
+                        foreach (var lot in otLots)
+                        {
+                            if (!_lots.Any(l => l.Id == lot.Id))
+                                _lots.Add(lot);
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[LaborEditorForm] Could not load lots from labor's campaign: {ex.Message}");
+            }
         }
     }
 
@@ -448,7 +512,8 @@
     {
         if (lot != null)
         {
-            _model = _model with { LotId = lot.LotId, CampaignLotId = lot.Id };
+            _model.LotId = lot.LotId;
+            _model.CampaignLotId = lot.Id;
             _lotProductiveArea = lot.ProductiveArea;
 
             // #22: Productive area is the single source of truth for labor calculations
@@ -625,8 +690,14 @@
     {
         if (_haSuperaLote)
         {
-            Message.Error("La superficie supera el área productiva del lote.");
-            return;
+            var result = await ModalService.ConfirmAsync(new ConfirmOptions
+            {
+                Title = "Área superior a la del lote",
+                Content = $"La cantidad de Ha ingresada ({_model.Hectares}) supera las del área productiva del lote ({_lotProductiveArea}). ¿Está seguro que desea continuar?",
+                OkText = "Sí, continuar",
+                CancelText = "No, revisar"
+            });
+            if (!result) return;
         }
 
         if (_fechaFueraRotacion)
@@ -639,6 +710,8 @@
         {
             _loading = true;
             _model.WeatherLogJson = JsonSerializer.Serialize(_weather);
+            
+            Console.WriteLine($"[LaborEditorForm] Submitting Labor: Id={LaborId}, WorkOrderId={_model.WorkOrderId}, LotId={_model.LotId}, Hectares={_model.Hectares}");
 
             HttpResponseMessage response;
             if (LaborId == Guid.Empty)

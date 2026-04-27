@@ -169,9 +169,19 @@ public class CampaignsController : ControllerBase
         if (campaign.Status == "Locked" && newStatus != CampaignStatus.Locked)
             return BadRequest("Una campaña cerrada no puede reactivarse.");
 
-        campaign.Status = newStatus.ToString();
-        if (newStatus == CampaignStatus.Locked)
-            campaign.IsActive = false;
+        await _context.SaveChangesAsync();
+        return NoContent();
+    }
+
+    [HttpPost("{id:guid}/unlock")]
+    public async Task<IActionResult> UnlockCampaign(Guid id)
+    {
+        var campaign = await _context.Campaigns.FirstOrDefaultAsync(c => c.Id == id);
+        if (campaign == null)
+            return NotFound();
+
+        campaign.Status = "Active";
+        campaign.IsActive = true;
 
         await _context.SaveChangesAsync();
         return NoContent();
@@ -261,6 +271,7 @@ public class CampaignsController : ControllerBase
                 cl.Id,
                 cl.CampaignId,
                 cl.LotId,
+                cl.Lot != null ? cl.Lot.FieldId : null,
                 cl.Lot != null ? cl.Lot.Name : "Sin nombre",
                 cl.Lot!.Field != null ? cl.Lot.Field.Name : null,
                 cl.Lot.CadastralArea,

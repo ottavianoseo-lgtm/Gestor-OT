@@ -14,21 +14,31 @@
 @inject GestorOT.Client.Services.TenantState TenantState
 @implements IDisposable
 
-<PageTitle>Labores Pendientes - GestorOT</PageTitle>
+<PageTitle>Labores - GestorOT</PageTitle>
 
 <div class="page-header">
     <div>
-        <h2 class="page-title">Labores Pendientes de Asignar</h2>
-        <span class="page-subtitle">Labores registradas sin Orden de Trabajo asignada</span>
+        <h2 class="page-title">Gestión de Labores</h2>
+        <span class="page-subtitle">Todas las labores de la campaña</span>
     </div>
     <div style="display: flex; gap: 8px; align-items: center;">
+        <Select TItemValue="string?" TItem="string" @bind-Value="_filterAssigned"
+                Placeholder="Asignación" AllowClear Style="width: 140px;" OnSelectedItemChanged="LoadData">
+            <SelectOption TItemValue="string?" TItem="string" Value="@("assigned")" Label="Asignadas" />
+            <SelectOption TItemValue="string?" TItem="string" Value="@("unassigned")" Label="Sin OT" />
+        </Select>
+        <Select TItemValue="string?" TItem="string" @bind-Value="_filterStatus"
+                Placeholder="Estado" AllowClear Style="width: 130px;" OnSelectedItemChanged="LoadData">
+            <SelectOption TItemValue="string?" TItem="string" Value="@("Planned")" Label="Planeadas" />
+            <SelectOption TItemValue="string?" TItem="string" Value="@("Realized")" Label="Realizadas" />
+        </Select>
         <Select TItemValue="string" TItem="string" Value="@_sortBy" ValueChanged="OnSortChanged" Style="width: 160px;">
             <SelectOption TItemValue="string" TItem="string" Value="@("default")" Label="Fecha Creación" />
             <SelectOption TItemValue="string" TItem="string" Value="@("priority")" Label="Prioridad" />
             <SelectOption TItemValue="string" TItem="string" Value="@("date")" Label="Fecha Estimada" />
         </Select>
         <Button Icon="sync" OnClick="LoadData" />
-        <Button Type="@ButtonType.Primary" OnClick="() => OpenQuickCreator()"
+        <Button Type="@ButtonType.Primary" OnClick="() => _quickLaborSelectorVisible = true"
                 Style="background: #2ECC71; border-color: #2ECC71; border-radius: 8px; font-weight: 600;">
             <Icon Type="plus" Theme="IconThemeType.Outline" /> Labor Rápida
         </Button>
@@ -54,19 +64,19 @@
 <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 20px;">
     <div class="kpi-card">
         <div class="kpi-value">@_labors.Count</div>
-        <div class="kpi-label">Labores Sin OT</div>
+        <div class="kpi-label">Total Labores</div>
     </div>
     <div class="kpi-card">
-        <div class="kpi-value">@_labors.Count(l => l.LaborTypeName == "Fertilizacion")</div>
-        <div class="kpi-label">Fertilizacion</div>
+        <div class="kpi-value">@_labors.Count(l => l.WorkOrderId == null)</div>
+        <div class="kpi-label">Sin Asignar</div>
     </div>
     <div class="kpi-card">
-        <div class="kpi-value">@_labors.Count(l => l.LaborTypeName == "Pulverizacion")</div>
-        <div class="kpi-label">Pulverizacion</div>
+        <div class="kpi-value">@_labors.Count(l => l.Status == "Realized")</div>
+        <div class="kpi-label">Realizadas</div>
     </div>
     <div class="kpi-card">
         <div class="kpi-value">@_labors.Sum(l => l.Hectares).ToString("N0") ha</div>
-        <div class="kpi-label">Hectareas Totales</div>
+        <div class="kpi-label">Hectáreas Totales</div>
     </div>
 </div>
 
@@ -76,120 +86,97 @@
         <Spin Size="@SpinSize.Large" Tip="Cargando labores" />
     </div>
 }
-else if (_labors.Count == 0)
-{
-    <div class="glass-card" style="text-align: center; padding: 60px;">
-        <Icon Type="check-circle" Theme="IconThemeType.Outline" Style="font-size: 48px; color: #2ECC71; margin-bottom: 16px;" />
-        <div style="color: rgba(255,255,255,0.7); font-size: 16px; margin-bottom: 8px;">No hay labores pendientes de asignar</div>
-        <div style="color: rgba(255,255,255,0.4); font-size: 13px;">Crea una labor rapida con el boton de arriba</div>
-    </div>
-}
 else
 {
-    <div class="pool-list-container">
-        <div class="pool-header">
-            <Checkbox Checked="@_allSelected" CheckedChanged="ToggleSelectAll"
-                      Style="color: rgba(255,255,255,0.6); font-size: 12px;">
-                Seleccionar todas
-            </Checkbox>
-            <Select TItemValue="Guid?" TItem="LaborTypeDto" @bind-Value="_filterTypeId" Placeholder="Filtrar actividad" AllowClear
-                    Style="width: 200px;">
-                <SelectOption TItemValue="Guid?" TItem="LaborTypeDto" Value="@((Guid?)null)" Label="Todas las actividades" />
-                @foreach (var type in _laborTypes)
-                {
-                    <SelectOption TItemValue="Guid?" TItem="LaborTypeDto" Value="@type.Id" Label="@type.Name" />
-                }
-            </Select>
-        </div>
-
-        <div class="pool-list">
-        @foreach (var labor in FilteredLabors)
-        {
-            var isSelected = _selectedIds.Contains(labor.Id);
-            <div class="labor-row @(isSelected ? "labor-selected" : "")" @onclick="() => EditLabor(labor.Id)">
-                <Checkbox Checked="@isSelected" CheckedChanged="(bool v) => ToggleSelect(labor.Id, v)" @onclick:stopPropagation="true" />
-                <div class="labor-type-badge" style="background: @(GetTypeBgColor(labor.LaborTypeName ?? "Labor"));">
-                    @labor.LaborTypeName
-                </div>
-                <div class="labor-info">
-                    <div class="labor-priority" @onclick:stopPropagation="true">
-                        <label style="color: rgba(255,255,255,0.3); font-size: 9px; display: block;">PRIORIDAD</label>
-                        <Select TItemValue="LaborPriority" TItem="PriorityOption"
-                                Value="@labor.Priority"
-                                ValueChanged="@((LaborPriority v) => UpdatePriority(labor, v))"
-                                Size="InputSize.Small"
-                                Style="width: 90px; font-size: 12px;"
-                                DataSource="@_priorityOptions"
-                                LabelName="@nameof(PriorityOption.Label)"
-                                ValueName="@nameof(PriorityOption.Value)">
-                        </Select>
+    <div class="glass-card table-container">
+        <Table TItem="LaborDto"
+               DataSource="@FilteredLabors"
+               Loading="@_loading"
+               Size="TableSize.Small"
+               ScrollX="1200"
+               OnRowClick="r => EditLabor(r.Data.Id)">
+            <ChildContent>
+                <Selection TItem="LaborDto" Key="@(context.Id.ToString())" Type="SelectionType.Checkbox" Disabled="@(context.WorkOrderId != null)" />
+                <PropertyColumn Property="l => l.LaborTypeName" Title="Labor" Sortable>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <div class="labor-type-dot" style="background: @(GetTypeBgColor(context.LaborTypeName ?? "Labor")); width: 8px; height: 8px; border-radius: 50%;"></div>
+                        @context.LaborTypeName
                     </div>
-                <div class="labor-lot">
-                        <Icon Type="environment" Theme="IconThemeType.Outline" Style="font-size: 11px;" />
-                        @(labor.LotName ?? "—")
-                        @if (!string.IsNullOrEmpty(labor.FieldName))
-                        {
-                            <span style="color: rgba(255,255,255,0.3);"> / @labor.FieldName</span>
-                        }
-                    </div>
-                    @if (!string.IsNullOrEmpty(labor.Notes))
+                </PropertyColumn>
+                <PropertyColumn Property="l => l.CreatedAt" Title="Fecha" Sortable Format="dd/MM/yyyy" />
+                <PropertyColumn Property="l => l.LotName" Title="Lote" Sortable />
+                <PropertyColumn Property="l => l.FieldName" Title="Campo" Sortable />
+                <PropertyColumn Property="l => l.AssignedTo" Title="Responsable" Sortable />
+                <PropertyColumn Property="l => l.Hectares" Title="Ha" Sortable Format="N1" />
+                <Column TItem="LaborDto" TData="string" Title="OT" Sortable>
+                    @if (context.WorkOrderId != null)
                     {
-                        <div class="labor-notes">@labor.Notes</div>
+                        <div @onclick:stopPropagation="true">
+                            <Tag Color="@("blue")" Style="cursor: pointer;" OnClick='() => Nav.NavigateTo($"/workorders/{context.WorkOrderId}")'>
+                                <Icon Type="link" /> @context.OTNumber
+                            </Tag>
+                        </div>
                     }
-                </div>
-                <div class="labor-ha">
-                    @labor.Hectares.ToString("N1") ha
-                </div>
-                <div class="labor-date">
-                    <Icon Type="calendar" Theme="IconThemeType.Outline" Style="font-size: 11px;" />
-                    @(labor.ExecutionDate?.ToString("dd/MM") ?? labor.EstimatedDate?.ToString("dd/MM") ?? labor.CreatedAt.ToString("dd/MM"))
-                </div>
-                <div class="labor-status">
-                    @{
-                        var (statusLabel, statusColor) = labor.Status switch
-                        {
-                            "Planned" => ("Planeada", "#1890FF"),
-                            "AwaitingValidation" => ("En Validación", "#FAAD14"),
-                            "Validated" => ("Validada", "#FA8C16"),
-                            "Realized" => ("Realizada", "#52C41A"),
-                            "Pending" => ("Pendiente", "#FAAD14"),
-                            _ => (labor.Status, "default")
-                        };
+                    else
+                    {
+                        <span style="color: rgba(255,255,255,0.2);">Sin OT</span>
                     }
-                    <Tag Style="@($"background: {statusColor}20; color: {statusColor}; border: 1px solid {statusColor}40; border-radius: 12px; font-size: 11px; padding: 2px 10px;")">
-                        @statusLabel
+                </Column>
+                <Column TItem="LaborDto" TData="string" Title="Estado" Sortable>
+                    <Tag Style="@GetStatusTagStyle(context.Status)">
+                        @GetStatusLabel(context.Status)
                     </Tag>
-                </div>
-                <div class="labor-actions" @onclick:stopPropagation="true">
-                    @if (labor.Status != "Realized")
-                    {
-                        <Tooltip Title="@("Ejecutar")">
-                            <Button Type="@ButtonType.Text" Size="@ButtonSize.Small" OnClick="() => OpenExecuteModal(labor)">
-                                <Icon Type="play-circle" Theme="IconThemeType.Outline" Style="color: #2ECC71;" />
-                            </Button>
+                </Column>
+                <ActionColumn Title="Acciones" Width="100">
+                    <div style="display: flex; gap: 4px;" @onclick:stopPropagation="true">
+                        @if (context.Status != "Realized")
+                        {
+                            <Tooltip Title="@("Ejecutar")">
+                                <Button Type="@ButtonType.Text" Size="@ButtonSize.Small" OnClick="() => EditLabor(context.Id, true)">
+                                    <Icon Type="play-circle" Theme="IconThemeType.Outline" Style="color: #2ECC71;" />
+                                </Button>
+                            </Tooltip>
+                        }
+                        <Tooltip Title="@("Eliminar")">
+                            <Popconfirm Title="¿Eliminar esta labor?" OnConfirm="() => DeleteLabor(context.Id)">
+                                <Button Type="@ButtonType.Text" Danger Size="@ButtonSize.Small">
+                                    <Icon Type="delete" Theme="IconThemeType.Outline" />
+                                </Button>
+                            </Popconfirm>
                         </Tooltip>
-                    }
-                    <Tooltip Title="@("Eliminar")">
-                        <Popconfirm Title="Eliminar esta labor?" OnConfirm="() => DeleteLabor(labor.Id)"
-                                    OkText="Si" CancelText="No">
-                            <Button Type="@ButtonType.Text" Danger Size="@ButtonSize.Small">
-                                <Icon Type="delete" Theme="IconThemeType.Outline" />
-                            </Button>
-                        </Popconfirm>
-                    </Tooltip>
-                </div>
-            </div>
-        }
-        </div>
+                    </div>
+                </ActionColumn>
+            </ChildContent>
+        </Table>
     </div>
 }
 
-<Modal Title="@(_editingLaborId == Guid.Empty ? "Nueva Labor Suelta" : "Editar Labor")"
+<!-- Quick Labor Selector Modal -->
+<Modal Title="Nueva Labor" Visible="_quickLaborSelectorVisible" Footer="null" OnCancel="() => _quickLaborSelectorVisible = false" Width="400">
+    <div style="display: flex; gap: 16px; justify-content: center; padding: 24px;">
+        <Button Type="@ButtonType.Default" OnClick="OpenQuickCreator" 
+                Style="height: 100px; width: 150px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; border-radius: 12px; background: rgba(255,255,255,0.03);">
+            <Icon Type="file-add" Style="font-size: 24px; color: #2ECC71;" />
+            <span style="font-weight: 600;">Labor Suelta</span>
+        </Button>
+        <Button Type="@ButtonType.Default" OnClick="OpenStrategyWizard"
+                Style="height: 100px; width: 150px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; border-radius: 12px; background: rgba(255,255,255,0.03);">
+            <Icon Type="apartment" Style="font-size: 24px; color: #3498DB;" />
+            <span style="font-weight: 600;">Desde Estrategia</span>
+        </Button>
+    </div>
+</Modal>
+
+<Modal Title="Crear Labores desde Estrategia" Visible="_strategyWizardVisible" Footer="null" OnCancel="() => _strategyWizardVisible = false" Width="900">
+    <StrategyLaborWizard OnClose="() => { _strategyWizardVisible = false; LoadData(); }" />
+</Modal>
+
+<Modal Title="@(_editingLaborId == Guid.Empty ? "Nueva Labor Suelta" : (_isExecuting ? "Ejecutar Labor" : "Editar Labor"))"
        Visible="@_drawerVisible"
        OnCancel="() => _drawerVisible = false"
        Footer="null"
        Width="800">
-    <LaborEditorForm LaborId="@_editingLaborId" OnSaved="OnSaved" />
+    <LaborEditorForm LaborId="@_editingLaborId" InitialStatus="@(_isExecuting ? "Realized" : null)" OnSaved="OnSaved" />
 </Modal>
 
 <Modal Title="@("Asignar Labores a Orden de Trabajo")" Visible="@_assignModalOpen"
@@ -213,43 +200,7 @@ else
     </Button>
 </Modal>
 
-<Modal Title="@("Ejecutar Labor (Realizada)")" Visible="@_executeModalOpen"
-       OnCancel="() => _executeModalOpen = false" OnOk="ExecuteStandalone"
-       OkText="@("Confirmar Ejecución")" ConfirmLoading="_executing" Width="600"
-       BodyStyle="background: #1E1E2E; padding: 24px;">
-    @if (_laborToExecute != null)
-    {
-        <div style="margin-bottom: 20px;">
-            <div style="font-weight: 700; color: #fff; font-size: 16px;">@_laborToExecute.LaborTypeName</div>
-            <div style="font-size: 13px; color: rgba(255,255,255,0.5);">@(_laborToExecute.LotName ?? "Sin Lote") - @_laborToExecute.Hectares ha</div>
-        </div>
-
-        <div style="margin-bottom: 16px; font-weight: 600; color: #fff; font-size: 12px; text-transform: uppercase;">Ajustar Insumos Reales</div>
-        <div style="display: grid; gap: 12px; max-height: 400px; overflow-y: auto; padding-right: 8px;">
-            @foreach (var supply in _laborToExecute.Supplies)
-            {
-                <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 12px;">
-                    <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
-                        <span style="color: #fff; font-weight: 600;">@supply.SupplyName</span>
-                        <span style="color: rgba(255,255,255,0.4); font-size: 11px;">Plan: @supply.PlannedDose @supply.UnitOfMeasure/ha</span>
-                    </div>
-                    <div style="display: flex; align-items: center; gap: 12px;">
-                        <div style="flex: 1;">
-                            <div style="font-size: 10px; color: rgba(255,255,255,0.4); margin-bottom: 4px;">DOSIS REAL (@supply.UnitOfMeasure/ha)</div>
-                            <AntDesign.InputNumber TValue="decimal?" @bind-Value="supply.RealDose" Style="width: 100%;" />
-                        </div>
-                        <div style="flex: 1;">
-                            <div style="font-size: 10px; color: rgba(255,255,255,0.4); margin-bottom: 4px;">TOTAL REAL (@supply.UnitOfMeasure)</div>
-                            <div style="padding: 6px; background: rgba(0,0,0,0.2); border-radius: 4px; color: #fff; font-weight: 600;">
-                                @((supply.RealDose ?? supply.PlannedDose) * _laborToExecute.Hectares)
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            }
-        </div>
-    }
-</Modal>
+<!-- Removed redundant execute modal -->
 
 <style>
     .kpi-card {
@@ -349,6 +300,8 @@ else
 </style>
 
 @code {
+    [SupplyParameterFromQuery] public Guid? targetOT { get; set; }
+    
     private List<LaborDto> _labors = new();
     private List<CampaignLotDto> _lots = new();
     private List<WorkOrderDto> _workOrders = new();
@@ -358,9 +311,14 @@ else
     private bool _saving;
     private HashSet<Guid> _selectedIds = new();
     private Guid? _filterTypeId;
+    private string? _filterAssigned;
+    private string? _filterStatus;
     private string _sortBy = "default";
+    private bool _quickLaborSelectorVisible;
+    private bool _strategyWizardVisible;
     private bool _drawerVisible;
     private Guid _editingLaborId = Guid.Empty;
+    private bool _isExecuting;
     private bool _assignModalOpen;
     private Guid _assignTargetOT;
     private bool _executeModalOpen;
@@ -375,42 +333,10 @@ else
 
     private void OpenExecuteModal(LaborDto labor)
     {
-        _laborToExecute = labor;
-        foreach (var s in _laborToExecute.Supplies)
-        {
-            if (s.RealDose == null) s.RealDose = s.PlannedDose;
-        }
-        _executeModalOpen = true;
+        EditLabor(labor.Id, true);
     }
 
-    private async Task ExecuteStandalone()
-    {
-        if (_laborToExecute == null) return;
-        try
-        {
-            _executing = true;
-            var response = await Http.PostAsJsonAsync($"api/labors/{_laborToExecute.Id}/execute-standalone", _laborToExecute.Supplies);
-            if (response.IsSuccessStatusCode)
-            {
-                Message.Success("Labor ejecutada correctamente.");
-                _executeModalOpen = false;
-                await LoadData();
-            }
-            else
-            {
-                var error = await response.Content.ReadAsStringAsync();
-                Message.Error($"Error: {error}");
-            }
-        }
-        catch (Exception ex)
-        {
-            Message.Error($"Error: {ex.Message}");
-        }
-        finally
-        {
-            _executing = false;
-        }
-    }
+    /* ExecuteStandalone removed in favor of full LaborEditorForm */
 
     protected override async Task OnInitializedAsync()
     {
@@ -437,7 +363,12 @@ else
             _loading = true;
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
 
-            var laborsTask = Http.GetFromJsonAsync($"api/labors/unassigned?sortBy={_sortBy}",
+            var url = new StringBuilder("api/labors?");
+            if (!string.IsNullOrEmpty(_filterAssigned)) url.Append($"assigned={(_filterAssigned == "assigned")}&");
+            if (!string.IsNullOrEmpty(_filterStatus)) url.Append($"status={_filterStatus}&");
+            url.Append($"sortBy={_sortBy}");
+
+            var laborsTask = Http.GetFromJsonAsync(url.ToString(),
                 AppJsonSerializerContext.Default.ListLaborDto, cts.Token);
             var woTask = Http.GetFromJsonAsync("api/workorders",
                 AppJsonSerializerContext.Default.ListWorkOrderDto, cts.Token);
@@ -470,6 +401,14 @@ else
         {
             _loading = false;
             _selectedIds.Clear();
+            
+            if (targetOT.HasValue && targetOT != Guid.Empty && _workOrders.Any(w => w.Id == targetOT))
+            {
+                _assignTargetOT = targetOT.Value;
+                // We don't open the modal automatically yet because they need to select labors first.
+                // But we could show a message.
+            }
+            
             StateHasChanged();
         }
     }
@@ -516,13 +455,21 @@ else
 
     private void OpenQuickCreator()
     {
+        _quickLaborSelectorVisible = false;
         _editingLaborId = Guid.Empty;
         _drawerVisible = true;
     }
 
-    private void EditLabor(Guid id)
+    private void OpenStrategyWizard()
+    {
+        _quickLaborSelectorVisible = false;
+        _strategyWizardVisible = true;
+    }
+
+    private void EditLabor(Guid id, bool isExecuting = false)
     {
         _editingLaborId = id;
+        _isExecuting = isExecuting;
         _drawerVisible = true;
     }
 
@@ -671,6 +618,30 @@ else
     public class PriorityRequest
     {
         public int Priority { get; set; }
+    }
+
+    private string GetStatusLabel(string? status) => status switch
+    {
+        "Planned" => "Planeada",
+        "AwaitingValidation" => "En Validación",
+        "Validated" => "Validada",
+        "Realized" => "Realizada",
+        "Pending" => "Pendiente",
+        _ => status ?? "Unknown"
+    };
+
+    private string GetStatusTagStyle(string? status)
+    {
+        var color = status switch
+        {
+            "Planned" => "#1890FF",
+            "AwaitingValidation" => "#FAAD14",
+            "Validated" => "#FA8C16",
+            "Realized" => "#52C41A",
+            "Pending" => "#FAAD14",
+            _ => "#d9d9d9"
+        };
+        return $"background: {color}20; color: {color}; border: 1px solid {color}40; border-radius: 12px; font-size: 11px; padding: 2px 10px;";
     }
 }
 

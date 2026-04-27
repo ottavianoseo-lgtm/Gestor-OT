@@ -86,8 +86,13 @@ public class WorkOrdersController : ControllerBase
     [HttpPut("{id:guid}")]
     public async Task<IActionResult> UpdateWorkOrder(Guid id, WorkOrderDto dto)
     {
-        var workOrder = await _context.WorkOrders.FirstOrDefaultAsync(w => w.Id == id);
+        var workOrder = await _context.WorkOrders
+            .Include(w => w.WorkOrderStatus)
+            .FirstOrDefaultAsync(w => w.Id == id);
         if (workOrder == null) return NotFound();
+
+        if (workOrder.WorkOrderStatus?.IsEditable == false)
+            return Conflict("La OT se encuentra en un estado que no permite modificaciones.");
 
         workOrder.Name = dto.Name;
         workOrder.Description = dto.Description;

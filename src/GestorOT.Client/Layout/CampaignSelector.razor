@@ -231,8 +231,8 @@
         try
         {
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-            var allCampaigns = await Http.GetFromJsonAsync("api/campaigns",
-                AppJsonSerializerContext.Default.ListCampaignDto, cts.Token);
+            var allCampaigns = await Http.GetFromJsonAsync("api/campaigns/active",
+                AppJsonSerializerContext.Default.ListCampaignSummaryDto, cts.Token);
 
             _campaigns = allCampaigns?.Select(c => new CampaignSummaryDto(c.Id, c.Name, c.Status, c.IsActive)).ToList() ?? new();
 
