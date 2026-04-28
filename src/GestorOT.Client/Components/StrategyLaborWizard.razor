@@ -23,10 +23,15 @@
                             </Select>
                         </FormItem>
                     </AntDesign.Col>
-                    <AntDesign.Col Span="12">
+                    <AntDesign.Col Span="8">
                         <FormItem Label="Fecha Base (Inicio)">
                             <DatePicker @bind-Value="_wizardModel.BaseDate" Style="width: 100%;" Format="dd/MM/yyyy" />
                         </FormItem>
+                    </AntDesign.Col>
+                    <AntDesign.Col Span="4" Style="display: flex; align-items: flex-end; padding-bottom: 30px;">
+                        <Checkbox @bind-Checked="_wizardModel.IsOriginalPlan">
+                            <span style="color: #F1C40F; font-weight: 600;">Es Base</span>
+                        </Checkbox>
                     </AntDesign.Col>
                 </AntDesign.Row>
 
@@ -144,7 +149,7 @@
                             </div>
                             <div style="display: flex; flex-direction: column; align-items: center; gap: 4px;">
                                 <div style="font-size: 10px; color: rgba(255,255,255,0.4); text-transform: uppercase;">Ext.</div>
-                                <Switch @bind-Checked="preview.IsExternal" />
+                                <Switch @bind-Checked="preview.IsExternalBilling" />
                             </div>
                         </div>
                         @if (preview.RotationWarning != null)
@@ -183,6 +188,7 @@
         public string Status { get; set; } = "Planned";
         public DateTime BaseDate { get; set; } = DateTime.Today;
         public bool ForceDateSeparation { get; set; } = true;
+        public bool IsOriginalPlan { get; set; }
     }
 
     private class LaborPreview
@@ -195,7 +201,7 @@
         public decimal Hectares { get; set; }
         public DateTime? Date { get; set; }
         public Guid? ContactId { get; set; }
-        public bool IsExternal { get; set; }
+        public bool IsExternalBilling { get; set; }
         public string? RotationWarning { get; set; }
     }
 
@@ -276,11 +282,24 @@
                         LaborTypeId = item.LaborTypeId,
                         Hectares = lot.ProductiveArea > 0 ? lot.ProductiveArea : lot.CadastralArea,
                         Date = date,
-                        IsExternal = false
+                        IsExternalBilling = false
                     };
 
                     // Validate rotation for this lot + date
-                    preview.RotationWarning = await CheckRotationWarning(lot.Id, date);
+                    var rotationWarning = await CheckRotationWarning(lot.Id, date);
+                    string? activityWarning = null;
+                    Console.WriteLine($"[DEBUG] Validating item {item.Id}, Activity: {item.ErpActivityId}");
+                    if (item.ErpActivityId.HasValue)
+                    {
+                        activityWarning = await CheckActivityWarning(lot.Id, date, item.ErpActivityId.Value);
+                    }
+                    
+                    // Combine warnings if both exist
+                    var combinedWarning = (rotationWarning != null && activityWarning != null) 
+                        ? $"{rotationWarning} {activityWarning}" 
+                        : (rotationWarning ?? activityWarning);
+                    
+                    preview.RotationWarning = combinedWarning;
 
                     _previews.Add(preview);
                 }
@@ -298,7 +317,33 @@
         _step = 2;
     }
 
-    /// <summary>Checks if the lot has an active rotation on the given date. Returns a warning string or null.</summary>
+    private async Task<string?> CheckActivityWarning(Guid campaignLotId, DateTime date, Guid activityId)
+    {
+        try
+        {
+            var dateOnly = DateOnly.FromDateTime(date);
+            var response = await Http.GetAsync(
+                $"api/labors/validate-rotation-activity?campaignLotId={campaignLotId}&date={dateOnly:yyyy-MM-dd}&activityId={activityId}");
+            
+            if (response.IsSuccessStatusCode)
+            {
+                var content = await response.Content.ReadAsStringAsync();
+                // Si la respuesta es "null" (serializada) o vacía, no hay warning.
+                if (string.IsNullOrWhiteSpace(content) || content == "null")
+                {
+                    return null;
+                }
+                // Si es un string con comillas (JSON string), las removemos
+                return content.Trim('"');
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[DEBUG] Activity API Exception: {ex.Message}");
+        }
+        return null;
+    }
+
     private async Task<string?> CheckRotationWarning(Guid campaignLotId, DateTime date)
     {
         if (CampaignState.CurrentCampaign == null) return null;
@@ -307,6 +352,8 @@
             var dateOnly = DateOnly.FromDateTime(date);
             var response = await Http.GetAsync(
                 $"api/campaigns/{CampaignState.CurrentCampaign.Id}/lots/{campaignLotId}/rotations/active?date={dateOnly:yyyy-MM-dd}");
+
+            Console.WriteLine($"[DEBUG] Rotation API Response for Lot {campaignLotId}: {response.StatusCode}");
 
             if (response.IsSuccessStatusCode)
             {
@@ -318,9 +365,14 @@
             {
                 return $"Sin rotación activa para la fecha {date:dd/MM/yyyy}. La labor se creará igualmente.";
             }
+            else 
+            {
+                Console.WriteLine($"[DEBUG] Rotation API Error: {response.StatusCode}");
+            }
         }
-        catch
+        catch (Exception ex)
         {
+            Console.WriteLine($"[DEBUG] Rotation API Exception: {ex.Message}");
             // Silently ignore rotation check failures
         }
         return null;
@@ -344,8 +396,9 @@
                     p.ContactId,
                     p.Hectares,
                     p.Date ?? DateTime.Today,
-                    p.IsExternal
-                )).ToList()
+                    p.IsExternalBilling
+                )).ToList(),
+                _wizardModel.IsOriginalPlan
             );
 
             var response = await Http.PostAsJsonAsync("api/labors/bulk-from-strategy", request);
@@ -353,6 +406,15 @@
             {
                 var result = await response.Content.ReadFromJsonAsync<JsonElement>();
                 var createdCount = result.GetProperty("created").GetInt32();
+                
+                if (result.TryGetProperty("warnings", out var warningsProp))
+                {
+                    foreach (var warning in warningsProp.EnumerateArray())
+                    {
+                        Message.Warning(warning.GetString());
+                    }
+                }
+
                 Message.Success($"Se crearon {createdCount} labores correctamente.");
                 await OnClose.InvokeAsync();
             }

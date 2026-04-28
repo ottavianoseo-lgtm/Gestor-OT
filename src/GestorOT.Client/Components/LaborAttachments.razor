@@ -9,8 +9,8 @@
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
         <h4 style="color: #fff; margin: 0;"><Icon Type="paper-clip" /> Adjuntos y Evidencia</h4>
         <div style="position: relative;">
-            <Button Type="@ButtonType.Primary" Icon="upload" Size="@ButtonSize.Small" Ghost>
-                Subir Archivo
+            <Button Type="@ButtonType.Primary" Size="@ButtonSize.Small" Ghost>
+                <Icon Type="upload" /> Subir Archivo
             </Button>
             <InputFile OnChange="HandleFileSelected" 
                        style="position: absolute; top: 0; left: 0; opacity: 0; width: 100%; height: 100%; cursor: pointer;" />
@@ -56,9 +56,13 @@
                         <div class="attachment-size">@FormatSize(att.FileSizeBytes)</div>
                     </div>
                     <div class="attachment-actions">
-                        <Button Icon="download" Size="@ButtonSize.Small" Type="@ButtonType.Text" OnClick="() => Download(att)" />
+                        <Button Size="@ButtonSize.Small" Type="@ButtonType.Text" OnClick="() => Download(att)">
+                            <Icon Type="download" />
+                        </Button>
                         <Popconfirm Title="¿Eliminar?" OnConfirm="() => Delete(att.Id)">
-                            <Button Icon="delete" Size="@ButtonSize.Small" Type="@ButtonType.Text" Danger />
+                            <Button Size="@ButtonSize.Small" Type="@ButtonType.Text" Danger>
+                                <Icon Type="delete" />
+                            </Button>
                         </Popconfirm>
                     </div>
                 </div>

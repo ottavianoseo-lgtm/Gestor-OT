@@ -189,8 +189,8 @@ public class ShareController : ControllerBase
             if (existing != null)
             {
                 existing.RealDose = realSupply.RealDose ?? realSupply.PlannedDose;
-                existing.RealTotal = (realSupply.RealDose ?? realSupply.PlannedDose) * labor.Hectares;
-                existing.RealHectares = labor.Hectares;
+                existing.RealTotal = (realSupply.RealDose ?? realSupply.PlannedDose) * request.RealHectares;
+                existing.RealHectares = request.RealHectares;
             }
         }
 
@@ -259,8 +259,8 @@ public class ShareController : ControllerBase
                         var dose = realS?.RealDose ?? s.PlannedDose;
 
                         s.RealDose = dose;
-                        s.RealTotal = dose * source.Hectares;
-                        s.RealHectares = source.Hectares;
+                        s.RealTotal = dose * source.EffectiveArea;
+                        s.RealHectares = source.EffectiveArea;
                     }
                 }
 

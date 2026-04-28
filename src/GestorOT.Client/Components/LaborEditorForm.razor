@@ -136,7 +136,7 @@
             <TextArea @bind-Value="_model.Notes" Rows="2" Placeholder="Instrucciones para el contratista..." Style="color: var(--text-primary); background: rgba(255,255,255,0.05);" />
         </FormItem>
 
-        <Divider Style="border-color: rgba(255,255,255,0.1); color: var(--text-primary);" Text="Insumos" Orientation="@DividerOrientation.Left" />
+        <Divider Style="border-color: rgba(255,255,255,0.1); color: var(--text-primary);" Text="Insumos" Orientation="@AntDesign.DividerOrientation.Left" />
 
         <div class="supplies-grid">
             @foreach (var supply in _model.Supplies)
@@ -175,7 +175,9 @@
                                 <span style="font-size: 11px; color: rgba(255,255,255,0.4);">@supply.UnitOfMeasure</span>
                             </div>
                         </FormItem>
-                        <Button Danger Icon="delete" OnClick="() => RemoveSupply(supply)" Style="margin-bottom: 4px;" />
+                        <Button Danger OnClick="() => RemoveSupply(supply)" Style="margin-bottom: 4px;">
+                            <Icon Type="delete" />
+                        </Button>
                     </div>
                 </div>
             }
@@ -258,6 +260,7 @@
     [Parameter] public Guid LaborId { get; set; }
     [Parameter] public DateTime? DefaultDate { get; set; }
     [Parameter] public string? InitialStatus { get; set; }
+    [Parameter] public bool ForceOriginalPlan { get; set; }
     [Parameter] public EventCallback OnSaved { get; set; }
 
     private LaborDto _model = new();
@@ -300,6 +303,7 @@
 
     private Guid _lastLaborId = Guid.Empty;
     private Guid? _lastWorkOrderId;
+    private string? _lastInitialStatus;
     private bool _initialized;
 
     protected override async Task OnInitializedAsync()
@@ -319,8 +323,9 @@
 
         var laborChanged = LaborId != _lastLaborId;
         var woChanged = WorkOrderId != _lastWorkOrderId;
+        var initialStatusChanged = InitialStatus != _lastInitialStatus;
 
-        if (laborChanged || woChanged)
+        if (laborChanged || woChanged || initialStatusChanged)
         {
             ResetFormState();
             await InitializeForm();
@@ -342,12 +347,14 @@
         _submitting = false;
         _magicLinkModalVisible = false;
         _magicLinkUrl = "";
+        _filterFieldId = Guid.Empty;
     }
 
     private async Task InitializeForm()
     {
         _lastLaborId = LaborId;
         _lastWorkOrderId = WorkOrderId;
+        _lastInitialStatus = InitialStatus;
 
         await LoadCatalogs();
 
@@ -364,7 +371,8 @@
                 WorkOrderId = WorkOrderId,
                 Status = InitialStatus ?? "Planned",
                 Mode = InitialStatus ?? "Planned",
-                EstimatedDate = DefaultDate ?? DateTime.Today
+                EstimatedDate = DefaultDate ?? DateTime.Today,
+                IsOriginalPlan = ForceOriginalPlan
             };
             if (_model.EstimatedDate.HasValue) await CheckRotation(_model.EstimatedDate.Value);
         }
@@ -394,7 +402,7 @@
         var itemsTask = Http.GetFromJsonAsync<List<InventoryDto>>("api/inventory");
         var contactsTask = Http.GetFromJsonAsync<List<ContactDto>>("api/catalogs/contacts");
         var workOrdersTask = Http.GetFromJsonAsync<List<WorkOrderDto>>("api/workorders");
-        var fieldsTask = Http.GetFromJsonAsync<List<FieldDto>>("api/catalogs/fields");
+        var fieldsTask = Http.GetFromJsonAsync<List<FieldDto>>("api/fields");
 
         Task<List<CampaignLotDto>>? lotsTask = null;
         if (CampaignState.CurrentCampaign != null)
@@ -409,17 +417,27 @@
             tasks.Add(lotsTask);
         }
 
-        await Task.WhenAll(tasks.Where(t => t != null).Select(t => t!));
-        
-        _laborTypes = (await typesTask) ?? new();
-        _activities = (await activitiesTask) ?? new();
-        _inventories = (await itemsTask) ?? new();
-        _contacts = (await contactsTask) ?? new();
-        _workOrders = ((await workOrdersTask) ?? new()).GroupBy(w => w.Id).Select(g => g.First()).ToList();
-        _fields = (await fieldsTask) ?? new();
+        try
+        {
+            await Task.WhenAll(tasks.Where(t => t != null).Select(t => t!));
+            
+            _laborTypes = (await typesTask) ?? new();
+            _activities = (await activitiesTask) ?? new();
+            _inventories = (await itemsTask) ?? new();
+            _contacts = (await contactsTask) ?? new();
+            _workOrders = ((await workOrdersTask) ?? new()).GroupBy(w => w.Id).Select(g => g.First()).ToList();
+            _fields = (await fieldsTask) ?? new();
 
-        if (lotsTask != null)
-            _lots = ((await lotsTask) ?? new()).GroupBy(l => l.Id).Select(g => g.First()).ToList();
+            if (lotsTask != null)
+                _lots = ((await lotsTask) ?? new()).GroupBy(l => l.Id).Select(g => g.First()).ToList();
+                
+            Console.WriteLine($"[DEBUG] Catalogs loaded: Types={_laborTypes.Count}, Lots={_lots.Count}, Fields={_fields.Count}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[DEBUG] Error loading catalogs: {ex.Message}");
+            Message.Error($"Error cargando catálogos: {ex.Message}");
+        }
     }
 
     private async Task LoadLabor()
@@ -434,22 +452,29 @@
             catch { /* Malformed JSON in WeatherLogJson — silently ignore, use default */ }
         }
 
-        // BUG-05: If the lot is not in the currently loaded _lots list, try to load lots from
-        // the labor's WorkOrder campaign, or from the first campaign associated to the labor's lot.
+        // Improved fallback: If the lot is not in the currently loaded _lots list, try to load lots from
+        // the labor's own campaign if it differs from the globally selected one.
         var lotInList = _lots.Any(l => l.LotId == _model.LotId);
-        if (!lotInList && _model.LotId != Guid.Empty && _model.WorkOrderId.HasValue)
+        if (!lotInList && _model.LotId != Guid.Empty)
         {
             try
             {
-                var ot = await Http.GetFromJsonAsync<WorkOrderDetailDto>($"api/workorders/{_model.WorkOrderId}");
-                if (ot?.CampaignId.HasValue == true)
+                Guid? campaignId = _model.CampaignId;
+                
+                // Fallback to OT's campaign if Labor.CampaignId is missing (redundancy)
+                if (!campaignId.HasValue && _model.WorkOrderId.HasValue)
                 {
-                    var otLots = await Http.GetFromJsonAsync<List<CampaignLotDto>>(
-                        $"api/campaigns/{ot.CampaignId}/lots");
-                    if (otLots != null)
+                    var ot = await Http.GetFromJsonAsync<WorkOrderDetailDto>($"api/workorders/{_model.WorkOrderId}");
+                    campaignId = ot?.CampaignId;
+                }
+
+                if (campaignId.HasValue)
+                {
+                    var extraLots = await Http.GetFromJsonAsync<List<CampaignLotDto>>(
+                        $"api/campaigns/{campaignId.Value}/lots");
+                    if (extraLots != null)
                     {
-                        // Merge: add lots from OT's campaign that aren't already in the list
-                        foreach (var lot in otLots)
+                        foreach (var lot in extraLots)
                         {
                             if (!_lots.Any(l => l.Id == lot.Id))
                                 _lots.Add(lot);
@@ -461,6 +486,13 @@
             {
                 Console.WriteLine($"[LaborEditorForm] Could not load lots from labor's campaign: {ex.Message}");
             }
+        }
+
+        // Set the field filter based on the labor's lot
+        var currentLot = _lots.FirstOrDefault(l => l.LotId == _model.LotId);
+        if (currentLot != null && currentLot.FieldId.HasValue)
+        {
+            _filterFieldId = currentLot.FieldId.Value;
         }
     }
 

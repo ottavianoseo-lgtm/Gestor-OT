@@ -11,7 +11,8 @@ public class CropStrategyConfiguration : IEntityTypeConfiguration<CropStrategy>
         builder.ToTable("CropStrategies", "public");
         builder.HasKey(e => e.Id);
         builder.Property(e => e.Name).IsRequired().HasMaxLength(200);
-        builder.Property(e => e.CropType).HasMaxLength(100);
+        builder.Property(e => e.ErpActivityId);
+        builder.HasOne(e => e.Activity).WithMany().HasForeignKey(e => e.ErpActivityId).IsRequired(false);
         builder.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
     }
 }

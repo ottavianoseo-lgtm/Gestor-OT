@@ -101,6 +101,7 @@ namespace GestorOT.Shared;
 [JsonSerializable(typeof(HtmlLaborResult))]
 [JsonSerializable(typeof(HtmlSupplyResult))]
 [JsonSerializable(typeof(LaborValidationResponse))]
+[JsonSerializable(typeof(PublicLaborExecutionRequest))]
 [JsonSourceGenerationOptions(
     PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,
     WriteIndented = false,

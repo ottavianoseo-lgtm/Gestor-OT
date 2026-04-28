@@ -27,18 +27,18 @@
                 <span style="font-weight: 600;">@context.Name</span>
                 @if (context.IsDefault)
                 {
-                    <Tag Color="@TagColor.Processing">Default</Tag>
+                    <Tag Color="@AntDesign.TagColor.Processing">Default</Tag>
                 }
             </div>
         </Column>
         <Column TData="bool" Title="Permite Edición">
             @if (context.IsEditable)
             {
-                <Tag Color="@TagColor.Green">Sí</Tag>
+                <Tag Color="@AntDesign.TagColor.Green">Sí</Tag>
             }
             else
             {
-                <Tag Color="@TagColor.Red">No (Bloqueado)</Tag>
+                <Tag Color="@AntDesign.TagColor.Red">No (Bloqueado)</Tag>
             }
         </Column>
         <ActionColumn Title="Acciones" Width="120">

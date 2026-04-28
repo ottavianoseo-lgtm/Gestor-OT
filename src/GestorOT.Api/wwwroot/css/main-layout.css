@@ -75,8 +75,11 @@ aside.ant-layout-sider {
     color: #E74C3C !important;
 }
 
-/* --- Tables --- */
+.ant-table-container {
+    overflow: visible !important;
+}
 
+/* --- Tables --- */
 .ant-table {
     background: transparent !important;
     color: rgba(255,255,255,0.85) !important;
@@ -106,6 +109,12 @@ aside.ant-layout-sider {
 .ant-table-tbody > tr {
     background: transparent !important;
 }
+
+.ant-table-tbody > tr.ant-table-row-selected > td,
+.ant-table-tbody > tr.ant-table-row-selected:hover > td {
+    background: rgba(52, 152, 219, 0.15) !important;
+}
+
 
 .ant-table-column-sorter {
     color: rgba(255,255,255,0.3) !important;

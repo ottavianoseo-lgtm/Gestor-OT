@@ -67,7 +67,7 @@
 </div>
 
 <div class="glass-card">
-    <Table TItem="LotDto" DataSource="FilteredLots" Loading="_loading" Size="@TableSize.Small"
+    <Table @ref="_table" TItem="LotDto" DataSource="FilteredLots" Loading="_loading" Size="@TableSize.Small"
            ScrollX="1200" OnExpand="OnExpandLot" RowKey="c => c.Id">
         <ExpandTemplate Context="lot">
             <div style="padding: 16px; background: rgba(0,0,0,0.2); border-radius: 8px;">
@@ -113,7 +113,7 @@
             </PropertyColumn>
             <PropertyColumn Property="c => c.FieldName" Title="Campo" Sortable />
             <PropertyColumn Property="c => c.Status" Title="Estado">
-                <Tag Color="@(context.Status == "Active" ? TagColor.Green : TagColor.Red)" Style="border-radius: 12px; font-size: 11px; padding: 2px 10px;">
+                <Tag Color="@(context.Status == "Active" ? AntDesign.TagColor.Green : AntDesign.TagColor.Red)" Style="border-radius: 12px; font-size: 11px; padding: 2px 10px;">
                     @(context.Status == "Active" ? "Activo" : "Inactivo")
                 </Tag>
             </PropertyColumn>
@@ -153,7 +153,7 @@
                 }
                 @if (hasGeometry)
                 {
-                    <Tag Color="@TagColor.Blue" Style="border-radius: 12px; font-size: 11px; padding: 2px 10px;">
+                    <Tag Color="@AntDesign.TagColor.Blue" Style="border-radius: 12px; font-size: 11px; padding: 2px 10px;">
                         Con geometría
                     </Tag>
                 }
@@ -394,6 +394,7 @@
     private List<CampaignLotDto> _campaignLots = new();
     private Dictionary<Guid, List<SurfaceHistoryDto>> _historyByLot = new();
     private bool _loading = true;
+    private Table<LotDto>? _table;
     private bool _filterByCampaign = true;
     private string? _errorMessage;
     private bool _modalVisible;
@@ -433,6 +434,16 @@
         public Guid FieldId { get; set; }
         public string Status { get; set; } = "Active";
         public decimal CadastralArea { get; set; }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && highlight.HasValue)
+        {
+            await Task.Delay(500); // Wait for table render
+            // Re-evaluating: How to expand programmatically?
+            StateHasChanged();
+        }
     }
 
     protected override async Task OnInitializedAsync()

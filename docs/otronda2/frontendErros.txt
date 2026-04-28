@@ -1,0 +1,58 @@
+┃                                                                                                                                                                                                                                    Context
+  ┃  I'm focused on resolving pending tasks for GestorOT Ronda 2. Currently, I'm prioritizing frontend UI rendering errors, particularly those related to the AntDesign library's compatibility. I'm also ensuring data                266.072 tokens
+  ┃  consistency across the application. I'm taking a surgical approach to the code.                                                                                                                                                   25% used
+  ┃                                                                                                                                                                                                                                    $2.69 spent
+  ┃
+  ┃  Verifying UI Stability                                                                                                                                                                                                            MCP
+  ┃                                                                                                                                                                                                                                    • context7 Connected
+  ┃  I'm now focusing on a thorough verification of the UI's stability, specifically after the refactoring of Icon component usage. I addressed several key tasks from the initial list, resolving inconsistencies. Notably, I         • TestSprite Connected
+  ┃  tackled the AntDesign version incompatibilities that led to rendering errors. I've also implemented schema migrations for CropStrategy and made critical fixes to SupplyId validation, LaborEditorForm data loading, and the
+  ┃  MainLayout UI. I opted for separate navigation for GIS/Rotations as opposed to in-page modals, and linked CropStrategy to ErpActivity for consistency.                                                                            LSP
+                                                                                                                                                                                                                                       LSPs will activate as files are read
+     ---
+     Goal                                                                                                                                                                                                                              ▼ Modified Files
+     - Finalizar pendientes de "GestorOT Ronda 2", corregir incompatibilidades de la librería UI AntDesign v1.5.1 y asegurar la consistencia de datos en la creación de estrategias y labores.                                         docs/otronda2/10_diferidos_y_d +4 -37
+                                                                                                                                                                                                                                       docs/otronda2/debugStrat.txt      +49
+     Constraints & Preferences                                                                                                                                                                                                         docs/otronda2/frontendErros.txt  +535
+     - Uso de AntDesign v1.5.1.                                                                                                                                                                                                        src/GestorOT.Api/Controllers/L +50 -3
+     - Cumplir con el plan de trabajo de 3 fases.                                                                                                                                                                                      src/GestorOT.Api/Controllers/S +10 -7
+     - Código limpio sin cables sueltos.                                                                                                                                                                                               src/GestorOT.Api/wwwroot/css/ma +4 -1
+                                                                                                                                                                                                                                       src/GestorOT.Client/Components/ +8 -4
+     Progress                                                                                                                                                                                                                          src/GestorOT.Client/Component +28 -13
+     Done                                                                                                                                                                                                                              src/GestorOT.Client/Components +58 -3
+     - Completados todos los ítems de la lista gestorOT_pendientes_ronda2.md (Fases 1, 2 y 3).                                                                                                                                         src/GestorOT.Client/Components/ +2 -2
+     - Migración: Reemplazo de CropType (string) por ErpActivityId (Guid) en CropStrategy.                                                                                                                                             src/GestorOT.Client/Layout/ +240 -244
+     - Validaciones: Implementado filtro en StrategiesController para evitar persistir SupplyId vacíos.                                                                                                                                src/GestorOT.Client/Pages/Est +39 -15
+     - Validaciones: Corrección en StrategyLaborWizard para pasar ErpActivityId correctamente al servicio de validación.                                                                                                               src/GestorOT.Client/Pages/LaboresS +3
+     - UI: Refactorización de componentes AntDesign para corregir errores de renderizado InvalidOperationException (eliminación de atributo Icon y title en Button y SubMenu).                                                         src/GestorOT.Client/Pages/Lote +13 -2
+     - Logging: Añadido [DEBUG] logs en StrategyLaborWizard y LaborsController para auditoría de validaciones.                                                                                                                         src/GestorOT.Client/Pages/Map +86 -77
+                                                                                                                                                                                                                                       src/GestorOT.Client/Pages/OTDe +16 -3
+     In Progress                                                                                                                                                                                                                       src/GestorOT.Client/Pages/Orden +2 -5
+     - Refactorización final de componentes de UI pendientes de migración de sintaxis AntDesign.                                                                                                                                       src/GestorOT.Client/Pages/Plan +33 -2
+                                                                                                                                                                                                                                       src/GestorOT.Client/Pages/WorkO +1 -1
+     Blocked                                                                                                                                                                                                                           src/GestorOT.Client/Pages/WorkP +1 -1
+     - (none)                                                                                                                                                                                                                          src/GestorOT.Domain/Entities/Cr +2 -1
+                                                                                                                                                                                                                                       src/GestorOT.Domain/Entities/Strat +1
+     Key Decisions                                                                                                                                                                                                                     src/GestorOT.Infrastructure/Dat +2 -1
+     - Decisión LOT-04: Mantener navegación a pantallas GIS/Rotaciones en lugar de modales in-page.                                                                                                                                    src/GestorOT.Infrastructure/Dat +1564
+     - Cambio de arquitectura CropStrategy: Vincular vía ErpActivityId para asegurar integridad referencial en lugar de texto libre CropType.                                                                                          src/GestorOT.Infrastructure/Data/ +82
+     - Fix AntDesign 1.5.1: Reemplazar atributos Icon por componentes hijos <Icon /> y eliminar atributo title en Button para evitar excepciones de runtime.                                                                           src/GestorOT.Infrastructure/Mi +16 -4
+                                                                                                                                                                                                                                       src/GestorOT.Infrastructure/Ser +6 -1
+     Next Steps                                                                                                                                                                                                                        src/GestorOT.Shared/Dtos/LaborD +3 -2
+     - Finalizar la revisión de componentes UI restantes que utilicen Icon o title como atributo para evitar errores de renderizado.                                                                                                   src/GestorOT.Shared/Dtos/Strate +8 -5
+     - Verificar funcionamiento del flujo de creación de labores desde estrategias tras corrección de deserialización.
+
+     Critical Context
+     - Incompatibilidad AntDesign v1.5.1: El uso de Icon="..." o title="..." como parámetros en componentes Button o SubMenu lanza InvalidOperationException.
+     - Persistencia: Se requiere filtrar SupplyId == Guid.Empty al guardar StrategyItem para evitar FK constraint violation en Inventories.
+     - Validación: El StrategyLaborWizard requiere comparar ErpActivityId para evitar warnings falsos en la creación masiva.
+
+     Relevant Files
+     - src/GestorOT.Client/Layout/MainLayout.razor: Corrección de SubMenu y estructura de menú.
+     - src/GestorOT.Api/Controllers/StrategiesController.cs: Lógica de persistencia y mapeo de ErpActivity.
+     - src/GestorOT.Client/Components/StrategyLaborWizard.razor: Validación y lógica de vista previa.
+     - src/GestorOT.Infrastructure/Data/Migrations/20260428123715_UpdateStrategyActivity.cs: Migración de DB aplicada.
+     - src/GestorOT.Client/Components/LaborEditorForm.razor: Refactorización de iconos en botones.
+     ---
+
+     ▣  Compaction · Gemini 3.1 Flash Lite Preview · 10.0s

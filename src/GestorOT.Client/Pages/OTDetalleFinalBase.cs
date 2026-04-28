@@ -27,6 +27,7 @@ namespace GestorOT.Client.Pages
         protected bool _savingGlobal;
         protected bool _showLaborModal;
         protected Guid _editingLaborId;
+        protected string? _pendingInitialStatus;
         protected List<Guid> _selectedLabors = new();
         protected ITable? _laborTable;
         protected bool _showValidationModal;
@@ -105,14 +106,26 @@ namespace GestorOT.Client.Pages
             try {
                 var count = await _http.GetFromJsonAsync<int>("api/labors/unassigned/count");
                 if (count > 0) {
-                    var result = await _modalService.ConfirmAsync(new ConfirmOptions { Title = "Labores sin OT", Content = $"Tenés {count} labores creadas sin OT. ¿Deseas crear una nueva o revisar las existentes para asignarlas a esta OT?", OkText = "Revisar Existentes", CancelText = "Crear Nueva", OkType = ButtonType.Primary });
-                    if (result) { _navigation.NavigateTo($"/labores-sueltas?targetOT={WorkOrderId}"); return; }
+                    var options = new ConfirmOptions { 
+                        Title = "Labores sin OT", 
+                        Content = $"Tenés {count} labores creadas sin OT. ¿Deseas crear una nueva o revisar las existentes para asignarlas a esta OT?", 
+                        OkText = "Revisar Existentes", 
+                        CancelText = "Crear Nueva",
+                        OnOk = async (e) => {
+                            _navigation.NavigateTo($"/labores-sueltas?targetOT={WorkOrderId}");
+                        },
+                        OnCancel = async (e) => {
+                            OpenLaborModal();
+                        }
+                    };
+                    await _modalService.ConfirmAsync(options);
+                    return;
                 }
             } catch { }
             OpenLaborModal();
         }
 
-        protected void OpenLaborModal(Guid? laborId = null) { _editingLaborId = laborId ?? Guid.Empty; _showLaborModal = true; }
+        protected void OpenLaborModal(Guid? laborId = null, string? initialStatus = null) { _editingLaborId = laborId ?? Guid.Empty; _pendingInitialStatus = initialStatus; _showLaborModal = true; }
 
         protected async Task DeleteLabor(Guid id) {
             try {

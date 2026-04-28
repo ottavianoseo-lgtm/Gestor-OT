@@ -43,7 +43,7 @@
                 <div>
                     <span style="font-weight: 700; color: #fff; font-size: 16px;">@strategy.Name</span>
                     <br />
-                    <span style="color: rgba(255,255,255,0.5); font-size: 12px;">Cultivo: @strategy.CropType — @(strategy.Items?.Count ?? 0) labores definidas</span>
+                    <span style="color: rgba(255,255,255,0.5); font-size: 12px;">Actividad: @strategy.ErpActivityName — @(strategy.Items?.Count ?? 0) labores definidas</span>
                 </div>
             </div>
             <div style="display: flex; gap: 8px;">
@@ -121,14 +121,16 @@
                 </FormItem>
             </AntDesign.Col>
             <AntDesign.Col Span="12">
-                <FormItem Label="Tipo de Cultivo">
-                    <Select TItem="string"
-                            TItemValue="string"
-                            DataSource="@_cropTypes"
-                            @bind-Value="_formModel.CropType"
-                            Placeholder="Seleccionar cultivo"
-                            Style="width: 100%;" />
-                </FormItem>
+            <FormItem Label="Actividad ERP">
+                <Select TItem="ErpActivityDto"
+                        TItemValue="Guid"
+                        DataSource="@_activities"
+                        @bind-Value="_formModel.ErpActivityId"
+                        LabelName="@nameof(ErpActivityDto.Name)"
+                        ValueName="@nameof(ErpActivityDto.Id)"
+                        Placeholder="Seleccionar actividad"
+                        Style="width: 100%;" />
+            </FormItem>
             </AntDesign.Col>
         </AntDesign.Row>
 
@@ -140,7 +142,7 @@
             var item = _formModel.Items[idx];
             <div class="supply-row" style="margin-bottom: 8px;">
                 <AntDesign.Row Gutter="8">
-                    <AntDesign.Col Span="11">
+                    <AntDesign.Col Span="6">
                         <Select TItem="LaborTypeDto"
                                 TItemValue="Guid"
                                 DataSource="@_laborTypes"
@@ -150,7 +152,18 @@
                                 Placeholder="Tipo labor"
                                 Style="width: 100%;" />
                     </AntDesign.Col>
-                    <AntDesign.Col Span="11">
+                    <AntDesign.Col Span="6">
+                        <Select TItem="ErpActivityDto"
+                                TItemValue="Guid?"
+                                DataSource="@_activities"
+                                @bind-Value="item.ErpActivityId"
+                                LabelName="@nameof(ErpActivityDto.Name)"
+                                ValueName="@nameof(ErpActivityDto.Id)"
+                                Placeholder="Cultivo/Actividad"
+                                Style="width: 100%;"
+                                AllowClear />
+                    </AntDesign.Col>
+                    <AntDesign.Col Span="10">
                         <div style="display: flex; gap: 4px; flex-wrap: wrap; align-items: center;">
                             @if (item.DefaultSupplies != null)
                             {
@@ -375,18 +388,20 @@
     private bool _resultModalVisible;
 
     private List<LaborTypeDto> _laborTypes = new();
+    private List<ErpActivityDto> _activities = new();
     private readonly string[] _cropTypes = { "Soja", "Maíz", "Trigo", "Girasol", "Cebada", "Sorgo", "Algodón", "Otro" };
 
     public class StrategyFormModel
     {
         public string Name { get; set; } = string.Empty;
-        public string CropType { get; set; } = string.Empty;
+        public Guid ErpActivityId { get; set; }
         public List<StrategyItemForm> Items { get; set; } = new();
     }
 
     public class StrategyItemForm
     {
         public Guid LaborTypeId { get; set; }
+        public Guid? ErpActivityId { get; set; }
         public int DayOffset { get; set; }
         public List<SupplyDefaultForm> DefaultSupplies { get; set; } = new();
     }
@@ -425,11 +440,16 @@
                 AppJsonSerializerContext.Default.ListInventoryDto, cts.Token);
             var typeTask = Http.GetFromJsonAsync("api/catalogs/labor-types", 
                 AppJsonSerializerContext.Default.ListLaborTypeDto, cts.Token);
+            var activitiesTask = Http.GetFromJsonAsync("api/catalogs/activities",
+                AppJsonSerializerContext.Default.ListErpActivityDto, cts.Token);
+
+            await Task.WhenAll(strategiesTask, lotsTask, suppliesTask, typeTask, activitiesTask);
 
             _strategies = await strategiesTask ?? new();
             _availableLots = await lotsTask ?? new();
             _availableSupplies = await suppliesTask ?? new();
             _laborTypes = await typeTask ?? new();
+            _activities = await activitiesTask ?? new();
             _errorMessage = null;
         }
         catch (Exception ex)
@@ -457,10 +477,11 @@
         _formModel = new StrategyFormModel
         {
             Name = strategy.Name,
-            CropType = strategy.CropType,
+            ErpActivityId = strategy.ErpActivityId,
             Items = strategy.Items?.Select(i => new StrategyItemForm
             {
                 LaborTypeId = i.LaborTypeId,
+                ErpActivityId = i.ErpActivityId,
                 DayOffset = i.DayOffset,
                 DefaultSupplies = i.DefaultSupplies?.Select(s => new SupplyDefaultForm
                 {
@@ -525,12 +546,15 @@
             var dto = new CropStrategyDto(
                 _isEditing ? _editingId : Guid.Empty,
                 _formModel.Name,
-                _formModel.CropType,
+                _formModel.ErpActivityId,
+                null,
                 DateTime.MinValue,
                 _formModel.Items.Select(i => new StrategyItemDto(
                     Guid.Empty,
                     Guid.Empty,
-                    i.LaborTypeId,
+                i.LaborTypeId,
+                    i.ErpActivityId,
+                    null,
                     null,
                     i.DayOffset,
                     i.DefaultSupplies.Select(s => new StrategySupplyDefault(

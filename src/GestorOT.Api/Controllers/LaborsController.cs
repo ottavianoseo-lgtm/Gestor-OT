@@ -3,6 +3,7 @@ using GestorOT.Application.Interfaces;
 using GestorOT.Application.Services;
 using GestorOT.Domain.Entities;
 using GestorOT.Domain.Enums;
+using GestorOT.Shared;
 using GestorOT.Shared.Dtos;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -33,6 +34,7 @@ public class LaborsController : ControllerBase
             .Include(l => l.WorkOrder)
             .Include(l => l.Supplies).ThenInclude(s => s.Supply)
             .Include(l => l.SourceStrategy)
+            .Include(l => l.CampaignLot)
             .Where(l => l.WorkOrderId == workOrderId)
             .OrderBy(l => l.CreatedAt)
             .ToListAsync();
@@ -49,6 +51,7 @@ public class LaborsController : ControllerBase
             .Include(l => l.WorkOrder)
             .Include(l => l.Supplies).ThenInclude(s => s.Supply)
             .Include(l => l.SourceStrategy)
+            .Include(l => l.CampaignLot)
             .FirstOrDefaultAsync(l => l.Id == id);
 
         if (labor == null)
@@ -187,6 +190,7 @@ public class LaborsController : ControllerBase
             .Include(l => l.Contact)
             .Include(l => l.Supplies)
                 .ThenInclude(s => s.Supply)
+            .Include(l => l.CampaignLot)
             .FirstAsync(l => l.Id == labor.Id);
 
         return Ok(new LaborSaveResponse(MapToDto(created), validation.Warnings));
@@ -311,6 +315,7 @@ public class LaborsController : ControllerBase
             .Include(l => l.Contact)
             .Include(l => l.Supplies)
                 .ThenInclude(s => s.Supply)
+            .Include(l => l.CampaignLot)
             .FirstAsync(l => l.Id == labor.Id);
 
         return Ok(new LaborSaveResponse(MapToDto(updated), validation.Warnings));
@@ -537,6 +542,33 @@ public class LaborsController : ControllerBase
         return Ok(new { Url = publicUrl, Token = rawToken });
     }
 
+    [HttpPost("{id:guid}/unpin-original-plan")]
+    public async Task<IActionResult> UnpinOriginalPlan(Guid id)
+    {
+        // Need to check roles. Manually check if not using [Authorize]
+        if (!User.IsInRole("AdminCampaña")) return Forbid();
+
+        var labor = await _context.Labors.FindAsync(id);
+        if (labor == null) return NotFound();
+
+        labor.IsOriginalPlan = false;
+        
+        var audit = new AuditLog
+        {
+            Id = Guid.NewGuid(),
+            Action = "UnpinOriginalPlan",
+            EntityType = "Labor",
+            EntityId = id.ToString(),
+            UserId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value,
+            UserEmail = User.FindFirst(System.Security.Claims.ClaimTypes.Email)?.Value,
+            Timestamp = DateTime.UtcNow
+        };
+        _context.AuditLogs.Add(audit);
+
+        await _context.SaveChangesAsync();
+        return NoContent();
+    }
+
     [HttpDelete("{id:guid}")]
     public async Task<IActionResult> DeleteLabor(Guid id)
     {
@@ -590,7 +622,8 @@ public class LaborsController : ControllerBase
                 l.Hectares,
                 l.Lot != null ? l.Lot.Name : null,
                 l.WorkOrder != null ? l.WorkOrder.Description : null,
-                l.ErpActivityId
+                l.ErpActivityId,
+                l.IsOriginalPlan
             ))
             .ToListAsync();
 
@@ -613,6 +646,7 @@ public class LaborsController : ControllerBase
             .Include(l => l.WorkOrder)
             .Include(l => l.Supplies)
                 .ThenInclude(s => s.Supply)
+            .Include(l => l.CampaignLot)
             .AsQueryable();
 
         if (assigned.HasValue)
@@ -658,6 +692,14 @@ public class LaborsController : ControllerBase
         return count;
     }
 
+    [HttpGet("validate-rotation-activity")]
+    public async Task<ActionResult<string?>> ValidateRotationActivity([FromQuery] Guid campaignLotId, [FromQuery] DateOnly date, [FromQuery] Guid activityId)
+    {
+        var result = await _validationService.ValidateLaborActivityMatchesRotationAsync(campaignLotId, date, activityId);
+        Console.WriteLine($"[DEBUG] Validation Result for {campaignLotId}: '{result}'");
+        return Ok(result);
+    }
+
     [HttpPost("bulk-from-strategy")]
     public async Task<IActionResult> CreateBulkFromStrategy([FromBody] BulkFromStrategyRequest request)
     {
@@ -678,6 +720,7 @@ public class LaborsController : ControllerBase
 
         var status = Enum.TryParse<LaborStatus>(request.Status, out var st) ? st : LaborStatus.Planned;
         var createdCount = 0;
+        var warnings = new List<string>();
 
         foreach (var lot in campaignLots)
         {
@@ -691,6 +734,16 @@ public class LaborsController : ControllerBase
                 var laborTypeId = (ovr != null) ? ovr.LaborTypeId : sItem.LaborTypeId;
                 var contactId = (ovr != null) ? ovr.ContactId : null;
                 var isExternal = (ovr != null) ? ovr.IsExternalBilling : false;
+
+                // Validate activity match
+                if (sItem.ErpActivityId.HasValue)
+                {
+                    var warning = await _validationService.ValidateLaborActivityMatchesRotationAsync(lot.Id, DateOnly.FromDateTime(executionDate), sItem.ErpActivityId.Value);
+                    if (warning != null)
+                    {
+                        warnings.Add($"Lote {lot.Lot.Name}: {warning}");
+                    }
+                }
 
                 var labor = new Labor
                 {
@@ -706,16 +759,17 @@ public class LaborsController : ControllerBase
                     ContactId = contactId,
                     IsExternalBilling = isExternal,
                     SourceStrategyId = strategy.Id,
+                    IsOriginalPlan = request.IsOriginalPlan,
                     CreatedAt = DateTime.UtcNow,
-                    Notes = $"Generada desde estrategia: {strategy.Name}"
+                    Notes = $"Generada desde estrategia: {strategy.Name}{(request.IsOriginalPlan ? " [PLANEAMIENTO ORIGINAL]" : "")}"
                 };
 
                 if (!string.IsNullOrEmpty(sItem.DefaultSuppliesJson))
                 {
-                    var defaults = System.Text.Json.JsonSerializer.Deserialize<List<StrategySupplyDefault>>(sItem.DefaultSuppliesJson);
+                    var defaults = System.Text.Json.JsonSerializer.Deserialize(sItem.DefaultSuppliesJson, AppJsonSerializerContext.Default.ListStrategySupplyDefault);
                     if (defaults != null)
                     {
-                        foreach (var ds in defaults)
+                        foreach (var ds in defaults.Where(s => s.SupplyId != Guid.Empty))
                         {
                             labor.Supplies.Add(new LaborSupply
                             {
@@ -740,7 +794,7 @@ public class LaborsController : ControllerBase
         }
 
         await _context.SaveChangesAsync();
-        return Ok(new { Created = createdCount });
+        return Ok(new { Created = createdCount, Warnings = warnings });
     }
 
     [HttpPatch("assign-bulk")]
@@ -910,6 +964,7 @@ public class LaborsController : ControllerBase
         );
         dto.SourceStrategyId = labor.SourceStrategyId;
         dto.SourceStrategyName = labor.SourceStrategy?.Name;
+        dto.CampaignId = labor.CampaignLot?.CampaignId;
         return dto;
     }
 }

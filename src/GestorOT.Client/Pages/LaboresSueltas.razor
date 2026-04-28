@@ -83,7 +83,7 @@
 @if (_loading)
 {
     <div style="text-align: center; padding: 60px;">
-        <Spin Size="@SpinSize.Large" Tip="Cargando labores" />
+        <Spin Size="AntDesign.SpinSize.Large" Tip="Cargando labores" />
     </div>
 }
 else
@@ -94,13 +94,18 @@ else
                Loading="@_loading"
                Size="TableSize.Small"
                ScrollX="1200"
-               OnRowClick="r => EditLabor(r.Data.Id)">
+               OnRowClick="r => EditLabor(r.Data.Id)"
+               SelectedRowsChanged="OnSelectedRowsChanged"
+               RowClassName='r => _selectedIds.Contains(r.Data.Id) ? "labor-selected" : ""'>
             <ChildContent>
-                <Selection TItem="LaborDto" Key="@(context.Id.ToString())" Type="SelectionType.Checkbox" Disabled="@(context.WorkOrderId != null)" />
+                <Selection Key="@(context.Id.ToString())" Type="SelectionType.Checkbox" Disabled="@(context.WorkOrderId != null)" />
                 <PropertyColumn Property="l => l.LaborTypeName" Title="Labor" Sortable>
                     <div style="display: flex; align-items: center; gap: 8px;">
                         <div class="labor-type-dot" style="background: @(GetTypeBgColor(context.LaborTypeName ?? "Labor")); width: 8px; height: 8px; border-radius: 50%;"></div>
                         @context.LaborTypeName
+                        @if (context.IsOriginalPlan) {
+                            <Tag Color="@("gold")" Style="font-size: 10px; margin-left: 6px;">BASE</Tag>
+                        }
                     </div>
                 </PropertyColumn>
                 <PropertyColumn Property="l => l.CreatedAt" Title="Fecha" Sortable Format="dd/MM/yyyy" />
@@ -108,7 +113,7 @@ else
                 <PropertyColumn Property="l => l.FieldName" Title="Campo" Sortable />
                 <PropertyColumn Property="l => l.AssignedTo" Title="Responsable" Sortable />
                 <PropertyColumn Property="l => l.Hectares" Title="Ha" Sortable Format="N1" />
-                <Column TItem="LaborDto" TData="string" Title="OT" Sortable>
+                <Column TData="string" Title="OT" Sortable>
                     @if (context.WorkOrderId != null)
                     {
                         <div @onclick:stopPropagation="true">
@@ -122,7 +127,7 @@ else
                         <span style="color: rgba(255,255,255,0.2);">Sin OT</span>
                     }
                 </Column>
-                <Column TItem="LaborDto" TData="string" Title="Estado" Sortable>
+                <Column TData="string" Title="Estado" Sortable>
                     <Tag Style="@GetStatusTagStyle(context.Status)">
                         @GetStatusLabel(context.Status)
                     </Tag>
@@ -136,7 +141,13 @@ else
                                     <Icon Type="play-circle" Theme="IconThemeType.Outline" Style="color: #2ECC71;" />
                                 </Button>
                             </Tooltip>
+
                         }
+                        <Tooltip Title="@("Editar")">
+                            <Button Type="@ButtonType.Text" Size="@ButtonSize.Small" OnClick="() => EditLabor(context.Id)">
+                                <Icon Type="edit" Theme="IconThemeType.Outline" Style="color: #3498DB;" />
+                            </Button>
+                        </Tooltip>
                         <Tooltip Title="@("Eliminar")">
                             <Popconfirm Title="¿Eliminar esta labor?" OnConfirm="() => DeleteLabor(context.Id)">
                                 <Button Type="@ButtonType.Text" Danger Size="@ButtonSize.Small">
@@ -247,6 +258,9 @@ else
         border-left: 3px solid rgba(255,255,255,0.2);
     }
     .labor-row:hover .labor-lot { color: #fff; }
+    .ant-table-tbody > tr {
+        cursor: pointer;
+    }
     .labor-selected {
         background: rgba(52,152,219,0.10) !important;
         border-left: 3px solid #3498DB !important;
@@ -448,9 +462,15 @@ else
     private void ToggleSelectAll(bool selected)
     {
         if (selected)
-            _selectedIds = new HashSet<Guid>(_labors.Select(l => l.Id));
+            _selectedIds = new HashSet<Guid>(_labors.Where(l => l.WorkOrderId == null).Select(l => l.Id));
         else
             _selectedIds.Clear();
+    }
+
+    private void OnSelectedRowsChanged(IEnumerable<LaborDto> selectedRows)
+    {
+        _selectedIds = selectedRows.Select(r => r.Id).ToHashSet();
+        StateHasChanged();
     }
 
     private void OpenQuickCreator()
@@ -525,20 +545,29 @@ else
         {
             _saving = true;
             var selectedLabors = _labors.Where(l => _selectedIds.Contains(l.Id)).ToList();
-            var firstLabor = selectedLabors.First();
-
+            
             if (CampaignState.CurrentCampaign == null)
             {
                 Message.Error("No hay una campaña activa seleccionada.");
                 return;
             }
 
+            // Logic for common responsible
+            var responsibles = selectedLabors.Select(l => l.AssignedTo).Where(r => !string.IsNullOrEmpty(r)).Distinct().ToList();
+            var commonResponsible = responsibles.Count == 1 ? responsibles.First() : string.Empty;
+
+            // Logic for common field
+            var firstLabor = selectedLabors.First();
+            var lotInfo = _lots.FirstOrDefault(l => l.Id == firstLabor.CampaignLotId);
+            var commonFieldId = lotInfo?.FieldId;
+
             var newOT = new WorkOrderDto
             {
                 CampaignId = CampaignState.CurrentCampaign.Id,
+                FieldId = commonFieldId,
                 Description = $"OT generada - {selectedLabors.Count} labores ({DateTime.Today:dd/MM/yyyy})",
                 Status = "Pending",
-                AssignedTo = string.Empty,
+                AssignedTo = commonResponsible ?? string.Empty,
                 DueDate = DateTime.Today.AddDays(7),
                 PlannedDate = DateTime.Today,
                 ExpirationDate = DateTime.Today.AddDays(14)

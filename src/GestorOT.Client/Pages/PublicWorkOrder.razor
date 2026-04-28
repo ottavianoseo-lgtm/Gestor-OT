@@ -51,7 +51,17 @@
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
                         <div>
                             <span style="color: #fff; font-weight: 600; font-size: 15px;">@labor.LaborType</span>
-                            <span style="color: rgba(255,255,255,0.4); font-size: 12px; margin-left: 8px;">@labor.Hectares Ha &bull; @(labor.LotName ?? "Lote")</span>
+                            <div style="margin-top: 4px; display: flex; align-items: center; gap: 12px;">
+                                <span style="color: rgba(255,255,255,0.4); font-size: 12px;">Plan: @labor.Hectares.ToString("N2") Ha &bull; @(labor.LotName ?? "Lote")</span>
+                                @if (labor.Status != "Realized")
+                                {
+                                    <div style="display: flex; align-items: center; gap: 6px; background: rgba(255,255,255,0.05); padding: 2px 8px; border-radius: 6px;">
+                                        <span style="color: #fff; font-size: 12px;">Real Ha:</span>
+                                        <AntDesign.InputNumber TValue="decimal" Value="GetRealHectares(labor)" ValueChanged="v => SetRealHectares(labor, v)" 
+                                            Size="InputSize.Small" Style="width: 80px; background: transparent; border: none; color: #fff;" Min="0m" />
+                                    </div>
+                                }
+                            </div>
                         </div>
                         <Tag Color="@GetLaborStatusColor(labor.Status)">@labor.Status</Tag>
                     </div>
@@ -171,6 +181,7 @@
     private string? _error;
     private Guid? _realizingLaborId;
     private Dictionary<Guid, decimal?> _realDoseOverrides = new();
+    private Dictionary<Guid, decimal> _realHectaresOverrides = new();
 
     protected override async Task OnInitializedAsync()
     {
@@ -182,6 +193,7 @@
         _loading = true;
         _error = null;
         _realDoseOverrides.Clear();
+        _realHectaresOverrides.Clear();
         try
         {
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
@@ -190,6 +202,14 @@
             {
                 _workOrder = await response.Content.ReadFromJsonAsync(
                     AppJsonSerializerContext.Default.PublicWorkOrderDto);
+                
+                if (_workOrder?.Labors != null)
+                {
+                    foreach (var l in _workOrder.Labors)
+                    {
+                        _realHectaresOverrides[l.Id] = l.Hectares;
+                    }
+                }
             }
             else
             {
@@ -220,9 +240,14 @@
                 s.PlannedTotal, s.RealTotal, s.DoseUnit, s.SupplyUnit
             )).ToList() ?? new();
 
+            var request = new PublicLaborExecutionRequest(
+                GetRealHectares(labor),
+                supplies
+            );
+
             var response = await Http.PostAsJsonAsync(
                 $"api/share/realize/{Token}/labor/{labor.Id}",
-                supplies, AppJsonSerializerContext.Default.ListPublicLaborSupplyDto);
+                request, AppJsonSerializerContext.Default.PublicLaborExecutionRequest);
 
             if (response.IsSuccessStatusCode)
             {
@@ -261,6 +286,16 @@
         "Realized" => "green",
         _ => "default"
     };
+
+    private decimal GetRealHectares(PublicLaborDto labor)
+    {
+        return _realHectaresOverrides.TryGetValue(labor.Id, out var val) ? val : labor.Hectares;
+    }
+
+    private void SetRealHectares(PublicLaborDto labor, decimal value)
+    {
+        _realHectaresOverrides[labor.Id] = value;
+    }
 
     private decimal? GetRealDose(PublicLaborSupplyDto supply)
     {

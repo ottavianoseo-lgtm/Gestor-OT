@@ -79,7 +79,7 @@
 @if (_loading)
 {
     <div style="text-align: center; padding: 60px;">
-        <Spin Size="@SpinSize.Large" Tip="Cargando labores..." />
+        <Spin Size="AntDesign.SpinSize.Large" Tip="Cargando labores..." />
     </div>
 }
 else if (_viewMode == "month")
@@ -151,7 +151,7 @@ else if (_viewMode == "month")
                         }
                         @foreach (var labor in dayLabors)
                         {
-                            <div class="week-card" style="border-left: 4px solid @(labor.ColorHex);"
+                            <div class="week-card" style="border-left: 4px solid @(labor.ColorHex); @(labor.IsOriginalPlan ? "background: #FFF8DC; border: 1px solid #DAA520;" : "")"
                                  @onclick="() => EditLabor(labor.Id)">
                                 <div class="week-card-top">
                                     <div class="week-card-type" style="background: @GetTypeColor(labor.LaborType);">

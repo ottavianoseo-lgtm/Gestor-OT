@@ -53,7 +53,7 @@ public class StrategiesController : ControllerBase
         {
             Id = Guid.NewGuid(),
             Name = dto.Name,
-            CropType = dto.CropType,
+            ErpActivityId = dto.ErpActivityId,
             CreatedAt = DateTime.UtcNow
         };
 
@@ -66,9 +66,10 @@ public class StrategiesController : ControllerBase
                     Id = Guid.NewGuid(),
                     CropStrategyId = strategy.Id,
                     LaborTypeId = item.LaborTypeId,
+                    ErpActivityId = item.ErpActivityId,
                     DayOffset = item.DayOffset,
                     DefaultSuppliesJson = item.DefaultSupplies != null
-                        ? JsonSerializer.Serialize(item.DefaultSupplies, AppJsonSerializerContext.Default.ListStrategySupplyDefault)
+                        ? JsonSerializer.Serialize(item.DefaultSupplies.Where(s => s.SupplyId != Guid.Empty).ToList(), AppJsonSerializerContext.Default.ListStrategySupplyDefault)
                         : null
                 });
             }
@@ -96,7 +97,7 @@ public class StrategiesController : ControllerBase
             return NotFound();
 
         strategy.Name = dto.Name;
-        strategy.CropType = dto.CropType;
+        strategy.ErpActivityId = dto.ErpActivityId;
 
         // Snapshot existing items, clear navigation, then remove — prevents EF Core concurrency
         // confusion when it tries to DELETE + UPDATE the same entities in one batch.
@@ -114,9 +115,10 @@ public class StrategiesController : ControllerBase
                     Id = Guid.NewGuid(),
                     CropStrategyId = strategy.Id,
                     LaborTypeId = item.LaborTypeId,
+                    ErpActivityId = item.ErpActivityId,
                     DayOffset = item.DayOffset,
                     DefaultSuppliesJson = item.DefaultSupplies != null
-                        ? JsonSerializer.Serialize(item.DefaultSupplies, AppJsonSerializerContext.Default.ListStrategySupplyDefault)
+                        ? JsonSerializer.Serialize(item.DefaultSupplies.Where(s => s.SupplyId != Guid.Empty).ToList(), AppJsonSerializerContext.Default.ListStrategySupplyDefault)
                         : null
                 });
             }
@@ -197,7 +199,7 @@ public class StrategiesController : ControllerBase
 
                     if (supplies != null)
                     {
-                        foreach (var s in supplies)
+                        foreach (var s in supplies.Where(s => s.SupplyId != Guid.Empty))
                         {
                             labor.Supplies.Add(new LaborSupply
                             {
@@ -230,7 +232,8 @@ public class StrategiesController : ControllerBase
         return new CropStrategyDto(
             strategy.Id,
             strategy.Name,
-            strategy.CropType,
+            strategy.ErpActivityId ?? Guid.Empty,
+            strategy.Activity?.Name,
             strategy.CreatedAt,
             strategy.Items.OrderBy(i => i.DayOffset).Select(i =>
             {
@@ -240,7 +243,7 @@ public class StrategiesController : ControllerBase
                     supplies = JsonSerializer.Deserialize(i.DefaultSuppliesJson,
                         AppJsonSerializerContext.Default.ListStrategySupplyDefault);
                 }
-                return new StrategyItemDto(i.Id, i.CropStrategyId, i.LaborTypeId, null, i.DayOffset, supplies ?? new());
+                return new StrategyItemDto(i.Id, i.CropStrategyId, i.LaborTypeId, i.ErpActivityId, null, null, i.DayOffset, supplies ?? new());
             }).ToList()
         );
     }

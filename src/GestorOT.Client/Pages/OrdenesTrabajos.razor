@@ -149,7 +149,7 @@
                 <FormItem Label="Estado">
                     @if (_loadingStatuses)
                     {
-                        <Spin Size="@SpinSize.Small" />
+                        <Spin Size="AntDesign.SpinSize.Small" />
                     }
                     else if (_workOrderStatuses.Count > 0)
                     {
@@ -203,7 +203,6 @@
 
 @code {
     private List<WorkOrderDto> _workOrders = new();
-    private List<FieldDto> _availableFields = new();
     private List<CampaignSummaryDto> _availableCampaigns = new();
     private List<ContactDto> _availableContacts = new();
     private List<WorkOrderStatusDto> _workOrderStatuses = new();
@@ -279,17 +278,14 @@
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
             var ordersTask = Http.GetFromJsonAsync("api/workorders",
                 AppJsonSerializerContext.Default.ListWorkOrderDto, cts.Token);
-            var fieldsTask = Http.GetFromJsonAsync("api/fields",
-                AppJsonSerializerContext.Default.ListFieldDto, cts.Token);
             var campaignsTask = Http.GetFromJsonAsync("api/campaigns",
                 AppJsonSerializerContext.Default.ListCampaignSummaryDto, cts.Token);
             var contactsTask = Http.GetFromJsonAsync("api/catalogs/contacts",
                 AppJsonSerializerContext.Default.ListContactDto, cts.Token);
 
-            await Task.WhenAll(ordersTask, fieldsTask, campaignsTask, contactsTask);
+            await Task.WhenAll(ordersTask, campaignsTask, contactsTask);
 
             _workOrders = await ordersTask ?? new();
-            _availableFields = await fieldsTask ?? new();
             _availableCampaigns = await campaignsTask ?? new();
             _availableContacts = await contactsTask ?? new();
             _errorMessage = null;
@@ -328,6 +324,7 @@
 
     private void OpenEditModal(WorkOrderDto wo)
     {
+        Console.WriteLine($"OpenEditModal: Status={wo.Status}, Available: {string.Join(", ", _workOrderStatuses.Select(s => s.Name))}");
         _isEditing = true;
         _editingId = wo.Id;
         _formModel = new WoFormModel

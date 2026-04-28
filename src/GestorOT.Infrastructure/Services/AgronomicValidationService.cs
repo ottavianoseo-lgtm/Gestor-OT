@@ -56,10 +56,15 @@ public class AgronomicValidationService : IAgronomicValidationService
             .Where(r => r.CampaignLotId == campaignLotId && r.StartDate <= date && r.EndDate >= date)
             .FirstOrDefaultAsync(ct);
 
-        if (activeRotation == null) return null; // No rotation for this date
+        if (activeRotation == null) 
+        {
+            Console.WriteLine($"[DEBUG] No rotation found for Lot {campaignLotId} on {date}");
+            return null; // No rotation for this date
+        }
 
         if (activeRotation.ErpActivityId != activityId)
         {
+            Console.WriteLine($"[DEBUG] Activity mismatch for Lot {campaignLotId}: RotationActivity={activeRotation.ErpActivityId}, LaborsActivity={activityId}");
             return $"La actividad seleccionada no coincide con el cultivo proyectado ({activeRotation.ErpActivity?.Name}).";
         }
 

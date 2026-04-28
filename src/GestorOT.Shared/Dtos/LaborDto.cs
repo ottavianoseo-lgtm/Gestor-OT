@@ -8,6 +8,7 @@ public record LaborDto
     public Guid? WorkOrderId { get; set; }
     public Guid LotId { get; set; }
     public Guid? CampaignLotId { get; set; }
+    public Guid? CampaignId { get; set; }
     public Guid LaborTypeId { get; set; }
     public Guid? ErpActivityId { get; set; }
     public string Status { get; set; } = "Planned";
@@ -98,11 +99,12 @@ public record LaborCalendarDto
     public string? LotName { get; set; }
     public string? WorkOrderDescription { get; set; }
     public Guid? ErpActivityId { get; set; }
+    public bool IsOriginalPlan { get; set; }
     
     public LaborCalendarDto() { }
-    public LaborCalendarDto(Guid id, string title, DateTime date, string status, string colorHex, bool hasWorkOrder, string laborType, decimal hectares, string? lotName, string? woDesc, Guid? erpActivityId)
+    public LaborCalendarDto(Guid id, string title, DateTime date, string status, string colorHex, bool hasWorkOrder, string laborType, decimal hectares, string? lotName, string? woDesc, Guid? erpActivityId, bool isOriginalPlan = false)
     {
-        Id = id; Title = title; Date = date; Status = status; ColorHex = colorHex; HasWorkOrder = hasWorkOrder; LaborType = laborType; Hectares = hectares; LotName = lotName; WorkOrderDescription = woDesc; ErpActivityId = erpActivityId;
+        Id = id; Title = title; Date = date; Status = status; ColorHex = colorHex; HasWorkOrder = hasWorkOrder; LaborType = laborType; Hectares = hectares; LotName = lotName; WorkOrderDescription = woDesc; ErpActivityId = erpActivityId; IsOriginalPlan = isOriginalPlan;
     }
 }
 
@@ -160,7 +162,8 @@ public record BulkFromStrategyRequest(
     string Status,
     DateTime BaseDate,
     bool ForceDateSeparation,
-    List<LaborOverrideDto> LaborsOverride
+    List<LaborOverrideDto> LaborsOverride,
+    bool IsOriginalPlan = false
 );
 
 public record LaborOverrideDto(

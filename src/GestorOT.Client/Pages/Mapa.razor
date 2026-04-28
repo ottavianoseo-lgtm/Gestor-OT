@@ -27,7 +27,7 @@
     @if (_loading)
     {
         <div class="gis-overlay">
-            <Spin Size="@SpinSize.Large" Tip="Cargando lotes..." />
+            <Spin Size="AntDesign.SpinSize.Large" Tip="Cargando lotes..." />
         </div>
     }
 
@@ -38,32 +38,35 @@
         </div>
     }
 
-    <div class="gis-toolbar" style="@($"z-index:{(_drawnWkt != null ? 990 : 1010)};")">
-        <Tooltip Title="@("Importar archivo GeoJSON/KML")">
-            <div class="toolbar-btn" @onclick="() => _showImportModal = true">
-                <Icon Type="upload" Theme="IconThemeType.Outline" />
-            </div>
-        </Tooltip>
-        <Tooltip Title="@("Lotes sin geometría")">
-            <div class="toolbar-btn @(_orphanLots.Count > 0 ? "toolbar-btn--alert" : "")" @onclick="() => _showOrphanPanel = !_showOrphanPanel">
-                <Icon Type="warning" Theme="IconThemeType.Outline" />
-                @if (_orphanLots.Count > 0)
-                {
-                    <span class="toolbar-badge">@_orphanLots.Count</span>
-                }
-            </div>
-        </Tooltip>
-        <Tooltip Title="@("Recargar mapa")">
-            <div class="toolbar-btn" @onclick="() => ReloadMap()">
-                <Icon Type="reload" Theme="IconThemeType.Outline" />
-            </div>
-        </Tooltip>
-        <Tooltip Title="@("Explorador de Lotes")">
-            <div class="toolbar-btn" @onclick="() => _showLotsPanel = !_showLotsPanel">
-                <Icon Type="database" Theme="IconThemeType.Outline" />
-            </div>
-        </Tooltip>
-    </div>
+    @if (!_polygonMenuVisible)
+    {
+        <div class="gis-toolbar">
+            <Tooltip Title="@("Importar archivo GeoJSON/KML")">
+                <div class="toolbar-btn" @onclick="() => _showImportModal = true">
+                    <Icon Type="upload" Theme="IconThemeType.Outline" />
+                </div>
+            </Tooltip>
+            <Tooltip Title="@("Lotes sin geometría")">
+                <div class="toolbar-btn @(_orphanLots.Count > 0 ? "toolbar-btn--alert" : "")" @onclick="() => _showOrphanPanel = !_showOrphanPanel">
+                    <Icon Type="warning" Theme="IconThemeType.Outline" />
+                    @if (_orphanLots.Count > 0)
+                    {
+                        <span class="toolbar-badge">@_orphanLots.Count</span>
+                    }
+                </div>
+            </Tooltip>
+            <Tooltip Title="@("Recargar mapa")">
+                <div class="toolbar-btn" @onclick="() => ReloadMap()">
+                    <Icon Type="reload" Theme="IconThemeType.Outline" />
+                </div>
+            </Tooltip>
+            <Tooltip Title="@("Explorador de Lotes")">
+                <div class="toolbar-btn" @onclick="() => _showLotsPanel = !_showLotsPanel">
+                    <Icon Type="database" Theme="IconThemeType.Outline" />
+                </div>
+            </Tooltip>
+        </div>
+    }
 
     <div class="gis-legend">
         <div style="font-weight: 700; font-size: 12px; color: #fff; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 1px;">Leyenda</div>
@@ -622,6 +625,7 @@
     private List<ImportResult> _importResults = new();
     private bool _showLotsPanel;
     private string _lotsSearch = "";
+    private bool _polygonMenuVisible;
 
     [Parameter][SupplyParameterFromQuery] public string? lotId { get; set; }
 
@@ -850,8 +854,61 @@
     {
         _drawnWkt = null;
         _drawnArea = 0;
+        _polygonMenuVisible = false;
         _linkingLotId = Guid.Empty;
         JS.InvokeVoidAsync("mapInterop.clearDrawn");
+    }
+
+    private async Task SaveDrawnGeometry()
+    {
+        if (string.IsNullOrEmpty(_drawnWkt) || _linkingLotId == Guid.Empty) return;
+
+        _savingGeometry = true;
+        try
+        {
+            var lot = _allLots.FirstOrDefault(l => l.Id == _linkingLotId);
+            if (lot == null) return;
+
+            // Capture current viewport before reload (#7)
+            MapBounds? savedBounds = null;
+            try { savedBounds = await JS.InvokeAsync<MapBounds?>("mapInterop.getCurrentBounds"); } catch { }
+
+            var dto = new LotDto(
+                lot.Id,
+                lot.FieldId,
+                lot.Name,
+                lot.Status,
+                _drawnWkt,
+                lot.FieldName,
+                lot.Area,
+                lot.CadastralArea
+            );
+
+            var response = await Http.PutAsJsonAsync($"api/lots/{lot.Id}",
+                dto, AppJsonSerializerContext.Default.LotDto);
+
+            if (response.IsSuccessStatusCode)
+            {
+                Message.Success($"Geometría guardada para '{lot.Name}'.");
+                _drawnWkt = null;
+                _drawnArea = 0;
+                _polygonMenuVisible = false;
+                _linkingLotId = Guid.Empty;
+                await ReloadMap(savedBounds);
+            }
+            else
+            {
+                Message.Error($"Error al guardar: {response.StatusCode}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Message.Error($"Error: {ex.Message}");
+        }
+        finally
+        {
+            _savingGeometry = false;
+        }
     }
 
     private async Task CenterOnSelectedLot()
@@ -892,6 +949,7 @@
     {
         _drawnWkt = wkt;
         _drawnArea = area;
+        _polygonMenuVisible = true;
         _selectedLot = null;
         _linkingLotId = Guid.Empty;
         StateHasChanged();
@@ -902,6 +960,7 @@
     {
         _drawnWkt = wkt;
         _drawnArea = area;
+        _polygonMenuVisible = true;
         StateHasChanged();
     }
 
@@ -910,6 +969,7 @@
     {
         _drawnWkt = null;
         _drawnArea = 0;
+        _polygonMenuVisible = false;
         _linkingLotId = Guid.Empty;
         StateHasChanged();
     }
@@ -918,57 +978,6 @@
     {
         _linkingLotId = lot.Id;
         StateHasChanged();
-    }
-
-    private async Task SaveDrawnGeometry()
-    {
-        if (string.IsNullOrEmpty(_drawnWkt) || _linkingLotId == Guid.Empty) return;
-
-        _savingGeometry = true;
-        try
-        {
-            var lot = _allLots.FirstOrDefault(l => l.Id == _linkingLotId);
-            if (lot == null) return;
-
-            // Capture current viewport before reload (#7)
-            MapBounds? savedBounds = null;
-            try { savedBounds = await JS.InvokeAsync<MapBounds?>("mapInterop.getCurrentBounds"); } catch { }
-
-            var dto = new LotDto(
-                lot.Id,
-                lot.FieldId,
-                lot.Name,
-                lot.Status,
-                _drawnWkt,
-                lot.FieldName,
-                lot.Area,
-                lot.CadastralArea
-            );
-
-            var response = await Http.PutAsJsonAsync($"api/lots/{lot.Id}",
-                dto, AppJsonSerializerContext.Default.LotDto);
-
-            if (response.IsSuccessStatusCode)
-            {
-                Message.Success($"Geometría guardada para '{lot.Name}'.");
-                _drawnWkt = null;
-                _drawnArea = 0;
-                _linkingLotId = Guid.Empty;
-                await ReloadMap(savedBounds);
-            }
-            else
-            {
-                Message.Error($"Error al guardar: {response.StatusCode}");
-            }
-        }
-        catch (Exception ex)
-        {
-            Message.Error($"Error: {ex.Message}");
-        }
-        finally
-        {
-            _savingGeometry = false;
-        }
     }
 
     private async Task HandleFileImport(InputFileChangeEventArgs e)

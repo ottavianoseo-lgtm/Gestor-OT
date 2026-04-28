@@ -11,7 +11,7 @@
 @if (_loading && _order == null)
 {
     <div style="text-align: center; padding: 100px;">
-        <Spin Size="@SpinSize.Large" Tip="Cargando Orden de Trabajo..." />
+        <Spin Size="AntDesign.SpinSize.Large" Tip="Cargando Orden de Trabajo..." />
     </div>
 }
 else if (_order != null)
@@ -72,7 +72,7 @@ else if (_order != null)
                         <div class="kpi-label">% CUMPLIMIENTO</div>
                         @{ var planHa = _order.Labors.Sum(l => l.Hectares); var realHa = _order.Labors.Where(l => l.Status == "Realized").Sum(l => l.Hectares); var perc = planHa > 0 ? (realHa / planHa) * 100 : 0; }
                         <div class="kpi-value">@perc.ToString("N0")%</div>
-                        <Progress Percent='(double)perc' Size="ProgressSize.Small" Status="@(perc >= 100 ? ProgressStatus.Success : ProgressStatus.Active)" />
+                        <Progress Percent='(double)perc' Size="AntDesign.ProgressSize.Small" Status="@( (AntDesign.ProgressStatus)(perc >= 100 ? AntDesign.ProgressStatus.Success : AntDesign.ProgressStatus.Active) )" />
                     </div>
                 </div>
             </TabPane>
@@ -86,23 +86,45 @@ else if (_order != null)
                     <style>
                         .ant-table-cell-fix-right { background-color: #1a1a2e !important; border-left: 1px solid rgba(255,255,255,0.05) !important; }
                         .ant-table-row:hover .ant-table-cell-fix-right { background-color: #252545 !important; }
-                        .ant-table-row-expand-icon { color: #ffffff !important; border-color: #ffffff !important; background: transparent !important; }
+                        .ant-table-row-expand-icon { 
+                            color: #3498DB !important; 
+                            border-color: rgba(52, 152, 219, 0.5) !important; 
+                            background: rgba(52, 152, 219, 0.1) !important;
+                            transition: all 0.3s;
+                        }
+                        .ant-table-row-expand-icon:hover {
+                            color: #fff !important;
+                            border-color: #3498DB !important;
+                            background: #3498DB !important;
+                        }
                     </style>
-                    <Table @ref="_laborTable" TItem="LaborDto" DataSource='_order.Labors' Size="TableSize.Small" HidePagination ScrollX="1300" ExpandIconColumnIndex="8" RowKey="GetRowKey">
+                    <Table @ref="_laborTable" TItem="LaborDto" DataSource='_order.Labors' Size="TableSize.Small" HidePagination ScrollX="1300" ExpandIconColumnIndex="1" RowKey="GetRowKey">
                         <ChildContent>
-                            <Column TItem="LaborDto" TData="bool" Title="" Width="50"><Checkbox Checked="_selectedLabors.Contains(context.Id)" CheckedChanged='(val) => ToggleLaborSelection(context.Id, val)' /></Column>
-                            <Column TItem="LaborDto" TData="string" Title="Lote" Sortable>@context.LotName</Column>
-                            <Column TItem="LaborDto" TData="string" Title="Tipo">@context.LaborTypeName</Column>
-                            <Column TItem="LaborDto" TData="string" Title="Estado"><Tag Style="@StatusTagStyle(GetStatusColor(context.Status))">@GetStatusLabel(context.Status)</Tag></Column>
-                            <Column TItem="LaborDto" TData="decimal" Title="Ha Plan.">@context.Hectares.ToString("N2")</Column>
-                            <Column TItem="LaborDto" TData="decimal" Title="Ha Real.">@if (context.Status == "Realized") { <span>@context.EffectiveArea.ToString("N2")</span> } else { <span style="color: rgba(255,255,255,0.2);">—</span> }</Column>
-                            <Column TItem="LaborDto" TData="decimal" Title="Diff">@if (context.Status == "Realized") { var diff = context.EffectiveArea - context.Hectares; <span style="color: @(diff > 0 ? "#ff4d4f" : (diff < 0 ? "#52c41a" : "inherit"))">@(diff > 0 ? "+" : "")@diff.ToString("N2")</span> }</Column>
-                            <Column TItem="LaborDto" TData="DateTime" Title="Fecha">@context.CreatedAt.ToString("dd/MM/yyyy")</Column>
-                            <Column TItem="LaborDto" TData="string" Title="Acciones" Width="120" Fixed="@ColumnFixPlacement.Right">
-                                <div style="display: flex; align-items: center; gap: 4px; justify-content: flex-start;">
+                            <Column TData="bool" Title="" Width="50"><Checkbox Checked="_selectedLabors.Contains(context.Id)" CheckedChanged='(val) => ToggleLaborSelection(context.Id, val)' /></Column>
+                            <Column TData="string" Title="Lote" Sortable>
+                                <span style="font-weight: 600; color: #fff;">@context.LotName</span>
+                            </Column>
+                            <Column TData="string" Title="Tipo">@context.LaborTypeName</Column>
+                            <Column TData="string" Title="Estado"><Tag Style="@StatusTagStyle(GetStatusColor(context.Status))">@GetStatusLabel(context.Status)</Tag></Column>
+                            <Column TData="decimal" Title="Ha Plan.">@context.Hectares.ToString("N2")</Column>
+                            <Column TData="decimal" Title="Ha Real.">@if (context.Status == "Realized") { <span>@context.EffectiveArea.ToString("N2")</span> } else { <span style="color: rgba(255,255,255,0.2);">—</span> }</Column>
+                            <Column TData="decimal" Title="Diff">@if (context.Status == "Realized") { var diff = context.EffectiveArea - context.Hectares; <span style="color: @(diff > 0 ? "#ff4d4f" : (diff < 0 ? "#52c41a" : "inherit"))">@(diff > 0 ? "+" : "")@diff.ToString("N2")</span> }</Column>
+                            <Column TData="DateTime" Title="Fecha">@context.CreatedAt.ToString("dd/MM/yyyy")</Column>
+                            <Column TData="string" Title="Acciones" Width="80" Fixed="@AntDesign.ColumnFixPlacement.Right">
+                                <div style="display: flex; align-items: center; justify-content: center;">
                                     <Dropdown Trigger="@(new AntDesign.Trigger[] { AntDesign.Trigger.Click })" Disabled="@(_order.IsLocked)">
-                                        <Overlay><Menu Style="background: #1E1E2E; border: 1px solid rgba(255,255,255,0.1); border-radius: 8px;"><MenuItem OnClick="() => OpenLaborModal(context.Id)" Style="color: #fff;"><Icon Type="edit" /> Editar</MenuItem><MenuItem OnClick="() => SubmitSingleLabor(context.Id)" Style="color: #fff;"><Icon Type="share-alt" /> Validar</MenuItem><MenuItem OnClick="() => DeleteLabor(context.Id)" Style="color: #ff4d4f;"><Icon Type="delete" /> Quitar</MenuItem></Menu></Overlay>
-                                        <ChildContent><Button Type="@ButtonType.Text" Style="height: 32px; width: 32px; border: none; background: transparent; display: flex; align-items: center; justify-content: center; padding: 0;"><Icon Type="more" Style="color: #ffffff !important; font-size: 22px;" /></Button></ChildContent>
+                                        <Overlay>
+                                            <Menu Style="background: #1E1E2E; border: 1px solid rgba(255,255,255,0.1); border-radius: 8px;">
+                                                <MenuItem OnClick="() => OpenLaborModal(context.Id)" Style="color: #fff;"><Icon Type="edit" /> Editar</MenuItem>
+                                                <MenuItem OnClick="() => SubmitSingleLabor(context.Id)" Style="color: #fff;"><Icon Type="share-alt" /> Validar</MenuItem>
+                                                <MenuItem OnClick="() => DeleteLabor(context.Id)" Style="color: #ff4d4f;"><Icon Type="delete" /> Quitar</MenuItem>
+                                            </Menu>
+                                        </Overlay>
+                                        <ChildContent>
+                                            <Button Type="@ButtonType.Text" Style="height: 32px; width: 32px; border: none; background: transparent; display: flex; align-items: center; justify-content: center; padding: 0; color: #3498DB !important;">
+                                                <Icon Type="more" Style="color: #3498DB !important; font-size: 24px;" />
+                                            </Button>
+                                        </ChildContent>
                                     </Dropdown>
                                 </div>
                             </Column>
@@ -111,13 +133,13 @@ else if (_order != null)
                             <div style="padding: 12px; background: rgba(255,255,255,0.02); border-radius: 8px; border: 1px solid rgba(255,255,255,0.05);">
                                 <h4 style="color: #fff; font-size: 13px; margin-bottom: 12px;"><Icon Type="experiment" /> Desvío de Insumos (Detalle Técnico)</h4>
                                 <Table TItem="LaborSupplyDto" DataSource="laborRow.Data.Supplies" Context="supply" Size="TableSize.Small" HidePagination>
-                                    <Column TItem="LaborSupplyDto" TData="string" Title="Insumo">@supply.SupplyName</Column>
-                                    <Column TItem="LaborSupplyDto" TData="string" Title="Unidad">@supply.UnitOfMeasure</Column>
-                                    <Column TItem="LaborSupplyDto" TData="decimal" Title="Dosis Plan.">@supply.PlannedDose.ToString("N2")</Column>
-                                    <Column TItem="LaborSupplyDto" TData="decimal?" Title="Dosis Real"><span style="color: @(supply.RealDose.HasValue ? "#fff" : "rgba(255,255,255,0.2)")">@(supply.RealDose?.ToString("N2") ?? "—")</span></Column>
-                                    <Column TItem="LaborSupplyDto" TData="decimal" Title="Total Plan.">@supply.PlannedTotal.ToString("N2")</Column>
-                                    <Column TItem="LaborSupplyDto" TData="decimal?" Title="Total Real"><span style="color: @(supply.RealTotal.HasValue ? "#fff" : "rgba(255,255,255,0.2)")">@(supply.RealTotal?.ToString("N2") ?? "—")</span></Column>
-                                    <Column TItem="LaborSupplyDto" TData="string" Title="Variación">@if (supply.RealTotal.HasValue) { var varPercent = supply.PlannedTotal > 0 ? ((supply.RealTotal.Value / supply.PlannedTotal) - 1) * 100 : 0; var color = Math.Abs(varPercent) > 5 ? "#ff4d4f" : "#52c41a"; <span style="color: @color; font-weight: 600;">@(varPercent > 0 ? "+" : "")@varPercent.ToString("N1")%</span> } else { <span style="color: rgba(255,255,255,0.2);">—</span> }</Column>
+                                    <Column TData="string" Title="Insumo">@supply.SupplyName</Column>
+                                    <Column TData="string" Title="Unidad">@supply.UnitOfMeasure</Column>
+                                    <Column TData="decimal" Title="Dosis Plan.">@supply.PlannedDose.ToString("N2")</Column>
+                                    <Column TData="decimal?" Title="Dosis Real"><span style="color: @(supply.RealDose.HasValue ? "#fff" : "rgba(255,255,255,0.2)")">@(supply.RealDose?.ToString("N2") ?? "—")</span></Column>
+                                    <Column TData="decimal" Title="Total Plan.">@supply.PlannedTotal.ToString("N2")</Column>
+                                    <Column TData="decimal?" Title="Total Real"><span style="color: @(supply.RealTotal.HasValue ? "#fff" : "rgba(255,255,255,0.2)")">@(supply.RealTotal?.ToString("N2") ?? "—")</span></Column>
+                                    <Column TData="string" Title="Variación">@if (supply.RealTotal.HasValue) { var varPercent = supply.PlannedTotal > 0 ? ((supply.RealTotal.Value / supply.PlannedTotal) - 1) * 100 : 0; var color = Math.Abs(varPercent) > 5 ? "#ff4d4f" : "#52c41a"; <span style="color: @color; font-weight: 600;">@(varPercent > 0 ? "+" : "")@varPercent.ToString("N1")%</span> } else { <span style="color: rgba(255,255,255,0.2);">—</span> }</Column>
                                 </Table>
                             </div>
                         </ExpandTemplate>
@@ -129,11 +151,11 @@ else if (_order != null)
                 <div class="section-header" style="margin-top: 16px;"><h3 class="section-title">Plan vs. Real</h3><Button Size="@ButtonSize.Small" Ghost Icon="sync" OnClick="ConsolidateSupplies">Recalcular de Labores</Button></div>
                 <div class="glass-card table-container">
                     <Table TItem="WorkOrderSupplyApprovalDto" DataSource="_order.SupplyApprovals" Size="TableSize.Small" HidePagination>
-                        <Column TItem="WorkOrderSupplyApprovalDto" TData="string" Title="Insumo">@context.SupplyName</Column>
-                        <Column TItem="WorkOrderSupplyApprovalDto" TData="decimal" Title="Planeado">@context.TotalCalculated.ToString("N2")</Column>
-                        <Column TItem="WorkOrderSupplyApprovalDto" TData="decimal" Title="Real">@(context.RealTotalUsed?.ToString("N2") ?? "0.00")</Column>
-                        <Column TItem="WorkOrderSupplyApprovalDto" TData="decimal" Title="Delta">@{ var delta = (context.RealTotalUsed ?? 0) - context.TotalCalculated; var color = delta > 0 ? "#ff4d4f" : (delta < 0 ? "#52c41a" : "rgba(255,255,255,0.4)"); } <span style="color: @color; font-weight: 600;">@(delta > 0 ? "+" : "")@delta.ToString("N2")</span></Column>
-                        <Column TItem="WorkOrderSupplyApprovalDto" TData="string" Title="% Uso">@{ var usage = context.TotalCalculated > 0 ? ((context.RealTotalUsed ?? 0) / context.TotalCalculated) * 100 : 0; } <Progress Percent='(double)usage' Size="ProgressSize.Small" Steps="5" StrokeColor='usage > 100 ? "#ff4d4f" : "#52c41a"' /></Column>
+                        <Column TData="string" Title="Insumo">@context.SupplyName</Column>
+                        <Column TData="decimal" Title="Planeado">@context.TotalCalculated.ToString("N2")</Column>
+                        <Column TData="decimal" Title="Real">@(context.RealTotalUsed?.ToString("N2") ?? "0.00")</Column>
+                        <Column TData="decimal" Title="Delta">@{ var delta = (context.RealTotalUsed ?? 0) - context.TotalCalculated; var color = delta > 0 ? "#ff4d4f" : (delta < 0 ? "#52c41a" : "rgba(255,255,255,0.4)"); } <span style="color: @color; font-weight: 600;">@(delta > 0 ? "+" : "")@delta.ToString("N2")</span></Column>
+                        <Column TData="string" Title="% Uso">@{ var usage = context.TotalCalculated > 0 ? ((context.RealTotalUsed ?? 0) / context.TotalCalculated) * 100 : 0; } <Progress Percent='(double)usage' Size="ProgressSize.Small" Steps="5" StrokeColor='usage > 100 ? "#ff4d4f" : "#52c41a"' /></Column>
                     </Table>
                 </div>
             </TabPane>
@@ -161,7 +183,7 @@ else if (_order != null)
 }
 
 <Modal Title="@(_editingLaborId == Guid.Empty ? "Nueva Labor" : "Detalle de Labor")" Visible="_showLaborModal" OnCancel="() => _showLaborModal = false" Footer="null" Width="800">
-    <LaborEditorForm WorkOrderId="WorkOrderId" LaborId="_editingLaborId" OnSaved="OnLaborSaved" />
+    <LaborEditorForm WorkOrderId="WorkOrderId" LaborId="_editingLaborId" InitialStatus="@_pendingInitialStatus" OnSaved="OnLaborSaved" />
 </Modal>
 
 <ValidationSuccessModal Visible="_showValidationModal" ValidationUrl="@_validationUrl" OnClose="() => _showValidationModal = false" />

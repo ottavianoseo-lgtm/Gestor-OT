@@ -1,0 +1,49 @@
+log browser : [DEBUG] Rotation API Response for Lot e9dd1803-fffe-4445-bf67-4ba30517c993: OK
+blazor.web.js:1 [DEBUG] Validating item 85cc69bd-9055-4e89-a8d7-e776a64fa81e, Activity: 5f96e4e0-0b6e-4f0e-8d8a-9f8e8e8e8e05
+blazor.web.js:1 [DEBUG] Activity API Response for Lot e9dd1803-fffe-4445-bf67-4ba30517c993 (Activity: 5f96e4e0-0b6e-4f0e-8d8a-9f8e8e8e8e05): OK
+blazor.web.js:1 [DEBUG] Activity API Exception: ExpectedStartOfValueNotFound, L Path: $ | LineNumber: 0 | BytePositionInLine: 0.
+
+logs server   :11111111111', @campaignLotId='327aad17-7e4f-4677-8896-e20f87f4ee39', @date='04/28/2026' (DbType = Date)], CommandType='Text', CommandTimeout='300']
+      SELECT r."Id", r."CampaignLotId", r."ErpActivityId", e0."Name", r."StartDate", r."EndDate", r."Notes"
+      FROM public."Rotations" AS r
+      INNER JOIN (
+          SELECT e."Id", e."Name"
+          FROM public."ErpActivities" AS e
+          WHERE e."TenantId" = '00000000-0000-0000-0000-000000000000' OR @ef_filter__p0 OR e."TenantId" = @ef_filter__CurrentTenantId
+      ) AS e0 ON r."ErpActivityId" = e0."Id"
+      WHERE (@ef_filter__p0 OR r."TenantId" = @ef_filter__CurrentTenantId) AND r."CampaignLotId" = @campaignLotId AND r."StartDate" <= @date AND r."EndDate" >= @date
+      LIMIT 1
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[@ef_filter__p0='False', @ef_filter__CurrentTenantId='11111111-1111-1111-1111-111111111111', @campaignLotId='327aad17-7e4f-4677-8896-e20f87f4ee39', @date='04/28/2026' (DbType = Date)], CommandType='Text', CommandTimeout='300']
+      SELECT r."Id", r."CampaignLotId", r."EndDate", r."ErpActivityId", r."Notes", r."StartDate", r."TenantId", e0."Id", e0."ExternalErpId", e0."Name", e0."TenantId"
+      FROM public."Rotations" AS r
+      INNER JOIN (
+          SELECT e."Id", e."ExternalErpId", e."Name", e."TenantId"
+          FROM public."ErpActivities" AS e
+          WHERE e."TenantId" = '00000000-0000-0000-0000-000000000000' OR @ef_filter__p0 OR e."TenantId" = @ef_filter__CurrentTenantId
+      ) AS e0 ON r."ErpActivityId" = e0."Id"
+      WHERE (@ef_filter__p0 OR r."TenantId" = @ef_filter__CurrentTenantId) AND r."CampaignLotId" = @campaignLotId AND r."StartDate" <= @date AND r."EndDate" >= @date
+      LIMIT 1
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[@ef_filter__p0='False', @ef_filter__CurrentTenantId='11111111-1111-1111-1111-111111111111', @campaignLotId='e9dd1803-fffe-4445-bf67-4ba30517c993', @date='04/28/2026' (DbType = Date)], CommandType='Text', CommandTimeout='300']
+      SELECT r."Id", r."CampaignLotId", r."ErpActivityId", e0."Name", r."StartDate", r."EndDate", r."Notes"
+      FROM public."Rotations" AS r
+      INNER JOIN (
+          SELECT e."Id", e."Name"
+          FROM public."ErpActivities" AS e
+          WHERE e."TenantId" = '00000000-0000-0000-0000-000000000000' OR @ef_filter__p0 OR e."TenantId" = @ef_filter__CurrentTenantId
+      ) AS e0 ON r."ErpActivityId" = e0."Id"
+      WHERE (@ef_filter__p0 OR r."TenantId" = @ef_filter__CurrentTenantId) AND r."CampaignLotId" = @campaignLotId AND r."StartDate" <= @date AND r."EndDate" >= @date
+      LIMIT 1
+info[DEBUG] Activity mismatch for Lot e9dd1803-fffe-4445-bf67-4ba30517c993: RotationActivity=5f96e4e0-0b6e-4f0e-8d8a-9f8e8e8e8e03, LaborsActivity=5f96e4e0-0b6e-4f0e-8d8a-9f8e8e8e8e05
+: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (2ms) [Parameters=[@ef_filter__p0='False', @ef_filter__CurrentTenantId='11111111-1111-1111-1111-111111111111', @campaignLotId='e9dd1803-fffe-4445-bf67-4ba30517c993', @date='04/28/2026' (DbType = Date)], CommandType='Text', CommandTimeout='300']
+      SELECT r."Id", r."CampaignLotId", r."EndDate", r."ErpActivityId", r."Notes", r."StartDate", r."TenantId", e0."Id", e0."ExternalErpId", e0."Name", e0."TenantId"
+      FROM public."Rotations" AS r
+      INNER JOIN (
+          SELECT e."Id", e."ExternalErpId", e."Name", e."TenantId"
+          FROM public."ErpActivities" AS e
+          WHERE e."TenantId" = '00000000-0000-0000-0000-000000000000' OR @ef_filter__p0 OR e."TenantId" = @ef_filter__CurrentTenantId
+      ) AS e0 ON r."ErpActivityId" = e0."Id"
+      WHERE (@ef_filter__p0 OR r."TenantId" = @ef_filter__CurrentTenantId) AND r."CampaignLotId" = @campaignLotId AND r."StartDate" <= @date AND r."EndDate" >= @date
+      LIMIT 1

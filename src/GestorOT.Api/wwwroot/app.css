@@ -247,6 +247,12 @@ input, textarea, select {
     background: rgba(255, 255, 255, 0.02) !important;
 }
 
+.ant-table-tbody > tr.ant-table-row-selected > td,
+.ant-table-tbody > tr.ant-table-row-selected:hover > td {
+    background: rgba(52, 152, 219, 0.15) !important;
+}
+
+
 /* Fix for Expanded Rows white background */
 .ant-table-expanded-row > .ant-table-cell,
 .ant-table-expanded-row:hover > .ant-table-cell,

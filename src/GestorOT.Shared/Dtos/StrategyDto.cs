@@ -4,14 +4,15 @@ public record CropStrategyDto
 {
     public Guid Id { get; set; }
     public string Name { get; set; } = string.Empty;
-    public string CropType { get; set; } = string.Empty;
+    public Guid ErpActivityId { get; set; }
+    public string? ErpActivityName { get; set; }
     public DateTime CreatedAt { get; set; }
     public List<StrategyItemDto> Items { get; set; } = new();
 
     public CropStrategyDto() { }
-    public CropStrategyDto(Guid id, string name, string cropType, DateTime createdAt, List<StrategyItemDto> items)
+    public CropStrategyDto(Guid id, string name, Guid erpActivityId, string? erpActivityName, DateTime createdAt, List<StrategyItemDto> items)
     {
-        Id = id; Name = name; CropType = cropType; CreatedAt = createdAt; Items = items;
+        Id = id; Name = name; ErpActivityId = erpActivityId; ErpActivityName = erpActivityName; CreatedAt = createdAt; Items = items;
     }
 }
 
@@ -20,14 +21,16 @@ public record StrategyItemDto
     public Guid Id { get; set; }
     public Guid CropStrategyId { get; set; }
     public Guid LaborTypeId { get; set; }
+    public Guid? ErpActivityId { get; set; }
     public string? LaborTypeName { get; set; }
+    public string? ErpActivityName { get; set; }
     public int DayOffset { get; set; }
     public List<StrategySupplyDefault> DefaultSupplies { get; set; } = new();
 
     public StrategyItemDto() { }
-    public StrategyItemDto(Guid id, Guid cropStrategyId, Guid laborTypeId, string? laborTypeName, int dayOffset, List<StrategySupplyDefault> defaultSupplies)
+    public StrategyItemDto(Guid id, Guid cropStrategyId, Guid laborTypeId, Guid? erpActivityId, string? laborTypeName, string? erpActivityName, int dayOffset, List<StrategySupplyDefault> defaultSupplies)
     {
-        Id = id; CropStrategyId = cropStrategyId; LaborTypeId = laborTypeId; LaborTypeName = laborTypeName; DayOffset = dayOffset; DefaultSupplies = defaultSupplies;
+        Id = id; CropStrategyId = cropStrategyId; LaborTypeId = laborTypeId; ErpActivityId = erpActivityId; LaborTypeName = laborTypeName; ErpActivityName = erpActivityName; DayOffset = dayOffset; DefaultSupplies = defaultSupplies;
     }
 }
 
