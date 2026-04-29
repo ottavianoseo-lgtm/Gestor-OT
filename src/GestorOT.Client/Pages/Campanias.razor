@@ -257,7 +257,7 @@
         <div style="border-top: 1px solid rgba(255,255,255,0.08); padding-top: 16px;">
             <h4 style="color: rgba(255,255,255,0.7); margin: 0 0 12px;">Agregar Campo</h4>
             <AntDesign.Row Gutter="12">
-                <AntDesign.Col Span="20">
+                <AntDesign.Col Span="16">
                     <Select @bind-Value="_addFieldId" Placeholder="Seleccionar campo" Style="width: 100%;"
                             TItemValue="Guid" TItem="string"
                             AllowClear>
@@ -266,6 +266,11 @@
                             <SelectOption TItemValue="Guid" TItem="string" Value="f.Id" Label="@f.Name" />
                         }
                     </Select>
+                </AntDesign.Col>
+                <AntDesign.Col Span="4">
+                    <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%;">
+                        <Checkbox @bind-Checked="_addLotsMassive" Style="color: rgba(255,255,255,0.5); font-size: 10px;">Vincular Lotes</Checkbox>
+                    </div>
                 </AntDesign.Col>
                 <AntDesign.Col Span="4">
                     <Button Type="@ButtonType.Primary" OnClick="AddFieldToCampaign" Loading="_addingField"
@@ -304,6 +309,7 @@
     private decimal _addAllocatedHa;
     private decimal _addTargetYield;
     private bool _addingField;
+    private bool _addLotsMassive = true;
     private Guid _batchAssigningFieldId;
 
     public class CampaignFormModel
@@ -535,6 +541,7 @@
         _addFieldId = Guid.Empty;
         _addAllocatedHa = 0;
         _addTargetYield = 0;
+        _addLotsMassive = true;
         RefreshAvailableFields();
         _fieldsModalVisible = true;
     }
@@ -562,33 +569,42 @@
         _addingField = true;
         try
         {
-            var dto = new CampaignFieldDto(
-                _fieldsModalCampaign.Id,
-                _addFieldId,
-                null,
-                _addTargetYield,
-                _addAllocatedHa
-            );
-
-            var response = await Http.PostAsJsonAsync(
-                $"api/campaigns/{_fieldsModalCampaign.Id}/fields",
-                dto, AppJsonSerializerContext.Default.CampaignFieldDto);
-
-            if (response.IsSuccessStatusCode)
+            if (_addLotsMassive)
             {
-                Message.Success("Campo agregado a la campaña.");
-                await LoadData();
-                _fieldsModalCampaign = _campaigns.FirstOrDefault(c => c.Id == _fieldsModalCampaign.Id);
-                RefreshAvailableFields();
-                _addFieldId = Guid.Empty;
-                _addAllocatedHa = 0;
-                _addTargetYield = 0;
+                await BatchAssignLots(_fieldsModalCampaign.Id, _addFieldId);
             }
             else
             {
-                var body = await response.Content.ReadAsStringAsync();
-                Message.Error($"Error: {body}");
+                var dto = new CampaignFieldDto(
+                    _fieldsModalCampaign.Id,
+                    _addFieldId,
+                    null,
+                    _addTargetYield,
+                    _addAllocatedHa
+                );
+
+                var response = await Http.PostAsJsonAsync(
+                    $"api/campaigns/{_fieldsModalCampaign.Id}/fields",
+                    dto, AppJsonSerializerContext.Default.CampaignFieldDto);
+
+                if (response.IsSuccessStatusCode)
+                {
+                    Message.Success("Campo agregado a la campaña.");
+                    await LoadData();
+                    _fieldsModalCampaign = _campaigns.FirstOrDefault(c => c.Id == _fieldsModalCampaign.Id);
+                    RefreshAvailableFields();
+                    _addFieldId = Guid.Empty;
+                    _addAllocatedHa = 0;
+                    _addTargetYield = 0;
+                }
+                else
+                {
+                    var body = await response.Content.ReadAsStringAsync();
+                    Message.Error($"Error: {body}");
+                }
             }
+            
+            _addFieldId = Guid.Empty;
         }
         catch (Exception ex)
         {
