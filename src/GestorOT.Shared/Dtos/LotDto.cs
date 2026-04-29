@@ -20,8 +20,7 @@ public record WorkOrderDto
     public Guid? FieldId { get; set; } // OTs can target a Field or be generic
     /// <summary>#21: Optional human-readable name. If null, use DisplayName fallback.</summary>
     public string? Name { get; set; }
-    [System.ComponentModel.DataAnnotations.Required(ErrorMessage = "La descripción es obligatoria")]
-    public string Description { get; set; } = string.Empty;
+    public string? Description { get; set; }
     public string Status { get; set; } = "Draft";
     public string AssignedTo { get; set; } = string.Empty;
     public DateTime DueDate { get; set; }
@@ -105,6 +104,8 @@ public record RecentWorkOrderDto(
 }
 
 public record SurfaceHistoryDto(
+    Guid CampaignId,
+    Guid LotId,
     string CampaignName,
     DateOnly StartDate,
     decimal ProductiveArea,
@@ -112,7 +113,7 @@ public record SurfaceHistoryDto(
     decimal Variation
 )
 {
-    public SurfaceHistoryDto() : this(string.Empty, DateOnly.MinValue, 0, 0, 0) { }
+    public SurfaceHistoryDto() : this(Guid.Empty, Guid.Empty, string.Empty, DateOnly.MinValue, 0, 0, 0) { }
 }
 
 public class LotAreaResult

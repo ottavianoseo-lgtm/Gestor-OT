@@ -264,19 +264,21 @@ public class CampaignsController : ControllerBase
         var lots = await _context.CampaignLots
             .AsNoTracking()
             .Where(cl => cl.CampaignId == id)
+            .Include(cl => cl.Campaign)
             .Include(cl => cl.Lot)
                 .ThenInclude(l => l!.Field)
             .OrderBy(cl => cl.Lot!.Name)
             .Select(cl => new CampaignLotDto(
-                cl.Id,
-                cl.CampaignId,
-                cl.LotId,
-                cl.Lot != null ? cl.Lot.FieldId : null,
-                cl.Lot != null ? cl.Lot.Name : "Sin nombre",
-                cl.Lot!.Field != null ? cl.Lot.Field.Name : null,
-                cl.Lot.CadastralArea,
-                cl.ProductiveArea,
-                cl.CropId
+                Id: cl.Id,
+                CampaignId: cl.CampaignId,
+                LotId: cl.LotId,
+                FieldId: cl.Lot != null ? cl.Lot.FieldId : null,
+                LotName: cl.Lot != null ? cl.Lot.Name : "Sin nombre",
+                FieldName: cl.Lot!.Field != null ? cl.Lot.Field.Name : null,
+                CadastralArea: cl.Lot.CadastralArea,
+                ProductiveArea: cl.ProductiveArea,
+                CropId: cl.CropId,
+                CampaignName: cl.Campaign != null ? cl.Campaign.Name : null
             ))
             .ToListAsync();
 
@@ -305,8 +307,6 @@ public class CampaignsController : ControllerBase
         if (lot == null)
             return BadRequest("El lote no existe.");
 
-        if (dto.ProductiveArea > lot.CadastralArea && lot.CadastralArea > 0)
-            return BadRequest($"La superficie productiva ({dto.ProductiveArea:N2}) no puede superar la catastral ({lot.CadastralArea:N2}).");
 
         var productiveArea = dto.ProductiveArea > 0 ? dto.ProductiveArea : lot.CadastralArea;
 
@@ -381,17 +381,10 @@ public class CampaignsController : ControllerBase
         if (campaign?.Status == "Locked")
             return BadRequest("No se pueden modificar lotes en una campaña bloqueada.");
 
-        if (cl.Lot != null && cl.Lot.CadastralArea > 0 && dto.ProductiveArea > cl.Lot.CadastralArea)
-            return BadRequest($"La superficie productiva ({dto.ProductiveArea:N2}) no puede superar la catastral ({cl.Lot.CadastralArea:N2}).");
 
         cl.ProductiveArea = dto.ProductiveArea;
         cl.CropId = dto.CropId;
 
-        // Sync Lot status/name if provided (optional consistency)
-        if (cl.Lot != null)
-        {
-            if (!string.IsNullOrEmpty(dto.LotName)) cl.Lot.Name = dto.LotName;
-        }
 
         await _context.SaveChangesAsync();
         if (cl.Lot != null)

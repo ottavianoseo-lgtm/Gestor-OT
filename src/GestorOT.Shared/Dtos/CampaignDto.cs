@@ -52,10 +52,11 @@ public record CampaignLotDto(
     string? FieldName,
     decimal CadastralArea,
     decimal ProductiveArea,
-    Guid? CropId
+    Guid? CropId,
+    string? CampaignName = null
 )
 {
-    public CampaignLotDto() : this(Guid.Empty, Guid.Empty, Guid.Empty, null, null, null, 0, 0, null) { }
+    public CampaignLotDto() : this(Guid.Empty, Guid.Empty, Guid.Empty, null, null, null, 0, 0, null, null) { }
 }
 
 public record ImportLotsRequest(

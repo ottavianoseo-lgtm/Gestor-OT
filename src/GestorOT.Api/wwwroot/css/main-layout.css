@@ -120,6 +120,22 @@ aside.ant-layout-sider {
     color: rgba(255,255,255,0.3) !important;
 }
 
+.ant-table-column-sort {
+    background: rgba(255, 255, 255, 0.02) !important;
+}
+
+.ant-table-thead th.ant-table-column-has-sorters:hover {
+    background: rgba(255, 255, 255, 0.1) !important;
+}
+
+.ant-table-thead th.ant-table-column-sort {
+    background: rgba(255, 255, 255, 0.08) !important;
+}
+
+.ant-table-td-column-sort {
+    background: rgba(255, 255, 255, 0.01) !important;
+}
+
 /* --- Pagination --- */
 
 .ant-pagination .ant-pagination-item {

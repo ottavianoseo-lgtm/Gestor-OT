@@ -56,6 +56,10 @@ else if (_order != null)
                 </Select>
             </div>
         </div>
+        <div style="margin-bottom: 20px;">
+            <label class="ot-label">DESCRIPCIÓN</label>
+            <TextArea @bind-Value="_order.Description" Placeholder="Notas o detalles adicionales..." AutoSize="true" Disabled="@(_order.IsLocked)" />
+        </div>
         <div style="display: flex; gap: 40px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.06);">
             <div style="display: flex; flex-direction: column; gap: 8px;"><span style="font-size: 13px; color: rgba(255,255,255,0.7);">¿Acepta múltiples personas?</span><RadioGroup @bind-Value="_order.AcceptsMultiplePeople" Disabled="@(_order.IsLocked)"><Radio Value="@true">Sí</Radio><Radio Value="@false">No</Radio></RadioGroup></div>
             <div style="display: flex; flex-direction: column; gap: 8px;"><span style="font-size: 13px; color: rgba(255,255,255,0.7);">¿Acepta múltiples fechas?</span><RadioGroup @bind-Value="_order.AcceptsMultipleDates" Disabled="@(_order.IsLocked)"><Radio Value="@true">Sí</Radio><Radio Value="@false">No</Radio></RadioGroup></div>

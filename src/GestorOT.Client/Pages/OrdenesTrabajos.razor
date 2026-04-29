@@ -124,6 +124,9 @@
         <FormItem Label="Nombre (opcional)">
             <Input @bind-Value="_formModel.Name" Placeholder="Ej: Siembra Lote Norte — si se deja vacío se genera automáticamente" />
         </FormItem>
+        <FormItem Label="Descripción (opcional)">
+            <TextArea @bind-Value="_formModel.Description" Placeholder="Notas o detalles adicionales..." AutoSize="true" />
+        </FormItem>
         <AntDesign.Row Gutter="16">
             <AntDesign.Col Span="12">
                 @if (!_formModel.AcceptsMultiplePeople)
@@ -221,7 +224,7 @@
     {
         public string? Name { get; set; }  // #21: Optional human-readable name
 
-        public string Description { get; set; } = string.Empty;
+        public string? Description { get; set; }
         
         public Guid? FieldId { get; set; }
         

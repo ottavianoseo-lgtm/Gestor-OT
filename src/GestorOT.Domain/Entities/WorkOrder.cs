@@ -6,7 +6,7 @@ public class WorkOrder : TenantEntity
     public string? Name { get; set; } // #24: Human-readable identifier
     public Guid? FieldId { get; set; } // OTs can now span multiple fields via Labors
     public Guid? CampaignId { get; set; }
-    public string Description { get; set; } = string.Empty;
+    public string? Description { get; set; }
     public Guid? WorkOrderStatusId { get; set; }
     public string Status { get; set; } = "Draft";
     public string AssignedTo { get; set; } = string.Empty;

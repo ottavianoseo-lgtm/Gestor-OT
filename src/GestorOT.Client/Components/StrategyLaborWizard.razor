@@ -147,10 +147,6 @@
                                         LabelName="@nameof(ContactDto.FullName)" ValueName="@nameof(ContactDto.Id)"
                                         Placeholder="Sin asignar" Size="InputSize.Small" Style="width: 150px;" AllowClear />
                             </div>
-                            <div style="display: flex; flex-direction: column; align-items: center; gap: 4px;">
-                                <div style="font-size: 10px; color: rgba(255,255,255,0.4); text-transform: uppercase;">Ext.</div>
-                                <Switch @bind-Checked="preview.IsExternalBilling" />
-                            </div>
                         </div>
                         @if (preview.RotationWarning != null)
                         {

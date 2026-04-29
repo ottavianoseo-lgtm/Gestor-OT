@@ -53,9 +53,6 @@
                 @label
             </Tag>
         </Column>
-        <PropertyColumn Property="c => c.BudgetTotalUSD" Title="Presupuesto USD">
-            <span style="font-weight: 600;">$ @context.BudgetTotalUSD.ToString("N2")</span>
-        </PropertyColumn>
         <Column TData="bool" Title="Activa">
             @if (context.IsActive)
             {
@@ -168,19 +165,13 @@
         </FormItem>
         
         <AntDesign.Row Gutter="16">
-            <AntDesign.Col Span="12">
+            <AntDesign.Col Span="24">
                 <FormItem Label="Estado">
                     <Select TItemValue="CampaignStatus" TItem="string" @bind-Value="_formModel.Status" Style="width: 100%;"
                             Disabled="@(_isEditing && _editingStatus == CampaignStatus.Locked)">
                         <SelectOption TItemValue="CampaignStatus" TItem="string" Value="CampaignStatus.Active" Label="Activa" />
                         <SelectOption TItemValue="CampaignStatus" TItem="string" Value="CampaignStatus.Locked" Label="Bloqueada" />
                     </Select>
-                </FormItem>
-            </AntDesign.Col>
-            <AntDesign.Col Span="12">
-                <FormItem Label="Presupuesto Total (USD)">
-                    <AntDesign.InputNumber TValue="decimal" @bind-Value="_formModel.BudgetTotalUSD" Min="0m" Step="100m"
-                                           Style="width: 100%;" Placeholder="0.00" />
                 </FormItem>
             </AntDesign.Col>
         </AntDesign.Row>
@@ -213,9 +204,6 @@
                         </PropertyColumn>
                         <PropertyColumn Property="cf => cf.AllocatedHectares" Title="Ha. Totales">
                             @context.AllocatedHectares.ToString("N2") ha
-                        </PropertyColumn>
-                        <PropertyColumn Property="cf => cf.TargetYieldTonHa" Title="Rendimiento Obj.">
-                            @context.TargetYieldTonHa.ToString("N2") tn/ha
                         </PropertyColumn>
                 <ActionColumn Title="" Width="120">
                     @if (_fieldsModalCampaign.Status != CampaignStatus.Locked)
@@ -269,7 +257,7 @@
         <div style="border-top: 1px solid rgba(255,255,255,0.08); padding-top: 16px;">
             <h4 style="color: rgba(255,255,255,0.7); margin: 0 0 12px;">Agregar Campo</h4>
             <AntDesign.Row Gutter="12">
-                <AntDesign.Col Span="12">
+                <AntDesign.Col Span="20">
                     <Select @bind-Value="_addFieldId" Placeholder="Seleccionar campo" Style="width: 100%;"
                             TItemValue="Guid" TItem="string"
                             AllowClear>
@@ -278,9 +266,6 @@
                             <SelectOption TItemValue="Guid" TItem="string" Value="f.Id" Label="@f.Name" />
                         }
                     </Select>
-                </AntDesign.Col>
-                <AntDesign.Col Span="8">
-                    <AntDesign.InputNumber TValue="decimal" @bind-Value="_addTargetYield" Min="0m" Step="0.1m" Placeholder="tn/ha objetivo" Style="width: 100%;" />
                 </AntDesign.Col>
                 <AntDesign.Col Span="4">
                     <Button Type="@ButtonType.Primary" OnClick="AddFieldToCampaign" Loading="_addingField"

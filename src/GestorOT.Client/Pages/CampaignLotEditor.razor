@@ -8,6 +8,7 @@
 @inject IMessageService Message
 @inject NavigationManager Nav
 @inject GestorOT.Client.Services.CampaignState CampaignState
+@inject ModalService ModalService
 
 <PageTitle>Lotes de Campaña - GestorOT</PageTitle>
 
@@ -280,6 +281,19 @@
     private void StartEdit(CampaignLotDto lot) { _editingLot = lot; _editProductiveArea = lot.ProductiveArea; _editModalVisible = true; }
     private async Task SaveProductiveArea() {
         if (_editingLot == null) return;
+        
+        if (_editProductiveArea > _editingLot.CadastralArea && _editingLot.CadastralArea > 0)
+        {
+            bool confirmed = await ModalService.ConfirmAsync(new ConfirmOptions
+            {
+                Title = "Área productiva superior",
+                Content = $"El área productiva ingresada ({_editProductiveArea:N2}) es superior a las hectáreas reales del lote ({_editingLot.CadastralArea:N2}). ¿Está seguro que desea continuar?",
+                OkText = "Sí, continuar",
+                CancelText = "No, revisar"
+            });
+            if (!confirmed) return;
+        }
+
         var resp = await Http.PutAsJsonAsync($"api/campaigns/{CampaignId}/lots/{_editingLot.LotId}", _editingLot with { ProductiveArea = _editProductiveArea });
         if (resp.IsSuccessStatusCode) { _editModalVisible = false; await LoadData(); }
     }
@@ -287,6 +301,20 @@
     private async Task AddLotToCampaign() {
         if (_addLotId == Guid.Empty) { Message.Warning("Seleccioná un lote."); return; }
         var fieldId = _availableLots.FirstOrDefault(l => l.Id == _addLotId)?.FieldId;
+        var lot = _availableLots.FirstOrDefault(l => l.Id == _addLotId);
+        
+        if (lot != null && _addProductiveArea > lot.CadastralArea && lot.CadastralArea > 0)
+        {
+            bool confirmed = await ModalService.ConfirmAsync(new ConfirmOptions
+            {
+                Title = "Área productiva superior",
+                Content = $"El área productiva ingresada ({_addProductiveArea:N2}) es superior a las hectáreas reales del lote ({lot.CadastralArea:N2}). ¿Está seguro que desea continuar?",
+                OkText = "Sí, continuar",
+                CancelText = "No, revisar"
+            });
+            if (!confirmed) return;
+        }
+
         var dto = new CampaignLotDto(Guid.Empty, CampaignId, _addLotId, fieldId, null, null, 0, _addProductiveArea, null);
         var resp = await Http.PostAsJsonAsync($"api/campaigns/{CampaignId}/lots", dto);
         if (resp.IsSuccessStatusCode)

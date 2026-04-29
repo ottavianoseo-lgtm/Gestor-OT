@@ -71,18 +71,8 @@
            ScrollX="1200" OnExpand="OnExpandLot" RowKey="c => c.Id">
         <ExpandTemplate Context="lot">
             <div style="padding: 16px; background: rgba(0,0,0,0.2); border-radius: 8px;">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                <div style="display: flex; justify-content: space-between; align-items: center  ; margin-bottom: 12px;">
                     <h4 style="color: #fff; margin: 0;">Historial de Superficies por Campaña</h4>
-                    <div style="display: flex; gap: 8px;">
-                        <Button Size="@ButtonSize.Small" OnClick="() => GoToGis(lot.Data.Id)"
-                                Style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #fff;">
-                            <Icon Type="environment" /> GIS
-                        </Button>
-                        <Button Size="@ButtonSize.Small" OnClick="() => GoToRotations(CampaignState.CurrentCampaign?.Id ?? Guid.Empty, lot.Data.Id)"
-                                Style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #fff;">
-                            <Icon Type="sync" /> Rotaciones
-                        </Button>
-                    </div>
                 </div>
                 @if (_historyByLot.TryGetValue(lot.Data.Id, out var history))
                 {
@@ -92,11 +82,16 @@
                         <PropertyColumn Property="h => h.ProductiveArea" Title="Sup. Productiva" />
                         <PropertyColumn Property="h => h.Variation" Title="Variación">
                             @{
-                                var h = context;
-                                var color = h.Variation < 0 ? "#E74C3C" : (h.Variation > 0 ? "#2ECC71" : "#fff");
+                                var colorv = context.Variation < 0 ? "#E74C3C" : (context.Variation > 0 ? "#2ECC71" : "rgba(255,255,255,0.3)");
+                                <span style="color: @colorv; font-weight: 600;">@(context.Variation > 0 ? "+" : "")@context.Variation.ToString("N2") ha</span>
                             }
-                            <span style="color: @color; font-weight: 600;">@(h.Variation > 0 ? "+" : "")@h.Variation.ToString("N2") ha</span>
                         </PropertyColumn>
+                        <ActionColumn Title="Acciones" Width="100">
+                            <Button Size="@ButtonSize.Small" OnClick="() => GoToRotations(context.CampaignId, context.LotId)"
+                                    Style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #fff; border-radius: 8px;">
+                                <Icon Type="sync" /> Rotac.
+                            </Button>
+                        </ActionColumn>
                     </Table>
                 }
                 else
@@ -120,33 +115,6 @@
             <PropertyColumn Property="c => c.CadastralArea" Title="Hectáreas">
                 <span style="font-weight: 600;">@context.CadastralArea.ToString("N2") ha</span>
             </PropertyColumn>
-            @if (CampaignState.IsSelected)
-            {
-                <Column TData="decimal" Title="Área Productiva (ha)">
-                    @{
-                        var cl = _campaignLots.FirstOrDefault(x => x.LotId == context.Id);
-                        if (cl != null)
-                        {
-                            <span>@cl.ProductiveArea.ToString("N2") ha</span>
-                        }
-                        else
-                        {
-                            <span style="color: rgba(255,255,255,0.3);">—</span>
-                        }
-                    }
-                </Column>
-                <Column TData="decimal" Title="Variación">
-                    @{
-                        var clv = _campaignLots.FirstOrDefault(x => x.LotId == context.Id);
-                        if (clv != null)
-                        {
-                            var vari = clv.ProductiveArea - context.CadastralArea;
-                            var colorv = vari < 0 ? "#E74C3C" : (vari > 0 ? "#2ECC71" : "rgba(255,255,255,0.3)");
-                            <span style="color: @colorv; font-weight: 600;">@(vari > 0 ? "+" : "")@vari.ToString("N2") ha</span>
-                        }
-                    }
-                </Column>
-            }
             <ActionColumn Title="Geometría">
                 @{
                     var hasGeometry = !string.IsNullOrEmpty(context.WktGeometry);
@@ -214,18 +182,17 @@
             <div>
                 <div style="font-weight: 700; color: #fff; margin-bottom: 12px; font-size: 14px;">Campañas Asignadas</div>
                 <div style="display: grid; gap: 8px;">
-                    <div style="display: grid; grid-template-columns: 1fr 60px 40px 85px; gap: 8px; font-size: 11px; color: rgba(255,255,255,0.4); text-transform: uppercase; padding: 0 4px;">
+                    <div style="display: grid; grid-template-columns: 1fr 60px 85px; gap: 8px; font-size: 11px; color: rgba(255,255,255,0.4); text-transform: uppercase; padding: 0 4px;">
                         <span>Campaña</span>
                         <span>Ha</span>
-                        <span></span>
                         <span></span>
                     </div>
 
                     @foreach (var c in _lotCampaigns)
                     {
-                        <div style="display: grid; grid-template-columns: 1fr 80px 40px 85px; gap: 8px; align-items: center;">
+                        <div style="display: grid; grid-template-columns: 1fr 80px 85px; gap: 8px; align-items: center;">
                             <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; padding: 8px 12px; color: #fff; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-                                @c.LotName
+                                @c.CampaignName
                             </div>
                             <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; padding: 4px; display: flex; align-items: center;">
                                 <AntDesign.InputNumber TValue="decimal" Value="@c.ProductiveArea" 
@@ -234,10 +201,6 @@
                                            Precision="2" Step="0.01m"
                                            Style="width: 100%; background: transparent; color: #2ECC71; font-weight: 700; text-align: center;" />
                             </div>
-                            <Button Size="@ButtonSize.Small" OnClick="() => GoToGis(c.LotId)"
-                                    Style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; color: #fff; height: 36px; font-size: 11px; font-weight: 600;">
-                                GIS
-                            </Button>
                             <Button Size="@ButtonSize.Small" OnClick="() => GoToRotations(c.CampaignId, c.LotId)"
                                     Style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; color: #fff; height: 36px; font-size: 11px; font-weight: 600;">
                                 Rotac.
@@ -422,6 +385,7 @@
 
 
     [SupplyParameterFromQuery] public Guid? highlight { get; set; }
+    [SupplyParameterFromQuery] public Guid? editId { get; set; }
 
     private IEnumerable<LotDto> FilteredLots =>
         _filterByCampaign && CampaignState.IsSelected
@@ -534,6 +498,16 @@
             {
                 await LoadHistory(highlight.Value);
                 StateHasChanged();
+            }
+
+            if (editId.HasValue)
+            {
+                var lot = _lots.FirstOrDefault(l => l.Id == editId.Value);
+                if (lot != null)
+                {
+                    await OpenEditModal(lot);
+                    editId = null; // Prevent re-opening
+                }
             }
         }
     }
@@ -673,7 +647,7 @@
                 bool confirmed = await ModalService.ConfirmAsync(new ConfirmOptions
                 {
                     Title = "Área productiva superior",
-                    Content = $"El área productiva ({newArea}) es superior a las hectáreas catastrales ({lot.CadastralArea}). ¿Desea continuar?",
+                    Content = $"El área productiva ingresada ({newArea:N2}) es superior a las hectáreas reales del lote ({lot.CadastralArea:N2}). ¿Desea continuar?",
                     OkText = "Sí, continuar",
                     CancelText = "No, revisar"
                 });
@@ -681,6 +655,12 @@
             }
 
             var updated = item with { ProductiveArea = newArea };
+            
+            // Actualización local inmediata para feedback visual
+            var idx = _lotCampaigns.IndexOf(item);
+            if (idx >= 0) _lotCampaigns[idx] = updated;
+            StateHasChanged();
+
             var response = await Http.PutAsJsonAsync($"api/campaigns/{item.CampaignId}/lots/{item.LotId}", updated);
             if (response.IsSuccessStatusCode)
             {
@@ -721,7 +701,7 @@
                 bool confirmed = await ModalService.ConfirmAsync(new ConfirmOptions
                 {
                     Title = "Área productiva superior",
-                    Content = $"El área productiva ({_newCampaignProductiveArea}) es superior a las hectáreas catastrales ({lot.CadastralArea}). ¿Desea continuar?",
+                    Content = $"El área productiva ingresada ({_newCampaignProductiveArea:N2}) es superior a las hectáreas reales del lote ({lot.CadastralArea:N2}). ¿Desea continuar?",
                     OkText = "Sí, continuar",
                     CancelText = "No, revisar"
                 });
@@ -825,6 +805,10 @@
 
                 Message.Success(_isEditing ? "Lote actualizado." : "Lote creado correctamente.");
                 _modalVisible = false;
+                if (_isEditing)
+                {
+                    _historyByLot.Remove(_editingId);
+                }
                 await LoadData();
             }
             else

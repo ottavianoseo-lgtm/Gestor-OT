@@ -112,6 +112,8 @@ public class LotQueryService : ILotQueryService
             .Where(cl => cl.LotId == lotId)
             .OrderByDescending(cl => cl.Campaign!.StartDate)
             .Select(cl => new SurfaceHistoryDto(
+                cl.CampaignId,
+                cl.LotId,
                 cl.Campaign!.Name,
                 cl.Campaign.StartDate,
                 cl.ProductiveArea,
@@ -130,15 +132,16 @@ public class LotQueryService : ILotQueryService
             .Where(cl => cl.LotId == lotId)
             .OrderByDescending(cl => cl.Campaign!.StartDate)
             .Select(cl => new CampaignLotDto(
-                cl.Id,
-                cl.CampaignId,
-                cl.LotId,
-                cl.Lot!.FieldId,
-                cl.Campaign!.Name,
-                null,
-                cl.Lot.CadastralArea,
-                cl.ProductiveArea,
-                cl.CropId
+                Id: cl.Id,
+                CampaignId: cl.CampaignId,
+                LotId: cl.LotId,
+                FieldId: cl.Lot!.FieldId,
+                LotName: cl.Lot.Name,
+                FieldName: null,
+                CadastralArea: cl.Lot.CadastralArea,
+                ProductiveArea: cl.ProductiveArea,
+                CropId: cl.CropId,
+                CampaignName: cl.Campaign!.Name
             ))
             .ToListAsync(ct);
     }
