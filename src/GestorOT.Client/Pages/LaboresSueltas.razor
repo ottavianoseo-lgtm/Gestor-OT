@@ -61,6 +61,21 @@
     <Alert Type="@AlertType.Error" Message="@_errorMessage" ShowIcon="true" Closable="true" Style="margin-bottom: 16px;" />
 }
 
+@if (targetOT.HasValue && targetOT != Guid.Empty && _workOrders.Any(w => w.Id == targetOT))
+{
+    var targetWo = _workOrders.First(w => w.Id == targetOT);
+    <Alert Type="@AlertType.Info" ShowIcon="true" Style="margin-bottom: 16px; border-radius: 8px; background: rgba(52, 152, 219, 0.15); border: 1px solid rgba(52, 152, 219, 0.3); color: #fff;">
+        <MessageTemplate>
+            <div style="display: flex; justify-content: space-between; align-items: center; width: 100%; color: #fff;">
+                <span style="color: #fff;">
+                    <strong style="color: #3b82f6;">Modo Asignación:</strong> Seleccionando labores para <strong style="color: #fff;">@(targetWo.Description ?? targetWo.OTNumber)</strong>
+                </span>
+                <Button Size="@ButtonSize.Small" OnClick='() => { targetOT = null; _filterAssigned = null; LoadData(); }' Style="background: rgba(255,255,255,0.1); color: #fff; border: 1px solid rgba(255,255,255,0.2);">Quitar Filtro</Button>
+            </div>
+        </MessageTemplate>
+    </Alert>
+}
+
 <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 20px;">
     <div class="kpi-card">
         <div class="kpi-value">@_labors.Count</div>
@@ -341,9 +356,29 @@ else
 
     private bool _allSelected => _labors.Count > 0 && _selectedIds.Count == _labors.Count;
 
-    private List<LaborDto> FilteredLabors => _filterTypeId == null
-        ? _labors
-        : _labors.Where(l => l.LaborTypeId == _filterTypeId).ToList();
+    private List<LaborDto> FilteredLabors 
+    {
+        get
+        {
+            var result = _labors;
+            
+            // Filter by Type if selected
+            if (_filterTypeId != null)
+                result = result.Where(l => l.LaborTypeId == _filterTypeId).ToList();
+
+            // Filter by Field if coming from a specific OT
+            if (targetOT.HasValue && targetOT != Guid.Empty)
+            {
+                var targetWo = _workOrders.FirstOrDefault(w => w.Id == targetOT);
+                if (targetWo != null && targetWo.FieldId.HasValue)
+                {
+                    result = result.Where(l => string.Equals(l.FieldName, targetWo.FieldName, StringComparison.OrdinalIgnoreCase)).ToList();
+                }
+            }
+
+            return result;
+        }
+    }
 
     private void OpenExecuteModal(LaborDto labor)
     {
@@ -354,6 +389,12 @@ else
 
     protected override async Task OnInitializedAsync()
     {
+        // Force unassigned filter if coming from a specific OT
+        if (targetOT.HasValue && targetOT != Guid.Empty)
+        {
+            _filterAssigned = "unassigned";
+        }
+        
         CampaignState.OnChange += OnCampaignChanged;
         TenantState.OnChange += OnCampaignChanged;
         await LoadData();
@@ -378,7 +419,11 @@ else
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
 
             var url = new StringBuilder("api/labors?");
-            if (!string.IsNullOrEmpty(_filterAssigned)) url.Append($"assigned={(_filterAssigned == "assigned")}&");
+            if (!string.IsNullOrEmpty(_filterAssigned)) 
+            {
+                var isAssigned = _filterAssigned == "assigned";
+                url.Append($"assigned={isAssigned.ToString().ToLower()}&");
+            }
             if (!string.IsNullOrEmpty(_filterStatus)) url.Append($"status={_filterStatus}&");
             url.Append($"sortBy={_sortBy}");
 

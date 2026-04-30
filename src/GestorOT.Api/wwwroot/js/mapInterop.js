@@ -257,7 +257,7 @@ window.mapInterop = {
                         <span style="color: #888;">Área</span>
                         <span style="font-weight: 600;">${area.toFixed(2)} ha</span>
                     </div>
-                    <a href="/lots" onclick="window._gisEditLotId='${lotId}'; return true;"
+                    <a href="/lots?editId=${lotId}"
                        style="display: block; text-align: center; background: #E74C3C; color: #fff; border-radius: 6px; padding: 6px 12px; font-size: 12px; font-weight: 600; text-decoration: none; cursor: pointer;"
                        id="gis-edit-btn-${lotId}">
                         Ver / Editar Lote

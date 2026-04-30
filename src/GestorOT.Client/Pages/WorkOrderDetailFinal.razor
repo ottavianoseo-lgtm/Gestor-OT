@@ -190,6 +190,16 @@ else if (_order != null)
     <LaborEditorForm WorkOrderId="WorkOrderId" LaborId="_editingLaborId" InitialStatus="@_pendingInitialStatus" OnSaved="OnLaborSaved" />
 </Modal>
 
+<Modal Title="Labores sin OT" 
+       Visible="_showUnassignedWarning" 
+       OnOk="ReviewUnassignedLabors"
+       OnCancel="CreateNewLabor"
+       OkText='@("Revisar Existentes")'
+       CancelText='@("Crear Nueva")'
+       Centered="true">
+    <p style="color: #fff;">Tenés @_unassignedLaborsCount labores creadas sin OT. ¿Deseas crear una nueva o revisar las existentes para asignarlas a esta OT?</p>
+</Modal>
+
 <ValidationSuccessModal Visible="_showValidationModal" ValidationUrl="@_validationUrl" OnClose="() => _showValidationModal = false" />
 
 <style>

@@ -32,6 +32,8 @@ namespace GestorOT.Client.Pages
         protected ITable? _laborTable;
         protected bool _showValidationModal;
         protected string _validationUrl = "";
+        protected bool _showUnassignedWarning;
+        protected int _unassignedLaborsCount;
 
         protected override async Task OnInitializedAsync() => await LoadData();
 
@@ -104,28 +106,28 @@ namespace GestorOT.Client.Pages
 
         protected async Task OnAddLaborClicked() {
             try {
-                var count = await _http.GetFromJsonAsync<int>("api/labors/unassigned/count");
-                if (count > 0) {
-                    var options = new ConfirmOptions { 
-                        Title = "Labores sin OT", 
-                        Content = $"Tenés {count} labores creadas sin OT. ¿Deseas crear una nueva o revisar las existentes para asignarlas a esta OT?", 
-                        OkText = "Revisar Existentes", 
-                        CancelText = "Crear Nueva",
-                        OnOk = async (e) => {
-                            _navigation.NavigateTo($"/labores-sueltas?targetOT={WorkOrderId}");
-                        },
-                        OnCancel = async (e) => {
-                            OpenLaborModal();
-                        }
-                    };
-                    await _modalService.ConfirmAsync(options);
-                    return;
+                _unassignedLaborsCount = await _http.GetFromJsonAsync<int>("api/labors/unassigned/count");
+                if (_unassignedLaborsCount > 0) {
+                    _showUnassignedWarning = true;
                 }
-            } catch { }
-            OpenLaborModal();
+                else
+                {
+                    OpenLaborModal();
+                }
+                StateHasChanged();
+            } catch (Exception ex) { 
+                Console.WriteLine($"Error checking unassigned labors: {ex.Message}");
+                OpenLaborModal();
+                StateHasChanged();
+            }
         }
 
-        protected void OpenLaborModal(Guid? laborId = null, string? initialStatus = null) { _editingLaborId = laborId ?? Guid.Empty; _pendingInitialStatus = initialStatus; _showLaborModal = true; }
+        protected void OpenLaborModal(Guid? laborId = null, string? initialStatus = null) { 
+            _editingLaborId = laborId ?? Guid.Empty; 
+            _pendingInitialStatus = initialStatus; 
+            _showLaborModal = true; 
+            StateHasChanged();
+        }
 
         protected async Task DeleteLabor(Guid id) {
             try {
@@ -136,6 +138,18 @@ namespace GestorOT.Client.Pages
         }
 
         protected async Task OnLaborSaved() { _showLaborModal = false; await LoadData(); }
+
+        protected void ReviewUnassignedLabors()
+        {
+            _showUnassignedWarning = false;
+            _navigation.NavigateTo($"/labores-sueltas?targetOT={WorkOrderId}");
+        }
+
+        protected void CreateNewLabor()
+        {
+            _showUnassignedWarning = false;
+            OpenLaborModal();
+        }
 
         protected async Task ExportHtmlInteractivo() {
             try {

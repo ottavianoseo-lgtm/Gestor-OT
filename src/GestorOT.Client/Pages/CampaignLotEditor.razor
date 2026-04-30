@@ -143,12 +143,29 @@
                     EnableSearch
                     Style="width: 100%;" />
         </div>
-        <AntDesign.InputNumber TValue="decimal" @bind-Value="_addProductiveArea" Placeholder="Hectáreas productivas" Style="width:100%" />
+        <input type="number" step="0.01" value="@_addProductiveArea"
+               @oninput="@((ChangeEventArgs e) => { if (decimal.TryParse(e.Value?.ToString(), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var v)) _addProductiveArea = v; })"
+               placeholder="Hectáreas productivas"
+               style="width:100%; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15); border-radius: 8px; padding: 4px 11px; color: #fff; font-size: 14px; height: 32px;" />
     </div>
 </Modal>
 
-<Modal Title="Actualizar Superficie" Visible="_editModalVisible" OnCancel="() => _editModalVisible = false" OnOk="SaveProductiveArea">
-    <AntDesign.InputNumber TValue="decimal" @bind-Value="_editProductiveArea" Style="width:100%" />
+<Modal Title="Actualizar Superficie"
+       Visible="_editModalVisible"
+       OnCancel="() => { _editModalVisible = false; }"
+       Footer="EditAreaModalFooter">
+    <div style="padding: 8px 0;">
+        <label style="display: block; font-size: 12px; color: rgba(255,255,255,0.5); margin-bottom: 8px;">Superficie Productiva (ha)</label>
+        <input type="number" step="0.01" value="@_editProductiveArea"
+               @oninput="@((ChangeEventArgs e) => { if (decimal.TryParse(e.Value?.ToString(), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var v)) _editProductiveArea = v; })"
+               style="width:100%; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15); border-radius: 8px; padding: 4px 11px; color: #fff; font-size: 14px; height: 32px;" />
+        @if (_editingLot != null && _editProductiveArea > _editingLot.CadastralArea && _editingLot.CadastralArea > 0)
+        {
+            <div style="margin-top: 8px; color: #F39C12; font-size: 12px;">
+                &#9888; Superior a las ha reales del lote (@_editingLot.CadastralArea.ToString("N2") ha). Se guardará igual.
+            </div>
+        }
+    </div>
 </Modal>
 
 <Modal Title="Importar Lotes" Visible="_importModalVisible" OnCancel="() => _importModalVisible = false" OnOk="ExecuteImport">
@@ -248,6 +265,11 @@
             _addLotId = Guid.Empty;
         }
     }
+    private bool _savingArea;
+    private RenderFragment EditAreaModalFooter => @<div style="display: flex; justify-content: flex-end; gap: 8px;">
+            <Button OnClick="() => _editModalVisible = false">Cancelar</Button>
+            <Button Type="@ButtonType.Primary" OnClick="SaveProductiveArea" Loading="@_savingArea">Guardar</Button>
+        </div>;
     private RenderFragment RotationModalFooter => @<div style="display: flex; justify-content: flex-end; gap: 8px;">
             <Button OnClick="() => _rotationModalVisible = false">Cancelar</Button>
             <Button Type="@ButtonType.Primary" OnClick="SaveRotation" Disabled="@RotationDatesInvalid" Loading="@_savingRotation">Guardar</Button>
@@ -279,23 +301,27 @@
     private List<RotationDto> GetRotations(Guid id) => _rotationsByLot.TryGetValue(id, out var r) ? r : new();
 
     private void StartEdit(CampaignLotDto lot) { _editingLot = lot; _editProductiveArea = lot.ProductiveArea; _editModalVisible = true; }
-    private async Task SaveProductiveArea() {
+    private async Task SaveProductiveArea()
+    {
         if (_editingLot == null) return;
-        
-        if (_editProductiveArea > _editingLot.CadastralArea && _editingLot.CadastralArea > 0)
+        _savingArea = true;
+        try
         {
-            bool confirmed = await ModalService.ConfirmAsync(new ConfirmOptions
+            var resp = await Http.PutAsJsonAsync(
+                $"api/campaigns/{CampaignId}/lots/{_editingLot.LotId}",
+                _editingLot with { ProductiveArea = _editProductiveArea });
+            if (resp.IsSuccessStatusCode)
             {
-                Title = "Área productiva superior",
-                Content = $"El área productiva ingresada ({_editProductiveArea:N2}) es superior a las hectáreas reales del lote ({_editingLot.CadastralArea:N2}). ¿Está seguro que desea continuar?",
-                OkText = "Sí, continuar",
-                CancelText = "No, revisar"
-            });
-            if (!confirmed) return;
+                _editModalVisible = false;
+                await LoadData();
+            }
+            else
+            {
+                var err = await resp.Content.ReadAsStringAsync();
+                Message.Error($"Error: {err}");
+            }
         }
-
-        var resp = await Http.PutAsJsonAsync($"api/campaigns/{CampaignId}/lots/{_editingLot.LotId}", _editingLot with { ProductiveArea = _editProductiveArea });
-        if (resp.IsSuccessStatusCode) { _editModalVisible = false; await LoadData(); }
+        finally { _savingArea = false; }
     }
 
     private async Task AddLotToCampaign() {
@@ -305,14 +331,7 @@
         
         if (lot != null && _addProductiveArea > lot.CadastralArea && lot.CadastralArea > 0)
         {
-            bool confirmed = await ModalService.ConfirmAsync(new ConfirmOptions
-            {
-                Title = "Área productiva superior",
-                Content = $"El área productiva ingresada ({_addProductiveArea:N2}) es superior a las hectáreas reales del lote ({lot.CadastralArea:N2}). ¿Está seguro que desea continuar?",
-                OkText = "Sí, continuar",
-                CancelText = "No, revisar"
-            });
-            if (!confirmed) return;
+            Message.Warning($"La superficie productiva ingresada ({_addProductiveArea:N2}) es superior a las hectáreas reales del lote ({lot.CadastralArea:N2}).");
         }
 
         var dto = new CampaignLotDto(Guid.Empty, CampaignId, _addLotId, fieldId, null, null, 0, _addProductiveArea, null);

@@ -44,7 +44,7 @@
                 }
                 else if (_haSuperaLote)
                 {
-                    <div style="color: #E74C3C; font-size: 11px; margin-top: 4px;">
+                    <div style="color: #FAAD14; font-size: 11px; margin-top: 4px;">
                         <Icon Type="warning" /> La superficie supera el área productiva del lote (@_lotProductiveArea ha).
                     </div>
                 }
@@ -107,7 +107,7 @@
                             Style="width: 100%; color: var(--text-primary);" />
                 @if (_fechaFueraRotacion && _model.Status != "Realized")
                 {
-                    <div style="color: #F1C40F; font-size: 11px; margin-top: 4px;">
+                    <div style="color: #FAAD14; font-size: 11px; margin-top: 4px;">
                         <Icon Type="warning" /> Fecha fuera del rango de rotación.
                     </div>
                 }
@@ -232,7 +232,6 @@
                 </Button>
             }
             <Button Type="@ButtonType.Primary" HtmlType="submit" Loading="_loading" Block="@(LaborId == Guid.Empty || (_model.Mode != "Planned" && _model.Status != "Planned"))"
-                    Disabled="@(_fechaFueraRotacion)"
                     Style="flex: 2; height: 45px; border-radius: 8px; font-weight: 600;">
                 <Icon Type="save" /> Guardar Labor
             </Button>
@@ -722,20 +721,12 @@
     {
         if (_haSuperaLote)
         {
-            var result = await ModalService.ConfirmAsync(new ConfirmOptions
-            {
-                Title = "Área superior a la del lote",
-                Content = $"La cantidad de Ha ingresada ({_model.Hectares}) supera las del área productiva del lote ({_lotProductiveArea}). ¿Está seguro que desea continuar?",
-                OkText = "Sí, continuar",
-                CancelText = "No, revisar"
-            });
-            if (!result) return;
+            Message.Warning($"Atención: Las hectáreas ({_model.Hectares:N2}) superan la superficie productiva del lote.");
         }
 
-        if (_fechaFueraRotacion)
+        if (_fechaFueraRotacion && _model.Status != "Realized")
         {
-            Message.Error("La fecha seleccionada está fuera del rango de la rotación activa.");
-            return;
+            Message.Warning("Atención: La fecha seleccionada está fuera del rango de la rotación activa.");
         }
 
         try

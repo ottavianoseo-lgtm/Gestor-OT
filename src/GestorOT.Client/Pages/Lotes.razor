@@ -10,6 +10,7 @@
 @inject GestorOT.Client.Services.CampaignState CampaignState
 @inject GestorOT.Client.Services.TenantState TenantState
 @inject ModalService ModalService
+@inject IJSRuntime Js
 @implements IDisposable
 
 <PageTitle>Lotes - GestorOT</PageTitle>
@@ -87,7 +88,7 @@
                             }
                         </PropertyColumn>
                         <ActionColumn Title="Acciones" Width="100">
-                            <Button Size="@ButtonSize.Small" OnClick="() => GoToRotations(context.CampaignId, context.LotId)"
+                            <Button Size="@ButtonSize.Small" OnClick="() => GoToRotations(context.CampaignId, context.LotId, true)"
                                     Style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #fff; border-radius: 8px;">
                                 <Icon Type="sync" /> Rotac.
                             </Button>
@@ -186,22 +187,28 @@
                         <span>Campaña</span>
                         <span>Ha</span>
                         <span></span>
+                        <span></span>
                     </div>
 
                     @foreach (var c in _lotCampaigns)
                     {
-                        <div style="display: grid; grid-template-columns: 1fr 80px 85px; gap: 8px; align-items: center;">
+                        <div style="display: grid; grid-template-columns: 1fr 80px 28px 85px; gap: 8px; align-items: center;">
                             <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; padding: 8px 12px; color: #fff; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
                                 @c.CampaignName
                             </div>
                             <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; padding: 4px; display: flex; align-items: center;">
-                                <AntDesign.InputNumber TValue="decimal" Value="@c.ProductiveArea" 
-                                           ValueChanged="@((decimal v) => UpdateCampaignLotArea(c, v))"
-                                           Size="InputSize.Small" Bordered="false"
-                                           Precision="2" Step="0.01m"
-                                           Style="width: 100%; background: transparent; color: #2ECC71; font-weight: 700; text-align: center;" />
+                                @if (_editingAreas.ContainsKey(c.Id))
+                                {
+                                    <input type="number" step="0.01" value="@_editingAreas[c.Id]"
+                                           @oninput="@((ChangeEventArgs e) => { if (decimal.TryParse(e.Value?.ToString(), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var v)) _editingAreas[c.Id] = v; })"
+                                           style="width: 100%; background: transparent; color: #2ECC71; font-weight: 700; text-align: center; border: none; outline: none; font-size: 13px;" />
+                                }
                             </div>
-                            <Button Size="@ButtonSize.Small" OnClick="() => GoToRotations(c.CampaignId, c.LotId)"
+                            <Button Size="@ButtonSize.Small" Icon="check"
+                                    Type="@ButtonType.Link"
+                                    OnClick="() => SaveCampaignLotArea(c)"
+                                    Style="color: #2ECC71; padding: 0; min-width: 28px; height: 28px;" />
+                            <Button Size="@ButtonSize.Small" OnClick="() => GoToRotations(c.CampaignId, c.LotId, false)"
                                     Style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; color: #fff; height: 36px; font-size: 11px; font-weight: 600;">
                                 Rotac.
                             </Button>
@@ -218,8 +225,9 @@
 
         <div>
             <label style="display: block; color: rgba(255,255,255,0.6); font-size: 13px; margin-bottom: 8px;">Hectáreas</label>
-            <AntDesign.InputNumber TValue="decimal" @bind-Value="_formModel.CadastralArea" Min="0m" Step="0.01m" Precision="2"
-                       Style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15); border-radius: 12px; height: 42px; color: #fff; width: 100%;" />
+            <input type="number" step="0.01" min="0" value="@_formModel.CadastralArea"
+                   @oninput="@((ChangeEventArgs e) => { if (decimal.TryParse(e.Value?.ToString(), out var v)) _formModel.CadastralArea = v; })"
+                   style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15); border-radius: 12px; height: 42px; color: #fff; width: 100%; padding: 4px 11px; font-size: 14px;" />
         </div>
 
         <div style="margin-top: 10px;">
@@ -253,7 +261,9 @@
         </div>
         <div>
             <label style="display: block; margin-bottom: 8px; font-size: 12px; color: rgba(255,255,255,0.5);">Superficie Productiva (ha)</label>
-            <AntDesign.InputNumber TValue="decimal" @bind-Value="_newCampaignProductiveArea" Precision="2" Step="0.01m" Style="width: 100%;" />
+            <input type="number" step="0.01" value="@_newCampaignProductiveArea"
+                   @oninput="@((ChangeEventArgs e) => { if (decimal.TryParse(e.Value?.ToString(), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var v)) _newCampaignProductiveArea = v; })"
+                   style="width: 100%; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15); border-radius: 8px; padding: 4px 11px; color: #fff; font-size: 14px; height: 32px;" />
         </div>
     </div>
 </Modal>
@@ -283,9 +293,12 @@
                                     <h4 style="color: #fff; margin: 0; font-size: 16px;">@rot.ActivityName</h4>
                                     <span style="font-size: 12px; color: rgba(255,255,255,0.4);">@rot.CampaignName</span>
                                 </div>
-                                <Popconfirm Title="¿Eliminar esta rotación?" OnConfirm="() => DeleteRotation(rot.Id)">
-                                    <Button Danger Icon="delete" Size="@ButtonSize.Small" Ghost Type="@ButtonType.Text" />
-                                </Popconfirm>
+                                @if (!_isRotationReadOnly)
+                                {
+                                    <Popconfirm Title="¿Eliminar esta rotación?" OnConfirm="() => DeleteRotation(rot.Id)">
+                                        <Button Danger Icon="delete" Size="@ButtonSize.Small" Ghost Type="@ButtonType.Text" />
+                                    </Popconfirm>
+                                }
                             </div>
                             
                             <div style="display: flex; gap: 16px; margin-top: 8px;">
@@ -319,34 +332,37 @@
                 }
             </Timeline>
             
-            <div style="margin-top: 32px; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 24px;">
-                <h4 style="color: #fff; margin-bottom: 20px; display: flex; align-items: center; gap: 8px;">
-                    <Icon Type="plus-circle" /> Agregar Cultivo a la Rotación
-                </h4>
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
-                    <div>
-                        <label style="color: rgba(255,255,255,0.4); font-size: 11px; display: block; margin-bottom: 8px;">ACTIVIDAD / CULTIVO (ERP)</label>
-                        <Select TItem="ErpActivityDto" TItemValue="Guid" DataSource="_allActivities"
-                                LabelName="@nameof(ErpActivityDto.Name)" ValueName="@nameof(ErpActivityDto.Id)"
-                                @bind-Value="_newRotationActivityId" EnableSearch Placeholder="Seleccionar..." 
-                                Style="width: 100%;" />
-                    </div>
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+            @if (!_isRotationReadOnly)
+            {
+                <div style="margin-top: 32px; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 24px;">
+                    <h4 style="color: #fff; margin-bottom: 20px; display: flex; align-items: center; gap: 8px;">
+                        <Icon Type="plus-circle" /> Agregar Cultivo a la Rotación
+                    </h4>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
                         <div>
-                            <label style="color: rgba(255,255,255,0.4); font-size: 11px; display: block; margin-bottom: 8px;">INICIO</label>
-                            <DatePicker TValue="DateTime?" @bind-Value="_newRotationStart" Format="MMM yyyy" Picker="@DatePickerType.Month" Style="width: 100%;" />
+                            <label style="color: rgba(255,255,255,0.4); font-size: 11px; display: block; margin-bottom: 8px;">ACTIVIDAD / CULTIVO (ERP)</label>
+                            <Select TItem="ErpActivityDto" TItemValue="Guid" DataSource="_allActivities"
+                                    LabelName="@nameof(ErpActivityDto.Name)" ValueName="@nameof(ErpActivityDto.Id)"
+                                    @bind-Value="_newRotationActivityId" EnableSearch Placeholder="Seleccionar..." 
+                                    Style="width: 100%;" />
                         </div>
-                        <div>
-                            <label style="color: rgba(255,255,255,0.4); font-size: 11px; display: block; margin-bottom: 8px;">FIN</label>
-                            <DatePicker TValue="DateTime?" @bind-Value="_newRotationEnd" Format="MMM yyyy" Picker="@DatePickerType.Month" Style="width: 100%;" />
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                            <div>
+                                <label style="color: rgba(255,255,255,0.4); font-size: 11px; display: block; margin-bottom: 8px;">INICIO</label>
+                                <DatePicker TValue="DateTime?" @bind-Value="_newRotationStart" Format="MMM yyyy" Picker="@DatePickerType.Month" Style="width: 100%;" />
+                            </div>
+                            <div>
+                                <label style="color: rgba(255,255,255,0.4); font-size: 11px; display: block; margin-bottom: 8px;">FIN</label>
+                                <DatePicker TValue="DateTime?" @bind-Value="_newRotationEnd" Format="MMM yyyy" Picker="@DatePickerType.Month" Style="width: 100%;" />
+                            </div>
                         </div>
                     </div>
+                    <Button Type="@ButtonType.Primary" Block OnClick="AddRotation" Loading="_savingRotation" 
+                            Style="background: #E74C3C; border-color: #E74C3C; height: 40px; font-weight: 600; border-radius: 8px;">
+                        Registrar Rotación
+                    </Button>
                 </div>
-                <Button Type="@ButtonType.Primary" Block OnClick="AddRotation" Loading="_savingRotation" 
-                        Style="background: #E74C3C; border-color: #E74C3C; height: 40px; font-weight: 600; border-radius: 8px;">
-                    Registrar Rotación
-                </Button>
-            </div>
+            }
         </div>
     }
 </Drawer>
@@ -367,6 +383,7 @@
     private LotFormModel _formModel = new();
     // private Form<LotFormModel>? _form; // Unused
     private List<CampaignLotDto> _lotCampaigns = new();
+    private Dictionary<Guid, decimal> _editingAreas = new();
     private List<CampaignSummaryDto> _allCampaigns = new();
     private List<ErpActivityDto> _allActivities = new();
     private bool _addCampaignModalVisible;
@@ -376,6 +393,7 @@
     private bool _rotationsDrawerVisible;
     private bool _loadingRotations;
     private bool _savingRotation;
+    private bool _isRotationReadOnly;
     private LotDto? _selectedLotForRotation;
     private List<RotationDto> _rotations = new();
     private Guid _newRotationActivityId;
@@ -500,13 +518,28 @@
                 StateHasChanged();
             }
 
+            if (!editId.HasValue)
+            {
+                try
+                {
+                    var gisId = await Js.InvokeAsync<string>("eval", "window._gisEditLotId || ''");
+                    if (Guid.TryParse(gisId, out var gisGuid))
+                    {
+                        editId = gisGuid;
+                        await Js.InvokeVoidAsync("eval", "delete window._gisEditLotId");
+                    }
+                }
+                catch { }
+            }
+
             if (editId.HasValue)
             {
                 var lot = _lots.FirstOrDefault(l => l.Id == editId.Value);
                 if (lot != null)
                 {
                     await OpenEditModal(lot);
-                    editId = null; // Prevent re-opening
+                    editId = null;
+                    StateHasChanged();
                 }
             }
         }
@@ -535,10 +568,8 @@
         
         await LoadLotCampaigns(lot.Id);
         
-        // Prepoblado: Si el lote ya está en la campaña activa, asegurar que el modelo refleje datos actuales si fuera necesario
-        // Aunque por ahora el modelo base solo tiene Nombre, Campo y Estado.
-        
         _modalVisible = true;
+        StateHasChanged();
     }
 
     private async Task LoadLotCampaigns(Guid lotId)
@@ -546,6 +577,7 @@
         try
         {
             _lotCampaigns = await Http.GetFromJsonAsync<List<CampaignLotDto>>($"api/lots/{lotId}/campaigns") ?? new();
+            _editingAreas = _lotCampaigns.ToDictionary(c => c.Id, c => c.ProductiveArea);
         }
         catch (Exception)
         {
@@ -558,8 +590,9 @@
         Nav.NavigateTo($"/mapa?lotId={lotId}");
     }
 
-    private async Task GoToRotations(Guid campaignId, Guid lotId)
+    private async Task GoToRotations(Guid campaignId, Guid lotId, bool isReadOnly)
     {
+        _isRotationReadOnly = isReadOnly;
         _selectedLotForRotation = _lots.FirstOrDefault(l => l.Id == lotId);
         _currentRotationCampaignId = campaignId;
         _rotationsDrawerVisible = true;
@@ -637,6 +670,34 @@
         catch (Exception) { Message.Error("Error al eliminar."); }
     }
 
+    private async Task SaveCampaignLotArea(CampaignLotDto item)
+    {
+        if (!_editingAreas.TryGetValue(item.Id, out var newArea)) return;
+        try
+        {
+            var lot = _lots.FirstOrDefault(l => l.Id == item.LotId);
+            if (lot != null && newArea > lot.CadastralArea)
+            {
+                Message.Warning($"La superficie productiva ingresada ({newArea:N2}) es superior a las hectáreas reales del lote ({lot.CadastralArea:N2}).");
+                // if (!confirm) return; // Removed
+            }
+
+            var updated = item with { ProductiveArea = newArea };
+            var response = await Http.PutAsJsonAsync($"api/campaigns/{item.CampaignId}/lots/{item.LotId}", updated);
+            if (response.IsSuccessStatusCode)
+            {
+                Message.Success("Superficie productiva actualizada.");
+                await LoadLotCampaigns(_editingId);
+            }
+            else
+            {
+                var err = await response.Content.ReadAsStringAsync();
+                Message.Error(err);
+            }
+        }
+        catch (Exception ex) { Message.Error($"Error: {ex.Message}"); }
+    }
+
     private async Task UpdateCampaignLotArea(CampaignLotDto item, decimal newArea)
     {
         try
@@ -644,29 +705,19 @@
             var lot = _lots.FirstOrDefault(l => l.Id == item.LotId);
             if (lot != null && newArea > lot.CadastralArea)
             {
-                bool confirmed = await ModalService.ConfirmAsync(new ConfirmOptions
-                {
-                    Title = "Área productiva superior",
-                    Content = $"El área productiva ingresada ({newArea:N2}) es superior a las hectáreas reales del lote ({lot.CadastralArea:N2}). ¿Desea continuar?",
-                    OkText = "Sí, continuar",
-                    CancelText = "No, revisar"
-                });
-                if (!confirmed) return;
+                Message.Warning($"La superficie productiva ingresada ({newArea:N2}) es superior a las hectáreas reales del lote ({lot.CadastralArea:N2}).");
+                // if (!confirm) return; // Removed
             }
 
             var updated = item with { ProductiveArea = newArea };
-            
-            // Actualización local inmediata para feedback visual
-            var idx = _lotCampaigns.IndexOf(item);
-            if (idx >= 0) _lotCampaigns[idx] = updated;
-            StateHasChanged();
-
             var response = await Http.PutAsJsonAsync($"api/campaigns/{item.CampaignId}/lots/{item.LotId}", updated);
             if (response.IsSuccessStatusCode)
             {
+                // Actualizar lista local solo tras confirmar el back
+                var idx = _lotCampaigns.IndexOf(item);
+                if (idx >= 0) _lotCampaigns[idx] = updated;
                 Message.Success("Superficie productiva actualizada.");
                 await LoadLotCampaigns(_editingId);
-                await LoadData();
             }
             else
             {
@@ -696,16 +747,9 @@
         try
         {
             var lot = _lots.FirstOrDefault(l => l.Id == _editingId);
-            if (lot != null && _newCampaignProductiveArea > lot.CadastralArea)
+            if (lot != null && _newCampaignProductiveArea > lot.CadastralArea && lot.CadastralArea > 0)
             {
-                bool confirmed = await ModalService.ConfirmAsync(new ConfirmOptions
-                {
-                    Title = "Área productiva superior",
-                    Content = $"El área productiva ingresada ({_newCampaignProductiveArea:N2}) es superior a las hectáreas reales del lote ({lot.CadastralArea:N2}). ¿Desea continuar?",
-                    OkText = "Sí, continuar",
-                    CancelText = "No, revisar"
-                });
-                if (!confirmed) return;
+                Message.Warning($"La superficie productiva ingresada ({_newCampaignProductiveArea:N2}) es superior a las hectáreas reales del lote ({lot.CadastralArea:N2}).");
             }
 
             var dto = new CampaignLotDto(Guid.Empty, _selectedCampaignId, _editingId, lot?.FieldId, null, null, 0, _newCampaignProductiveArea, null);
