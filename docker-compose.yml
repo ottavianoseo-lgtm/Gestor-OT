@@ -10,6 +10,8 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./dp_keys:/home/app/.aspnet/DataProtection-Keys
+    networks:
+      - ot_network
 
   gestor-ot-app:
     container_name: gestorot-app
@@ -24,11 +26,13 @@ services:
       - db
     restart: always
     networks:
+      - ot_network
       - web_traffic
 
 volumes:
   postgres_data:
 
 networks:
+  ot_network:
   web_traffic:
     external: true
