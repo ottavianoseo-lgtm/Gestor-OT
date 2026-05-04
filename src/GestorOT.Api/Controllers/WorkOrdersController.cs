@@ -50,13 +50,32 @@ public class WorkOrdersController : ControllerBase
     [HttpPost]
     public async Task<ActionResult<WorkOrderDto>> CreateWorkOrder(WorkOrderDto dto)
     {
+        if (dto.CampaignId == null || dto.CampaignId == Guid.Empty)
+            return BadRequest("La orden de trabajo debe pertenecer a una campaña.");
+
+        var campaign = await _context.Campaigns
+            .AsNoTracking()
+            .FirstOrDefaultAsync(c => c.Id == dto.CampaignId.Value);
+
+        if (campaign == null)
+            return BadRequest("La campaña seleccionada no existe.");
+
+        if (campaign.Status == "Locked")
+            return BadRequest("No se pueden crear órdenes en una campaña bloqueada.");
+
+        var defaultStatus = await _context.WorkOrderStatuses
+            .AsNoTracking()
+            .FirstOrDefaultAsync(s => s.IsDefault);
+
+        var statusName = !string.IsNullOrWhiteSpace(dto.Status) ? dto.Status : (defaultStatus?.Name ?? "Draft");
+
         var workOrder = new WorkOrder
         {
             Id = Guid.NewGuid(),
-            FieldId = dto.FieldId,
             Name = dto.Name,
             Description = dto.Description,
-            Status = dto.Status,
+            Status = statusName,
+            WorkOrderStatusId = defaultStatus?.Id,
             AssignedTo = dto.AssignedTo,
             DueDate = dto.DueDate,
             OTNumber = dto.OTNumber ?? string.Empty,
@@ -88,18 +107,21 @@ public class WorkOrdersController : ControllerBase
     {
         var workOrder = await _context.WorkOrders
             .Include(w => w.WorkOrderStatus)
+            .Include(w => w.Campaign)
             .FirstOrDefaultAsync(w => w.Id == id);
         if (workOrder == null) return NotFound();
 
         if (workOrder.WorkOrderStatus?.IsEditable == false)
             return Conflict("La OT se encuentra en un estado que no permite modificaciones.");
 
+        if (workOrder.Campaign?.Status == "Locked")
+            return Conflict("No se pueden modificar órdenes de una campaña bloqueada.");
+
         workOrder.Name = dto.Name;
         workOrder.Description = dto.Description;
         workOrder.Status = dto.Status;
         workOrder.AssignedTo = dto.AssignedTo;
         workOrder.DueDate = dto.DueDate;
-        workOrder.FieldId = dto.FieldId;
         workOrder.OTNumber = dto.OTNumber ?? workOrder.OTNumber;
         workOrder.PlannedDate = dto.PlannedDate ?? workOrder.PlannedDate;
         workOrder.ExpirationDate = dto.ExpirationDate ?? workOrder.ExpirationDate;
@@ -119,9 +141,15 @@ public class WorkOrdersController : ControllerBase
     {
         var workOrder = await _context.WorkOrders
             .Include(w => w.Labors)
+            .Include(w => w.WorkOrderStatus)
+            .Include(w => w.Campaign)
             .FirstOrDefaultAsync(w => w.Id == id);
 
         if (workOrder == null) return NotFound();
+        if (workOrder.WorkOrderStatus?.IsEditable == false)
+            return Conflict("La OT se encuentra en un estado que no permite modificaciones.");
+        if (workOrder.Campaign?.Status == "Locked")
+            return Conflict("No se puede aprobar una OT de una campaña bloqueada.");
         if (workOrder.Status == "Approved") return BadRequest("La OT ya fue aprobada.");
         if (workOrder.Status == "Cancelled") return BadRequest("No se puede aprobar una OT cancelada.");
 
@@ -188,6 +216,17 @@ public class WorkOrdersController : ControllerBase
     [HttpPost("{id:guid}/reserve-stock")]
     public async Task<IActionResult> ReserveStock(Guid id)
     {
+        var workOrder = await _context.WorkOrders
+            .Include(w => w.WorkOrderStatus)
+            .Include(w => w.Campaign)
+            .FirstOrDefaultAsync(w => w.Id == id);
+
+        if (workOrder == null) return NotFound();
+        if (workOrder.WorkOrderStatus?.IsEditable == false)
+            return Conflict("La OT se encuentra en un estado que no permite modificaciones.");
+        if (workOrder.Campaign?.Status == "Locked")
+            return Conflict("No se pueden modificar órdenes de una campaña bloqueada.");
+
         var validation = await _stockValidator.ValidateStockForWorkOrderAsync(id);
         
         await _stockValidator.ReserveStockAsync(id);
@@ -233,8 +272,16 @@ public class WorkOrdersController : ControllerBase
     [HttpPut("{id:guid}/status")]
     public async Task<IActionResult> UpdateStatus(Guid id, [FromBody] Guid statusId)
     {
-        var workOrder = await _context.WorkOrders.FirstOrDefaultAsync(w => w.Id == id);
+        var workOrder = await _context.WorkOrders
+            .Include(w => w.WorkOrderStatus)
+            .Include(w => w.Campaign)
+            .FirstOrDefaultAsync(w => w.Id == id);
         if (workOrder == null) return NotFound();
+
+        if (workOrder.WorkOrderStatus?.IsEditable == false)
+            return Conflict("La OT se encuentra en un estado que no permite modificaciones.");
+        if (workOrder.Campaign?.Status == "Locked")
+            return Conflict("No se pueden modificar órdenes de una campaña bloqueada.");
 
         var status = await _context.WorkOrderStatuses.FindAsync(statusId);
         if (status == null) return BadRequest("Estado no válido.");
@@ -326,8 +373,16 @@ public class WorkOrdersController : ControllerBase
     [HttpDelete("{id:guid}")]
     public async Task<IActionResult> DeleteWorkOrder(Guid id)
     {
-        var workOrder = await _context.WorkOrders.FirstOrDefaultAsync(w => w.Id == id);
+        var workOrder = await _context.WorkOrders
+            .Include(w => w.WorkOrderStatus)
+            .Include(w => w.Campaign)
+            .FirstOrDefaultAsync(w => w.Id == id);
+
         if (workOrder == null) return NotFound();
+        if (workOrder.WorkOrderStatus?.IsEditable == false)
+            return BadRequest("La OT se encuentra en un estado que no permite eliminación.");
+        if (workOrder.Campaign?.Status == "Locked")
+            return BadRequest("No se pueden eliminar órdenes de una campaña bloqueada.");
 
         _context.WorkOrders.Remove(workOrder);
         await _context.SaveChangesAsync();

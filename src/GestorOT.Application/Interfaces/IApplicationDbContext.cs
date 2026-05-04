@@ -30,6 +30,8 @@ public interface IApplicationDbContext
     DbSet<ErpConcept> ErpConcepts { get; }
     DbSet<WorkOrderStatus> WorkOrderStatuses { get; }
     DbSet<LaborAttachment> LaborAttachments { get; }
+    DbSet<FileAsset> FileAssets { get; }
+    DbSet<LaborFileAsset> LaborFileAssets { get; }
     DbSet<WorkOrderSupplyApproval> WorkOrderSupplyApprovals { get; }
     DatabaseFacade Database { get; }
     Guid CurrentTenantId { get; }

@@ -44,6 +44,8 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
     public DbSet<ErpConcept> ErpConcepts => Set<ErpConcept>();
     public DbSet<WorkOrderStatus> WorkOrderStatuses => Set<WorkOrderStatus>();
     public DbSet<LaborAttachment> LaborAttachments => Set<LaborAttachment>();
+    public DbSet<FileAsset> FileAssets => Set<FileAsset>();
+    public DbSet<LaborFileAsset> LaborFileAssets => Set<LaborFileAsset>();
     public DbSet<WorkOrderSupplyApproval> WorkOrderSupplyApprovals => Set<WorkOrderSupplyApproval>();
 
     public Guid CurrentTenantId

@@ -6,6 +6,7 @@
 @inject HttpClient Http
 @inject IMessageService Message
 @inject NavigationManager Nav
+@inject GestorOT.Client.Services.CampaignState CampaignState
 
 <PageTitle>Campañas - GestorOT</PageTitle>
 
@@ -466,6 +467,7 @@
                 Message.Success(_isEditing ? "Campaña actualizada correctamente." : "Campaña creada correctamente.");
                 _modalVisible = false;
                 await LoadData();
+                CampaignState.NotifyCampaignsChanged();
             }
             else
             {
@@ -500,6 +502,7 @@
                 };
                 Message.Success($"Campaña {statusLabel} correctamente.");
                 await LoadData();
+                CampaignState.NotifyCampaignsChanged();
             }
             else
             {
@@ -522,6 +525,7 @@
             {
                 Message.Success("Campaña eliminada correctamente.");
                 await LoadData();
+                CampaignState.NotifyCampaignsChanged();
             }
             else
             {
@@ -684,6 +688,7 @@
             {
                 Message.Success("Campaña desbloqueada.");
                 await LoadData();
+                CampaignState.NotifyCampaignsChanged();
             }
             else
             {

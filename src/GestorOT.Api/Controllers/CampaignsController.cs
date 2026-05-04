@@ -72,7 +72,22 @@ public class CampaignsController : ControllerBase
             .ToListAsync();
 
         var campaigns = raw.Select(c => new CampaignSummaryDto(
-            c.Id, c.Name, ParseStatus(c.Status), c.IsActive
+            c.Id, c.Name, ParseStatus(c.Status), c.IsActive, c.StartDate, c.EndDate
+        )).ToList();
+
+        return campaigns;
+    }
+
+    [HttpGet("selector")]
+    public async Task<ActionResult<List<CampaignSummaryDto>>> GetSelectorCampaigns()
+    {
+        var raw = await _context.Campaigns
+            .AsNoTracking()
+            .OrderByDescending(c => c.StartDate)
+            .ToListAsync();
+
+        var campaigns = raw.Select(c => new CampaignSummaryDto(
+            c.Id, c.Name, ParseStatus(c.Status), c.IsActive, c.StartDate, c.EndDate
         )).ToList();
 
         return campaigns;
@@ -166,8 +181,12 @@ public class CampaignsController : ControllerBase
         if (campaign == null)
             return NotFound();
 
-        if (campaign.Status == "Locked" && newStatus != CampaignStatus.Locked)
+        if (campaign.Status == "Locked")
             return BadRequest("Una campaña cerrada no puede reactivarse.");
+
+        campaign.Status = newStatus.ToString();
+        if (newStatus == CampaignStatus.Locked)
+            campaign.IsActive = false;
 
         await _context.SaveChangesAsync();
         return NoContent();
@@ -424,6 +443,10 @@ public class CampaignsController : ControllerBase
     [HttpPost("{id:guid}/lots/import")]
     public async Task<IActionResult> ImportLotsFromPrevious(Guid id, ImportLotsRequest request)
     {
+        var campaign = await _context.Campaigns.AsNoTracking().FirstOrDefaultAsync(c => c.Id == id);
+        if (campaign?.Status == "Locked")
+            return BadRequest("No se pueden importar lotes en una campaña bloqueada.");
+
         try
         {
             var imported = await _campaignManager.ImportLotsFromPreviousCampaignAsync(

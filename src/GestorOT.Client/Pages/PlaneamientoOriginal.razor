@@ -21,25 +21,54 @@
             <Icon Type="lock" /> LÍNEA DE BASE
         </Tag>
         <Button Type="@ButtonType.Primary" OnClick="() => _strategyWizardVisible = true"
-                Style="background: #3498DB; border-color: #3498DB; border-radius: 8px; font-weight: 600;">
+                Style="background: #3498DB; border-color: #3498DB; border-radius: 8px; font-weight: 600;"
+                Disabled="@(!_hasCampaign || _isLocked)">
             <Icon Type="apartment" /> Cargar Estrategia
         </Button>
         <Button Type="@ButtonType.Primary" OnClick="() => _drawerVisible = true"
-                Style="background: #2ECC71; border-color: #2ECC71; border-radius: 8px; font-weight: 600;">
+                Style="background: #2ECC71; border-color: #2ECC71; border-radius: 8px; font-weight: 600;"
+                Disabled="@(!_hasCampaign || _isLocked)">
             <Icon Type="plus" /> Nueva Labor Base
         </Button>
     </div>
 </div>
 
-<div class="glass-card" style="margin-bottom: 24px; padding: 16px; border-left: 4px solid #F1C40F;">
-    <div style="display: flex; align-items: center; gap: 12px;">
-        <Icon Type="info-circle" Theme="IconThemeType.Fill" Style="color: #F1C40F; font-size: 20px;" />
-        <div>
-            <span style="color: #fff; font-weight: 600; display: block;">Modo Lectura</span>
-            <span style="color: rgba(255,255,255,0.6); font-size: 13px;">Las labores del Planeamiento Original no pueden ser modificadas. Representan el plan inicial de la campaña.</span>
+@if (!_hasCampaign)
+{
+    <div class="glass-card" style="margin-bottom: 24px; padding: 16px; border-left: 4px solid #E74C3C;">
+        <div style="display: flex; align-items: center; gap: 12px;">
+            <Icon Type="exclamation-circle" Theme="IconThemeType.Fill" Style="color: #E74C3C; font-size: 20px;" />
+            <div>
+                <span style="color: #fff; font-weight: 600; display: block;">Seleccione una campaña</span>
+                <span style="color: rgba(255,255,255,0.6); font-size: 13px;">Para utilizar Planeamiento Original, debe seleccionar una campaña activa en el selector de campañas.</span>
+            </div>
         </div>
     </div>
-</div>
+}
+else if (_isLocked)
+{
+    <div class="glass-card" style="margin-bottom: 24px; padding: 16px; border-left: 4px solid #FAAD14;">
+        <div style="display: flex; align-items: center; gap: 12px;">
+            <Icon Type="lock" Theme="IconThemeType.Fill" Style="color: #FAAD14; font-size: 20px;" />
+            <div>
+                <span style="color: #fff; font-weight: 600; display: block;">Campaña Bloqueada - Solo Lectura</span>
+                <span style="color: rgba(255,255,255,0.6); font-size: 13px;">La campaña seleccionada está bloqueada. No se pueden crear ni modificar labores en el planeamiento original.</span>
+            </div>
+        </div>
+    </div>
+}
+else
+{
+    <div class="glass-card" style="margin-bottom: 24px; padding: 16px; border-left: 4px solid #F1C40F;">
+        <div style="display: flex; align-items: center; gap: 12px;">
+            <Icon Type="info-circle" Theme="IconThemeType.Fill" Style="color: #F1C40F; font-size: 20px;" />
+            <div>
+                <span style="color: #fff; font-weight: 600; display: block;">Planeamiento Original</span>
+                <span style="color: rgba(255,255,255,0.6); font-size: 13px;">Las labores creadas aquí conforman la línea de base inmutable de la campaña @CampaignState.CurrentCampaign?.Name.</span>
+            </div>
+        </div>
+    </div>
+}
 
 <div class="glass-card">
     <Table TItem="LaborDto" 
@@ -107,7 +136,7 @@
                     </SpaceItem>
                     <SpaceItem>
                         <Popconfirm Title="¿Desanclar esta labor de la línea de base?" OnConfirm="() => UnpinOriginalPlan(context.Id)">
-                            <Button Type="@ButtonType.Text" Icon="unlock" Style="color: #E74C3C;" />
+                            <Button Type="@ButtonType.Text" Icon="unlock" Style="color: #E74C3C;" Disabled="@(_isLocked)" />
                         </Popconfirm>
                     </SpaceItem>
                 </Space>
@@ -181,7 +210,7 @@
 }
 
 <Modal Title="Crear Labores desde Estrategia (Base)" Visible="_strategyWizardVisible" Footer="null" OnCancel="() => _strategyWizardVisible = false" Width="900">
-    <StrategyLaborWizard OnClose="() => { _strategyWizardVisible = false; LoadData(); }" />
+    <StrategyLaborWizard ForceOriginalPlan="true" OnClose="() => { _strategyWizardVisible = false; LoadData(); }" />
 </Modal>
 
 <Modal Title="Nueva Labor Base" Visible="@_drawerVisible" OnCancel="() => _drawerVisible = false" Footer="null" Width="800">
@@ -200,6 +229,8 @@
     private bool _strategyWizardVisible;
     private bool _drawerVisible;
     private LaborDto? _selectedLabor;
+    private bool _hasCampaign;
+    private bool _isLocked;
 
     protected override async Task OnInitializedAsync()
     {
@@ -207,13 +238,28 @@
         await LoadData();
     }
 
+    private void UpdateCampaignState()
+    {
+        _hasCampaign = CampaignState.CurrentCampaign != null;
+        _isLocked = CampaignState.IsLocked;
+    }
+
     private async Task LoadData()
     {
         _loading = true;
+        UpdateCampaignState();
         try
         {
-            // We fetch labors with isOriginalPlan=true
-            _labors = await Http.GetFromJsonAsync<List<LaborDto>>("api/labors?isOriginalPlan=true") ?? new();
+            if (_hasCampaign)
+            {
+                var campaignId = CampaignState.CurrentCampaign!.Id;
+                _labors = await Http.GetFromJsonAsync<List<LaborDto>>(
+                    $"api/labors?isOriginalPlan=true&campaignId={campaignId}") ?? new();
+            }
+            else
+            {
+                _labors = new();
+            }
         }
         catch (Exception ex)
         {
@@ -234,6 +280,11 @@
 
     private async Task UnpinOriginalPlan(Guid laborId)
     {
+        if (_isLocked)
+        {
+            Message.Warning("No se puede desanclar en campaña bloqueada.");
+            return;
+        }
         try
         {
             var response = await Http.PostAsync($"api/labors/{laborId}/unpin-original-plan", null);

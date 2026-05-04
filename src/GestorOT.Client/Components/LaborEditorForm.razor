@@ -24,7 +24,7 @@
                 </Select>
             </FormItem>
 
-            <FormItem Label="Lote">
+            <FormItem Label="Lote" Style="@(HasError("lot") ? "border: 1px solid #E74C3C; border-radius: 8px; padding: 8px;" : "")">
                 <Select TItemValue="Guid" TItem="CampaignLotDto" @bind-Value="_model.LotId"
                         Placeholder="Seleccionar lote" EnableSearch 
                         DataSource="@FilteredLots"
@@ -32,9 +32,13 @@
                         ValueName="@nameof(CampaignLotDto.LotId)"
                         OnSelectedItemChanged="OnLotChanged">
                 </Select>
+                @if (HasError("lot"))
+                {
+                    <div style="color: #E74C3C; font-size: 11px; margin-top: 4px;">@GetError("lot")</div>
+                }
             </FormItem>
 
-            <FormItem Label="Hectáreas">
+            <FormItem Label="Hectáreas" Style="@(HasError("hectares") ? "border: 1px solid #E74C3C; border-radius: 8px; padding: 8px;" : "")">
                 <AntDesign.InputNumber TValue="decimal" Value="@_model.Hectares" OnChange="OnHectareasChanged" Min="0m" Step="0.1m" Style="width: 100%; color: var(--text-primary);" />
                 @if (_noProductiveAreaWarning)
                 {
@@ -48,11 +52,15 @@
                         <Icon Type="warning" /> La superficie supera el área productiva del lote (@_lotProductiveArea ha).
                     </div>
                 }
+                @if (HasError("hectares"))
+                {
+                    <div style="color: #E74C3C; font-size: 11px; margin-top: 4px;">@GetError("hectares")</div>
+                }
             </FormItem>
         </div>
         
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
-            <FormItem Label="Actividad (ERP)">
+            <FormItem Label="Actividad (ERP)" Style="@(HasError("activity") ? "border: 1px solid #E74C3C; border-radius: 8px; padding: 8px;" : "")">
                 <div style="display: flex; align-items: center; gap: 8px;">
                     <Select TItemValue="Guid?" TItem="ErpActivityDto" @bind-Value="_model.ErpActivityId"
                             Placeholder="Seleccionar actividad" Disabled="@_actividadLocked"
@@ -73,19 +81,27 @@
                         </Tooltip>
                     }
                 </div>
+                @if (HasError("activity"))
+                {
+                    <div style="color: #E74C3C; font-size: 11px; margin-top: 4px;">@GetError("activity")</div>
+                }
             </FormItem>
 
-            <FormItem Label="Tipo de Labor (Tarea)">
+            <FormItem Label="Tipo de Labor (Tarea)" Style="@(HasError("laborType") ? "border: 1px solid #E74C3C; border-radius: 8px; padding: 8px;" : "")">
                 <Select TItemValue="Guid" TItem="LaborTypeDto" @bind-Value="_model.LaborTypeId"
                         Placeholder="Seleccionar tipo de labor" EnableSearch
                         LabelName="@nameof(LaborTypeDto.Name)" ValueName="@nameof(LaborTypeDto.Id)"
                         DataSource="@_laborTypes">
                 </Select>
+                @if (HasError("laborType"))
+                {
+                    <div style="color: #E74C3C; font-size: 11px; margin-top: 4px;">@GetError("laborType")</div>
+                }
             </FormItem>
         </div>
 
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
-            <FormItem Label="Persona Responsable">
+            <FormItem Label="Persona Responsable" Style="@(HasError("contact") ? "border: 1px solid #E74C3C; border-radius: 8px; padding: 8px;" : "")">
                 <div style="display: flex; align-items: center; gap: 16px;">
                     <Select TItemValue="Guid?" TItem="ContactDto" @bind-Value="_model.ContactId"
                             Placeholder="Seleccionar responsable" EnableSearch Style="flex: 1;">
@@ -99,9 +115,13 @@
                         <Radio Value="@true">Contratista</Radio>
                     </RadioGroup>
                 </div>
+                @if (HasError("contact"))
+                {
+                    <div style="color: #E74C3C; font-size: 11px; margin-top: 4px;">@GetError("contact")</div>
+                }
             </FormItem>
 
-            <FormItem Label="@($"Fecha {(_model.Status == "Realized" ? "Ejecución" : "Estimada")}")">
+            <FormItem Label="@($"Fecha {(_model.Status == "Realized" ? "Ejecución" : "Estimada")}")" Style="@(HasError("date") ? "border: 1px solid #E74C3C; border-radius: 8px; padding: 8px;" : "")">
                 <DatePicker TValue="DateTime?" Value="@(_model.Status == "Realized" ? _model.ExecutionDate : _model.EstimatedDate)" 
                             OnChange="@(async args => { if (_model.Status == "Realized") _model.ExecutionDate = args.Date; else await OnFechaEstimadaChanged(args); })" 
                             Style="width: 100%; color: var(--text-primary);" />
@@ -110,6 +130,10 @@
                     <div style="color: #FAAD14; font-size: 11px; margin-top: 4px;">
                         <Icon Type="warning" /> Fecha fuera del rango de rotación.
                     </div>
+                }
+                @if (HasError("date"))
+                {
+                    <div style="color: #E74C3C; font-size: 11px; margin-top: 4px;">@GetError("date")</div>
                 }
             </FormItem>
         </div>
@@ -125,10 +149,19 @@
             </FormItem>
 
             <FormItem Label="Estado de la Labor">
-                <RadioGroup @bind-Value="_model.Status" OnChange="@((string val) => OnStatusChanged(val))" TValue="string">
-                    <Radio Value="@("Planned")"><span style="color: var(--text-primary);">Planeada</span></Radio>
-                    <Radio Value="@("Realized")"><span style="color: var(--text-primary);">Realizada</span></Radio>
-                </RadioGroup>
+                @if (ForceOriginalPlan)
+                {
+                    <Tag Color="@("#1890FF" + "33")" Style="color: #fff; border: 1px solid #1890FF80; border-radius: 12px; font-weight: 600; padding: 4px 16px;">
+                        Planeada
+                    </Tag>
+                }
+                else
+                {
+                    <RadioGroup @bind-Value="_model.Status" OnChange="@((string val) => OnStatusChanged(val))" TValue="string">
+                        <Radio Value="@("Planned")"><span style="color: var(--text-primary);">Planeada</span></Radio>
+                        <Radio Value="@("Realized")"><span style="color: var(--text-primary);">Realizada</span></Radio>
+                    </RadioGroup>
+                }
             </FormItem>
         </div>
 
@@ -223,6 +256,14 @@
             </Panel>
         </Collapse>
 
+        @if (!string.IsNullOrEmpty(_validationSummary))
+        {
+            <div style="margin-top: 16px; padding: 10px 14px; background: rgba(231, 76, 60, 0.1); border: 1px solid rgba(231, 76, 60, 0.3); border-radius: 8px; color: #E74C3C; font-size: 13px;">
+                <Icon Type="exclamation-circle" Theme="IconThemeType.Outline" Style="margin-right: 6px;" />
+                @_validationSummary
+            </div>
+        }
+
         <div style="display: flex; gap: 12px; margin-top: 24px;">
             @if (LaborId != Guid.Empty && (_model.Mode == "Planned" || _model.Status == "Planned"))
             {
@@ -238,16 +279,7 @@
         </div>
     </Form>
 
-    @if (LaborId != Guid.Empty)
-    {
-        <LaborAttachments LaborId="@LaborId" />
-    }
-    else
-    {
-        <div style="text-align: center; padding: 20px; background: rgba(255,255,255,0.02); border-radius: 8px; border: 1px dashed rgba(255,255,255,0.1); margin-top: 16px;">
-            <span style="color: rgba(255,255,255,0.3); font-size: 12px;">Podés adjuntar archivos una vez guardada la labor.</span>
-        </div>
-    }
+    <LaborAttachments @ref="_attachmentsRef" LaborId="@LaborId" />
 </Card>
 
 <ValidationSuccessModal Visible="_magicLinkModalVisible" 
@@ -290,6 +322,8 @@
     private WeatherLogModel _weather = new();
     private bool _magicLinkModalVisible;
     private string _magicLinkUrl = "";
+
+    private LaborAttachments? _attachmentsRef;
 
     public class WeatherLogModel
     {
@@ -381,6 +415,7 @@
     {
         _model.LotId = Guid.Empty;
         _model.CampaignLotId = null;
+        ClearError("lot");
         StateHasChanged();
     }
 
@@ -529,6 +564,12 @@
     
     private void OnStatusChanged(string status)
     {
+        if (ForceOriginalPlan)
+        {
+            _model.Status = "Planned";
+            _model.Mode = "Planned";
+            return;
+        }
         _model.Mode = status;
         if (status == "Realized" && !_model.ExecutionDate.HasValue)
         {
@@ -536,11 +577,19 @@
         }
     }
 
-    // #22: flag to alert user when lot has no productive area defined
     private bool _noProductiveAreaWarning;
+
+    private Dictionary<string, string> _fieldErrors = new();
+    private string _validationSummary = "";
+
+    private bool HasError(string field) => _fieldErrors.ContainsKey(field);
+    private string GetError(string field) => _fieldErrors.GetValueOrDefault(field, "");
+    private void ClearError(string field) { _fieldErrors.Remove(field); _validationSummary = ""; }
+    private void SetError(string field, string message) { _fieldErrors[field] = message; _validationSummary = ""; }
 
     private async Task OnLotChanged(CampaignLotDto lot)
     {
+        ClearError("lot");
         if (lot != null)
         {
             _model.LotId = lot.LotId;
@@ -574,6 +623,7 @@
     private void OnHectareasChanged(decimal val)
     {
         _model.Hectares = val;
+        ClearError("hectares");
         CheckHectaresWarning(val);
     }
 
@@ -717,11 +767,72 @@
         StateHasChanged();
     }
 
+    private bool ValidateForm()
+    {
+        _fieldErrors.Clear();
+        _validationSummary = "";
+
+        // Load lot selector: must use CampaignLotDto linked to current campaign
+        if (_lots.Count == 0 && CampaignState.CurrentCampaign == null)
+        {
+            _validationSummary = "Seleccione una campaña activa para crear labores.";
+            return false;
+        }
+
+        if (CampaignState.IsLocked)
+        {
+            _validationSummary = "La campaña está bloqueada. Solo consulta.";
+            return false;
+        }
+
+        if (_model.LotId == Guid.Empty)
+            SetError("lot", "El lote es obligatorio.");
+
+        if (_model.ErpActivityId == null || _model.ErpActivityId == Guid.Empty)
+            SetError("activity", "La actividad es obligatoria.");
+
+        if (_model.LaborTypeId == Guid.Empty)
+            SetError("laborType", "El tipo de labor es obligatorio.");
+
+        if (_model.Hectares <= 0)
+            SetError("hectares", "Las hectáreas deben ser mayores a cero.");
+
+        var laborDate = _model.ExecutionDate ?? _model.EstimatedDate;
+        if (laborDate == null || laborDate == default)
+            SetError("date", "La fecha es obligatoria.");
+
+        if (_model.ContactId == null || _model.ContactId == Guid.Empty)
+            SetError("contact", "El responsable es obligatorio.");
+
+        // Validate supplies: if supply is added, dose must be valid
+        if (_model.Supplies != null)
+        {
+            foreach (var s in _model.Supplies)
+            {
+                if (s.SupplyId != Guid.Empty && s.PlannedDose <= 0 && !s.RealDose.HasValue)
+                {
+                    _validationSummary = "Los insumos agregados deben tener dosis válida.";
+                    return false;
+                }
+            }
+        }
+
+        return !_fieldErrors.Any();
+    }
+
     private async Task HandleSubmit()
     {
+        if (!ValidateForm())
+        {
+            Message.Warning("Corregí los campos marcados en rojo antes de guardar.");
+            return;
+        }
+
         if (_haSuperaLote)
         {
-            Message.Warning($"Atención: Las hectáreas ({_model.Hectares:N2}) superan la superficie productiva del lote.");
+            var confirmed = await JSRuntime.InvokeAsync<bool>("confirm",
+                $"Las hectáreas ({_model.Hectares:N2}) superan la superficie productiva del lote ({_lotProductiveArea} ha).\n\n¿Guardar de todas formas?");
+            if (!confirmed) return;
         }
 
         if (_fechaFueraRotacion && _model.Status != "Realized")
@@ -733,6 +844,13 @@
         {
             _loading = true;
             _model.WeatherLogJson = JsonSerializer.Serialize(_weather);
+            
+            if (ForceOriginalPlan)
+            {
+                _model.IsOriginalPlan = true;
+                _model.Status = "Planned";
+                _model.Mode = "Planned";
+            }
             
             Console.WriteLine($"[LaborEditorForm] Submitting Labor: Id={LaborId}, WorkOrderId={_model.WorkOrderId}, LotId={_model.LotId}, Hectares={_model.Hectares}");
 
@@ -750,8 +868,10 @@
                 {
                     _model = result.Labor;
                     LaborId = _model.Id;
-                    // Sync tracking vars so OnParametersSetAsync doesn't re-init after parent re-renders
                     _lastLaborId = LaborId;
+
+                    if (_attachmentsRef != null)
+                        await _attachmentsRef.LinkPendingFiles(LaborId);
                 }
 
                 if (result?.Warnings != null && result.Warnings.Any())

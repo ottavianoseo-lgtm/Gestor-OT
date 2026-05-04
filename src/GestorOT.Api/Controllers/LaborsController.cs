@@ -63,41 +63,38 @@ public class LaborsController : ControllerBase
     [HttpPost]
     public async Task<ActionResult<LaborSaveResponse>> CreateLabor(LaborDto dto)
     {
-        // Debug
-        Console.WriteLine($"CreateLabor: CampaignLotId={dto.CampaignLotId}, LotId={dto.LotId}");
+        if (dto.IsOriginalPlan && (dto.Status != "Planned" || dto.Mode != "Planned"))
+            return BadRequest("Planeamiento Original solo permite labores con Status=Planned y Mode=Planned.");
 
-        var lotId = dto.LotId;
-        var campaignLotId = dto.CampaignLotId;
+        if (dto.CampaignLotId == null || dto.CampaignLotId == Guid.Empty)
+            return BadRequest("Debe enviar CampaignLotId porque el lote puede pertenecer a múltiples campañas.");
 
-        // Si mandan CampaignLotId pero no LotId, recuperamos el LotId
-        if (campaignLotId != null && campaignLotId != Guid.Empty && lotId == Guid.Empty)
-        {
-            var campaignLot = await _context.CampaignLots
-                .FirstOrDefaultAsync(cl => cl.Id == campaignLotId);
-            
-            if (campaignLot != null)
-                lotId = campaignLot.LotId;
-            else
-                return BadRequest("El CampaignLotId proporcionado no existe.");
-        }
-        // Si mandan LotId pero no CampaignLotId (fallback original)
-        else if ((campaignLotId == null || campaignLotId == Guid.Empty) && lotId != Guid.Empty)
-        {
-            var campaignLot = await _context.CampaignLots
-                .FirstOrDefaultAsync(cl => cl.LotId == lotId);
-            
-            if (campaignLot != null)
-                campaignLotId = campaignLot.Id;
-            else
-                return BadRequest("No se encontró CampaignLotId y no pudo ser inferido a partir del LotId.");
-        }
-        else if (lotId == Guid.Empty && (campaignLotId == null || campaignLotId == Guid.Empty))
-        {
-            return BadRequest("Debe proporcionar al menos un LotId o un CampaignLotId.");
-        }
+        if (dto.ErpActivityId == null || dto.ErpActivityId == Guid.Empty)
+            return BadRequest(new { field = "activity", message = "La actividad es obligatoria.", code = "activity.required" });
 
-        // Sprint 2 Validations
-        var validation = await ValidateLaborAsync(dto with { LotId = lotId, CampaignLotId = campaignLotId });
+        if (dto.LaborTypeId == Guid.Empty)
+            return BadRequest(new { field = "laborType", message = "El tipo de labor es obligatorio.", code = "laborType.required" });
+
+        if (dto.Hectares <= 0)
+            return BadRequest(new { field = "hectares", message = "Las hectáreas deben ser mayores a cero.", code = "hectares.invalid" });
+
+        var laborDate = dto.ExecutionDate ?? dto.EstimatedDate;
+        if (laborDate == null || laborDate == default)
+            return BadRequest(new { field = "date", message = "La fecha es obligatoria.", code = "date.required" });
+
+        var campaignLot = await _context.CampaignLots
+            .Include(cl => cl.Campaign)
+            .FirstOrDefaultAsync(cl => cl.Id == dto.CampaignLotId);
+
+        if (campaignLot == null)
+            return BadRequest(new { field = "campaignLotId", message = "La relación campaña-lote no existe.", code = "campaignLotId.notFound" });
+
+        if (campaignLot.Campaign?.Status == "Locked")
+            return Conflict(new { field = "campaign", message = "No se pueden crear labores en una campaña bloqueada.", code = "campaign.locked" });
+
+        var lotId = campaignLot.LotId;
+
+        var validation = await ValidateLaborAsync(dto with { LotId = lotId, CampaignLotId = dto.CampaignLotId });
         if (validation.Error != null)
         {
             return BadRequest(validation.Error);
@@ -108,7 +105,7 @@ public class LaborsController : ControllerBase
             Id = Guid.NewGuid(),
             WorkOrderId = (dto.WorkOrderId == Guid.Empty) ? null : dto.WorkOrderId,
             LotId = lotId,
-            CampaignLotId = campaignLotId,
+            CampaignLotId = dto.CampaignLotId,
             ErpActivityId = dto.ErpActivityId,
             LaborTypeId = dto.LaborTypeId,
             ContactId = dto.ContactId,
@@ -128,7 +125,8 @@ public class LaborsController : ControllerBase
             PrescriptionMapUrl = dto.PrescriptionMapUrl,
             MachineryUsedId = dto.MachineryUsedId,
             WeatherLogJson = dto.WeatherLogJson,
-            Priority = dto.Priority
+            Priority = dto.Priority,
+            IsOriginalPlan = dto.IsOriginalPlan
         };
 
         if (dto.Supplies != null)
@@ -208,10 +206,22 @@ public class LaborsController : ControllerBase
         if (labor == null)
             return NotFound();
 
+        if (labor.IsOriginalPlan && (dto.Status != "Planned" || dto.Mode != "Planned"))
+            return BadRequest("Planeamiento Original solo permite labores con Status=Planned y Mode=Planned.");
+
         if (labor.WorkOrder?.WorkOrderStatus?.IsEditable == false)
             return Conflict("La labor pertenece a una OT bloqueada.");
 
-        // Sprint 2 Validations
+        if (labor.CampaignLotId.HasValue && await IsCampaignLockedByCampaignLotAsync(labor.CampaignLotId.Value))
+            return Conflict("No se pueden modificar labores en una campaña bloqueada.");
+
+        if (dto.Hectares <= 0)
+            return BadRequest(new { field = "hectares", message = "Las hectáreas deben ser mayores a cero.", code = "hectares.invalid" });
+
+        var laborDate = dto.ExecutionDate ?? dto.EstimatedDate;
+        if (laborDate == null || laborDate == default)
+            return BadRequest(new { field = "date", message = "La fecha es obligatoria.", code = "date.required" });
+
         var validation = await ValidateLaborAsync(dto);
         if (validation.Error != null)
         {
@@ -219,17 +229,19 @@ public class LaborsController : ControllerBase
         }
 
         labor.WorkOrderId = (dto.WorkOrderId == Guid.Empty) ? null : dto.WorkOrderId;
-        labor.LotId = dto.LotId;
-        
+
         var campaignLotId = dto.CampaignLotId;
         if (campaignLotId == null || campaignLotId == Guid.Empty)
         {
-            var campaignLot = await _context.CampaignLots
-                .FirstOrDefaultAsync(cl => cl.LotId == dto.LotId);
-            if (campaignLot != null)
-                campaignLotId = campaignLot.Id;
+            return BadRequest("Debe enviar CampaignLotId porque el lote puede pertenecer a múltiples campañas.");
         }
-        
+
+        var campaignLot = await _context.CampaignLots
+            .FirstOrDefaultAsync(cl => cl.Id == campaignLotId);
+        if (campaignLot == null)
+            return BadRequest(new { field = "campaignLotId", message = "La relación campaña-lote no existe.", code = "campaignLotId.notFound" });
+
+        labor.LotId = campaignLot.LotId;
         labor.CampaignLotId = campaignLotId;
         labor.ErpActivityId = dto.ErpActivityId;
         labor.LaborTypeId = dto.LaborTypeId;
@@ -251,6 +263,7 @@ public class LaborsController : ControllerBase
         labor.MachineryUsedId = dto.MachineryUsedId;
         labor.WeatherLogJson = dto.WeatherLogJson;
         labor.Priority = dto.Priority;
+        labor.IsOriginalPlan = dto.IsOriginalPlan;
         if (dto.Supplies != null)
         {
             // 1. Remove supplies not in the DTO
@@ -429,6 +442,8 @@ public class LaborsController : ControllerBase
                 if (source == null) return (ActionResult<Guid>)NotFound();
                 if (source.Mode != LaborMode.Planned) return (ActionResult<Guid>)BadRequest("Solo se pueden ejecutar labores planeadas.");
                 if (source.Status == LaborStatus.Realized) return (ActionResult<Guid>)BadRequest("La labor ya fue realizada.");
+                if (source.CampaignLotId.HasValue && await IsCampaignLockedByCampaignLotAsync(source.CampaignLotId.Value))
+                    return (ActionResult<Guid>)Conflict("No se pueden ejecutar labores en una campaña bloqueada.");
 
                 var newLabor = new Labor
                 {
@@ -545,11 +560,13 @@ public class LaborsController : ControllerBase
     [HttpPost("{id:guid}/unpin-original-plan")]
     public async Task<IActionResult> UnpinOriginalPlan(Guid id)
     {
-        // Need to check roles. Manually check if not using [Authorize]
         if (!User.IsInRole("AdminCampaña")) return Forbid();
 
         var labor = await _context.Labors.FindAsync(id);
         if (labor == null) return NotFound();
+
+        if (labor.CampaignLotId.HasValue && await IsCampaignLockedByCampaignLotAsync(labor.CampaignLotId.Value))
+            return Conflict("No se pueden modificar labores de planeamiento original en una campaña bloqueada.");
 
         labor.IsOriginalPlan = false;
         
@@ -582,6 +599,9 @@ public class LaborsController : ControllerBase
 
         if (labor.WorkOrder?.WorkOrderStatus?.IsEditable == false)
             return Conflict("La labor pertenece a una OT bloqueada.");
+
+        if (labor.CampaignLotId.HasValue && await IsCampaignLockedByCampaignLotAsync(labor.CampaignLotId.Value))
+            return Conflict("No se pueden eliminar labores en una campaña bloqueada.");
 
         var woId = labor.WorkOrderId;
         _context.Labors.Remove(labor);
@@ -635,7 +655,8 @@ public class LaborsController : ControllerBase
         [FromQuery] bool? assigned = null,
         [FromQuery] string? status = null,
         [FromQuery] string? sortBy = null,
-        [FromQuery] bool? isOriginalPlan = null)
+        [FromQuery] bool? isOriginalPlan = null,
+        [FromQuery] Guid? campaignId = null)
     {
         var query = _context.Labors
             .AsNoTracking()
@@ -666,6 +687,11 @@ public class LaborsController : ControllerBase
             query = query.Where(l => l.IsOriginalPlan == isOriginalPlan.Value);
         }
 
+        if (campaignId.HasValue)
+        {
+            query = query.Where(l => l.CampaignLot != null && l.CampaignLot.CampaignId == campaignId.Value);
+        }
+
         query = sortBy?.ToLower() switch
         {
             "priority" => query.OrderBy(l => l.Priority).ThenBy(l => l.EstimatedDate),
@@ -693,10 +719,9 @@ public class LaborsController : ControllerBase
     }
 
     [HttpGet("validate-rotation-activity")]
-    public async Task<ActionResult<string?>> ValidateRotationActivity([FromQuery] Guid campaignLotId, [FromQuery] DateOnly date, [FromQuery] Guid activityId)
+    public async Task<ActionResult<LaborActivityValidationResult>> ValidateRotationActivity([FromQuery] Guid campaignLotId, [FromQuery] DateOnly date, [FromQuery] Guid activityId)
     {
-        var result = await _validationService.ValidateLaborActivityMatchesRotationAsync(campaignLotId, date, activityId);
-        Console.WriteLine($"[DEBUG] Validation Result for {campaignLotId}: '{result}'");
+        var result = await _validationService.ValidateLaborActivityAsync(campaignLotId, date, activityId);
         return Ok(result);
     }
 
@@ -706,9 +731,11 @@ public class LaborsController : ControllerBase
         if (request.StrategyId == Guid.Empty || request.CampaignLotIds.Count == 0)
             return BadRequest("Estrategia y lotes son obligatorios.");
 
+        if (request.IsOriginalPlan && request.Status.Equals("Realized", StringComparison.OrdinalIgnoreCase))
+            return BadRequest("Planeamiento Original solo permite labores con status Planned.");
+
         var strategy = await _context.CropStrategies
             .Include(s => s.Items)
-
             .FirstOrDefaultAsync(s => s.Id == request.StrategyId);
 
         if (strategy == null) return NotFound("Estrategia no encontrada.");
@@ -718,83 +745,135 @@ public class LaborsController : ControllerBase
             .Where(cl => request.CampaignLotIds.Contains(cl.Id))
             .ToListAsync();
 
-        var status = Enum.TryParse<LaborStatus>(request.Status, out var st) ? st : LaborStatus.Planned;
-        var createdCount = 0;
-        var warnings = new List<string>();
+        if (campaignLots.Count == 0)
+            return BadRequest("No se encontraron lotes de campaña válidos.");
 
+        var lockedCampaignNames = await _context.Campaigns
+            .AsNoTracking()
+            .Where(c => c.Status == "Locked" && campaignLots.Select(cl => cl.CampaignId).Contains(c.Id))
+            .Select(c => c.Name)
+            .ToListAsync();
+        if (lockedCampaignNames.Count > 0)
+            return Conflict($"No se pueden crear labores en campañas bloqueadas: {string.Join(", ", lockedCampaignNames)}");
+
+        var status = request.IsOriginalPlan
+            ? LaborStatus.Planned
+            : (Enum.TryParse<LaborStatus>(request.Status, out var st) ? st : LaborStatus.Planned);
+
+        var warnings = new List<string>();
+        var errors = new List<string>();
+        var strategyErpActivityId = strategy.ErpActivityId;
+
+        // Pre-validation: check all labors before inserting any
         foreach (var lot in campaignLots)
         {
             foreach (var sItem in strategy.Items.OrderBy(i => i.DayOffset))
             {
-                // Find override if any
                 var ovr = request.LaborsOverride?.FirstOrDefault(o => o.CampaignLotId == lot.Id && o.StrategyItemId == sItem.Id);
-
                 var executionDate = (ovr != null) ? ovr.Date : request.BaseDate.AddDays(sItem.DayOffset);
-                var hectares = (ovr != null) ? ovr.Hectares : lot.ProductiveArea;
-                var laborTypeId = (ovr != null) ? ovr.LaborTypeId : sItem.LaborTypeId;
-                var contactId = (ovr != null) ? ovr.ContactId : null;
-                var isExternal = (ovr != null) ? ovr.IsExternalBilling : false;
 
-                // Validate activity match
-                if (sItem.ErpActivityId.HasValue)
+                if (strategyErpActivityId.HasValue)
                 {
-                    var warning = await _validationService.ValidateLaborActivityMatchesRotationAsync(lot.Id, DateOnly.FromDateTime(executionDate), sItem.ErpActivityId.Value);
-                    if (warning != null)
+                    var result = await _validationService.ValidateLaborActivityAsync(
+                        lot.Id, DateOnly.FromDateTime(executionDate), strategyErpActivityId.Value);
+                    if (result.Severity == ValidationSeverity.Error)
                     {
-                        warnings.Add($"Lote {lot.Lot.Name}: {warning}");
+                        errors.Add($"Lote {lot.Lot?.Name}: {result.Message}");
+                    }
+                    else if (result.Severity == ValidationSeverity.Warning && result.Message != null)
+                    {
+                        warnings.Add($"Lote {lot.Lot?.Name}: {result.Message}");
                     }
                 }
-
-                var labor = new Labor
-                {
-                    Id = Guid.NewGuid(),
-                    LotId = lot.LotId,
-                    CampaignLotId = lot.Id,
-                    LaborTypeId = laborTypeId,
-                    Status = status,
-                    Mode = status == LaborStatus.Realized ? LaborMode.Realized : LaborMode.Planned,
-                    ExecutionDate = executionDate,
-                    EstimatedDate = executionDate,
-                    Hectares = hectares,
-                    ContactId = contactId,
-                    IsExternalBilling = isExternal,
-                    SourceStrategyId = strategy.Id,
-                    IsOriginalPlan = request.IsOriginalPlan,
-                    CreatedAt = DateTime.UtcNow,
-                    Notes = $"Generada desde estrategia: {strategy.Name}{(request.IsOriginalPlan ? " [PLANEAMIENTO ORIGINAL]" : "")}"
-                };
-
-                if (!string.IsNullOrEmpty(sItem.DefaultSuppliesJson))
-                {
-                    var defaults = System.Text.Json.JsonSerializer.Deserialize(sItem.DefaultSuppliesJson, AppJsonSerializerContext.Default.ListStrategySupplyDefault);
-                    if (defaults != null)
-                    {
-                        foreach (var ds in defaults.Where(s => s.SupplyId != Guid.Empty))
-                        {
-                            labor.Supplies.Add(new LaborSupply
-                            {
-                                Id = Guid.NewGuid(),
-                                LaborId = labor.Id,
-                                SupplyId = ds.SupplyId,
-                                PlannedDose = ds.Dose,
-                                PlannedHectares = labor.Hectares,
-                                PlannedTotal = ds.Dose * labor.Hectares,
-                                UnitOfMeasure = ds.DoseUnit,
-                                RealDose = status == LaborStatus.Realized ? ds.Dose : null,
-                                RealHectares = status == LaborStatus.Realized ? labor.Hectares : null,
-                                RealTotal = status == LaborStatus.Realized ? ds.Dose * labor.Hectares : null
-                            });
-                        }
-                    }
-                }
-
-                _context.Labors.Add(labor);
-                createdCount++;
             }
         }
 
-        await _context.SaveChangesAsync();
-        return Ok(new { Created = createdCount, Warnings = warnings });
+        if (errors.Any())
+        {
+            return BadRequest(new { Errors = errors, Warnings = warnings });
+        }
+
+        var createdIds = new List<Guid>();
+        var execStrategy = _context.Database.CreateExecutionStrategy();
+
+        return await execStrategy.ExecuteAsync(async () =>
+        {
+            using var transaction = await _context.Database.BeginTransactionAsync();
+            try
+            {
+                foreach (var lot in campaignLots)
+                {
+                    foreach (var sItem in strategy.Items.OrderBy(i => i.DayOffset))
+                    {
+                        var ovr = request.LaborsOverride?.FirstOrDefault(o => o.CampaignLotId == lot.Id && o.StrategyItemId == sItem.Id);
+
+                        var executionDate = (ovr != null) ? ovr.Date : request.BaseDate.AddDays(sItem.DayOffset);
+                        var hectares = (ovr != null && ovr.Hectares > 0) ? ovr.Hectares : (lot.ProductiveArea > 0 ? lot.ProductiveArea : (lot.Lot?.CadastralArea ?? 0));
+                        var laborTypeId = (ovr != null) ? ovr.LaborTypeId : sItem.LaborTypeId;
+                        var contactId = (ovr != null) ? ovr.ContactId : null;
+                        var isExternal = (ovr != null) ? ovr.IsExternalBilling : false;
+
+                        var labor = new Labor
+                        {
+                            Id = Guid.NewGuid(),
+                            LotId = lot.LotId,
+                            CampaignLotId = lot.Id,
+                            LaborTypeId = laborTypeId,
+                            ErpActivityId = strategy.ErpActivityId,
+                            Status = status,
+                            Mode = status == LaborStatus.Realized ? LaborMode.Realized : LaborMode.Planned,
+                            ExecutionDate = executionDate,
+                            EstimatedDate = executionDate,
+                            Hectares = hectares,
+                            ContactId = contactId,
+                            IsExternalBilling = isExternal,
+                            SourceStrategyId = strategy.Id,
+                            IsOriginalPlan = request.IsOriginalPlan,
+                            WorkOrderId = request.WorkOrderId,
+                            CreatedAt = DateTime.UtcNow,
+                            Notes = $"Generada desde estrategia: {strategy.Name}{(request.IsOriginalPlan ? " [PLANEAMIENTO ORIGINAL]" : "")}"
+                        };
+
+                        if (!string.IsNullOrEmpty(sItem.DefaultSuppliesJson))
+                        {
+                            var defaults = System.Text.Json.JsonSerializer.Deserialize(sItem.DefaultSuppliesJson, AppJsonSerializerContext.Default.ListStrategySupplyDefault);
+                            if (defaults != null)
+                            {
+                                foreach (var ds in defaults.Where(s => s.SupplyId != Guid.Empty))
+                                {
+                                    labor.Supplies.Add(new LaborSupply
+                                    {
+                                        Id = Guid.NewGuid(),
+                                        LaborId = labor.Id,
+                                        SupplyId = ds.SupplyId,
+                                        PlannedDose = ds.Dose,
+                                        PlannedHectares = labor.Hectares,
+                                        PlannedTotal = ds.Dose * labor.Hectares,
+                                        UnitOfMeasure = ds.DoseUnit,
+                                        RealDose = status == LaborStatus.Realized ? ds.Dose : null,
+                                        RealHectares = status == LaborStatus.Realized ? labor.Hectares : null,
+                                        RealTotal = status == LaborStatus.Realized ? ds.Dose * labor.Hectares : null
+                                    });
+                                }
+                            }
+                        }
+
+                        _context.Labors.Add(labor);
+                        createdIds.Add(labor.Id);
+                    }
+                }
+
+                await _context.SaveChangesAsync();
+                await transaction.CommitAsync();
+
+                return Ok(new { Created = createdIds.Count, Warnings = warnings, Errors = new List<string>(), Ids = createdIds });
+            }
+            catch (Exception)
+            {
+                await transaction.RollbackAsync();
+                throw;
+            }
+        });
     }
 
     [HttpPatch("assign-bulk")]
@@ -802,6 +881,9 @@ public class LaborsController : ControllerBase
     {
         if (request.LaborIds == null || request.LaborIds.Count == 0)
             return BadRequest("Debe seleccionar al menos una labor.");
+
+        if (await IsCampaignLockedByWorkOrderAsync(request.WorkOrderId))
+            return Conflict("No se pueden asignar labores a una OT de una campaña bloqueada.");
 
         var updated = await _context.Labors
             .Where(l => request.LaborIds.Contains(l.Id) && l.WorkOrderId == null)
@@ -829,10 +911,31 @@ public class LaborsController : ControllerBase
         var labor = await _context.Labors.FindAsync(id);
         if (labor == null) return NotFound();
 
+        if (labor.CampaignLotId.HasValue && await IsCampaignLockedByCampaignLotAsync(labor.CampaignLotId.Value))
+            return Conflict("No se pueden desasignar labores de una campaña bloqueada.");
+
         labor.WorkOrderId = null;
         labor.Status = LaborStatus.Pending;
         await _context.SaveChangesAsync();
         return NoContent();
+    }
+
+    private async Task<bool> IsCampaignLockedByCampaignLotAsync(Guid campaignLotId)
+    {
+        var campaignLot = await _context.CampaignLots
+            .AsNoTracking()
+            .Include(cl => cl.Campaign)
+            .FirstOrDefaultAsync(cl => cl.Id == campaignLotId);
+        return campaignLot?.Campaign?.Status == "Locked";
+    }
+
+    private async Task<bool> IsCampaignLockedByWorkOrderAsync(Guid workOrderId)
+    {
+        var wo = await _context.WorkOrders
+            .AsNoTracking()
+            .Include(w => w.Campaign)
+            .FirstOrDefaultAsync(w => w.Id == workOrderId);
+        return wo?.Campaign?.Status == "Locked";
     }
 
     private async Task<(string? Error, List<string> Warnings)> ValidateLaborAsync(LaborDto dto)
@@ -896,28 +999,32 @@ public class LaborsController : ControllerBase
             }
         }
 
-        // 1.3 Validation of Dates
+        // 1.3 Validation of Dates — no longer blocks, just warning
         if (dto.CampaignLotId.HasValue && dto.CampaignLotId != Guid.Empty)
         {
             var dateError = await _validationService.ValidateLaborDatesInRotationAsync(dto.CampaignLotId.Value, dto.EstimatedDate, dto.ExecutionDate);
             if (dateError != null)
             {
-                return (dateError, warnings);
+                warnings.Add(dateError);
             }
         }
 
-        // 1.2 Validation of Activity
+        // 1.2 Validation of Activity against rotation
         if (dto.CampaignLotId.HasValue && dto.CampaignLotId != Guid.Empty && dto.ErpActivityId.HasValue)
         {
             var date = dto.ExecutionDate ?? dto.EstimatedDate ?? DateTime.Today;
-            var activityWarning = await _validationService.ValidateLaborActivityMatchesRotationAsync(
+            var activityResult = await _validationService.ValidateLaborActivityAsync(
                 dto.CampaignLotId.Value, 
                 DateOnly.FromDateTime(date), 
                 dto.ErpActivityId.Value);
             
-            if (activityWarning != null)
+            if (activityResult.Severity == ValidationSeverity.Error)
             {
-                warnings.Add(activityWarning);
+                return (activityResult.Message, warnings);
+            }
+            if (activityResult.Severity == ValidationSeverity.Warning && activityResult.Message != null)
+            {
+                warnings.Add(activityResult.Message);
             }
         }
 

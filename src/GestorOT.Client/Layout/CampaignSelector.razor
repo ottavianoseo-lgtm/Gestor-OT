@@ -69,18 +69,36 @@
                 @foreach (var campaign in _campaigns.OrderByDescending(c => c.Name))
                 {
                     var isSelected = campaign.Id == CampaignState.CurrentCampaign?.Id;
-                    <div class="campaign-item @(isSelected ? "campaign-item-selected" : "")" @onclick="() => SelectCampaign(campaign)">
+                    var isLocked = campaign.Status == CampaignStatus.Locked;
+                    var statusLabel = campaign.Status switch
+                    {
+                        CampaignStatus.Active => "Activa",
+                        CampaignStatus.Locked => "Bloqueada",
+                        _ => "Inactiva"
+                    };
+                    var statusColor = campaign.Status switch
+                    {
+                        CampaignStatus.Active => "#2ECC71",
+                        CampaignStatus.Locked => "#95A5A6",
+                        _ => "#F1C40F"
+                    };
+                    <div class="campaign-item @(isSelected ? "campaign-item-selected" : "") @(isLocked ? "campaign-item-locked" : "")" @onclick="() => SelectCampaign(campaign)">
                         <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
-                            <div style="display: flex; align-items: center; gap: 8px;">
-                                <span>@campaign.Name</span>
-                                @if (campaign.IsActive)
+                            <div style="display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0;">
+                                <span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">@campaign.Name</span>
+                                <Tag Style="@($"background: {statusColor}20; color: {statusColor}; border: 1px solid {statusColor}40; border-radius: 8px; font-size: 10px; padding: 1px 8px;")">
+                                    @statusLabel
+                                </Tag>
+                                @if (isLocked)
                                 {
-                                    <Badge Status="@BadgeStatus.Success" />
+                                    <Tag Style="background: #E67E2220; color: #E67E22; border: 1px solid #E67E2240; border-radius: 8px; font-size: 10px; padding: 1px 8px;">
+                                        <Icon Type="lock" Theme="IconThemeType.Outline" Style="font-size: 10px; margin-right: 2px;" /> Solo lectura
+                                    </Tag>
                                 }
                             </div>
-                            @if (campaign.Id == CampaignState.CurrentCampaign?.Id)
+                            @if (isSelected)
                             {
-                                <Icon Type="check" Theme="IconThemeType.Outline" Style="color: #2ECC71; font-size: 16px;" />
+                                <Icon Type="check" Theme="IconThemeType.Outline" Style="color: #2ECC71; font-size: 16px; margin-left: 8px; flex-shrink: 0;" />
                             }
                         </div>
                     </div>
@@ -213,6 +231,10 @@
         background: rgba(46, 204, 113, 0.12);
         border-color: rgba(46, 204, 113, 0.3);
     }
+
+    .campaign-item-locked {
+        opacity: 0.85;
+    }
 </style>
 
 @code {
@@ -223,6 +245,14 @@
     protected override async Task OnInitializedAsync()
     {
         CampaignState.OnChange += StateHasChanged;
+        CampaignState.OnCampaignsChanged += HandleCampaignsChanged;
+        await LoadCampaigns();
+    }
+
+    private async void HandleCampaignsChanged()
+    {
+        _loading = true;
+        StateHasChanged();
         await LoadCampaigns();
     }
 
@@ -231,10 +261,10 @@
         try
         {
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-            var allCampaigns = await Http.GetFromJsonAsync("api/campaigns/active",
+            var allCampaigns = await Http.GetFromJsonAsync("api/campaigns/selector",
                 AppJsonSerializerContext.Default.ListCampaignSummaryDto, cts.Token);
 
-            _campaigns = allCampaigns?.Select(c => new CampaignSummaryDto(c.Id, c.Name, c.Status, c.IsActive)).ToList() ?? new();
+            _campaigns = allCampaigns?.ToList() ?? new();
 
             if (_campaigns.Count == 1 && !CampaignState.IsSelected)
             {
@@ -283,5 +313,6 @@
     public void Dispose()
     {
         CampaignState.OnChange -= StateHasChanged;
+        CampaignState.OnCampaignsChanged -= HandleCampaignsChanged;
     }
 }

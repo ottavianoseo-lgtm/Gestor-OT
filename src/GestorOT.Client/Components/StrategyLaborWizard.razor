@@ -13,51 +13,77 @@
         <div style="padding: 24px;">
             <h4 style="color: #fff; margin-bottom: 24px;">Configuración General</h4>
 
+            @if (!CampaignState.IsSelected)
+            {
+                <div style="padding: 16px; background: rgba(231,76,60,0.1); border: 1px solid rgba(231,76,60,0.3); border-radius: 8px; margin-bottom: 16px;">
+                    <span style="color: #E74C3C;">Seleccione una campaña activa para aplicar estrategias.</span>
+                </div>
+            }
+            else if (CampaignState.IsLocked)
+            {
+                <div style="padding: 16px; background: rgba(241,196,15,0.1); border: 1px solid rgba(241,196,15,0.3); border-radius: 8px; margin-bottom: 16px;">
+                    <span style="color: #F1C40F;">La campaña está bloqueada. No se pueden crear labores desde estrategias.</span>
+                </div>
+            }
+
             <Form Model="_wizardModel" Layout="@FormLayout.Vertical">
-                <AntDesign.Row Gutter="16">
-                    <AntDesign.Col Span="12">
-                        <FormItem Label="Estado de las Labores">
-                            <Select TItemValue="string" TItem="string" @bind-Value="_wizardModel.Status">
-                                <SelectOption Value="@("Planned")" Label="Planeada" />
-                                <SelectOption Value="@("Realized")" Label="Realizada" />
-                            </Select>
-                        </FormItem>
-                    </AntDesign.Col>
-                    <AntDesign.Col Span="8">
-                        <FormItem Label="Fecha Base (Inicio)">
-                            <DatePicker @bind-Value="_wizardModel.BaseDate" Style="width: 100%;" Format="dd/MM/yyyy" />
-                        </FormItem>
-                    </AntDesign.Col>
-                    <AntDesign.Col Span="4" Style="display: flex; align-items: flex-end; padding-bottom: 30px;">
-                        <Checkbox @bind-Checked="_wizardModel.IsOriginalPlan">
-                            <span style="color: #F1C40F; font-weight: 600;">Es Base</span>
-                        </Checkbox>
-                    </AntDesign.Col>
-                </AntDesign.Row>
+                @if (!ForceOriginalPlan)
+                {
+                    <AntDesign.Row Gutter="16">
+                        <AntDesign.Col Span="16">
+                            <FormItem Label="Estado de las Labores">
+                                <Select TItemValue="string" TItem="string" @bind-Value="_wizardModel.Status">
+                                    <SelectOption Value="@("Planned")" Label="Planeada" />
+                                    <SelectOption Value="@("Realized")" Label="Realizada" />
+                                </Select>
+                            </FormItem>
+                        </AntDesign.Col>
+                        <AntDesign.Col Span="8" Style="display: flex; align-items: flex-end; padding-bottom: 30px;">
+                            <Checkbox @bind-Checked="_wizardModel.IsOriginalPlan">
+                                <span style="color: #F1C40F; font-weight: 600;">Es Base</span>
+                            </Checkbox>
+                        </AntDesign.Col>
+                    </AntDesign.Row>
+                }
 
                 <FormItem Label="Estrategia de Cultivo">
                     <Select TItem="CropStrategyDto" TItemValue="Guid" DataSource="_strategies"
                             @bind-Value="_wizardModel.StrategyId"
                             LabelName="@nameof(CropStrategyDto.Name)" ValueName="@nameof(CropStrategyDto.Id)"
                             Placeholder="Seleccionar estrategia..." Style="width: 100%;"
+                            Disabled="@(_strategyPreset)"
                             OnSelectedItemChanged="OnStrategyChanged" />
                 </FormItem>
 
                 @if (_selectedStrategy != null)
                 {
                     <div style="background: rgba(46,204,113,0.06); border: 1px solid rgba(46,204,113,0.15); border-radius: 8px; padding: 12px; margin-bottom: 16px;">
-                        <div style="font-size: 11px; color: rgba(255,255,255,0.5); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;">Labores de la estrategia</div>
-                        @foreach (var item in _selectedStrategy.Items.OrderBy(i => i.DayOffset))
-                        {
-                            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
-                                <div style="width: 8px; height: 8px; border-radius: 50%; background: #2ECC71; flex-shrink: 0;"></div>
-                                <span style="color: #fff; font-size: 13px;">@(item.LaborTypeName ?? "Labor")</span>
-                                @if (item.DayOffset > 0)
-                                {
-                                    <span style="color: rgba(255,255,255,0.4); font-size: 11px;">+@item.DayOffset días</span>
-                                }
+                        <div style="display: flex; gap: 16px; align-items: center;">
+                            <div>
+                                <span style="font-size: 10px; color: rgba(255,255,255,0.4); text-transform: uppercase;">Actividad</span>
+                                <br />
+                                <span style="color: #fff; font-weight: 600;">@(_selectedStrategy.ErpActivityName ?? "—")</span>
                             </div>
-                        }
+                            <div style="width: 1px; height: 28px; background: rgba(255,255,255,0.1);"></div>
+                            <div>
+                                <span style="font-size: 10px; color: rgba(255,255,255,0.4); text-transform: uppercase;">Labores</span>
+                                <br />
+                                <span style="color: #fff; font-weight: 600;">@(_selectedStrategy.Items?.Count ?? 0)</span>
+                            </div>
+                        </div>
+                        <div style="margin-top: 8px;">
+                            @foreach (var item in _selectedStrategy.Items!.OrderBy(i => i.DayOffset))
+                            {
+                                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+                                    <div style="width: 8px; height: 8px; border-radius: 50%; background: #2ECC71; flex-shrink: 0;"></div>
+                                    <span style="color: #fff; font-size: 13px;">@(item.LaborTypeName ?? "Labor")</span>
+                                    @if (item.DayOffset > 0)
+                                    {
+                                        <span style="color: rgba(255,255,255,0.4); font-size: 11px;">+@item.DayOffset días</span>
+                                    }
+                                </div>
+                            }
+                        </div>
                     </div>
                 }
 
@@ -73,7 +99,7 @@
                                 <Checkbox Checked="@_wizardModel.CampaignLotIds.Contains(lot.Id)"
                                           CheckedChanged="v => ToggleLot(lot.Id, v)">
                                     <span style="color: #fff;">@lot.LotName</span>
-                                    <span style="color: rgba(255,255,255,0.4); font-size: 11px; margin-left: 4px;">(@lot.FieldName — @lot.ProductiveArea.ToString("N1") ha)</span>
+                                    <span style="color: rgba(255,255,255,0.4); font-size: 11px; margin-left: 4px;">(@lot.FieldName — @lot.ProductiveArea.ToString("N2") ha)</span>
                                 </Checkbox>
                             </div>
                         }
@@ -82,10 +108,10 @@
 
                 <div style="margin-top: 24px; display: flex; justify-content: flex-end; gap: 12px; align-items: center;">
                     <Checkbox @bind-Checked="_wizardModel.ForceDateSeparation">
-                        <span style="color: rgba(255,255,255,0.7); font-size: 13px;">Forzar separación según estrategia</span>
+                        <span style="color: rgba(255,255,255,0.7); font-size: 13px;">Mantener separación de fechas según estrategia</span>
                     </Checkbox>
                     <Button Type="@ButtonType.Primary" OnClick="GoToPreview"
-                            Disabled="@(_wizardModel.StrategyId == Guid.Empty || _wizardModel.CampaignLotIds.Count == 0)"
+                            Disabled="@(_wizardModel.StrategyId == Guid.Empty || _wizardModel.CampaignLotIds.Count == 0 || CampaignState.IsLocked)"
                             Loading="_loadingPreview"
                             Style="background: #2ECC71; border-color: #2ECC71; height: 40px; padding: 0 32px; border-radius: 8px;">
                         Siguiente: Vista Previa
@@ -96,44 +122,61 @@
     }
     else if (_step == 2)
     {
+        var hasErrors = _previews.Any(p => p.HasError);
+
         <div style="flex: 1; overflow: hidden; display: flex; flex-direction: column;">
-            <div style="padding: 16px 24px; border-bottom: 1px solid rgba(255,255,255,0.08); display: flex; justify-content: space-between; align-items: center;">
-                <div>
-                    <h4 style="color: #fff; margin: 0;">Vista Previa de Labores</h4>
+            <div style="padding: 16px 24px; border-bottom: 1px solid rgba(255,255,255,0.08);">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px;">
+                    <div>
+                        <h4 style="color: #fff; margin: 0;">@(_selectedStrategy?.Name ?? "Estrategia")</h4>
+                        <div style="display: flex; gap: 16px; margin-top: 4px;">
+                            <span style="color: rgba(255,255,255,0.4); font-size: 12px;">
+                                <Icon Type="experiment" /> @(_selectedStrategy?.ErpActivityName ?? "—")
+                            </span>
+                            <span style="color: rgba(255,255,255,0.4); font-size: 12px;">
+                                <Icon Type="calendar" /> @CampaignState.CurrentCampaign?.Name
+                            </span>
+                            <span style="color: rgba(255,255,255,0.4); font-size: 12px;">
+                                @_wizardModel.CampaignLotIds.Count lotes
+                            </span>
+                        </div>
+                    </div>
                     <span style="color: rgba(255,255,255,0.4); font-size: 12px;">
-                        Se crearán @(_previews.Count) labores en total.
+                        @_previews.Count labores en total
+                        @if (hasErrors)
+                        {
+                            <span style="color: #E74C3C; margin-left: 8px;">
+                                <Icon Type="close-circle" /> @_previews.Count(p => p.HasError) con errores
+                            </span>
+                        }
                         @if (_previews.Any(p => p.RotationWarning != null))
                         {
                             <span style="color: #F1C40F; margin-left: 8px;">
-                                <Icon Type="warning" /> @_previews.Count(p => p.RotationWarning != null) con advertencias de rotación
+                                <Icon Type="warning" /> @_previews.Count(p => p.RotationWarning != null) advertencias
                             </span>
                         }
                     </span>
-                </div>
-                <div style="display: flex; align-items: center; gap: 12px;">
-                    <Button OnClick="() => _step = 1">← Atrás</Button>
-                    <Button Type="@ButtonType.Primary" OnClick="ConfirmCreate" Loading="_saving"
-                            Style="background: #2ECC71; border-color: #2ECC71; border-radius: 8px;">
-                        Crear @_previews.Count Labores
-                    </Button>
                 </div>
             </div>
 
             <div style="flex: 1; overflow-y: auto; padding: 16px 24px;">
                 @foreach (var preview in _previews)
                 {
-                    <div style="background: rgba(255,255,255,0.03); border: 1px solid @(preview.RotationWarning != null ? "rgba(241,196,15,0.3)" : "rgba(255,255,255,0.07)"); border-radius: 10px; padding: 14px 16px; margin-bottom: 10px;">
-                        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr auto; gap: 12px; align-items: center;">
+                    var borderColor = preview.HasError ? "rgba(231,76,60,0.4)" : (preview.RotationWarning != null ? "rgba(241,196,15,0.3)" : "rgba(255,255,255,0.07)");
+                    var bg = preview.HasError ? "rgba(231,76,60,0.04)" : "rgba(255,255,255,0.03)";
+
+                    <div style="background: @bg; border: 1px solid @borderColor; border-radius: 10px; padding: 14px 16px; margin-bottom: 10px;">
+                        <div style="display: grid; grid-template-columns: 1.2fr 1fr 0.8fr 1fr 1fr 1fr; gap: 12px; align-items: center;">
                             <div>
-                                <div style="font-size: 10px; color: rgba(255,255,255,0.4); text-transform: uppercase; margin-bottom: 2px;">Lote</div>
+                                <div style="font-size: 10px; color: rgba(255,255,255,0.4); text-transform: uppercase; margin-bottom: 2px;">Lote / Labor</div>
                                 <div style="color: #fff; font-weight: 600; font-size: 13px;">@preview.LotName</div>
-                                <div style="color: rgba(255,255,255,0.4); font-size: 11px;">@preview.StrategyItemName</div>
+                                <div style="color: rgba(255,255,255,0.4); font-size: 11px;">@preview.FieldName</div>
+                                <div style="color: #2ECC71; font-size: 11px; margin-top: 2px;">@(preview.StrategyItemName ?? "Labor")</div>
                             </div>
                             <div>
                                 <div style="font-size: 10px; color: rgba(255,255,255,0.4); text-transform: uppercase; margin-bottom: 2px;">Fecha</div>
                                 <DatePicker @bind-Value="preview.Date" Format="dd/MM/yyyy"
-                                            Size="InputSize.Small" Style="width: 130px;"
-                                            Disabled="@_wizardModel.ForceDateSeparation" />
+                                            Size="InputSize.Small" Style="width: 130px;" />
                             </div>
                             <div>
                                 <div style="font-size: 10px; color: rgba(255,255,255,0.4); text-transform: uppercase; margin-bottom: 2px;">Ha</div>
@@ -147,8 +190,34 @@
                                         LabelName="@nameof(ContactDto.FullName)" ValueName="@nameof(ContactDto.Id)"
                                         Placeholder="Sin asignar" Size="InputSize.Small" Style="width: 150px;" AllowClear />
                             </div>
+                            <div>
+                                <div style="font-size: 10px; color: rgba(255,255,255,0.4); text-transform: uppercase; margin-bottom: 2px;">Facturación</div>
+                                <RadioGroup @bind-Value="preview.IsExternalBilling" Size="@InputSize.Small" TValue="bool">
+                                    <Radio Value="@false">Propio</Radio>
+                                    <Radio Value="@true">Contratista</Radio>
+                                </RadioGroup>
+                            </div>
+                            <div>
+                                @if (preview.Supplies != null && preview.Supplies.Count > 0)
+                                {
+                                    <div style="font-size: 10px; color: rgba(255,255,255,0.4); text-transform: uppercase; margin-bottom: 2px;">Insumos</div>
+                                    @foreach (var s in preview.Supplies)
+                                    {
+                                        <Tag Style="background: rgba(52,152,219,0.15); color: #3498DB; border: 1px solid rgba(52,152,219,0.3); border-radius: 6px; font-size: 10px; margin: 1px;">
+                                            @s.SupplyName @s.Dose.ToString("N2") @s.DoseUnit
+                                        </Tag>
+                                    }
+                                }
+                            </div>
                         </div>
-                        @if (preview.RotationWarning != null)
+                        @if (preview.HasError && preview.RotationWarning != null)
+                        {
+                            <div style="margin-top: 8px; background: rgba(231,76,60,0.08); border: 1px solid rgba(231,76,60,0.2); border-radius: 6px; padding: 6px 10px; font-size: 12px; color: #E74C3C; display: flex; align-items: center; gap: 6px;">
+                                <Icon Type="close-circle" />
+                                @preview.RotationWarning
+                            </div>
+                        }
+                        else if (preview.RotationWarning != null)
                         {
                             <div style="margin-top: 8px; background: rgba(241,196,15,0.08); border: 1px solid rgba(241,196,15,0.2); border-radius: 6px; padding: 6px 10px; font-size: 12px; color: #F1C40F; display: flex; align-items: center; gap: 6px;">
                                 <Icon Type="warning" />
@@ -158,16 +227,36 @@
                     </div>
                 }
             </div>
+
+            <div style="padding: 16px 24px; border-top: 1px solid rgba(255,255,255,0.08); display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                    <Checkbox @bind-Checked="_wizardModel.ForceDateSeparation">
+                        <span style="color: rgba(255,255,255,0.7); font-size: 13px;">Mantener separación de fechas</span>
+                    </Checkbox>
+                </div>
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <Button OnClick="() => _step = 1">← Atrás</Button>
+                    <Button Type="@ButtonType.Primary" OnClick="ConfirmCreate" Loading="_saving"
+                            Disabled="@hasErrors"
+                            Style="background: #2ECC71; border-color: #2ECC71; border-radius: 8px;">
+                        Crear @_previews.Count Labores
+                    </Button>
+                </div>
+            </div>
         </div>
     }
 </div>
 
 @code {
     [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public bool ForceOriginalPlan { get; set; }
+    [Parameter] public Guid? InitialStrategyId { get; set; }
+    [Parameter] public Guid? WorkOrderId { get; set; }
 
     private int _step = 1;
     private bool _loadingPreview;
     private bool _saving;
+    private bool _strategyPreset;
 
     private List<CropStrategyDto> _strategies = new();
     private List<CampaignLotDto> _campaignLots = new();
@@ -182,7 +271,6 @@
         public Guid StrategyId { get; set; }
         public List<Guid> CampaignLotIds { get; set; } = new();
         public string Status { get; set; } = "Planned";
-        public DateTime BaseDate { get; set; } = DateTime.Today;
         public bool ForceDateSeparation { get; set; } = true;
         public bool IsOriginalPlan { get; set; }
     }
@@ -191,6 +279,7 @@
     {
         public Guid CampaignLotId { get; set; }
         public string LotName { get; set; } = "";
+        public string FieldName { get; set; } = "";
         public Guid StrategyItemId { get; set; }
         public string StrategyItemName { get; set; } = "";
         public Guid LaborTypeId { get; set; }
@@ -199,10 +288,17 @@
         public Guid? ContactId { get; set; }
         public bool IsExternalBilling { get; set; }
         public string? RotationWarning { get; set; }
+        public bool HasError { get; set; }
+        public List<StrategySupplyDefault> Supplies { get; set; } = new();
     }
 
     protected override async Task OnInitializedAsync()
     {
+        _strategyPreset = InitialStrategyId.HasValue;
+        if (_strategyPreset)
+        {
+            _wizardModel.StrategyId = InitialStrategyId!.Value;
+        }
         await LoadData();
     }
 
@@ -226,6 +322,11 @@
             _strategies = await strategiesTask ?? new();
             _contacts = await contactsTask ?? new();
             if (lotsTask != null) _campaignLots = await lotsTask ?? new();
+
+            if (_strategyPreset)
+            {
+                _selectedStrategy = _strategies.FirstOrDefault(s => s.Id == _wizardModel.StrategyId);
+            }
         }
         catch (Exception ex)
         {
@@ -261,6 +362,8 @@
 
         try
         {
+            var baseDate = DateTime.Today;
+
             foreach (var lotId in _wizardModel.CampaignLotIds)
             {
                 var lot = _campaignLots.FirstOrDefault(cl => cl.Id == lotId);
@@ -268,34 +371,48 @@
 
                 foreach (var item in strategy.Items.OrderBy(i => i.DayOffset))
                 {
-                    var date = _wizardModel.BaseDate.AddDays(item.DayOffset);
+                    var date = baseDate.AddDays(item.DayOffset);
+
+                    var supplies = item.DefaultSupplies ?? new();
+
                     var preview = new LaborPreview
                     {
                         CampaignLotId = lot.Id,
                         LotName = lot.LotName,
+                        FieldName = lot.FieldName ?? "",
                         StrategyItemId = item.Id,
                         StrategyItemName = item.LaborTypeName ?? "Labor",
                         LaborTypeId = item.LaborTypeId,
                         Hectares = lot.ProductiveArea > 0 ? lot.ProductiveArea : lot.CadastralArea,
                         Date = date,
-                        IsExternalBilling = false
+                        IsExternalBilling = false,
+                        Supplies = supplies
                     };
 
-                    // Validate rotation for this lot + date
-                    var rotationWarning = await CheckRotationWarning(lot.Id, date);
-                    string? activityWarning = null;
-                    Console.WriteLine($"[DEBUG] Validating item {item.Id}, Activity: {item.ErpActivityId}");
-                    if (item.ErpActivityId.HasValue)
+                    var activityWarning = await CheckActivityWarning(
+                        lot.Id, date, strategy.ErpActivityId);
+
+                    if (!string.IsNullOrEmpty(activityWarning))
                     {
-                        activityWarning = await CheckActivityWarning(lot.Id, date, item.ErpActivityId.Value);
+                        preview.RotationWarning = activityWarning;
+
+                        var response = await Http.GetAsync(
+                            $"api/labors/validate-rotation-activity?campaignLotId={lot.Id}&date={DateOnly.FromDateTime(date):yyyy-MM-dd}&activityId={strategy.ErpActivityId}");
+
+                        if (response.IsSuccessStatusCode)
+                        {
+                            var content = await response.Content.ReadAsStringAsync();
+                            if (!string.IsNullOrWhiteSpace(content) && content != "null")
+                            {
+                                try
+                                {
+                                    var result = JsonSerializer.Deserialize<ValidationResultJson>(content);
+                                    preview.HasError = result?.Severity == "Error";
+                                }
+                                catch { }
+                            }
+                        }
                     }
-                    
-                    // Combine warnings if both exist
-                    var combinedWarning = (rotationWarning != null && activityWarning != null) 
-                        ? $"{rotationWarning} {activityWarning}" 
-                        : (rotationWarning ?? activityWarning);
-                    
-                    preview.RotationWarning = combinedWarning;
 
                     _previews.Add(preview);
                 }
@@ -315,21 +432,20 @@
 
     private async Task<string?> CheckActivityWarning(Guid campaignLotId, DateTime date, Guid activityId)
     {
+        if (activityId == Guid.Empty) return null;
         try
         {
             var dateOnly = DateOnly.FromDateTime(date);
             var response = await Http.GetAsync(
                 $"api/labors/validate-rotation-activity?campaignLotId={campaignLotId}&date={dateOnly:yyyy-MM-dd}&activityId={activityId}");
-            
+
             if (response.IsSuccessStatusCode)
             {
                 var content = await response.Content.ReadAsStringAsync();
-                // Si la respuesta es "null" (serializada) o vacía, no hay warning.
                 if (string.IsNullOrWhiteSpace(content) || content == "null")
                 {
                     return null;
                 }
-                // Si es un string con comillas (JSON string), las removemos
                 return content.Trim('"');
             }
         }
@@ -340,50 +456,24 @@
         return null;
     }
 
-    private async Task<string?> CheckRotationWarning(Guid campaignLotId, DateTime date)
-    {
-        if (CampaignState.CurrentCampaign == null) return null;
-        try
-        {
-            var dateOnly = DateOnly.FromDateTime(date);
-            var response = await Http.GetAsync(
-                $"api/campaigns/{CampaignState.CurrentCampaign.Id}/lots/{campaignLotId}/rotations/active?date={dateOnly:yyyy-MM-dd}");
-
-            Console.WriteLine($"[DEBUG] Rotation API Response for Lot {campaignLotId}: {response.StatusCode}");
-
-            if (response.IsSuccessStatusCode)
-            {
-                // Has an active rotation — no issue
-                return null;
-            }
-            else if (response.StatusCode == System.Net.HttpStatusCode.NotFound ||
-                     response.StatusCode == System.Net.HttpStatusCode.NoContent)
-            {
-                return $"Sin rotación activa para la fecha {date:dd/MM/yyyy}. La labor se creará igualmente.";
-            }
-            else 
-            {
-                Console.WriteLine($"[DEBUG] Rotation API Error: {response.StatusCode}");
-            }
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"[DEBUG] Rotation API Exception: {ex.Message}");
-            // Silently ignore rotation check failures
-        }
-        return null;
-    }
-
     private async Task ConfirmCreate()
     {
+        if (CampaignState.IsLocked)
+        {
+            Message.Warning("La campaña está bloqueada. No se pueden crear labores.");
+            return;
+        }
+
         _saving = true;
         try
         {
+            var baseDate = _previews.FirstOrDefault()?.Date ?? DateTime.Today;
+
             var request = new BulkFromStrategyRequest(
                 _wizardModel.StrategyId,
                 _wizardModel.CampaignLotIds,
-                _wizardModel.Status,
-                _wizardModel.BaseDate,
+                ForceOriginalPlan ? "Planned" : _wizardModel.Status,
+                baseDate,
                 _wizardModel.ForceDateSeparation,
                 _previews.Select(p => new LaborOverrideDto(
                     p.CampaignLotId,
@@ -394,7 +484,7 @@
                     p.Date ?? DateTime.Today,
                     p.IsExternalBilling
                 )).ToList(),
-                _wizardModel.IsOriginalPlan
+                ForceOriginalPlan || _wizardModel.IsOriginalPlan
             );
 
             var response = await Http.PostAsJsonAsync("api/labors/bulk-from-strategy", request);
@@ -402,12 +492,20 @@
             {
                 var result = await response.Content.ReadFromJsonAsync<JsonElement>();
                 var createdCount = result.GetProperty("created").GetInt32();
-                
+
                 if (result.TryGetProperty("warnings", out var warningsProp))
                 {
                     foreach (var warning in warningsProp.EnumerateArray())
                     {
                         Message.Warning(warning.GetString());
+                    }
+                }
+
+                if (result.TryGetProperty("errors", out var errorsProp) && errorsProp.GetArrayLength() > 0)
+                {
+                    foreach (var error in errorsProp.EnumerateArray())
+                    {
+                        Message.Error(error.GetString());
                     }
                 }
 
@@ -428,5 +526,11 @@
         {
             _saving = false;
         }
+    }
+
+    private class ValidationResultJson
+    {
+        public string? Severity { get; set; }
+        public string? Message { get; set; }
     }
 }

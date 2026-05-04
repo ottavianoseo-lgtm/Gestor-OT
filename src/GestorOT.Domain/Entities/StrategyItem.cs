@@ -10,4 +10,5 @@ public class StrategyItem : ITenantEntity
     public int DayOffset { get; set; }
     public string? DefaultSuppliesJson { get; set; }
     public CropStrategy? Strategy { get; set; }
+    public LaborType? LaborType { get; set; }
 }

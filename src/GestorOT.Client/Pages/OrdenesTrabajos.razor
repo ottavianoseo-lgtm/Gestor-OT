@@ -222,11 +222,9 @@
 
     public class WoFormModel
     {
-        public string? Name { get; set; }  // #21: Optional human-readable name
+        public string? Name { get; set; }
 
         public string? Description { get; set; }
-        
-        public Guid? FieldId { get; set; }
         
         public Guid CampaignId { get; set; }
         public Guid ContactId { get; set; }
@@ -311,23 +309,47 @@
 
     private void OpenCreateModal()
     {
+        _errorMessage = null;
+
         if (CampaignState.CurrentCampaign == null)
         {
-            Message.Warning("Debe seleccionar una campaña activa para crear una OT.");
+            _errorMessage = "Seleccione una campaña activa para crear una OT.";
+            return;
+        }
+
+        if (CampaignState.IsLocked)
+        {
+            _errorMessage = "La campaña está bloqueada. Solo consulta.";
             return;
         }
 
         _isEditing = false;
         _formModel = new WoFormModel();
-        
-        _formModel.CampaignId = CampaignState.CurrentCampaign?.Id ?? Guid.Empty;
+
+        var defaultStatus = _workOrderStatuses.FirstOrDefault(s => s.IsDefault);
+        _formModel.Status = defaultStatus?.Name ?? "Draft";
+
+        _formModel.CampaignId = CampaignState.CurrentCampaign.Id;
 
         _modalVisible = true;
     }
 
     private void OpenEditModal(WorkOrderDto wo)
     {
-        Console.WriteLine($"OpenEditModal: Status={wo.Status}, Available: {string.Join(", ", _workOrderStatuses.Select(s => s.Name))}");
+        _errorMessage = null;
+
+        if (wo.CampaignId.HasValue && CampaignState.IsLocked)
+        {
+            _errorMessage = "La campaña está bloqueada. Solo consulta.";
+            return;
+        }
+
+        if (wo.IsLocked)
+        {
+            _errorMessage = "Esta orden no permite modificaciones.";
+            return;
+        }
+
         _isEditing = true;
         _editingId = wo.Id;
         _formModel = new WoFormModel
@@ -335,7 +357,6 @@
             Name = wo.Name,
             Description = wo.Description,
             CampaignId = wo.CampaignId ?? Guid.Empty,
-            FieldId = wo.FieldId,
             ContactId = wo.ContactId ?? Guid.Empty,
             DueDate = wo.DueDate,
             Status = wo.Status,
@@ -352,8 +373,13 @@
 
     private async Task SaveWorkOrder()
     {
-        if (_saving) return; // Prevent double clicks
+        if (_saving) return;
 
+        if (!_formModel.AcceptsMultiplePeople && _formModel.ContactId == Guid.Empty)
+        {
+            Message.Warning("Debe seleccionar un responsable (Contacto) o marcar 'Mult. Pers.'");
+            return;
+        }
 
         _saving = true;
         try
@@ -363,7 +389,6 @@
                 Id = _isEditing ? _editingId : Guid.Empty,
                 Name = string.IsNullOrWhiteSpace(_formModel.Name) ? null : _formModel.Name.Trim(),
                 CampaignId = _formModel.CampaignId != Guid.Empty ? _formModel.CampaignId : null,
-                FieldId = _formModel.FieldId,
                 Description = _formModel.Description,
                 Status = _formModel.Status,
                 ContactId = _formModel.ContactId,

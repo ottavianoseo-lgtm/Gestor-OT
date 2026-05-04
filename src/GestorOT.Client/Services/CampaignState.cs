@@ -8,8 +8,11 @@ public class CampaignState
     private readonly IJSRuntime _jsRuntime;
     public CampaignSummaryDto? CurrentCampaign { get; private set; }
     public bool IsSelected => CurrentCampaign != null;
+    public bool IsLocked => CurrentCampaign?.Status == CampaignStatus.Locked;
+    public bool IsReadOnly => IsLocked;
 
     public event Action? OnChange;
+    public event Action? OnCampaignsChanged;
 
     public CampaignState(IJSRuntime jsRuntime)
     {
@@ -28,5 +31,10 @@ public class CampaignState
         CurrentCampaign = null;
         _jsRuntime.InvokeVoidAsync("localStorage.removeItem", "selected_campaign_id");
         OnChange?.Invoke();
+    }
+
+    public void NotifyCampaignsChanged()
+    {
+        OnCampaignsChanged?.Invoke();
     }
 }

@@ -163,7 +163,8 @@ public record BulkFromStrategyRequest(
     DateTime BaseDate,
     bool ForceDateSeparation,
     List<LaborOverrideDto> LaborsOverride,
-    bool IsOriginalPlan = false
+    bool IsOriginalPlan = false,
+    Guid? WorkOrderId = null
 );
 
 public record LaborOverrideDto(
