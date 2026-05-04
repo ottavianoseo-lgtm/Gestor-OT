@@ -23,6 +23,12 @@ services:
     depends_on:
       - db
     restart: always
+    networks:
+      - web_traffic
 
 volumes:
   postgres_data:
+
+networks:
+  web_traffic:
+    external: true
