@@ -8,6 +8,7 @@ builder.Services.AddScoped<CampaignState>();
 builder.Services.AddScoped<LoadingService>();
 
 builder.Services.AddScoped<DashboardState>();
+builder.Services.AddScoped<CatalogCache>();
 
 builder.Services.AddScoped<TenantHttpHandler>();
 builder.Services.AddScoped<CampaignHttpHandler>();

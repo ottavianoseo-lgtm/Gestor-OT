@@ -7,4 +7,6 @@ public class WorkOrderStatus : TenantEntity
     public bool IsEditable { get; set; } = true;
     public bool IsDefault { get; set; } = false;
     public int SortOrder { get; set; }
+    public string? AllowedTransitionsJson { get; set; }
 }
+

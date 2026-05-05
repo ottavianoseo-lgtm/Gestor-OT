@@ -30,6 +30,7 @@ public class LaborsController : ControllerBase
     {
         var labors = await _context.Labors
             .AsNoTracking()
+            .AsSplitQuery()
             .Include(l => l.Lot).ThenInclude(l => l.Field)
             .Include(l => l.WorkOrder)
             .Include(l => l.Supplies).ThenInclude(s => s.Supply)
@@ -47,6 +48,7 @@ public class LaborsController : ControllerBase
     {
         var labor = await _context.Labors
             .AsNoTracking()
+            .AsSplitQuery()
             .Include(l => l.Lot).ThenInclude(l => l.Field)
             .Include(l => l.WorkOrder)
             .Include(l => l.Supplies).ThenInclude(s => s.Supply)
@@ -656,10 +658,13 @@ public class LaborsController : ControllerBase
         [FromQuery] string? status = null,
         [FromQuery] string? sortBy = null,
         [FromQuery] bool? isOriginalPlan = null,
-        [FromQuery] Guid? campaignId = null)
+        [FromQuery] Guid? campaignId = null,
+        [FromQuery] Guid? laborTypeId = null,
+        [FromQuery] Guid? contactId = null)
     {
         var query = _context.Labors
             .AsNoTracking()
+            .AsSplitQuery()
             .Include(l => l.Lot)
                 .ThenInclude(l => l!.Field)
             .Include(l => l.Type)
@@ -692,6 +697,16 @@ public class LaborsController : ControllerBase
             query = query.Where(l => l.CampaignLot != null && l.CampaignLot.CampaignId == campaignId.Value);
         }
 
+        if (laborTypeId.HasValue && laborTypeId != Guid.Empty)
+        {
+            query = query.Where(l => l.LaborTypeId == laborTypeId.Value);
+        }
+
+        if (contactId.HasValue && contactId != Guid.Empty)
+        {
+            query = query.Where(l => l.ContactId == contactId.Value);
+        }
+
         query = sortBy?.ToLower() switch
         {
             "priority" => query.OrderBy(l => l.Priority).ThenBy(l => l.EstimatedDate),
@@ -703,10 +718,57 @@ public class LaborsController : ControllerBase
         return labors.Select(MapToDto).ToList();
     }
 
+    [HttpGet("paged")]
+    public async Task<ActionResult<PagedResult<LaborDto>>> GetLaborsPaged(
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 50,
+        [FromQuery] Guid? campaignId = null)
+    {
+        var query = _context.Labors
+            .AsNoTracking()
+            .AsSplitQuery()
+            .Include(l => l.Lot)
+                .ThenInclude(l => l!.Field)
+            .Include(l => l.Type)
+            .Include(l => l.Contact)
+            .Include(l => l.WorkOrder)
+            .Include(l => l.Supplies)
+                .ThenInclude(s => s.Supply)
+            .Include(l => l.CampaignLot)
+            .AsQueryable();
+
+        if (campaignId.HasValue)
+        {
+            query = query.Where(l => l.CampaignLot != null && l.CampaignLot.CampaignId == campaignId.Value);
+        }
+
+        var total = await query.CountAsync();
+        var items = await query
+            .OrderByDescending(l => l.CreatedAt)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync();
+
+        return new PagedResult<LaborDto>(items.Select(MapToDto).ToList(), total, page, pageSize);
+    }
+
     [HttpGet("unassigned")]
     public async Task<ActionResult<List<LaborDto>>> GetUnassignedLabors([FromQuery] string? sortBy = null)
     {
-        return await GetLabors(assigned: false, sortBy: sortBy);
+        var labors = await _context.Labors
+            .AsNoTracking()
+            .Include(l => l.Lot)
+                .ThenInclude(l => l!.Field)
+            .Include(l => l.Type)
+            .Include(l => l.Contact)
+            .Include(l => l.WorkOrder)
+            .Include(l => l.Supplies)
+                .ThenInclude(s => s.Supply)
+            .Include(l => l.CampaignLot)
+            .Where(l => l.WorkOrderId == null)
+            .OrderByDescending(l => l.CreatedAt)
+            .ToListAsync();
+        return labors.Select(MapToDto).ToList();
     }
 
     [HttpGet("unassigned/count")]
@@ -1073,6 +1135,34 @@ public class LaborsController : ControllerBase
         dto.SourceStrategyName = labor.SourceStrategy?.Name;
         dto.CampaignId = labor.CampaignLot?.CampaignId;
         return dto;
+    }
+
+    [HttpGet("export-csv")]
+    public async Task<IActionResult> ExportCsv(
+        [FromQuery] Guid? campaignId = null)
+    {
+        var query = _context.Labors
+            .AsNoTracking()
+            .Include(l => l.Lot)
+            .Include(l => l.Type)
+            .Include(l => l.Contact)
+            .Include(l => l.CampaignLot)
+            .AsQueryable();
+
+        if (campaignId.HasValue)
+            query = query.Where(l => l.CampaignLot != null && l.CampaignLot.CampaignId == campaignId.Value);
+
+        var labors = await query.OrderByDescending(l => l.CreatedAt).ToListAsync();
+        var lines = new List<string>
+        {
+            "Tipo,Lote,Campo,Estado,Ha,Responsable,FechaEstimada,Notas"
+        };
+        foreach (var l in labors)
+        {
+            lines.Add($"{l.Type?.Name},{l.Lot?.Name},{l.Lot?.Field?.Name},{l.Status},{l.Hectares},{l.Contact?.FullName},{l.EstimatedDate:yyyy-MM-dd},{l.Notes}");
+        }
+        var bytes = System.Text.Encoding.UTF8.GetBytes(string.Join("\r\n", lines));
+        return File(bytes, "text/csv", $"labores-{DateTime.Today:yyyyMMdd}.csv");
     }
 }
 

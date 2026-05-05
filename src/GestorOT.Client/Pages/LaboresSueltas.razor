@@ -23,15 +23,24 @@
     </div>
     <div style="display: flex; gap: 8px; align-items: center;">
         <Select TItemValue="string?" TItem="string" @bind-Value="_filterAssigned"
-                Placeholder="Asignación" AllowClear Style="width: 140px;" OnSelectedItemChanged="LoadData">
+                Placeholder="Asignación" AllowClear Style="width: 130px;" OnSelectedItemChanged="LoadData">
             <SelectOption TItemValue="string?" TItem="string" Value="@("assigned")" Label="Asignadas" />
             <SelectOption TItemValue="string?" TItem="string" Value="@("unassigned")" Label="Sin OT" />
         </Select>
         <Select TItemValue="string?" TItem="string" @bind-Value="_filterStatus"
-                Placeholder="Estado" AllowClear Style="width: 130px;" OnSelectedItemChanged="LoadData">
+                Placeholder="Estado" AllowClear Style="width: 120px;" OnSelectedItemChanged="LoadData">
             <SelectOption TItemValue="string?" TItem="string" Value="@("Planned")" Label="Planeadas" />
             <SelectOption TItemValue="string?" TItem="string" Value="@("Realized")" Label="Realizadas" />
+            <SelectOption TItemValue="string?" TItem="string" Value="@("AwaitingValidation")" Label="En Validación" />
         </Select>
+        <Select TItemValue="Guid?" TItem="LaborTypeDto" @bind-Value="_filterTypeId"
+                Placeholder="Tipo labor" AllowClear Style="width: 140px;" OnSelectedItemChanged="LoadData"
+                DataSource="@_laborTypes"
+                LabelName="@nameof(LaborTypeDto.Name)" ValueName="@nameof(LaborTypeDto.Id)" />
+        <Select TItemValue="Guid?" TItem="ContactDto" @bind-Value="_filterContactId"
+                Placeholder="Responsable" AllowClear Style="width: 150px;" OnSelectedItemChanged="LoadData"
+                DataSource="@_contacts"
+                LabelName="@nameof(ContactDto.FullName)" ValueName="@nameof(ContactDto.Id)" />
         <Select TItemValue="string" TItem="string" Value="@_sortBy" ValueChanged="OnSortChanged" Style="width: 160px;">
             <SelectOption TItemValue="string" TItem="string" Value="@("default")" Label="Fecha Creación" />
             <SelectOption TItemValue="string" TItem="string" Value="@("priority")" Label="Prioridad" />
@@ -340,6 +349,8 @@ else
     private bool _saving;
     private HashSet<Guid> _selectedIds = new();
     private Guid? _filterTypeId;
+    private Guid? _filterContactId;
+    private List<ContactDto> _contacts = new();
     private string? _filterAssigned;
     private string? _filterStatus;
     private string _sortBy = "default";
@@ -425,6 +436,8 @@ else
                 url.Append($"assigned={isAssigned.ToString().ToLower()}&");
             }
             if (!string.IsNullOrEmpty(_filterStatus)) url.Append($"status={_filterStatus}&");
+            if (_filterTypeId.HasValue && _filterTypeId != Guid.Empty) url.Append($"laborTypeId={_filterTypeId}&");
+            if (_filterContactId.HasValue && _filterContactId != Guid.Empty) url.Append($"contactId={_filterContactId}&");
             url.Append($"sortBy={_sortBy}");
 
             var laborsTask = Http.GetFromJsonAsync(url.ToString(),
@@ -433,6 +446,8 @@ else
                 AppJsonSerializerContext.Default.ListWorkOrderDto, cts.Token);
             var typesTask = Http.GetFromJsonAsync("api/catalogs/labor-types",
                 AppJsonSerializerContext.Default.ListLaborTypeDto, cts.Token);
+            var contactsTask = Http.GetFromJsonAsync("api/catalogs/contacts",
+                AppJsonSerializerContext.Default.ListContactDto, cts.Token);
             
             Task<List<CampaignLotDto>>? lotsTask = null;
             if (CampaignState.CurrentCampaign != null)
@@ -442,7 +457,7 @@ else
                     AppJsonSerializerContext.Default.ListCampaignLotDto, cts.Token);
             }
 
-            var tasks = new List<Task?> { laborsTask, woTask, typesTask, lotsTask };
+            var tasks = new List<Task?> { laborsTask, woTask, typesTask, contactsTask, lotsTask };
             await Task.WhenAll(tasks.Where(t => t != null).Select(t => t!));
 
             _labors = await laborsTask ?? new();
@@ -450,6 +465,7 @@ else
                 _lots = await lotsTask ?? new();
             _workOrders = await woTask ?? new();
             _laborTypes = await typesTask ?? new();
+            _contacts = await contactsTask ?? new();
             _errorMessage = null;
         }
         catch (Exception ex)

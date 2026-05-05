@@ -1,0 +1,134 @@
+@page "/buscar"
+@using GestorOT.Shared.Dtos
+@using GestorOT.Shared
+@using System.Net.Http.Json
+@using AntDesign
+@inject HttpClient Http
+@inject NavigationManager Nav
+
+<PageTitle>Buscar - GestorOT</PageTitle>
+
+<div class="page-header">
+    <div>
+        <h2 class="page-title">Búsqueda Global</h2>
+        <span class="page-subtitle">Resultados para "@_query"</span>
+    </div>
+</div>
+
+<div style="max-width: 800px; margin: 0 auto 24px;">
+    <Input @bind-Value="_query"
+           Placeholder="Buscar OTs, labores, lotes..."
+           OnPressEnter="DoSearch"
+           Size="AntDesign.InputSize.Large"
+           Style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15); border-radius: 12px; color: #fff; height: 50px; font-size: 16px;" />
+</div>
+
+@if (_searching)
+{
+    <div style="text-align: center; padding: 60px;">
+        <Spin Size="AntDesign.SpinSize.Large" Tip="Buscando..." />
+    </div>
+}
+else if (_result != null)
+{
+    <div style="color: rgba(255,255,255,0.4); font-size: 13px; margin-bottom: 16px;">
+        @_result.Total resultado(s) encontrado(s)
+    </div>
+
+    @if (_result.WorkOrders.Count > 0)
+    {
+        <h4 style="color: #fff; margin: 24px 0 12px;"><Icon Type="file-text" /> Órdenes de Trabajo</h4>
+        <div class="glass-card">
+            @foreach (var wo in _result.WorkOrders)
+            {
+                <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; border-bottom: 1px solid rgba(255,255,255,0.05); cursor: pointer;" @onclick="() => GoToWorkOrder(wo.Id)">
+                    <div>
+                        <div style="color: #fff; font-weight: 600;">@(wo.Name ?? wo.OTNumber)</div>
+                        <div style="color: rgba(255,255,255,0.4); font-size: 12px;">@wo.Description</div>
+                    </div>
+                    <Tag>@wo.Status</Tag>
+                </div>
+            }
+        </div>
+    }
+
+    @if (_result.Labors.Count > 0)
+    {
+        <h4 style="color: #fff; margin: 24px 0 12px;"><Icon Type="experiment" /> Labores</h4>
+        <div class="glass-card">
+            @foreach (var l in _result.Labors)
+            {
+                <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; border-bottom: 1px solid rgba(255,255,255,0.05);">
+                    <div>
+                        <div style="color: #fff; font-weight: 600;">@l.LaborTypeName</div>
+                        <div style="color: rgba(255,255,255,0.4); font-size: 12px;">@l.LotName · @l.Hectares ha</div>
+                    </div>
+                    <Tag>@l.Status</Tag>
+                </div>
+            }
+        </div>
+    }
+
+    @if (_result.Lots.Count > 0)
+    {
+        <h4 style="color: #fff; margin: 24px 0 12px;"><Icon Type="block" /> Lotes</h4>
+        <div class="glass-card">
+            @foreach (var lot in _result.Lots)
+            {
+                <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; border-bottom: 1px solid rgba(255,255,255,0.05); cursor: pointer;" @onclick="() => GoToLot(lot.Id)">
+                    <div>
+                        <div style="color: #fff; font-weight: 600;">@lot.Name</div>
+                        <div style="color: rgba(255,255,255,0.4); font-size: 12px;">@lot.FieldName · @lot.CadastralArea ha</div>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+
+    @if (_result.Total == 0 && !string.IsNullOrEmpty(_query))
+    {
+        <div style="text-align: center; padding: 60px; color: rgba(255,255,255,0.3);">
+            <Icon Type="search" Style="font-size: 48px; display: block; margin-bottom: 12px;" />
+            No se encontraron resultados para "@_query"
+        </div>
+    }
+}
+
+@code {
+    [SupplyParameterFromQuery] public string? q { get; set; }
+
+    private string _query = "";
+    private SearchResult? _result;
+    private bool _searching;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!string.IsNullOrWhiteSpace(q))
+        {
+            _query = q;
+            await DoSearch();
+        }
+    }
+
+    private void GoToWorkOrder(Guid id) => Nav.NavigateTo($"/workorders/{id}");
+    private void GoToLot(Guid id) => Nav.NavigateTo($"/lots?editId={id}");
+
+    private async Task DoSearch()
+    {
+        if (string.IsNullOrWhiteSpace(_query) || _query.Length < 2) return;
+        _searching = true;
+        try
+        {
+            _result = await Http.GetFromJsonAsync<SearchResult>(
+                $"api/search?q={Uri.EscapeDataString(_query)}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Search error: {ex.Message}");
+        }
+        finally
+        {
+            _searching = false;
+        }
+    }
+}

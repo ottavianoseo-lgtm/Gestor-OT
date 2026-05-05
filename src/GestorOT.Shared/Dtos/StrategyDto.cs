@@ -115,3 +115,36 @@ public record SupplyDiscrepancyDto
         SupplyName = supplyName; PlannedDose = plannedDose; RealDose = realDose; DiscrepancyPercent = discrepancyPercent;
     }
 }
+
+public record CampaignDeviationReport
+{
+    public int TotalWorkOrders { get; set; }
+    public int TotalLabors { get; set; }
+    public int RealizedLabors { get; set; }
+    public decimal PlannedHectares { get; set; }
+    public decimal RealizedHectares { get; set; }
+    public List<SupplySummary> SupplySummary { get; set; } = new();
+    public List<WorkOrderDeviation> WorkOrderDeviations { get; set; } = new();
+
+    public CampaignDeviationReport() { }
+}
+
+public record SupplySummary
+{
+    public string SupplyName { get; set; } = "";
+    public decimal PlannedTotal { get; set; }
+    public decimal RealTotal { get; set; }
+    public decimal DeviationPercent { get; set; }
+    public string Unit { get; set; } = "";
+}
+
+public record WorkOrderDeviation
+{
+    public Guid WorkOrderId { get; set; }
+    public string Description { get; set; } = "";
+    public decimal PlanHa { get; set; }
+    public decimal RealHa { get; set; }
+    public decimal HaDeviationPercent { get; set; }
+    public int TotalLabors { get; set; }
+    public int RealizedLabors { get; set; }
+}

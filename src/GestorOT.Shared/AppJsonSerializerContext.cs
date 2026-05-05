@@ -105,6 +105,10 @@ namespace GestorOT.Shared;
 [JsonSerializable(typeof(HtmlExecutionRequest))]
 [JsonSerializable(typeof(HtmlLaborResult))]
 [JsonSerializable(typeof(HtmlSupplyResult))]
+[JsonSerializable(typeof(CampaignDeviationReport))]
+[JsonSerializable(typeof(SearchResult))]
+[JsonSerializable(typeof(PagedResult<LaborDto>))]
+[JsonSerializable(typeof(PagedResult<WorkOrderDto>))]
 [JsonSerializable(typeof(LaborValidationResponse))]
 [JsonSerializable(typeof(PublicLaborExecutionRequest))]
 [JsonSourceGenerationOptions(

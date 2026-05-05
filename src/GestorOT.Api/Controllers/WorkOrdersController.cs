@@ -39,6 +39,15 @@ public class WorkOrdersController : ControllerBase
         return await _queryService.GetAllAsync(ct);
     }
 
+    [HttpGet("paged")]
+    public async Task<ActionResult<PagedResult<WorkOrderDto>>> GetWorkOrdersPaged(
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 50,
+        CancellationToken ct = default)
+    {
+        return await _queryService.GetPagedAsync(page, pageSize, ct);
+    }
+
     [HttpGet("{id:guid}")]
     public async Task<ActionResult<WorkOrderDetailDto>> GetWorkOrder(Guid id, CancellationToken ct)
     {
@@ -387,5 +396,77 @@ public class WorkOrdersController : ControllerBase
         _context.WorkOrders.Remove(workOrder);
         await _context.SaveChangesAsync();
         return NoContent();
+    }
+
+    [HttpGet("export-csv")]
+    public async Task<IActionResult> ExportCsv(CancellationToken ct)
+    {
+        var list = await _queryService.GetAllAsync(ct);
+        var lines = new List<string>
+        {
+            "NroOT,Nombre,Descripcion,Estado,Asignado,Fecha,ContratistaID,CampaniaID"
+        };
+        foreach (var wo in list)
+        {
+            lines.Add($"{wo.OTNumber},{wo.Name},{wo.Description},{wo.Status},{wo.AssignedTo},{wo.DueDate:yyyy-MM-dd},{wo.ContractorId},{wo.CampaignId}");
+        }
+        var bytes = System.Text.Encoding.UTF8.GetBytes(string.Join("\r\n", lines));
+        return File(bytes, "text/csv", $"ordenes-trabajo-{DateTime.Today:yyyyMMdd}.csv");
+    }
+
+    [HttpGet("campaign-deviations/{campaignId:guid}")]
+    public async Task<ActionResult<CampaignDeviationReport>> GetCampaignDeviations(Guid campaignId)
+    {
+        var workOrders = await _context.WorkOrders
+            .AsNoTracking()
+            .Include(w => w.Labors)
+                .ThenInclude(l => l.Supplies)
+                    .ThenInclude(s => s.Supply)
+            .Where(w => w.CampaignId == campaignId)
+            .ToListAsync();
+
+        var report = new CampaignDeviationReport
+        {
+            TotalWorkOrders = workOrders.Count,
+            TotalLabors = workOrders.Sum(w => w.Labors.Count),
+            RealizedLabors = workOrders.Sum(w => w.Labors.Count(l => l.Status == GestorOT.Domain.Enums.LaborStatus.Realized)),
+            PlannedHectares = workOrders.Sum(w => w.Labors.Sum(l => l.Hectares)),
+            RealizedHectares = workOrders.Sum(w => w.Labors.Where(l => l.Status == GestorOT.Domain.Enums.LaborStatus.Realized).Sum(l => l.Hectares))
+        };
+
+        var allSupplies = workOrders.SelectMany(w => w.Labors).SelectMany(l => l.Supplies);
+        var supplyGroups = allSupplies.GroupBy(s => s.SupplyId);
+        foreach (var group in supplyGroups)
+        {
+            var first = group.First();
+            report.SupplySummary.Add(new SupplySummary
+            {
+                SupplyName = first.Supply?.ItemName ?? "Desconocido",
+                PlannedTotal = group.Sum(s => s.PlannedTotal),
+                RealTotal = group.Sum(s => s.RealTotal ?? 0),
+                DeviationPercent = group.Sum(s => s.PlannedTotal) > 0
+                    ? ((group.Sum(s => s.RealTotal ?? 0) - group.Sum(s => s.PlannedTotal)) / group.Sum(s => s.PlannedTotal)) * 100
+                    : 0,
+                Unit = first.UnitOfMeasure
+            });
+        }
+
+        foreach (var wo in workOrders)
+        {
+            var planHa = wo.Labors.Sum(l => l.Hectares);
+            var realHa = wo.Labors.Where(l => l.Status == GestorOT.Domain.Enums.LaborStatus.Realized).Sum(l => l.Hectares);
+            report.WorkOrderDeviations.Add(new WorkOrderDeviation
+            {
+                WorkOrderId = wo.Id,
+                Description = wo.Description ?? "",
+                PlanHa = planHa,
+                RealHa = realHa,
+                HaDeviationPercent = planHa > 0 ? ((realHa - planHa) / planHa) * 100 : 0,
+                TotalLabors = wo.Labors.Count,
+                RealizedLabors = wo.Labors.Count(l => l.Status == GestorOT.Domain.Enums.LaborStatus.Realized)
+            });
+        }
+
+        return Ok(report);
     }
 }
