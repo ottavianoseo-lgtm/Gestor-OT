@@ -20,6 +20,7 @@
     <ProjectReference Include="..\GestorOT.Application\GestorOT.Application.csproj" />
     <ProjectReference Include="..\GestorOT.Infrastructure\GestorOT.Infrastructure.csproj" />
     <ProjectReference Include="..\GestorOT.Domain\GestorOT.Domain.csproj" />
+    <ProjectReference Include="..\GestorOT.Api\GestorOT.Api.csproj" />
   </ItemGroup>
 
   <ItemGroup>

@@ -173,6 +173,16 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
             entity.HasQueryFilter(e => CurrentTenantId == Guid.Empty || e.TenantId == CurrentTenantId);
         });
 
+        modelBuilder.Entity<FileAsset>(entity =>
+        {
+            entity.HasQueryFilter(e => CurrentTenantId == Guid.Empty || e.TenantId == CurrentTenantId);
+        });
+
+        modelBuilder.Entity<LaborFileAsset>(entity =>
+        {
+            entity.HasQueryFilter(e => CurrentTenantId == Guid.Empty || e.TenantId == CurrentTenantId);
+        });
+
         modelBuilder.Entity<LaborAttachment>(entity =>
         {
             entity.HasQueryFilter(e => CurrentTenantId == Guid.Empty || e.TenantId == CurrentTenantId);

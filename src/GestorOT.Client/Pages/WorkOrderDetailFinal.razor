@@ -186,8 +186,8 @@ else if (_order != null)
     </div>
 }
 
-<Modal Title="@(_editingLaborId == Guid.Empty ? "Nueva Labor" : "Detalle de Labor")" Visible="_showLaborModal" OnCancel="() => _showLaborModal = false" Footer="null" Width="800">
-    <LaborEditorForm WorkOrderId="WorkOrderId" LaborId="_editingLaborId" InitialStatus="@_pendingInitialStatus" OnSaved="OnLaborSaved" />
+<Modal Title="@(_editingLaborId == Guid.Empty ? "Nueva Labor" : "Detalle de Labor")" Visible="_showLaborModal" OnCancel="HandleCancelLaborModal" Footer="null" Width="800">
+    <LaborEditorForm @ref="_laborFormRef" WorkOrderId="WorkOrderId" LaborId="_editingLaborId" InitialStatus="@_pendingInitialStatus" OnSaved="OnLaborSaved" />
 </Modal>
 
 <Modal Title="Labores sin OT" 

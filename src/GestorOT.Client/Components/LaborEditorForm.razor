@@ -265,6 +265,9 @@
         }
 
         <div style="display: flex; gap: 12px; margin-top: 24px;">
+            <Button Type="@ButtonType.Default" OnClick="HandleCancel" Style="flex: 1; height: 45px; border-radius: 8px;">
+                Cancelar
+            </Button>
             @if (LaborId != Guid.Empty && (_model.Mode == "Planned" || _model.Status == "Planned"))
             {
                 <Button Type="@ButtonType.Default" OnClick="SubmitForValidation" Loading="_submitting"
@@ -272,7 +275,7 @@
                     <Icon Type="send" /> Enviar para Validación
                 </Button>
             }
-            <Button Type="@ButtonType.Primary" HtmlType="submit" Loading="_loading" Block="@(LaborId == Guid.Empty || (_model.Mode != "Planned" && _model.Status != "Planned"))"
+            <Button Type="@ButtonType.Primary" HtmlType="submit" Loading="_loading" Block="false"
                     Style="flex: 2; height: 45px; border-radius: 8px; font-weight: 600;">
                 <Icon Type="save" /> Guardar Labor
             </Button>
@@ -281,6 +284,18 @@
 
     <LaborAttachments @ref="_attachmentsRef" LaborId="@LaborId" />
 </Card>
+
+<Modal Title="Cerrar sin guardar" Visible="_confirmCancelVisible" OnCancel="() => _confirmCancelVisible = false" Footer="null">
+    <div style="padding: 10px 0;">
+        <p style="color: #fff;">Has subido archivos que no se han vinculado permanentemente a ninguna labor.</p>
+        <p style="color: rgba(255,255,255,0.6); font-size: 13px;">¿Qué deseas hacer con estos archivos?</p>
+        <div style="display: flex; flex-direction: column; gap: 10px; margin-top: 20px;">
+            <Button Type="@ButtonType.Primary" Danger Block OnClick="ConfirmDeleteFiles">Eliminar archivos subidos</Button>
+            <Button Type="@ButtonType.Default" Block OnClick="ConfirmKeepFiles" Style="color: #fff; background: rgba(255,255,255,0.05);">Conservar en biblioteca</Button>
+            <Button Type="@ButtonType.Text" Block OnClick="() => _confirmCancelVisible = false" Style="color: rgba(255,255,255,0.4);">Continuar editando</Button>
+        </div>
+    </div>
+</Modal>
 
 <ValidationSuccessModal Visible="_magicLinkModalVisible" 
                         ValidationUrl="@_magicLinkUrl" 
@@ -322,8 +337,42 @@
     private WeatherLogModel _weather = new();
     private bool _magicLinkModalVisible;
     private string _magicLinkUrl = "";
+    private bool _confirmCancelVisible;
 
     private LaborAttachments? _attachmentsRef;
+    public bool HasDraftUploads() => _attachmentsRef?.HasDraftUploads ?? false;
+    public List<Guid> GetDraftUploadIds() => _attachmentsRef?.GetDraftUploadIds() ?? new();
+    public void DiscardDraftUploads() => _attachmentsRef?.DiscardDraftUploads();
+
+    public async Task HandleCancel()
+    {
+        if (LaborId == Guid.Empty && _attachmentsRef?.HasDraftUploads == true)
+        {
+            _confirmCancelVisible = true;
+        }
+        else
+        {
+            await OnSaved.InvokeAsync();
+        }
+    }
+
+    private async Task ConfirmDeleteFiles()
+    {
+        var ids = _attachmentsRef?.GetDraftUploadIds();
+        if (ids != null && ids.Any())
+        {
+            await _attachmentsRef!.DeleteUnlinkedFiles(ids);
+        }
+        _confirmCancelVisible = false;
+        await OnSaved.InvokeAsync();
+    }
+
+    private async Task ConfirmKeepFiles()
+    {
+        _attachmentsRef?.DiscardDraftUploads();
+        _confirmCancelVisible = false;
+        await OnSaved.InvokeAsync();
+    }
 
     public class WeatherLogModel
     {
@@ -871,7 +920,13 @@
                     _lastLaborId = LaborId;
 
                     if (_attachmentsRef != null)
-                        await _attachmentsRef.LinkPendingFiles(LaborId);
+                    {
+                        var linkResult = await _attachmentsRef.LinkPendingFiles(LaborId);
+                        if (!linkResult.Success)
+                        {
+                            Message.Warning("La labor se guardó pero hubo un problema al vincular archivos. Reintentá desde la biblioteca.");
+                        }
+                    }
                 }
 
                 if (result?.Warnings != null && result.Warnings.Any())

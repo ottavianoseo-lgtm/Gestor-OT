@@ -29,3 +29,16 @@ public record UnlinkFileRequest(
 {
     public UnlinkFileRequest() : this(Guid.Empty, Guid.Empty) { }
 }
+
+public record LinkPendingResult(
+    bool Success,
+    int LinkedCount = 0,
+    List<string>? Errors = null
+)
+{
+    public LinkPendingResult() : this(false) { }
+}
+
+public record BulkDeleteUnlinkedRequest(
+    List<Guid> FileAssetIds
+);

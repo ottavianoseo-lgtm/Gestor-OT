@@ -46,7 +46,8 @@ public class LaborAttachmentsController : ControllerBase
         if (file == null || file.Length == 0)
             return BadRequest("No se proporcionó ningún archivo.");
 
-        var labor = await _context.Labors.FindAsync(laborId);
+        var labor = await _context.Labors
+            .FirstOrDefaultAsync(l => l.Id == laborId);
         if (labor == null)
             return NotFound("Labor no encontrada.");
 
@@ -77,7 +78,8 @@ public class LaborAttachmentsController : ControllerBase
     [HttpGet("{id:guid}/download")]
     public async Task<IActionResult> Download(Guid id)
     {
-        var attachment = await _context.LaborAttachments.FindAsync(id);
+        var attachment = await _context.LaborAttachments
+            .FirstOrDefaultAsync(a => a.Id == id);
         if (attachment == null)
             return NotFound();
 
@@ -87,7 +89,8 @@ public class LaborAttachmentsController : ControllerBase
     [HttpDelete("{id:guid}")]
     public async Task<IActionResult> Delete(Guid id)
     {
-        var attachment = await _context.LaborAttachments.FindAsync(id);
+        var attachment = await _context.LaborAttachments
+            .FirstOrDefaultAsync(a => a.Id == id);
         if (attachment == null)
             return NotFound();
 

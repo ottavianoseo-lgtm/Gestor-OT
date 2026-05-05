@@ -206,7 +206,6 @@
 
 @code {
     private List<WorkOrderDto> _workOrders = new();
-    private List<CampaignSummaryDto> _availableCampaigns = new();
     private List<ContactDto> _availableContacts = new();
     private List<WorkOrderStatusDto> _workOrderStatuses = new();
     private bool _loading;
@@ -279,15 +278,12 @@
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
             var ordersTask = Http.GetFromJsonAsync("api/workorders",
                 AppJsonSerializerContext.Default.ListWorkOrderDto, cts.Token);
-            var campaignsTask = Http.GetFromJsonAsync("api/campaigns",
-                AppJsonSerializerContext.Default.ListCampaignSummaryDto, cts.Token);
             var contactsTask = Http.GetFromJsonAsync("api/catalogs/contacts",
                 AppJsonSerializerContext.Default.ListContactDto, cts.Token);
 
-            await Task.WhenAll(ordersTask, campaignsTask, contactsTask);
+            await Task.WhenAll(ordersTask, contactsTask);
 
             _workOrders = await ordersTask ?? new();
-            _availableCampaigns = await campaignsTask ?? new();
             _availableContacts = await contactsTask ?? new();
             _errorMessage = null;
         }
@@ -384,6 +380,7 @@
         _saving = true;
         try
         {
+            var selectedStatus = _workOrderStatuses.FirstOrDefault(s => s.Name == _formModel.Status);
             var dto = new WorkOrderDto
             {
                 Id = _isEditing ? _editingId : Guid.Empty,
@@ -391,6 +388,7 @@
                 CampaignId = _formModel.CampaignId != Guid.Empty ? _formModel.CampaignId : null,
                 Description = _formModel.Description,
                 Status = _formModel.Status,
+                WorkOrderStatusId = selectedStatus?.Id,
                 ContactId = _formModel.ContactId,
                 OTNumber = _isEditing ? null : $"OT_{Guid.NewGuid().ToString().Substring(0, 5).ToUpper()}",
                 DueDate = _formModel.DueDate,

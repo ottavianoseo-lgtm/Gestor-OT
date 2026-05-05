@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using System.Security.Claims;
 using GestorOT.Application.Interfaces;
 using GestorOT.Domain.Entities;
 using GestorOT.Shared.Dtos;
@@ -26,6 +27,34 @@ public class FilesController : ControllerBase
                 .ThenInclude(cl => cl!.Campaign)
             .FirstOrDefaultAsync(l => l.Id == laborId);
         return labor?.CampaignLot?.Campaign?.Status == "Locked";
+    }
+
+    private async Task<bool> IsFileLinkedToLockedCampaignAsync(Guid fileAssetId)
+    {
+        var links = await _context.LaborFileAssets
+            .AsNoTracking()
+            .Include(lf => lf.Labor)
+                .ThenInclude(l => l!.CampaignLot)
+                    .ThenInclude(cl => cl!.Campaign)
+            .Where(lf => lf.FileAssetId == fileAssetId && lf.Labor!.CampaignLot!.Campaign!.Status == "Locked")
+            .AnyAsync();
+        return links;
+    }
+
+    private void WriteAuditLog(string action, string entityType, string? entityId, string? newValue = null)
+    {
+        var audit = new AuditLog
+        {
+            Id = Guid.NewGuid(),
+            Action = action,
+            EntityType = entityType,
+            EntityId = entityId,
+            NewValue = newValue,
+            UserId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value,
+            UserEmail = User.FindFirst(ClaimTypes.Email)?.Value,
+            Timestamp = DateTime.UtcNow
+        };
+        _context.AuditLogs.Add(audit);
     }
 
     [HttpPost("upload")]
@@ -66,6 +95,7 @@ public class FilesController : ControllerBase
                         FileAssetId = existing.Id,
                         LinkedAt = DateTime.UtcNow
                     });
+                    WriteAuditLog("FileLinked", "LaborFileAsset", $"{laborId.Value}|{existing.Id}");
                     await _context.SaveChangesAsync();
                 }
             }
@@ -100,6 +130,7 @@ public class FilesController : ControllerBase
         }
 
         await _context.SaveChangesAsync();
+        WriteAuditLog("FileUpload", "FileAsset", asset.Id.ToString(), file.FileName);
 
         return Ok(new FileAssetDto(
             asset.Id, asset.FileName, asset.MimeType,
@@ -133,7 +164,9 @@ public class FilesController : ControllerBase
     [HttpGet("{id:guid}/download")]
     public async Task<IActionResult> Download(Guid id)
     {
-        var asset = await _context.FileAssets.FindAsync(id);
+        var asset = await _context.FileAssets
+            .AsNoTracking()
+            .FirstOrDefaultAsync(f => f.Id == id);
         if (asset == null)
             return NotFound();
 
@@ -149,12 +182,14 @@ public class FilesController : ControllerBase
         if (linkCount > 0)
             return BadRequest($"El archivo está vinculado a {linkCount} labor(es). Desvincúlelo primero.");
 
-        var asset = await _context.FileAssets.FindAsync(id);
+        var asset = await _context.FileAssets
+            .FirstOrDefaultAsync(f => f.Id == id);
         if (asset == null)
             return NotFound();
 
         _context.FileAssets.Remove(asset);
         await _context.SaveChangesAsync();
+        WriteAuditLog("FileDelete", "FileAsset", id.ToString());
 
         return NoContent();
     }
@@ -181,32 +216,56 @@ public class FilesController : ControllerBase
     [HttpPost("link")]
     public async Task<IActionResult> LinkFiles([FromBody] LinkFilesRequest request)
     {
-        var labor = await _context.Labors.FindAsync(request.LaborId);
+        if (request.FileAssetIds == null || request.FileAssetIds.Count == 0)
+            return BadRequest("Debe especificar al menos un archivo para vincular.");
+
+        var labor = await _context.Labors
+            .FirstOrDefaultAsync(l => l.Id == request.LaborId);
         if (labor == null)
             return NotFound("Labor no encontrada.");
 
         if (await IsLaborInLockedCampaignAsync(request.LaborId))
             return Conflict("No se pueden vincular archivos a labores de una campaña bloqueada.");
 
+        var linked = 0;
+        var errors = new List<string>();
+
         foreach (var fileId in request.FileAssetIds)
         {
-            var exists = await _context.LaborFileAssets
+            var fileExists = await _context.FileAssets
+                .AnyAsync(f => f.Id == fileId);
+            if (!fileExists)
+            {
+                errors.Add($"El archivo {fileId} no existe o no es accesible.");
+                continue;
+            }
+
+            var alreadyLinked = await _context.LaborFileAssets
                 .AnyAsync(lf => lf.LaborId == request.LaborId && lf.FileAssetId == fileId);
 
-            if (!exists)
+            if (alreadyLinked)
             {
-                _context.LaborFileAssets.Add(new LaborFileAsset
-                {
-                    Id = Guid.NewGuid(),
-                    LaborId = request.LaborId,
-                    FileAssetId = fileId,
-                    LinkedAt = DateTime.UtcNow
-                });
+                errors.Add($"El archivo {fileId} ya está vinculado a esta labor.");
+                continue;
             }
+
+            _context.LaborFileAssets.Add(new LaborFileAsset
+            {
+                Id = Guid.NewGuid(),
+                LaborId = request.LaborId,
+                FileAssetId = fileId,
+                LinkedAt = DateTime.UtcNow
+            });
+            linked++;
         }
 
-        await _context.SaveChangesAsync();
-        return Ok(new { Linked = request.FileAssetIds.Count });
+        if (linked > 0)
+        {
+            WriteAuditLog("FileLink", "LaborFileAsset", $"{request.LaborId}|{string.Join(",", request.FileAssetIds)}", $"{linked} linked");
+            await _context.SaveChangesAsync();
+        }
+
+        return Ok(new { Linked = linked, Errors = errors });
     }
 
     [HttpDelete("labor/{laborId:guid}/{fileAssetId:guid}")]
@@ -218,10 +277,53 @@ public class FilesController : ControllerBase
         if (link == null)
             return NotFound();
 
+        if (await IsLaborInLockedCampaignAsync(laborId))
+            return Conflict("No se puede desvincular archivos de labores en una campaña bloqueada.");
+
         _context.LaborFileAssets.Remove(link);
         await _context.SaveChangesAsync();
+        WriteAuditLog("FileUnlink", "LaborFileAsset", $"{laborId}|{fileAssetId}");
 
         return NoContent();
+    }
+
+    [HttpPost("delete-unlinked")]
+    public async Task<IActionResult> DeleteUnlinked([FromBody] BulkDeleteUnlinkedRequest request)
+    {
+        if (request.FileAssetIds == null || request.FileAssetIds.Count == 0)
+            return BadRequest("No se proporcionaron archivos para eliminar.");
+
+        var deleted = 0;
+        var errors = new List<string>();
+
+        foreach (var id in request.FileAssetIds)
+        {
+            var linkCount = await _context.LaborFileAssets
+                .CountAsync(lf => lf.FileAssetId == id);
+
+            if (linkCount > 0)
+            {
+                errors.Add($"El archivo {id} está vinculado a {linkCount} labor(es) y no se puede eliminar.");
+                continue;
+            }
+
+            var asset = await _context.FileAssets
+                .FirstOrDefaultAsync(f => f.Id == id);
+
+            if (asset == null)
+            {
+                errors.Add($"Archivo {id} no encontrado.");
+                continue;
+            }
+
+            _context.FileAssets.Remove(asset);
+            deleted++;
+        }
+
+        await _context.SaveChangesAsync();
+        if (deleted > 0)
+            WriteAuditLog("FileDeleteUnlinked", "FileAsset", string.Join(",", request.FileAssetIds), $"{deleted} deleted");
+        return Ok(new { Deleted = deleted, Errors = errors });
     }
 
     [HttpGet("validate-size")]

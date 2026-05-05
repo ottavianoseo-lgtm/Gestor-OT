@@ -72,19 +72,38 @@ public class WorkOrdersController : ControllerBase
         if (campaign.Status == "Locked")
             return BadRequest("No se pueden crear órdenes en una campaña bloqueada.");
 
-        var defaultStatus = await _context.WorkOrderStatuses
-            .AsNoTracking()
-            .FirstOrDefaultAsync(s => s.IsDefault);
+        WorkOrderStatus? selectedStatus;
 
-        var statusName = !string.IsNullOrWhiteSpace(dto.Status) ? dto.Status : (defaultStatus?.Name ?? "Draft");
+        if (!string.IsNullOrWhiteSpace(dto.Status))
+        {
+            selectedStatus = await _context.WorkOrderStatuses
+                .AsNoTracking()
+                .FirstOrDefaultAsync(s => s.Name == dto.Status);
+
+            if (selectedStatus == null)
+                return BadRequest($"El estado '{dto.Status}' no es válido. Use un estado existente de la tabla WorkOrderStatuses.");
+        }
+        else
+        {
+            selectedStatus = await _context.WorkOrderStatuses
+                .AsNoTracking()
+                .FirstOrDefaultAsync(s => s.IsDefault);
+        }
+
+        var finalStatus = selectedStatus ?? await _context.WorkOrderStatuses
+            .AsNoTracking()
+            .FirstOrDefaultAsync(s => s.Name == "Draft");
+
+        if (finalStatus == null)
+            return BadRequest("No se encontró un estado válido para la orden de trabajo. Verifique que exista un estado 'Draft' o un estado por defecto en WorkOrderStatuses.");
 
         var workOrder = new WorkOrder
         {
             Id = Guid.NewGuid(),
             Name = dto.Name,
             Description = dto.Description,
-            Status = statusName,
-            WorkOrderStatusId = defaultStatus?.Id,
+            Status = finalStatus.Name,
+            WorkOrderStatusId = finalStatus.Id,
             AssignedTo = dto.AssignedTo,
             DueDate = dto.DueDate,
             OTNumber = dto.OTNumber ?? string.Empty,
@@ -106,7 +125,8 @@ public class WorkOrdersController : ControllerBase
             workOrder.AssignedTo, workOrder.DueDate, null, workOrder.OTNumber,
             workOrder.PlannedDate, workOrder.ExpirationDate,
             workOrder.StockReserved, workOrder.ContractorId, workOrder.ContactId, workOrder.CampaignId,
-            workOrder.Name, workOrder.AcceptsMultiplePeople, workOrder.AcceptsMultipleDates);
+            workOrder.Name, workOrder.AcceptsMultiplePeople, workOrder.AcceptsMultipleDates,
+            workOrderStatusId: workOrder.WorkOrderStatusId);
 
         return CreatedAtAction(nameof(GetWorkOrder), new { id = workOrder.Id }, result);
     }
@@ -128,7 +148,17 @@ public class WorkOrdersController : ControllerBase
 
         workOrder.Name = dto.Name;
         workOrder.Description = dto.Description;
-        workOrder.Status = dto.Status;
+
+        if (!string.IsNullOrWhiteSpace(dto.Status) && dto.Status != workOrder.Status)
+        {
+            var status = await _context.WorkOrderStatuses
+                .AsNoTracking()
+                .FirstOrDefaultAsync(s => s.Name == dto.Status);
+            if (status == null)
+                return BadRequest($"El estado '{dto.Status}' no es válido.");
+            workOrder.Status = status.Name;
+            workOrder.WorkOrderStatusId = status.Id;
+        }
         workOrder.AssignedTo = dto.AssignedTo;
         workOrder.DueDate = dto.DueDate;
         workOrder.OTNumber = dto.OTNumber ?? workOrder.OTNumber;

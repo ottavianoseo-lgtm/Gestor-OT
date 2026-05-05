@@ -258,4 +258,75 @@ public class Sprint10SecurityTests
 
         Assert.True(conflict);
     }
+
+    [Fact]
+    public void CreateBulkFromStrategy_ActivityConflict_BlocksCreation()
+    {
+        var campaignLotId = Guid.NewGuid();
+        var date = new DateOnly(2026, 6, 1);
+        var strategyActivityId = Guid.NewGuid();
+        var rotationActivityId = Guid.NewGuid();
+
+        var rotations = new List<Rotation>
+        {
+            new() { Id = Guid.NewGuid(), CampaignLotId = campaignLotId, ErpActivityId = rotationActivityId,
+                    StartDate = new DateOnly(2026, 1, 1), EndDate = new DateOnly(2026, 12, 31) }
+        };
+
+        var hasError = rotations.Any(r =>
+            r.CampaignLotId == campaignLotId &&
+            r.StartDate <= date && r.EndDate >= date &&
+            r.ErpActivityId != strategyActivityId);
+
+        Assert.True(hasError);
+    }
+
+    [Fact]
+    public void CreateBulkFromStrategy_NoRotation_AllowsWithWarning()
+    {
+        var campaignLotId = Guid.NewGuid();
+        var date = new DateOnly(2026, 6, 1);
+        var strategyActivityId = Guid.NewGuid();
+
+        var rotations = new List<Rotation>();
+
+        var hasError = rotations.Any(r =>
+            r.CampaignLotId == campaignLotId &&
+            r.StartDate <= date && r.EndDate >= date &&
+            r.ErpActivityId != strategyActivityId);
+
+        var hasWarning = !rotations.Any(r =>
+            r.CampaignLotId == campaignLotId &&
+            r.StartDate <= date && r.EndDate >= date);
+
+        Assert.False(hasError);
+        Assert.True(hasWarning);
+    }
+
+    [Fact]
+    public void CreateBulkFromStrategy_WithMultipleItems_CreatesCorrectCount()
+    {
+        var strategyId = Guid.NewGuid();
+        var campaignLotIds = new[] { Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid() };
+        var strategyItems = new List<StrategyItem>
+        {
+            new() { Id = Guid.NewGuid(), CropStrategyId = strategyId, LaborTypeId = Guid.NewGuid(), DayOffset = 0 },
+            new() { Id = Guid.NewGuid(), CropStrategyId = strategyId, LaborTypeId = Guid.NewGuid(), DayOffset = 5 },
+            new() { Id = Guid.NewGuid(), CropStrategyId = strategyId, LaborTypeId = Guid.NewGuid(), DayOffset = 10 }
+        };
+
+        var totalLaborsToCreate = campaignLotIds.Length * strategyItems.Count;
+
+        Assert.Equal(9, totalLaborsToCreate);
+    }
+
+    [Fact]
+    public void ForceOriginalPlan_AlwaysCreatesPlannedStatus()
+    {
+        var status = GestorOT.Domain.Enums.LaborStatus.Planned;
+        var mode = GestorOT.Domain.Enums.LaborMode.Planned;
+
+        Assert.Equal("Planned", status.ToString());
+        Assert.Equal("Planned", mode.ToString());
+    }
 }

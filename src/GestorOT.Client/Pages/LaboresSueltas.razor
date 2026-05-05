@@ -8,6 +8,7 @@
 @using System.Text.Json
 @using AntDesign
 @inject HttpClient Http
+@inject IJSRuntime JS
 @inject IMessageService Message
 @inject NavigationManager Nav
 @inject GestorOT.Client.Services.CampaignState CampaignState
@@ -208,10 +209,10 @@ else
 
 <Modal Title="@(_editingLaborId == Guid.Empty ? "Nueva Labor Suelta" : (_isExecuting ? "Ejecutar Labor" : "Editar Labor"))"
        Visible="@_drawerVisible"
-       OnCancel="() => _drawerVisible = false"
+       OnCancel="HandleCancelLaborModal"
        Footer="null"
        Width="800">
-    <LaborEditorForm LaborId="@_editingLaborId" InitialStatus="@(_isExecuting ? "Realized" : null)" OnSaved="OnSaved" />
+    <LaborEditorForm @ref="_laborFormRef" LaborId="@_editingLaborId" InitialStatus="@(_isExecuting ? "Realized" : null)" OnSaved="OnSaved" />
 </Modal>
 
 <Modal Title="@("Asignar Labores a Orden de Trabajo")" Visible="@_assignModalOpen"
@@ -364,6 +365,7 @@ else
     private bool _executeModalOpen;
     private bool _executing;
     private LaborDto? _laborToExecute;
+    private LaborEditorForm? _laborFormRef;
 
     private bool _allSelected => _labors.Count > 0 && _selectedIds.Count == _labors.Count;
 
@@ -552,6 +554,18 @@ else
         _editingLaborId = id;
         _isExecuting = isExecuting;
         _drawerVisible = true;
+    }
+
+    private async Task HandleCancelLaborModal()
+    {
+        if (_laborFormRef != null)
+        {
+            await _laborFormRef.HandleCancel();
+        }
+        else
+        {
+            _drawerVisible = false;
+        }
     }
 
     private async Task OnLaborSaved()

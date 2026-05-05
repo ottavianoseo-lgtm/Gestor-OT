@@ -34,6 +34,7 @@ namespace GestorOT.Client.Pages
         protected string _validationUrl = "";
         protected bool _showUnassignedWarning;
         protected int _unassignedLaborsCount;
+        protected GestorOT.Client.Components.LaborEditorForm? _laborFormRef;
 
         protected override async Task OnInitializedAsync() => await LoadData();
 
@@ -135,6 +136,25 @@ namespace GestorOT.Client.Pages
                 if (response.IsSuccessStatusCode) { _message.Success("Labor eliminada."); await LoadData(); }
                 else { var body = await response.Content.ReadAsStringAsync(); _message.Error($"Error al eliminar labor: {body}"); }
             } catch (Exception ex) { _message.Error($"Error al eliminar labor: {ex.Message}"); }
+        }
+
+        protected async Task HandleCancelLaborModal()
+        {
+            if (_laborFormRef != null && _laborFormRef.HasDraftUploads())
+            {
+                var confirmed = await _js.InvokeAsync<bool>("confirm",
+                    "Tenés archivos subidos no guardados. ¿Eliminarlos? (Cancelar = conservar en biblioteca)");
+                if (!confirmed)
+                    _laborFormRef.DiscardDraftUploads();
+                else
+                {
+                    var draftIds = _laborFormRef.GetDraftUploadIds();
+                    if (draftIds.Count > 0)
+                        await _http.PostAsJsonAsync("api/files/delete-unlinked", new { FileAssetIds = draftIds });
+                    _laborFormRef.DiscardDraftUploads();
+                }
+            }
+            _showLaborModal = false;
         }
 
         protected async Task OnLaborSaved() { _showLaborModal = false; await LoadData(); }
