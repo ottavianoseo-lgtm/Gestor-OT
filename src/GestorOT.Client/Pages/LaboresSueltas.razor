@@ -48,6 +48,16 @@
             <SelectOption TItemValue="string" TItem="string" Value="@("date")" Label="Fecha Estimada" />
         </Select>
         <Button Icon="sync" OnClick="LoadData" />
+        @if (CampaignState.CurrentCampaign != null)
+        {
+            <Tag Style="@($"background: #2ECC7120; color: #2ECC71; border: 1px solid #2ECC7140; border-radius: 8px; font-size: 11px; font-weight: 600; padding: 2px 10px; cursor: default;")">
+                <Icon Type="calendar" Theme="IconThemeType.Outline" Style="font-size: 11px;" /> @CampaignState.CurrentCampaign.Name
+            </Tag>
+            <Button Size="@ButtonSize.Small" OnClick="ToggleCampaignFilter"
+                    Style="@(_filterByCampaign ? "background: rgba(46,204,113,0.15); color: #2ECC71; border: 1px solid rgba(46,204,113,0.3); border-radius: 6px;" : "background: rgba(255,255,255,0.04); color: rgba(255,255,255,0.5); border: 1px solid rgba(255,255,255,0.08); border-radius: 6px;")">
+                @(_filterByCampaign ? "Filtrando campaña" : "Ver todas")
+            </Button>
+        }
         <Button Type="@ButtonType.Primary" OnClick="() => _quickLaborSelectorVisible = true"
                 Style="background: #2ECC71; border-color: #2ECC71; border-radius: 8px; font-weight: 600;">
             <Icon Type="plus" Theme="IconThemeType.Outline" /> Labor Rápida
@@ -128,9 +138,9 @@ else
                     <div style="display: flex; align-items: center; gap: 8px;">
                         <div class="labor-type-dot" style="background: @(GetTypeBgColor(context.LaborTypeName ?? "Labor")); width: 8px; height: 8px; border-radius: 50%;"></div>
                         @context.LaborTypeName
-                        @if (context.IsOriginalPlan) {
-                            <Tag Color="@("gold")" Style="font-size: 10px; margin-left: 6px;">BASE</Tag>
-                        }
+                @if (context.IsOriginalPlan) {
+                    <Tag Color="@("gold")" Style="font-size: 10px; margin-left: 6px;" Title="Planeamiento Original: solo lectura">P.O.</Tag>
+                }
                     </div>
                 </PropertyColumn>
                 <PropertyColumn Property="l => l.CreatedAt" Title="Fecha" Sortable Format="dd/MM/yyyy" />
@@ -355,6 +365,7 @@ else
     private string? _filterAssigned;
     private string? _filterStatus;
     private string _sortBy = "default";
+    private bool _filterByCampaign = true;
     private bool _quickLaborSelectorVisible;
     private bool _strategyWizardVisible;
     private bool _drawerVisible;
@@ -440,6 +451,7 @@ else
             if (!string.IsNullOrEmpty(_filterStatus)) url.Append($"status={_filterStatus}&");
             if (_filterTypeId.HasValue && _filterTypeId != Guid.Empty) url.Append($"laborTypeId={_filterTypeId}&");
             if (_filterContactId.HasValue && _filterContactId != Guid.Empty) url.Append($"contactId={_filterContactId}&");
+            if (_filterByCampaign && CampaignState.CurrentCampaign != null) url.Append($"campaignId={CampaignState.CurrentCampaign.Id}&");
             url.Append($"sortBy={_sortBy}");
 
             var laborsTask = Http.GetFromJsonAsync(url.ToString(),
@@ -493,6 +505,12 @@ else
     private async Task OnSortChanged(string value)
     {
         _sortBy = value;
+        await LoadData();
+    }
+
+    private async Task ToggleCampaignFilter()
+    {
+        _filterByCampaign = !_filterByCampaign;
         await LoadData();
     }
 

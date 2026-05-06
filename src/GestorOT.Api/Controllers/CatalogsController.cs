@@ -1,5 +1,6 @@
 using GestorOT.Application.Interfaces;
 using GestorOT.Domain.Entities;
+using GestorOT.Domain.Enums;
 using GestorOT.Shared.Dtos;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -48,4 +49,20 @@ public class CatalogsController : ControllerBase
                 c.Id, c.FullName, c.ExternalErpId, c.Email, c.Position, c.LegalName, c.VatNumber, c.Role))
             .ToListAsync(ct);
     }
+
+    [HttpPut("contacts/{id:guid}/role")]
+    public async Task<IActionResult> UpdateContactRole(Guid id, [FromBody] UpdateContactRoleRequest request)
+    {
+        var contact = await _context.Contacts.FirstOrDefaultAsync(c => c.Id == id);
+        if (contact == null) return NotFound();
+
+        contact.Role = request.Role;
+        await _context.SaveChangesAsync();
+        return NoContent();
+    }
+}
+
+public class UpdateContactRoleRequest
+{
+    public ContactRole Role { get; set; }
 }

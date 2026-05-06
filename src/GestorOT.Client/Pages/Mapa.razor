@@ -159,7 +159,7 @@
                             <div style="font-size: 11px; color: rgba(255,255,255,0.4);">@(lot.FieldName ?? "Sin campo")</div>
                         </div>
                         <div style="text-align: right;">
-                            <div style="font-size: 11px; color: #fff; font-weight: 700;">@lot.Area.ToString("N1") ha</div>
+                            <div style="font-size: 11px; color: #fff; font-weight: 700;">@lot.Area.ToString("N2") ha</div>
                             @if (string.IsNullOrEmpty(lot.WktGeometry))
                             {
                                 <span style="font-size: 9px; color: #E74C3C;">Sin GIS</span>
@@ -716,7 +716,25 @@
         _linkingLotId = lot.Id;
         _selectedLot = null;
         _drawnWkt = null;
-        await JS.InvokeVoidAsync("mapInterop.enableDrawing");
+
+        var coordinatesJson = lot.WktGeometry != null
+            ? await ConvertWktToLeafletCoords(lot.WktGeometry)
+            : "[]";
+        await JS.InvokeVoidAsync("mapInterop.startEditExistingLot",
+            lot.Id.ToString(), lot.Name, lot.Status, lot.Area, lot.FieldName ?? "", coordinatesJson);
+    }
+
+    private async Task<string> ConvertWktToLeafletCoords(string wkt)
+    {
+        try
+        {
+            return await JS.InvokeAsync<string>("eval",
+                $"(function(){{ var m = '{wkt}'.match(/POLYGON\\s*\\(\\((.+)\\)\\)/i); if(!m) return '[]'; var coords = m[1].split(',').map(function(p){{ var parts = p.trim().split(/\\s+/); return [parseFloat(parts[1]), parseFloat(parts[0])]; }}); if(coords[0][0]!==coords[coords.length-1][0]||coords[0][1]!==coords[coords.length-1][1]) coords.push(coords[0]); return JSON.stringify([coords]); }})()");
+        }
+        catch
+        {
+            return "[]";
+        }
     }
 
     public class ImportResult
@@ -884,15 +902,32 @@
         _selectedLot = null;
     }
 
-    private void ClearDrawn()
+    private async void ClearDrawn()
     {
         _drawnWkt = null;
         _drawnArea = 0;
         _polygonMenuVisible = false;
+        var savedLinkingId = _linkingLotId;
         _linkingLotId = Guid.Empty;
         _editingExistingLot = false;
         _editingExistingLotName = "";
-        JS.InvokeVoidAsync("mapInterop.clearDrawn");
+
+        if (savedLinkingId != Guid.Empty)
+        {
+            var lot = _allLots.FirstOrDefault(l => l.Id == savedLinkingId);
+            if (lot != null && !string.IsNullOrEmpty(lot.WktGeometry))
+            {
+                try
+                {
+                    var coordsJson = await ConvertWktToLeafletCoords(lot.WktGeometry);
+                    await JS.InvokeVoidAsync("mapInterop.cancelEditExistingLot",
+                        lot.Id.ToString(), lot.Name, lot.Status, lot.Area, lot.FieldName ?? "", coordsJson);
+                    return;
+                }
+                catch { }
+            }
+        }
+        await JS.InvokeVoidAsync("mapInterop.clearDrawn");
     }
 
     private async Task SaveDrawnGeometry()

@@ -72,30 +72,35 @@ public class WorkOrdersController : ControllerBase
         if (campaign.Status == "Locked")
             return BadRequest("No se pueden crear órdenes en una campaña bloqueada.");
 
-        WorkOrderStatus? selectedStatus;
+        WorkOrderStatus? finalStatus = null;
 
-        if (!string.IsNullOrWhiteSpace(dto.Status))
+        if (dto.WorkOrderStatusId.HasValue && dto.WorkOrderStatusId != Guid.Empty)
         {
-            selectedStatus = await _context.WorkOrderStatuses
+            finalStatus = await _context.WorkOrderStatuses
+                .AsNoTracking()
+                .FirstOrDefaultAsync(s => s.Id == dto.WorkOrderStatusId.Value);
+
+            if (finalStatus == null)
+                return BadRequest("El estado seleccionado no existe. Verifique la configuración de estados de OT.");
+        }
+        else if (!string.IsNullOrWhiteSpace(dto.Status))
+        {
+            finalStatus = await _context.WorkOrderStatuses
                 .AsNoTracking()
                 .FirstOrDefaultAsync(s => s.Name == dto.Status);
-
-            if (selectedStatus == null)
-                return BadRequest($"El estado '{dto.Status}' no es válido. Use un estado existente de la tabla WorkOrderStatuses.");
-        }
-        else
-        {
-            selectedStatus = await _context.WorkOrderStatuses
-                .AsNoTracking()
-                .FirstOrDefaultAsync(s => s.IsDefault);
         }
 
-        var finalStatus = selectedStatus ?? await _context.WorkOrderStatuses
+        finalStatus ??= await _context.WorkOrderStatuses
             .AsNoTracking()
-            .FirstOrDefaultAsync(s => s.Name == "Draft");
+            .FirstOrDefaultAsync(s => s.IsDefault);
+
+        finalStatus ??= await _context.WorkOrderStatuses
+            .AsNoTracking()
+            .OrderBy(s => s.SortOrder)
+            .FirstOrDefaultAsync();
 
         if (finalStatus == null)
-            return BadRequest("No se encontró un estado válido para la orden de trabajo. Verifique que exista un estado 'Draft' o un estado por defecto en WorkOrderStatuses.");
+            return BadRequest("No se encontró un estado válido para la orden de trabajo. Configure al menos un estado de OT en la sección de administración.");
 
         var workOrder = new WorkOrder
         {
@@ -149,7 +154,18 @@ public class WorkOrdersController : ControllerBase
         workOrder.Name = dto.Name;
         workOrder.Description = dto.Description;
 
-        if (!string.IsNullOrWhiteSpace(dto.Status) && dto.Status != workOrder.Status)
+        if (dto.WorkOrderStatusId.HasValue && dto.WorkOrderStatusId != Guid.Empty
+            && dto.WorkOrderStatusId != workOrder.WorkOrderStatusId)
+        {
+            var status = await _context.WorkOrderStatuses
+                .AsNoTracking()
+                .FirstOrDefaultAsync(s => s.Id == dto.WorkOrderStatusId.Value);
+            if (status == null)
+                return BadRequest("El estado seleccionado no es válido.");
+            workOrder.Status = status.Name;
+            workOrder.WorkOrderStatusId = status.Id;
+        }
+        else if (!string.IsNullOrWhiteSpace(dto.Status) && dto.Status != workOrder.Status)
         {
             var status = await _context.WorkOrderStatuses
                 .AsNoTracking()
@@ -189,14 +205,27 @@ public class WorkOrdersController : ControllerBase
             return Conflict("La OT se encuentra en un estado que no permite modificaciones.");
         if (workOrder.Campaign?.Status == "Locked")
             return Conflict("No se puede aprobar una OT de una campaña bloqueada.");
-        if (workOrder.Status == "Approved") return BadRequest("La OT ya fue aprobada.");
-        if (workOrder.Status == "Cancelled") return BadRequest("No se puede aprobar una OT cancelada.");
 
         var unrealizedLabors = workOrder.Labors.Where(l => l.Status != LaborStatus.Realized).ToList();
         if (unrealizedLabors.Count > 0)
             return BadRequest($"Hay {unrealizedLabors.Count} labor(es) sin realizar.");
 
-        workOrder.Status = "Approved";
+        var approvedStatus = await _context.WorkOrderStatuses
+            .AsNoTracking()
+            .FirstOrDefaultAsync(s => s.Name == "Approved");
+
+        if (approvedStatus == null)
+        {
+            approvedStatus = await _context.WorkOrderStatuses
+                .AsNoTracking()
+                .FirstOrDefaultAsync(s => !s.IsEditable);
+        }
+
+        if (approvedStatus == null)
+            return BadRequest("No se encontró un estado aprobado configurado. Configure al menos un estado no editable como 'Aprobado' o 'Cerrado' en la administración de estados de OT.");
+
+        workOrder.WorkOrderStatusId = approvedStatus.Id;
+        workOrder.Status = approvedStatus.Name;
         await _context.SaveChangesAsync();
 
         var stockValidation = await _stockValidator.ValidateStockForWorkOrderAsync(id);

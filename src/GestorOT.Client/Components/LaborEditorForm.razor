@@ -1,5 +1,6 @@
 @using GestorOT.Shared.Dtos
 @using GestorOT.Shared
+@using GestorOT.Domain.Enums
 @using System.Net.Http.Json
 @using System.Text.Json
 @using AntDesign
@@ -13,6 +14,15 @@
 <Card Title="@(LaborId == Guid.Empty ? "Nueva Labor" : "Editar Labor")"
       Style="border-radius: 12px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1);">
     <Form Model="@_model" OnFinish="HandleSubmit" Layout="@FormLayout.Vertical">
+        @if (_model.IsOriginalPlan && !ForceOriginalPlan)
+        {
+            <Alert Type="@AlertType.Info" ShowIcon="true" Style="margin-bottom: 16px; background: rgba(241,196,15,0.1); border: 1px solid rgba(241,196,15,0.3); color: #F1C40F;"
+                   MessageTemplate="@((RenderFragment)(builder => { builder.AddContent(0, "Planeamiento Original (P.O.): solo lectura. Solo un administrador puede modificar o desanclar esta labor."); }))" />
+        }
+        @if (CampaignState.CurrentCampaign != null && _lots.Count == 0 && !_loading)
+        {
+            <Alert Type="@AlertType.Warning" Message="La campaña actual no tiene lotes asignados. Asigne lotes a la campaña antes de crear labores." ShowIcon="true" Style="margin-bottom: 16px;" />
+        }
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
             <FormItem Label="Campo (Filtro)">
                 <Select TItemValue="Guid" TItem="FieldDto" @bind-Value="_filterFieldId"
@@ -104,7 +114,8 @@
             <FormItem Label="Persona Responsable" Style="@(HasError("contact") ? "border: 1px solid #E74C3C; border-radius: 8px; padding: 8px;" : "")">
                 <div style="display: flex; align-items: center; gap: 16px;">
                     <Select TItemValue="Guid?" TItem="ContactDto" @bind-Value="_model.ContactId"
-                            Placeholder="Seleccionar responsable" EnableSearch Style="flex: 1;">
+                            Placeholder="Seleccionar responsable" EnableSearch Style="flex: 1;"
+                            OnSelectedItemChanged="OnContactChanged">
                         @foreach (var contact in _contacts)
                         {
                             <SelectOption TItemValue="Guid?" TItem="ContactDto" Value="@((Guid?)contact.Id)" Label="@contact.FullName" />
@@ -149,7 +160,7 @@
             </FormItem>
 
             <FormItem Label="Estado de la Labor">
-                @if (ForceOriginalPlan)
+                @if (ForceOriginalPlan || _model.IsOriginalPlan)
                 {
                     <Tag Color="@("#1890FF" + "33")" Style="color: #fff; border: 1px solid #1890FF80; border-radius: 12px; font-weight: 600; padding: 4px 16px;">
                         Planeada
@@ -509,7 +520,19 @@
             _inventories = (await itemsTask) ?? new();
             _contacts = (await contactsTask) ?? new();
             _workOrders = ((await workOrdersTask) ?? new()).GroupBy(w => w.Id).Select(g => g.First()).ToList();
-            _fields = (await fieldsTask) ?? new();
+
+            if (CampaignState.CurrentCampaign != null)
+            {
+                _fields = _lots
+                    .Where(l => l.FieldId.HasValue)
+                    .GroupBy(l => l.FieldId!.Value)
+                    .Select(g => new FieldDto { Id = g.Key, Name = g.First().FieldName ?? "Campo sin nombre" })
+                    .ToList();
+            }
+            else
+            {
+                _fields = (await fieldsTask) ?? new();
+            }
 
             if (lotsTask != null)
                 _lots = ((await lotsTask) ?? new()).GroupBy(l => l.Id).Select(g => g.First()).ToList();
@@ -613,7 +636,7 @@
     
     private void OnStatusChanged(string status)
     {
-        if (ForceOriginalPlan)
+        if (ForceOriginalPlan || _model.IsOriginalPlan)
         {
             _model.Status = "Planned";
             _model.Mode = "Planned";
@@ -635,6 +658,14 @@
     private string GetError(string field) => _fieldErrors.GetValueOrDefault(field, "");
     private void ClearError(string field) { _fieldErrors.Remove(field); _validationSummary = ""; }
     private void SetError(string field, string message) { _fieldErrors[field] = message; _validationSummary = ""; }
+
+    private void OnContactChanged(ContactDto contact)
+    {
+        if (contact != null)
+        {
+            _model.IsExternalBilling = contact.Role == ContactRole.Contractor;
+        }
+    }
 
     private async Task OnLotChanged(CampaignLotDto lot)
     {
@@ -828,6 +859,18 @@
             return false;
         }
 
+        if (_lots.Count == 0 && CampaignState.CurrentCampaign != null)
+        {
+            _validationSummary = "La campaña actual no tiene lotes asignados. Asigne lotes a la campaña antes de crear labores.";
+            return false;
+        }
+
+        if (_model.IsOriginalPlan && _model.Status != "Planned")
+        {
+            _validationSummary = "Planeamiento Original (P.O.) solo permite labores planeadas.";
+            return false;
+        }
+
         if (CampaignState.IsLocked)
         {
             _validationSummary = "La campaña está bloqueada. Solo consulta.";
@@ -894,7 +937,7 @@
             _loading = true;
             _model.WeatherLogJson = JsonSerializer.Serialize(_weather);
             
-            if (ForceOriginalPlan)
+            if (ForceOriginalPlan || _model.IsOriginalPlan)
             {
                 _model.IsOriginalPlan = true;
                 _model.Status = "Planned";

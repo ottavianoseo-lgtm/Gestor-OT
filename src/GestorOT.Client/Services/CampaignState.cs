@@ -12,7 +12,7 @@ public class CampaignState
     public bool IsReadOnly => IsLocked;
 
     public event Action? OnChange;
-    public event Action? OnCampaignsChanged;
+    public event Func<Task>? OnCampaignsChanged;
 
     public CampaignState(IJSRuntime jsRuntime)
     {
@@ -33,8 +33,15 @@ public class CampaignState
         OnChange?.Invoke();
     }
 
-    public void NotifyCampaignsChanged()
+    public async Task NotifyCampaignsChanged()
     {
-        OnCampaignsChanged?.Invoke();
+        if (OnCampaignsChanged != null)
+        {
+            var tasks = OnCampaignsChanged.GetInvocationList()
+                .Cast<Func<Task>>()
+                .Select(delegate(Func<Task> handler) { return handler(); });
+            
+            await Task.WhenAll(tasks);
+        }
     }
 }

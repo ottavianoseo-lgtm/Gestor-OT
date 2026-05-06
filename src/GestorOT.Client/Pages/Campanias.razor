@@ -467,7 +467,7 @@
                 Message.Success(_isEditing ? "Campaña actualizada correctamente." : "Campaña creada correctamente.");
                 _modalVisible = false;
                 await LoadData();
-                CampaignState.NotifyCampaignsChanged();
+                await CampaignState.NotifyCampaignsChanged();
             }
             else
             {
@@ -502,7 +502,7 @@
                 };
                 Message.Success($"Campaña {statusLabel} correctamente.");
                 await LoadData();
-                CampaignState.NotifyCampaignsChanged();
+                await CampaignState.NotifyCampaignsChanged();
             }
             else
             {
@@ -525,7 +525,7 @@
             {
                 Message.Success("Campaña eliminada correctamente.");
                 await LoadData();
-                CampaignState.NotifyCampaignsChanged();
+                await CampaignState.NotifyCampaignsChanged();
             }
             else
             {
@@ -688,7 +688,7 @@
             {
                 Message.Success("Campaña desbloqueada.");
                 await LoadData();
-                CampaignState.NotifyCampaignsChanged();
+                await CampaignState.NotifyCampaignsChanged();
             }
             else
             {

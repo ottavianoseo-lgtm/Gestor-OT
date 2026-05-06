@@ -53,7 +53,8 @@ public class WorkOrderQueryService : IWorkOrderQueryService
             w.Name,
             w.AcceptsMultiplePeople,
             w.AcceptsMultipleDates,
-            w.WorkOrderStatus?.IsEditable == false)).ToList();
+            w.WorkOrderStatus?.IsEditable == false,
+            w.WorkOrderStatusId)).ToList();
     }
 
     public async Task<PagedResult<WorkOrderDto>> GetPagedAsync(int page = 1, int pageSize = 50, CancellationToken ct = default)
@@ -83,7 +84,8 @@ public class WorkOrderQueryService : IWorkOrderQueryService
             w.Field?.Name, w.OTNumber, w.PlannedDate, w.ExpirationDate,
             w.StockReserved, w.ContractorId, w.ContactId, w.CampaignId,
             w.Name, w.AcceptsMultiplePeople, w.AcceptsMultipleDates,
-            w.WorkOrderStatus?.IsEditable == false)).ToList();
+            w.WorkOrderStatus?.IsEditable == false,
+            w.WorkOrderStatusId)).ToList();
 
         return new PagedResult<WorkOrderDto>(items, total, page, pageSize);
     }

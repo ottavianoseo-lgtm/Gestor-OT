@@ -196,17 +196,31 @@
                         </div>
                     </AntDesign.Col>
                     <AntDesign.Col Span="2" Style="display: flex; align-items: flex-start; justify-content: flex-end; padding-top: 2px;">
-                        <Button Danger Size="@ButtonSize.Small" OnClick="() => RemoveItem(idx)"
-                                Style="border-radius: 6px; height: 30px;">
-                            <Icon Type="delete" Theme="IconThemeType.Outline" />
-                        </Button>
+                        @{
+                            var deleteIdx = idx;
+                            var itemHasSupplies = item.DefaultSupplies != null && item.DefaultSupplies.Any(s => s.SupplyId != Guid.Empty);
+                        }
+                        <Popconfirm Title="@(itemHasSupplies ? "¿Eliminar labor con insumos?" : "¿Eliminar labor?")"
+                                    OnConfirm="() => RemoveItem(deleteIdx)"
+                                    OkText="@("Eliminar")" CancelText="@("Cancelar")">
+                            <Button Danger Size="@ButtonSize.Small"
+                                    Style="border-radius: 6px; height: 30px;">
+                                <Icon Type="delete" Theme="IconThemeType.Outline" />
+                            </Button>
+                        </Popconfirm>
                     </AntDesign.Col>
                 </AntDesign.Row>
             </div>
 
             @if (idx < _formModel.Items.Count - 1)
             {
-                <div class="day-separator" style="margin: 4px 0;">
+                var dayGap = _formModel.Items[idx + 1].DayOffset - item.DayOffset;
+                <div class="day-separator" style="margin: 4px 0 4px 24px;">
+                    <div class="separator-line"></div>
+                    @if (dayGap > 0)
+                    {
+                        <span style="color: rgba(255,255,255,0.3); font-size: 10px; white-space: nowrap; padding: 0 8px;">@dayGap día(s)</span>
+                    }
                     <div class="separator-line"></div>
                 </div>
             }
@@ -313,6 +327,7 @@
     {
         public Guid LaborTypeId { get; set; }
         public int DayOffset { get; set; }
+        public int SortOrder { get; set; }
         public List<SupplyDefaultForm> DefaultSupplies { get; set; } = new();
     }
 
@@ -382,6 +397,7 @@
             {
                 LaborTypeId = i.LaborTypeId,
                 DayOffset = i.DayOffset,
+                SortOrder = i.SortOrder,
                 DefaultSupplies = i.DefaultSupplies?.Select(s => new SupplyDefaultForm
                 {
                     SupplyId = s.SupplyId,
@@ -398,7 +414,10 @@
 
     private void AddItem()
     {
-        _formModel.Items.Add(new StrategyItemForm());
+        _formModel.Items.Add(new StrategyItemForm
+        {
+            SortOrder = _formModel.Items.Count
+        });
     }
 
     private void RemoveItem(int idx)
@@ -461,7 +480,8 @@
                         s.Dose,
                         s.DoseUnit,
                         s.SupplyName
-                    )).ToList()
+                    )).ToList(),
+                    i.SortOrder
                 )).ToList()
             );
 

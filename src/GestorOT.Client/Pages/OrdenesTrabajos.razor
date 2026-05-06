@@ -32,27 +32,27 @@
 
 <AntDesign.Row Gutter="@((16, 16))" Style="margin-bottom: 16px;">
     <AntDesign.Col Xs="24" Sm="6">
-        <div class="kpi-card-sm" style="border-left: 3px solid #E74C3C;">
-            <span class="kpi-sm-value">@_workOrders.Count(w => w.Status == "Pending" || w.Status == "Draft")</span>
-            <span class="kpi-sm-label">Pendientes</span>
+        <div class="kpi-card-sm" style="border-left: 3px solid #3498DB;">
+            <span class="kpi-sm-value">@_workOrders.Count</span>
+            <span class="kpi-sm-label">Total</span>
         </div>
     </AntDesign.Col>
     <AntDesign.Col Xs="24" Sm="6">
         <div class="kpi-card-sm" style="border-left: 3px solid #F1C40F;">
-            <span class="kpi-sm-value">@_workOrders.Count(w => w.Status == "InProgress")</span>
-            <span class="kpi-sm-label">En Progreso</span>
-        </div>
-    </AntDesign.Col>
-    <AntDesign.Col Xs="24" Sm="6">
-        <div class="kpi-card-sm" style="border-left: 3px solid #3498DB;">
-            <span class="kpi-sm-value">@_workOrders.Count(w => w.Status == "Completed" || w.Status == "Done")</span>
-            <span class="kpi-sm-label">Completadas</span>
+            <span class="kpi-sm-value">@EditablesCount</span>
+            <span class="kpi-sm-label">Editables</span>
         </div>
     </AntDesign.Col>
     <AntDesign.Col Xs="24" Sm="6">
         <div class="kpi-card-sm" style="border-left: 3px solid #2ECC71;">
-            <span class="kpi-sm-value">@_workOrders.Count(w => w.Status == "Approved")</span>
-            <span class="kpi-sm-label">Aprobadas</span>
+            <span class="kpi-sm-value">@NoEditablesCount</span>
+            <span class="kpi-sm-label">No editables</span>
+        </div>
+    </AntDesign.Col>
+    <AntDesign.Col Xs="24" Sm="6">
+        <div class="kpi-card-sm" style="border-left: 3px solid #E74C3C;">
+            <span class="kpi-sm-value">@SinEstadoCount</span>
+            <span class="kpi-sm-label">Sin estado</span>
         </div>
     </AntDesign.Col>
 </AntDesign.Row>
@@ -67,15 +67,7 @@
         </PropertyColumn>
         <Column TData="string" Title="Estado">
             @{
-                var (color, label) = context.Status switch
-                {
-                    "Approved" => ("#52C41A", "Aprobada"),
-                    "Completed" or "Done" => ("#1890FF", "Completada"),
-                    "InProgress" => ("#FAAD14", "En Progreso"),
-                    "Cancelled" => ("#95A5A6", "Cancelada"),
-                    "Draft" => ("#FA8C16", "Borrador"),
-                    _ => ("#E74C3C", "Pendiente")
-                };
+                var (color, label) = GetStatusDisplay(context.WorkOrderStatusId);
             }
             <Tag Style="@($"background: {color}20; color: {color}; border: 1px solid {color}40; border-radius: 12px; font-size: 11px; font-weight: 600; padding: 2px 10px;")">
                 @label
@@ -156,20 +148,16 @@
                     }
                     else if (_workOrderStatuses.Count > 0)
                     {
-                        <Select TItem="WorkOrderStatusDto" TItemValue="string"
+                        <Select TItem="WorkOrderStatusDto" TItemValue="Guid"
                                 DataSource="_workOrderStatuses"
-                                @bind-Value="_formModel.Status"
+                                @bind-Value="WorkOrderStatusIdBind"
                                 LabelName="@nameof(WorkOrderStatusDto.Name)"
-                                ValueName="@nameof(WorkOrderStatusDto.Name)"
+                                ValueName="@nameof(WorkOrderStatusDto.Id)"
                                 Style="width: 100%;" />
                     }
                     else
                     {
-                        <Select TItem="string" TItemValue="string" @bind-Value="_formModel.Status" Style="width: 100%;">
-                            <SelectOption Value="@("Draft")" Label="Borrador" />
-                            <SelectOption Value="@("Pending")" Label="Pendiente" />
-                            <SelectOption Value="@("InProgress")" Label="En Progreso" />
-                        </Select>
+                        <Alert Type="@AlertType.Error" Message="No hay estados de OT configurados. Cree al menos un estado inicial en Administración > Estados de OT." ShowIcon="true" />
                     }
                 </FormItem>
             </AntDesign.Col>
@@ -219,6 +207,12 @@
     private WoFormModel _formModel = new();
     private Form<WoFormModel>? _form;
 
+    private Guid WorkOrderStatusIdBind
+    {
+        get => _formModel.WorkOrderStatusId ?? Guid.Empty;
+        set => _formModel.WorkOrderStatusId = value == Guid.Empty ? null : value;
+    }
+
     public class WoFormModel
     {
         public string? Name { get; set; }
@@ -228,9 +222,32 @@
         public Guid CampaignId { get; set; }
         public Guid ContactId { get; set; }
         public DateTime DueDate { get; set; } = DateTime.Today.AddDays(7);
-        public string Status { get; set; } = "Draft";
+        public Guid? WorkOrderStatusId { get; set; }
         public bool AcceptsMultiplePeople { get; set; }
         public bool AcceptsMultipleDates { get; set; }
+    }
+
+    private int EditablesCount => _workOrders.Count(w => 
+        w.WorkOrderStatusId.HasValue && w.WorkOrderStatusId != Guid.Empty &&
+        _workOrderStatuses.Any(s => s.Id == w.WorkOrderStatusId.Value && s.IsEditable));
+
+    private int NoEditablesCount => _workOrders.Count(w => 
+        w.WorkOrderStatusId.HasValue && w.WorkOrderStatusId != Guid.Empty &&
+        _workOrderStatuses.Any(s => s.Id == w.WorkOrderStatusId.Value && !s.IsEditable));
+
+    private int SinEstadoCount => _workOrders.Count(w => 
+        w.WorkOrderStatusId == null || w.WorkOrderStatusId == Guid.Empty);
+
+    private (string ColorHex, string Name) GetStatusDisplay(Guid? workOrderStatusId)
+    {
+        if (workOrderStatusId == null || workOrderStatusId == Guid.Empty)
+            return ("#E74C3C", "Sin estado");
+        
+        var status = _workOrderStatuses.FirstOrDefault(s => s.Id == workOrderStatusId.Value);
+        if (status == null)
+            return ("#E74C3C", "Pendiente");
+        
+        return (status.ColorHex, status.Name);
     }
 
     protected override async Task OnInitializedAsync()
@@ -322,8 +339,9 @@
         _isEditing = false;
         _formModel = new WoFormModel();
 
-        var defaultStatus = _workOrderStatuses.FirstOrDefault(s => s.IsDefault);
-        _formModel.Status = defaultStatus?.Name ?? "Draft";
+        var defaultStatus = _workOrderStatuses.FirstOrDefault(s => s.IsDefault)
+                           ?? _workOrderStatuses.OrderBy(s => s.SortOrder).FirstOrDefault();
+        _formModel.WorkOrderStatusId = defaultStatus?.Id;
 
         _formModel.CampaignId = CampaignState.CurrentCampaign.Id;
 
@@ -355,7 +373,7 @@
             CampaignId = wo.CampaignId ?? Guid.Empty,
             ContactId = wo.ContactId ?? Guid.Empty,
             DueDate = wo.DueDate,
-            Status = wo.Status,
+            WorkOrderStatusId = wo.WorkOrderStatusId,
             AcceptsMultiplePeople = wo.AcceptsMultiplePeople,
             AcceptsMultipleDates = wo.AcceptsMultipleDates
         };
@@ -380,14 +398,16 @@
         _saving = true;
         try
         {
-            var selectedStatus = _workOrderStatuses.FirstOrDefault(s => s.Name == _formModel.Status);
+            var selectedStatus = _formModel.WorkOrderStatusId.HasValue && _formModel.WorkOrderStatusId != Guid.Empty
+                ? _workOrderStatuses.FirstOrDefault(s => s.Id == _formModel.WorkOrderStatusId.Value)
+                : null;
             var dto = new WorkOrderDto
             {
                 Id = _isEditing ? _editingId : Guid.Empty,
                 Name = string.IsNullOrWhiteSpace(_formModel.Name) ? null : _formModel.Name.Trim(),
                 CampaignId = _formModel.CampaignId != Guid.Empty ? _formModel.CampaignId : null,
                 Description = _formModel.Description,
-                Status = _formModel.Status,
+                Status = selectedStatus?.Name ?? string.Empty,
                 WorkOrderStatusId = selectedStatus?.Id,
                 ContactId = _formModel.ContactId,
                 OTNumber = _isEditing ? null : $"OT_{Guid.NewGuid().ToString().Substring(0, 5).ToUpper()}",

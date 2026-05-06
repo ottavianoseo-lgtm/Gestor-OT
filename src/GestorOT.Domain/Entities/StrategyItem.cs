@@ -8,6 +8,7 @@ public class StrategyItem : ITenantEntity
     public Guid LaborTypeId { get; set; }
     public Guid? ErpActivityId { get; set; }
     public int DayOffset { get; set; }
+    public int SortOrder { get; set; }
     public string? DefaultSuppliesJson { get; set; }
     public CropStrategy? Strategy { get; set; }
     public LaborType? LaborType { get; set; }

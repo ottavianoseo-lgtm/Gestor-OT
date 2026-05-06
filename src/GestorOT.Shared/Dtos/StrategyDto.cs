@@ -25,12 +25,13 @@ public record StrategyItemDto
     public string? LaborTypeName { get; set; }
     public string? ErpActivityName { get; set; }
     public int DayOffset { get; set; }
+    public int SortOrder { get; set; }
     public List<StrategySupplyDefault> DefaultSupplies { get; set; } = new();
 
     public StrategyItemDto() { }
-    public StrategyItemDto(Guid id, Guid cropStrategyId, Guid laborTypeId, Guid? erpActivityId, string? laborTypeName, string? erpActivityName, int dayOffset, List<StrategySupplyDefault> defaultSupplies)
+    public StrategyItemDto(Guid id, Guid cropStrategyId, Guid laborTypeId, Guid? erpActivityId, string? laborTypeName, string? erpActivityName, int dayOffset, List<StrategySupplyDefault> defaultSupplies, int sortOrder = 0)
     {
-        Id = id; CropStrategyId = cropStrategyId; LaborTypeId = laborTypeId; ErpActivityId = erpActivityId; LaborTypeName = laborTypeName; ErpActivityName = erpActivityName; DayOffset = dayOffset; DefaultSupplies = defaultSupplies;
+        Id = id; CropStrategyId = cropStrategyId; LaborTypeId = laborTypeId; ErpActivityId = erpActivityId; LaborTypeName = laborTypeName; ErpActivityName = erpActivityName; DayOffset = dayOffset; DefaultSupplies = defaultSupplies; SortOrder = sortOrder;
     }
 }
 

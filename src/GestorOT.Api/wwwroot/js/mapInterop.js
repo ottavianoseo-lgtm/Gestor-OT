@@ -494,5 +494,52 @@ window.mapInterop = {
             console.error('Error searching city:', e);
         }
         return false;
+    },
+
+    startEditExistingLot: function (lotId) {
+        if (!this.map || !this.lotLayers[lotId]) return false;
+
+        var layer = this.lotLayers[lotId];
+
+        this.map.removeLayer(layer);
+        delete this.lotLayers[lotId];
+        if (this.selectedLayer === layer) {
+            this.selectedLayer = null;
+        }
+
+        layer.setStyle({
+            color: '#E74C3C',
+            fillColor: '#E74C3C',
+            fillOpacity: 0.3,
+            weight: 3
+        });
+
+        this.drawnItems.addLayer(layer);
+        this.editingLotId = lotId;
+
+        this.map.fitBounds(layer.getBounds(), { padding: [80, 80], maxZoom: 16 });
+        return true;
+    },
+
+    cancelEditExistingLot: function (lotId, lotName, status, area, fieldName, coordinatesJson) {
+        if (!this.map) return;
+
+        if (this.drawnItems) {
+            this.drawnItems.clearLayers();
+        }
+        this.editingLotId = null;
+
+        if (lotId) {
+            this.addLotPolygon(lotId, lotName, status, area, fieldName, coordinatesJson);
+        }
+    },
+
+    getEditingLotWkt: function () {
+        if (!this.drawnItems) return null;
+        var layers = this.drawnItems.getLayers();
+        if (layers.length > 0) {
+            return this.layerToWkt(layers[0]);
+        }
+        return null;
     }
 };

@@ -39,7 +39,7 @@
                         </AntDesign.Col>
                         <AntDesign.Col Span="8" Style="display: flex; align-items: flex-end; padding-bottom: 30px;">
                             <Checkbox @bind-Checked="_wizardModel.IsOriginalPlan">
-                                <span style="color: #F1C40F; font-weight: 600;">Es Base</span>
+                                <span style="color: #F1C40F; font-weight: 600;">P.O.</span>
                             </Checkbox>
                         </AntDesign.Col>
                     </AntDesign.Row>
@@ -86,13 +86,22 @@
                     </div>
                 }
 
-                <FormItem Label="@($"Lotes ({_wizardModel.CampaignLotIds.Count} seleccionados)")">
+                <FormItem Label="Filtrar por Campo">
+                    <Select TItemValue="Guid" TItem="FieldDto" DataSource="_fields"
+                            @bind-Value="_filterFieldId"
+                            LabelName="@nameof(FieldDto.Name)" ValueName="@nameof(FieldDto.Id)"
+                            Placeholder="Todos los campos" AllowClear Style="width: 100%;" />
+                </FormItem>
+
+                <FormItem Label="@($"Lotes ({FilteredCampaignLots.Count()} seleccionados)")">
                     <div style="max-height: 250px; overflow-y: auto; border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 12px; background: rgba(255,255,255,0.02);">
-                        @if (_campaignLots.Count == 0)
+                        @if (FilteredCampaignLots.Count() == 0)
                         {
-                            <div style="text-align: center; color: rgba(255,255,255,0.3); padding: 20px;">No hay lotes disponibles en esta campaña.</div>
+                            <div style="text-align: center; color: rgba(255,255,255,0.3); padding: 20px;">
+                                @(_campaignLots.Count == 0 ? "No hay lotes disponibles en esta campaña." : "No hay lotes en este campo.")
+                            </div>
                         }
-                        @foreach (var lot in _campaignLots)
+                        @foreach (var lot in FilteredCampaignLots)
                         {
                             <div style="margin-bottom: 8px;">
                                 <Checkbox Checked="@_wizardModel.CampaignLotIds.Contains(lot.Id)"
@@ -268,7 +277,14 @@
     private List<CropStrategyDto> _strategies = new();
     private List<CampaignLotDto> _campaignLots = new();
     private List<ContactDto> _contacts = new();
+    private List<FieldDto> _fields = new();
+    private Guid _filterFieldId;
     private CropStrategyDto? _selectedStrategy;
+
+    private IEnumerable<CampaignLotDto> FilteredCampaignLots =>
+        _filterFieldId == Guid.Empty
+            ? _campaignLots
+            : _campaignLots.Where(l => l.FieldId == _filterFieldId);
 
     private WizardModel _wizardModel = new();
     private List<LaborPreview> _previews = new();
@@ -331,6 +347,12 @@
             _strategies = await strategiesTask ?? new();
             _contacts = await contactsTask ?? new();
             if (lotsTask != null) _campaignLots = await lotsTask ?? new();
+
+            _fields = _campaignLots
+                .Where(l => l.FieldId.HasValue)
+                .GroupBy(l => l.FieldId!.Value)
+                .Select(g => new FieldDto { Id = g.Key, Name = g.First().FieldName ?? "Campo sin nombre" })
+                .ToList();
 
             if (_strategyPreset)
             {
@@ -496,7 +518,8 @@
                     p.Date ?? DateTime.Today,
                     p.IsExternalBilling
                 )).ToList(),
-                ForceOriginalPlan || _wizardModel.IsOriginalPlan
+                ForceOriginalPlan || _wizardModel.IsOriginalPlan,
+                WorkOrderId
             );
 
             var response = await Http.PostAsJsonAsync("api/labors/bulk-from-strategy", request);

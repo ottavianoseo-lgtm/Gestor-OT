@@ -320,7 +320,7 @@ public class CampaignsController : ControllerBase
             .AnyAsync(cl => cl.CampaignId == id && cl.LotId == lotId);
 
         if (exists)
-            return BadRequest("El lote ya está asignado a esta campaña.");
+            return BadRequest($"El lote {lotId} ya está asignado a la campaña {id}. No se pueden crear asignaciones duplicadas.");
 
         var lot = await _context.Lots.FirstOrDefaultAsync(l => l.Id == lotId);
         if (lot == null)

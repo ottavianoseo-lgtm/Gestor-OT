@@ -123,6 +123,7 @@ public class StrategiesController : ControllerBase
                     CropStrategyId = strategy.Id,
                     LaborTypeId = item.LaborTypeId,
                     DayOffset = item.DayOffset,
+                    SortOrder = item.SortOrder,
                     DefaultSuppliesJson = item.DefaultSupplies != null
                         ? JsonSerializer.Serialize(item.DefaultSupplies.Where(s => s.SupplyId != Guid.Empty).ToList(), AppJsonSerializerContext.Default.ListStrategySupplyDefault)
                         : null
@@ -203,6 +204,7 @@ public class StrategiesController : ControllerBase
                     CropStrategyId = strategy.Id,
                     LaborTypeId = item.LaborTypeId,
                     DayOffset = item.DayOffset,
+                    SortOrder = item.SortOrder,
                     DefaultSuppliesJson = item.DefaultSupplies != null
                         ? JsonSerializer.Serialize(item.DefaultSupplies.Where(s => s.SupplyId != Guid.Empty).ToList(), AppJsonSerializerContext.Default.ListStrategySupplyDefault)
                         : null
@@ -262,7 +264,7 @@ public class StrategiesController : ControllerBase
                 DueDate = request.StartDate.AddDays(strategy.Items.Any() ? strategy.Items.Max(i => i.DayOffset) + 7 : 30)
             };
 
-            foreach (var item in strategy.Items)
+            foreach (var item in strategy.Items.OrderBy(i => i.SortOrder).ThenBy(i => i.DayOffset))
             {
                 var labor = new Labor
                 {
@@ -321,7 +323,7 @@ public class StrategiesController : ControllerBase
             strategy.ErpActivityId ?? Guid.Empty,
             strategy.Activity?.Name,
             strategy.CreatedAt,
-            strategy.Items.OrderBy(i => i.DayOffset).Select(i =>
+            strategy.Items.OrderBy(i => i.SortOrder).ThenBy(i => i.DayOffset).Select(i =>
             {
                 List<StrategySupplyDefault> supplies = DeserializeSupplies(i.DefaultSuppliesJson);
                 if (inventoryMap != null)
@@ -332,7 +334,7 @@ public class StrategiesController : ControllerBase
                             s.SupplyName = inventoryMap.GetValueOrDefault(s.SupplyId);
                     }
                 }
-                return new StrategyItemDto(i.Id, i.CropStrategyId, i.LaborTypeId, i.ErpActivityId, i.LaborType?.Name, null, i.DayOffset, supplies);
+                return new StrategyItemDto(i.Id, i.CropStrategyId, i.LaborTypeId, i.ErpActivityId, i.LaborType?.Name, null, i.DayOffset, supplies, i.SortOrder);
             }).ToList()
         );
     }

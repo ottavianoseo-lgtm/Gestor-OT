@@ -128,7 +128,8 @@ public class LaborsController : ControllerBase
             MachineryUsedId = dto.MachineryUsedId,
             WeatherLogJson = dto.WeatherLogJson,
             Priority = dto.Priority,
-            IsOriginalPlan = dto.IsOriginalPlan
+            IsOriginalPlan = dto.IsOriginalPlan,
+            SupplyWithdrawalNotes = dto.SupplyWithdrawalNotes
         };
 
         if (dto.Supplies != null)
@@ -208,6 +209,9 @@ public class LaborsController : ControllerBase
         if (labor == null)
             return NotFound();
 
+        if (labor.IsOriginalPlan && !User.IsInRole("AdminCampaña"))
+            return Conflict("El Planeamiento Original (P.O.) es de solo lectura. Solo un administrador puede modificar o desanclar estas labores.");
+
         if (labor.IsOriginalPlan && (dto.Status != "Planned" || dto.Mode != "Planned"))
             return BadRequest("Planeamiento Original solo permite labores con Status=Planned y Mode=Planned.");
 
@@ -266,6 +270,7 @@ public class LaborsController : ControllerBase
         labor.WeatherLogJson = dto.WeatherLogJson;
         labor.Priority = dto.Priority;
         labor.IsOriginalPlan = dto.IsOriginalPlan;
+        labor.SupplyWithdrawalNotes = dto.SupplyWithdrawalNotes;
         if (dto.Supplies != null)
         {
             // 1. Remove supplies not in the DTO
@@ -829,7 +834,7 @@ public class LaborsController : ControllerBase
         // Pre-validation: check all labors before inserting any
         foreach (var lot in campaignLots)
         {
-            foreach (var sItem in strategy.Items.OrderBy(i => i.DayOffset))
+            foreach (var sItem in strategy.Items.OrderBy(i => i.SortOrder).ThenBy(i => i.DayOffset))
             {
                 var ovr = request.LaborsOverride?.FirstOrDefault(o => o.CampaignLotId == lot.Id && o.StrategyItemId == sItem.Id);
                 var executionDate = (ovr != null) ? ovr.Date : request.BaseDate.AddDays(sItem.DayOffset);
@@ -865,7 +870,7 @@ public class LaborsController : ControllerBase
             {
                 foreach (var lot in campaignLots)
                 {
-                    foreach (var sItem in strategy.Items.OrderBy(i => i.DayOffset))
+                    foreach (var sItem in strategy.Items.OrderBy(i => i.SortOrder).ThenBy(i => i.DayOffset))
                     {
                         var ovr = request.LaborsOverride?.FirstOrDefault(o => o.CampaignLotId == lot.Id && o.StrategyItemId == sItem.Id);
 
