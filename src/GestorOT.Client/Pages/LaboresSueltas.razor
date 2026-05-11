@@ -22,7 +22,7 @@
         <h2 class="page-title">Gestión de Labores</h2>
         <span class="page-subtitle">Todas las labores de la campaña</span>
     </div>
-    <div style="display: flex; gap: 8px; align-items: center;">
+    <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap; row-gap: 8px;">
         <Select TItemValue="string?" TItem="string" @bind-Value="_filterAssigned"
                 Placeholder="Asignación" AllowClear Style="width: 130px;" OnSelectedItemChanged="LoadData">
             <SelectOption TItemValue="string?" TItem="string" Value="@("assigned")" Label="Asignadas" />
@@ -62,19 +62,29 @@
                 Style="background: #2ECC71; border-color: #2ECC71; border-radius: 8px; font-weight: 600;">
             <Icon Type="plus" Theme="IconThemeType.Outline" /> Labor Rápida
         </Button>
-        @if (_selectedIds.Count > 0)
-        {
-            <Button Type="@ButtonType.Primary" OnClick="OpenAssignModal"
-                    Style="background: #3498DB; border-color: #3498DB; border-radius: 8px; font-weight: 600;">
-                <Icon Type="link" Theme="IconThemeType.Outline" /> Asignar @_selectedIds.Count a OT
-            </Button>
-            <Button Type="@ButtonType.Primary" OnClick="CreateOTFromSelected"
-                    Style="background: #E74C3C; border-color: #E74C3C; border-radius: 8px; font-weight: 600;">
-                <Icon Type="file-add" Theme="IconThemeType.Outline" /> Crear OT con @_selectedIds.Count seleccionadas
-            </Button>
-        }
     </div>
 </div>
+
+@if (_selectedIds.Count > 0)
+{
+    <div class="selection-action-bar">
+        <span class="selection-count">
+            <Icon Type="check-circle" Theme="IconThemeType.Fill" Style="color: #2ECC71;" />
+            @_selectedIds.Count labor@(_selectedIds.Count == 1 ? "" : "es") seleccionada@(_selectedIds.Count == 1 ? "" : "s")
+        </span>
+        <div class="selection-actions">
+            <Button Size="@ButtonSize.Small" OnClick="ClearSelection">Limpiar</Button>
+            <Button Type="@ButtonType.Primary" OnClick="OpenAssignModal"
+                    Style="background: #3498DB; border-color: #3498DB;">
+                <Icon Type="link" Theme="IconThemeType.Outline" /> Asignar a OT
+            </Button>
+            <Button Type="@ButtonType.Primary" OnClick="CreateOTFromSelected"
+                    Style="background: #E74C3C; border-color: #E74C3C;">
+                <Icon Type="file-add" Theme="IconThemeType.Outline" /> Crear OT con la selección
+            </Button>
+        </div>
+    </div>
+}
 
 @if (!string.IsNullOrEmpty(_errorMessage))
 {
@@ -249,6 +259,33 @@ else
 <!-- Removed redundant execute modal -->
 
 <style>
+    .selection-action-bar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 16px;
+        flex-wrap: wrap;
+        padding: 10px 16px;
+        margin-bottom: 16px;
+        background: rgba(52, 152, 219, 0.08);
+        border: 1px solid rgba(52, 152, 219, 0.25);
+        border-radius: 10px;
+    }
+
+    .selection-action-bar .selection-count {
+        color: #fff;
+        font-weight: 600;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .selection-action-bar .selection-actions {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+    }
+
     .kpi-card {
         background: rgba(255,255,255,0.04);
         backdrop-filter: blur(10px);
@@ -551,6 +588,12 @@ else
     private void OnSelectedRowsChanged(IEnumerable<LaborDto> selectedRows)
     {
         _selectedIds = selectedRows.Select(r => r.Id).ToHashSet();
+        StateHasChanged();
+    }
+
+    private void ClearSelection()
+    {
+        _selectedIds.Clear();
         StateHasChanged();
     }
 

@@ -450,6 +450,8 @@
                     var errorText = await response.Content.ReadAsStringAsync();
                     _errorMessage = errorText.Contains("expirado") ? "Este enlace ha expirado."
                         : errorText.Contains("revocado") ? "Este enlace ha sido revocado."
+                        : errorText.Contains("ya fue utilizado") ? "Este enlace ya fue utilizado."
+                        : errorText.Contains("Labor no encontrada") ? "La labor asociada a este enlace ya no existe."
                         : "El enlace no es válido o ha expirado.";
                     return;
                 }

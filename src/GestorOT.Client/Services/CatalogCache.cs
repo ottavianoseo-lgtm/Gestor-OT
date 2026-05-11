@@ -47,7 +47,7 @@ public class CatalogCache
     public async Task<List<WorkOrderStatusDto>> GetWorkOrderStatusesAsync()
     {
         return (await GetOrFetchAsync("workorder-statuses",
-            () => _http.GetFromJsonAsync<List<WorkOrderStatusDto>>("api/workorder-statuses")))!;
+            () => _http.GetFromJsonAsync<List<WorkOrderStatusDto>>("api/workorderstatuses")))!;
     }
 
     public async Task<List<CropStrategyDto>> GetStrategiesAsync()

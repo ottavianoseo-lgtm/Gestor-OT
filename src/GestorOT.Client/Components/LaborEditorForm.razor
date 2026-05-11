@@ -23,6 +23,23 @@
         {
             <Alert Type="@AlertType.Warning" Message="La campaña actual no tiene lotes asignados. Asigne lotes a la campaña antes de crear labores." ShowIcon="true" Style="margin-bottom: 16px;" />
         }
+        @if (!string.IsNullOrEmpty(_saveError))
+        {
+            <Alert Type="@AlertType.Error" Message="@_saveError" ShowIcon="true" Closable="true" OnClose="() => _saveError = null" Style="margin-bottom: 16px;" />
+        }
+        @if (_saveWarnings != null && _saveWarnings.Any())
+        {
+            <Alert Type="@AlertType.Warning" ShowIcon="true" Style="margin-bottom: 16px;">
+                <MessageTemplate>
+                    <ul style="margin: 0; padding-left: 18px;">
+                        @foreach (var w in _saveWarnings)
+                        {
+                            <li>@w</li>
+                        }
+                    </ul>
+                </MessageTemplate>
+            </Alert>
+        }
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
             <FormItem Label="Campo (Filtro)">
                 <Select TItemValue="Guid" TItem="FieldDto" @bind-Value="_filterFieldId"
@@ -339,6 +356,8 @@
     private bool _haSuperaLote;
     private bool _fechaFueraRotacion;
     private decimal _lotProductiveArea;
+    private string? _saveError;
+    private List<string> _saveWarnings = new();
 
     private IEnumerable<CampaignLotDto> FilteredLots =>
         _filterFieldId == Guid.Empty
@@ -935,6 +954,8 @@
         try
         {
             _loading = true;
+            _saveError = null;
+            _saveWarnings.Clear();
             _model.WeatherLogJson = JsonSerializer.Serialize(_weather);
             
             if (ForceOriginalPlan || _model.IsOriginalPlan)
@@ -974,10 +995,7 @@
 
                 if (result?.Warnings != null && result.Warnings.Any())
                 {
-                    foreach (var warning in result.Warnings)
-                    {
-                        Message.Warning(warning);
-                    }
+                    _saveWarnings = result.Warnings;
                 }
 
                 Message.Success("Labor guardada correctamente.");
@@ -986,7 +1004,7 @@
             else
             {
                 var body = await response.Content.ReadAsStringAsync();
-                Message.Error($"No se pudo guardar la labor: {body}");
+                _saveError = body;
             }
         }
         catch (Exception ex)

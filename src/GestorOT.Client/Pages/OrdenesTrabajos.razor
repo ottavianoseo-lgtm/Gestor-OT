@@ -263,12 +263,18 @@
         try
         {
             _workOrderStatuses = await Http.GetFromJsonAsync<List<WorkOrderStatusDto>>(
-                "api/workorder-statuses",
+                "api/workorderstatuses",
                 AppJsonSerializerContext.Default.ListWorkOrderStatusDto) ?? new();
         }
-        catch
+        catch (HttpRequestException ex)
         {
             _workOrderStatuses = new();
+            Message.Error($"No se pudieron cargar los estados de OT: {ex.Message}");
+        }
+        catch (Exception ex)
+        {
+            _workOrderStatuses = new();
+            Message.Error($"Error inesperado al cargar estados de OT: {ex.Message}");
         }
         finally
         {

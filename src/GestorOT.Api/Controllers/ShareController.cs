@@ -77,49 +77,53 @@ public class ShareController : ControllerBase
         if (sharedToken.ExpiresAt < DateTime.UtcNow)
             return BadRequest("Este enlace ha expirado.");
 
-        var wo = await _context.WorkOrders
-            .AsNoTracking()
-            .IgnoreQueryFilters()
-            .Include(w => w.Field)
-            .Include(w => w.Labors)
-                .ThenInclude(l => l.Type)
-            .Include(w => w.Labors)
-                .ThenInclude(l => l.Lot)
-            .Include(w => w.Labors)
-                .ThenInclude(l => l.Supplies)
-                    .ThenInclude(s => s.Supply)
-            .FirstOrDefaultAsync(w => w.Id == sharedToken.WorkOrderId);
+        if (sharedToken.IsUsed)
+            return BadRequest("Este enlace ya fue utilizado.");
 
-        if (wo == null)
-            return NotFound("Orden de trabajo no encontrada.");
+        WorkOrder? wo = null;
+        List<Labor> labors;
 
-        // Filter labors if metadata has specific IDs
-        List<Labor> filteredLabors = wo.Labors.ToList();
-        if (!string.IsNullOrEmpty(sharedToken.Metadata))
+        var metadataInfo = ParseTokenMetadata(sharedToken);
+
+        if (sharedToken.WorkOrderId.HasValue && sharedToken.WorkOrderId != Guid.Empty)
         {
-            try
-            {
-                var meta = JsonSerializer.Deserialize<JsonElement>(sharedToken.Metadata);
-                var allowedIds = new HashSet<Guid>();
+            wo = await _context.WorkOrders
+                .AsNoTracking()
+                .IgnoreQueryFilters()
+                .Include(w => w.Field)
+                .Include(w => w.Labors).ThenInclude(l => l.Type)
+                .Include(w => w.Labors).ThenInclude(l => l.Lot)
+                .Include(w => w.Labors).ThenInclude(l => l.Supplies).ThenInclude(s => s.Supply)
+                .FirstOrDefaultAsync(w => w.Id == sharedToken.WorkOrderId);
 
-                if (meta.TryGetProperty("laborIds", out var idsProp))
-                {
-                    foreach (var id in idsProp.EnumerateArray()) allowedIds.Add(id.GetGuid());
-                }
-                else if (meta.TryGetProperty("laborId", out var idProp))
-                {
-                    allowedIds.Add(idProp.GetGuid());
-                }
+            if (wo == null)
+                return NotFound("Orden de trabajo no encontrada.");
 
-                if (allowedIds.Any())
-                {
-                    filteredLabors = wo.Labors.Where(l => allowedIds.Contains(l.Id)).ToList();
-                }
-            }
-            catch { /* Ignore malformed metadata */ }
+            labors = metadataInfo.AllowedLaborIds.Any()
+                ? wo.Labors.Where(l => metadataInfo.AllowedLaborIds.Contains(l.Id)).ToList()
+                : wo.Labors.ToList();
+        }
+        else if (metadataInfo.SingleLaborId.HasValue)
+        {
+            var singleLabor = await _context.Labors
+                .AsNoTracking()
+                .IgnoreQueryFilters()
+                .Include(l => l.Type)
+                .Include(l => l.Lot).ThenInclude(lot => lot!.Field)
+                .Include(l => l.Supplies).ThenInclude(s => s.Supply)
+                .FirstOrDefaultAsync(l => l.Id == metadataInfo.SingleLaborId.Value);
+
+            if (singleLabor == null)
+                return NotFound("Labor no encontrada.");
+
+            labors = new List<Labor> { singleLabor };
+        }
+        else
+        {
+            return BadRequest("Token sin destino válido.");
         }
 
-        var labors = filteredLabors.OrderBy(l => l.CreatedAt).Select(l => new PublicLaborDto(
+        var publicLabors = labors.OrderBy(l => l.CreatedAt).Select(l => new PublicLaborDto(
             l.Id,
             l.Type?.Name ?? "Labor",
             l.Status.ToString(),
@@ -140,13 +144,13 @@ public class ShareController : ControllerBase
         )).ToList();
 
         return new PublicWorkOrderDto(
-            wo.Id,
-            wo.Description,
-            wo.Status,
-            wo.AssignedTo,
-            wo.DueDate,
-            wo.Field?.Name,
-            labors
+            wo?.Id ?? labors.First().Id,
+            wo?.Description ?? labors.First().Type?.Name ?? "Labor",
+            wo?.Status ?? labors.First().Status.ToString(),
+            wo?.AssignedTo,
+            wo?.DueDate ?? labors.First().EstimatedDate ?? DateTime.UtcNow,
+            wo?.Field?.Name ?? labors.First().Lot?.Field?.Name,
+            publicLabors
         );
     }
 
@@ -157,20 +161,42 @@ public class ShareController : ControllerBase
         var tokenHash = ComputeHash(token);
 
         var sharedToken = await _context.SharedTokens
-            .AsNoTracking()
             .IgnoreQueryFilters()
             .FirstOrDefaultAsync(t => t.TokenHash == tokenHash);
 
         if (sharedToken == null)
             return NotFound("Token inválido.");
 
-        if (sharedToken.IsRevoked || sharedToken.ExpiresAt < DateTime.UtcNow)
-            return BadRequest("Este enlace no es válido.");
+        if (sharedToken.IsRevoked)
+            return BadRequest("Este enlace ha sido revocado.");
 
-        var labor = await _context.Labors
-            .IgnoreQueryFilters()
-            .Include(l => l.Supplies)
-            .FirstOrDefaultAsync(l => l.Id == laborId && l.WorkOrder!.Id == sharedToken.WorkOrderId);
+        if (sharedToken.ExpiresAt < DateTime.UtcNow)
+            return BadRequest("Este enlace ha expirado.");
+
+        if (sharedToken.IsUsed)
+            return BadRequest("Este enlace ya fue utilizado.");
+
+        var metadataInfo = ParseTokenMetadata(sharedToken);
+
+        Labor? labor;
+        if (sharedToken.WorkOrderId.HasValue && sharedToken.WorkOrderId != Guid.Empty)
+        {
+            labor = await _context.Labors
+                .IgnoreQueryFilters()
+                .Include(l => l.Supplies)
+                .FirstOrDefaultAsync(l => l.Id == laborId && l.WorkOrderId == sharedToken.WorkOrderId);
+        }
+        else
+        {
+            // Standalone labor — verify it belongs to the token
+            if (!metadataInfo.AllowedLaborIds.Contains(laborId))
+                return NotFound("Labor no asociada a este enlace.");
+
+            labor = await _context.Labors
+                .IgnoreQueryFilters()
+                .Include(l => l.Supplies)
+                .FirstOrDefaultAsync(l => l.Id == laborId);
+        }
 
         if (labor == null)
             return NotFound("Labor no encontrada.");
@@ -194,6 +220,7 @@ public class ShareController : ControllerBase
             }
         }
 
+        sharedToken.IsUsed = true;
         await _context.SaveChangesAsync();
         return NoContent();
     }
@@ -283,5 +310,39 @@ public class ShareController : ControllerBase
         var bytes = System.Text.Encoding.UTF8.GetBytes(input);
         var hash = SHA256.HashData(bytes);
         return Convert.ToHexStringLower(hash);
+    }
+
+    internal static TokenMetadataInfo ParseTokenMetadata(SharedToken sharedToken)
+    {
+        var info = new TokenMetadataInfo();
+
+        if (!string.IsNullOrEmpty(sharedToken.Metadata))
+        {
+            try
+            {
+                var meta = JsonSerializer.Deserialize<JsonElement>(sharedToken.Metadata);
+
+                if (meta.TryGetProperty("laborIds", out var idsProp))
+                {
+                    foreach (var id in idsProp.EnumerateArray())
+                        info.AllowedLaborIds.Add(id.GetGuid());
+                }
+                else if (meta.TryGetProperty("laborId", out var idProp))
+                {
+                    var id = idProp.GetGuid();
+                    info.SingleLaborId = id;
+                    info.AllowedLaborIds.Add(id);
+                }
+            }
+            catch { /* Ignore malformed metadata */ }
+        }
+
+        return info;
+    }
+
+    internal sealed record TokenMetadataInfo
+    {
+        public Guid? SingleLaborId { get; set; }
+        public HashSet<Guid> AllowedLaborIds { get; } = new();
     }
 }

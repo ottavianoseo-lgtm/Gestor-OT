@@ -17,12 +17,14 @@ public class LaborsController : ControllerBase
     private readonly IApplicationDbContext _context;
     private readonly IAgronomicValidationService _validationService;
     private readonly IWorkOrderService _workOrderService;
+    private readonly IConfiguration _configuration;
 
-    public LaborsController(IApplicationDbContext context, IAgronomicValidationService validationService, IWorkOrderService workOrderService)
+    public LaborsController(IApplicationDbContext context, IAgronomicValidationService validationService, IWorkOrderService workOrderService, IConfiguration configuration)
     {
         _context = context;
         _validationService = validationService;
         _workOrderService = workOrderService;
+        _configuration = configuration;
     }
 
     [HttpGet("by-workorder/{workOrderId:guid}")]
@@ -385,6 +387,19 @@ public class LaborsController : ControllerBase
         if (source == null)
             return NotFound();
 
+        if (source.CampaignLotId.HasValue && await IsCampaignLockedByCampaignLotAsync(source.CampaignLotId.Value))
+            return Conflict("No se pueden replicar labores en una campaña bloqueada.");
+
+        var supplyIds = source.Supplies
+            .Select(s => s.SupplyId)
+            .Where(sid => sid != Guid.Empty)
+            .Distinct()
+            .ToList();
+        var (mixError, _) = await ValidateSupplyMixAsync(
+            supplyIds.Select(sid => new LaborSupplyDto { SupplyId = sid }).ToList());
+        if (mixError != null)
+            return BadRequest(mixError);
+
         var newLabor = new Labor
         {
             Id = Guid.NewGuid(),
@@ -558,7 +573,11 @@ public class LaborsController : ControllerBase
         _context.SharedTokens.Add(sharedToken);
         await _context.SaveChangesAsync();
 
-        var baseUrl = $"{Request.Scheme}://{Request.Host}";
+        var baseUrl = _configuration.GetValue<string?>("App:PublicBaseUrl");
+        if (string.IsNullOrWhiteSpace(baseUrl))
+        {
+            baseUrl = $"{Request.Scheme}://{Request.Host}";
+        }
         var publicUrl = $"{baseUrl}/public/labor-execution/{rawToken}";
 
         return Ok(new { Url = publicUrl, Token = rawToken });
@@ -852,6 +871,43 @@ public class LaborsController : ControllerBase
                         warnings.Add($"Lote {lot.Lot?.Name}: {result.Message}");
                     }
                 }
+
+                // Tank-Mix validation for strategy item supplies
+                if (!string.IsNullOrEmpty(sItem.DefaultSuppliesJson))
+                {
+                    var defaults = System.Text.Json.JsonSerializer.Deserialize(sItem.DefaultSuppliesJson, AppJsonSerializerContext.Default.ListStrategySupplyDefault);
+                    if (defaults != null && defaults.Count >= 2)
+                    {
+                        var supplyIds = defaults
+                            .Where(s => s.SupplyId != Guid.Empty)
+                            .Select(s => s.SupplyId)
+                            .Distinct()
+                            .ToList();
+
+                        if (supplyIds.Count >= 2)
+                        {
+                            var mixAlerts = await _validationService.ValidateMixAsync(supplyIds);
+                            var blocking = mixAlerts
+                                .Where(a => string.Equals(a.Severity, "Error", StringComparison.OrdinalIgnoreCase)
+                                         || string.Equals(a.Severity, "Block", StringComparison.OrdinalIgnoreCase))
+                                .ToList();
+
+                            if (blocking.Any())
+                            {
+                                var msg = $"Lote {lot.Lot?.Name}: Mezcla prohibida — " + string.Join(" · ",
+                                    blocking.Select(b => $"{b.ProductAName} + {b.ProductBName} ({b.WarningMessage})"));
+                                errors.Add(msg);
+                            }
+                            else
+                            {
+                                foreach (var alert in mixAlerts)
+                                {
+                                    warnings.Add($"Lote {lot.Lot?.Name}: Advertencia de mezcla — {alert.ProductAName} + {alert.ProductBName}: {alert.WarningMessage}");
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
 
@@ -1093,6 +1149,50 @@ public class LaborsController : ControllerBase
             {
                 warnings.Add(activityResult.Message);
             }
+        }
+
+        // 3. Tank-Mix Rule Validation
+        var mixResult = await ValidateSupplyMixAsync(dto.Supplies);
+        if (mixResult.Error != null)
+            return (mixResult.Error, warnings);
+        warnings.AddRange(mixResult.Warnings);
+
+        return (null, warnings);
+    }
+
+    private async Task<(string? Error, List<string> Warnings)> ValidateSupplyMixAsync(List<LaborSupplyDto>? supplies)
+    {
+        var warnings = new List<string>();
+
+        if (supplies == null || supplies.Count < 2)
+            return (null, warnings);
+
+        var supplyIds = supplies
+            .Select(s => s.SupplyId)
+            .Where(id => id != Guid.Empty)
+            .Distinct()
+            .ToList();
+
+        if (supplyIds.Count < 2)
+            return (null, warnings);
+
+        var mixAlerts = await _validationService.ValidateMixAsync(supplyIds);
+
+        var blocking = mixAlerts
+            .Where(a => string.Equals(a.Severity, "Error", StringComparison.OrdinalIgnoreCase)
+                     || string.Equals(a.Severity, "Block", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        if (blocking.Any())
+        {
+            var msg = "Mezcla prohibida: " + string.Join(" · ",
+                blocking.Select(b => $"{b.ProductAName} + {b.ProductBName} ({b.WarningMessage})"));
+            return (msg, warnings);
+        }
+
+        foreach (var alert in mixAlerts)
+        {
+            warnings.Add($"Advertencia de mezcla: {alert.ProductAName} + {alert.ProductBName} — {alert.WarningMessage}");
         }
 
         return (null, warnings);
