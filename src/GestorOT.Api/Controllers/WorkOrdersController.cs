@@ -145,7 +145,13 @@ public class WorkOrdersController : ControllerBase
             .FirstOrDefaultAsync(w => w.Id == id);
         if (workOrder == null) return NotFound();
 
-        if (workOrder.WorkOrderStatus?.IsEditable == false)
+        bool isStatusChanging = false;
+        if (dto.WorkOrderStatusId.HasValue && dto.WorkOrderStatusId != Guid.Empty && dto.WorkOrderStatusId != workOrder.WorkOrderStatusId)
+            isStatusChanging = true;
+        else if (!string.IsNullOrWhiteSpace(dto.Status) && dto.Status != workOrder.Status)
+            isStatusChanging = true;
+
+        if (workOrder.WorkOrderStatus?.IsEditable == false && !isStatusChanging)
             return Conflict("La OT se encuentra en un estado que no permite modificaciones.");
 
         if (workOrder.Campaign?.Status == "Locked")
@@ -346,8 +352,7 @@ public class WorkOrdersController : ControllerBase
             .FirstOrDefaultAsync(w => w.Id == id);
         if (workOrder == null) return NotFound();
 
-        if (workOrder.WorkOrderStatus?.IsEditable == false)
-            return Conflict("La OT se encuentra en un estado que no permite modificaciones.");
+
         if (workOrder.Campaign?.Status == "Locked")
             return Conflict("No se pueden modificar órdenes de una campaña bloqueada.");
 
