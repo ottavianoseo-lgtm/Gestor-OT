@@ -23,7 +23,7 @@ namespace GestorOT.Client.Pages
         protected bool _loading = true;
         protected List<WorkOrderStatusDto> _availableStatuses = new();
         protected List<ContactDto> _availableContacts = new();
-        protected string _viewMode = "Planned";
+        protected string? _originalStatus;
         protected bool _savingGlobal;
         protected bool _showLaborModal;
         protected Guid _editingLaborId;
@@ -77,6 +77,7 @@ namespace GestorOT.Client.Pages
             _loading = true;
             try {
                 _order = await _http.GetFromJsonAsync<WorkOrderDetailDto>($"api/workorders/{WorkOrderId}");
+                if (_order != null) _originalStatus = _order.Status;
                 _availableStatuses = await _http.GetFromJsonAsync<List<WorkOrderStatusDto>>("api/workorderstatuses") ?? new();
                 _availableContacts = await _http.GetFromJsonAsync<List<ContactDto>>("api/catalogs/contacts") ?? new();
             } catch (Exception ex) { _message.Error($"Error: {ex.Message}"); }
@@ -86,7 +87,11 @@ namespace GestorOT.Client.Pages
         protected void BackToList() => _navigation.NavigateTo("/workorders");
 
         protected async Task ConsolidateSupplies() {
+            if (_order == null) return;
             try {
+                // First save current real totals if any were modified
+                await _http.PutAsJsonAsync($"api/workorders/{WorkOrderId}/approvals", _order.SupplyApprovals);
+                
                 var response = await _http.PostAsync($"api/workorders/{WorkOrderId}/consolidate-supplies", null);
                 if (response.IsSuccessStatusCode) { _message.Success("Insumos consolidados."); await LoadData(); }
                 else { var body = await response.Content.ReadAsStringAsync(); _message.Error($"Error al consolidar insumos: {body}"); }
@@ -97,10 +102,15 @@ namespace GestorOT.Client.Pages
             if (_order == null) return;
             _savingGlobal = true;
             try {
+                // Save header
                 var dto = new WorkOrderDto(_order.Id, _order.FieldId, _order.Description, _order.Status, _order.AssignedTo, _order.DueDate, null, _order.OTNumber, _order.PlannedDate, _order.ExpirationDate, _order.StockReserved, _order.ContractorId, _order.ContactId, _order.CampaignId, _order.Name, _order.AcceptsMultiplePeople, _order.AcceptsMultipleDates, _order.IsLocked);
                 var resp = await _http.PutAsJsonAsync($"api/workorders/{WorkOrderId}", dto);
-                if (resp.IsSuccessStatusCode) { _message.Success("Orden de Trabajo actualizada correctamente."); await LoadData(); }
-                else { var body = await resp.Content.ReadAsStringAsync(); _message.Error($"Error al guardar cambios: {body}"); }
+                
+                // Save approvals (real totals)
+                var respApp = await _http.PutAsJsonAsync($"api/workorders/{WorkOrderId}/approvals", _order.SupplyApprovals);
+
+                if (resp.IsSuccessStatusCode && respApp.IsSuccessStatusCode) { _message.Success("Orden de Trabajo actualizada correctamente."); await LoadData(); }
+                else { _message.Error("Hubo un error al guardar algunos cambios."); }
             } catch (Exception ex) { _message.Error($"Error al guardar cambios: {ex.Message}"); }
             finally { _savingGlobal = false; }
         }
@@ -123,10 +133,14 @@ namespace GestorOT.Client.Pages
             }
         }
 
-        protected void OpenLaborModal(Guid? laborId = null, string? initialStatus = null) { 
+        protected async Task OpenLaborModal(Guid? laborId = null, string? initialStatus = null) { 
             _editingLaborId = laborId ?? Guid.Empty; 
             _pendingInitialStatus = initialStatus; 
             _showLaborModal = true; 
+            if (_laborFormRef != null)
+            {
+                await _laborFormRef.Reset();
+            }
             StateHasChanged();
         }
 
@@ -182,10 +196,21 @@ namespace GestorOT.Client.Pages
             } catch (Exception ex) { _message.Error($"Error: {ex.Message}"); }
         }
 
+        protected string? _filterLaborStatus;
         protected string StatusTagStyle(string colorHex) => $"background: {colorHex}33; color: #fff; border: 1px solid {colorHex}80; border-radius: 12px; font-size: 11px; font-weight: 600; padding: 2px 10px; text-shadow: 0 1px 2px rgba(0,0,0,0.4);";
         protected string GetRowKey(LaborDto l) => l.Id.ToString();
         protected string StatusBadgeStyle(string colorHex) => $"display: inline-flex; align-items: center; gap: 6px; background: {colorHex}33; color: #fff; border: 1px solid {colorHex}80; border-radius: 12px; font-size: 12px; font-weight: 600; padding: 3px 10px; text-shadow: 0 1px 2px rgba(0,0,0,0.4);";
-        protected string GetStatusColor(string status) => status switch { "Realized" => "#52C41A", "Validated" => "#FA8C16", "AwaitingValidation" => "#FAAD14", _ => "#1890FF" };
-        protected string GetStatusLabel(string status) => status switch { "Realized" => "Realizada", "Validated" => "Validada", "AwaitingValidation" => "En Validación", _ => "Planeada" };
+        protected string GetStatusColor(string status) => status switch {
+            "Realized"           => "#2ECC71",
+            "Validated"          => "#9B59B6",
+            "AwaitingValidation" => "#F1C40F",
+            _                    => "#3498DB"
+        };
+        protected string GetStatusLabel(string status) => status switch {
+            "Realized"           => "Realizada",
+            "Validated"          => "Validada",
+            "AwaitingValidation" => "En Validación",
+            _                    => "Planeada"
+        };
     }
 }

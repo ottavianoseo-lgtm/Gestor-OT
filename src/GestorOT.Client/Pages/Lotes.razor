@@ -615,7 +615,7 @@
         try
         {
             _lotCampaigns = await Http.GetFromJsonAsync<List<CampaignLotDto>>($"api/lots/{lotId}/campaigns") ?? new();
-            _editingAreas = _lotCampaigns.ToDictionary(c => c.Id, c => c.ProductiveArea);
+            _editingAreas = _lotCampaigns.ToDictionary(c => c.Id, c => Math.Round(c.ProductiveArea, 2));
         }
         catch (Exception)
         {
@@ -744,7 +744,7 @@
             var lot = _lots.FirstOrDefault(x => x.Id == _editingId);
             if (lot != null)
             {
-                _newCampaignProductiveArea = lot.CadastralArea;
+                _newCampaignProductiveArea = Math.Round(lot.CadastralArea, 2);
             }
         }
     }

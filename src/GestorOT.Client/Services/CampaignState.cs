@@ -19,6 +19,12 @@ public class CampaignState
         _jsRuntime = jsRuntime;
     }
 
+    public async Task<Guid?> GetSavedCampaignId()
+    {
+        var idStr = await _jsRuntime.InvokeAsync<string>("localStorage.getItem", "selected_campaign_id");
+        return Guid.TryParse(idStr, out var id) ? id : null;
+    }
+
     public void SetCampaign(CampaignSummaryDto campaign)
     {
         CurrentCampaign = campaign;

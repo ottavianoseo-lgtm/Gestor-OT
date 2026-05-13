@@ -44,7 +44,7 @@
             <FormItem Label="Campo (Filtro)">
                 <Select TItemValue="Guid" TItem="FieldDto" @bind-Value="_filterFieldId"
                         Placeholder="Filtrar por campo" EnableSearch AllowClear
-                        DataSource="@_fields"
+                        DataSource="@FilteredFields"
                         LabelName="@nameof(FieldDto.Name)"
                         ValueName="@nameof(FieldDto.Id)"
                         OnSelectedItemChanged="OnFieldFilterChanged">
@@ -339,8 +339,17 @@
 
     private LaborDto _model = new();
     private List<CampaignLotDto> _lots = new();
-    private List<LotDto> _allLotsRaw = new();
-    private List<FieldDto> _fields = new();
+    private List<FieldDto> _allFieldsRaw = new();
+    
+    private List<FieldDto> FilteredFields =>
+        CampaignState.CurrentCampaign != null
+            ? _lots
+                .Where(l => l.FieldId.HasValue)
+                .GroupBy(l => l.FieldId!.Value)
+                .Select(g => new FieldDto { Id = g.Key, Name = g.First().FieldName ?? "Campo sin nombre" })
+                .OrderBy(f => f.Name)
+                .ToList()
+            : _allFieldsRaw.OrderBy(f => f.Name).ToList();
     private Guid _filterFieldId;
     private List<LaborTypeDto> _laborTypes = new();
     private List<ErpActivityDto> _activities = new();
@@ -360,9 +369,10 @@
     private List<string> _saveWarnings = new();
 
     private IEnumerable<CampaignLotDto> FilteredLots =>
-        _filterFieldId == Guid.Empty
+        (_filterFieldId == Guid.Empty
             ? _lots
-            : _lots.Where(l => l.FieldId == _filterFieldId);
+            : _lots.Where(l => l.FieldId == _filterFieldId))
+        .OrderBy(l => l.LotName);
 
     private WeatherLogModel _weather = new();
     private bool _magicLinkModalVisible;
@@ -423,6 +433,13 @@
         CampaignState.OnChange += OnCampaignChanged;
         await InitializeForm();
         _initialized = true;
+    }
+
+    public async Task Reset()
+    {
+        ResetFormState();
+        await InitializeForm();
+        StateHasChanged();
     }
 
     /// <summary>
@@ -540,23 +557,16 @@
             _contacts = (await contactsTask) ?? new();
             _workOrders = ((await workOrdersTask) ?? new()).GroupBy(w => w.Id).Select(g => g.First()).ToList();
 
-            if (CampaignState.CurrentCampaign != null)
-            {
-                _fields = _lots
-                    .Where(l => l.FieldId.HasValue)
-                    .GroupBy(l => l.FieldId!.Value)
-                    .Select(g => new FieldDto { Id = g.Key, Name = g.First().FieldName ?? "Campo sin nombre" })
-                    .ToList();
-            }
-            else
-            {
-                _fields = (await fieldsTask) ?? new();
-            }
-
             if (lotsTask != null)
-                _lots = ((await lotsTask) ?? new()).GroupBy(l => l.Id).Select(g => g.First()).ToList();
+                _lots = ((await lotsTask) ?? new())
+                    .GroupBy(l => l.Id)
+                    .Select(g => g.First())
+                    .OrderBy(l => l.LotName)
+                    .ToList();
+
+            _allFieldsRaw = (await fieldsTask) ?? new();
                 
-            Console.WriteLine($"[DEBUG] Catalogs loaded: Types={_laborTypes.Count}, Lots={_lots.Count}, Fields={_fields.Count}");
+            Console.WriteLine($"[DEBUG] Catalogs loaded: Types={_laborTypes.Count}, Lots={_lots.Count}, Fields={FilteredFields.Count}");
         }
         catch (Exception ex)
         {
@@ -618,6 +628,25 @@
         if (currentLot != null && currentLot.FieldId.HasValue)
         {
             _filterFieldId = currentLot.FieldId.Value;
+        }
+
+        // #25: Ensure all labor supplies are in the _inventories list so the Select component can display them
+        if (_model.Supplies != null)
+        {
+            foreach (var s in _model.Supplies)
+            {
+                if (s.SupplyId != Guid.Empty && !_inventories.Any(i => i.Id == s.SupplyId))
+                {
+                    _inventories.Add(new InventoryDto(
+                        s.SupplyId, 
+                        "Cargado", 
+                        s.SupplyName ?? "Insumo desconocido", 
+                        0, 0, 
+                        null, s.SupplyUnit, 1, 
+                        "INSUMOS", null
+                    ));
+                }
+            }
         }
     }
 
@@ -859,10 +888,35 @@
         if (string.IsNullOrWhiteSpace(value))
         {
             await LoadCatalogs();
+            // Re-ensure current supplies are still there after reloading catalog
+            if (_model.Supplies != null)
+            {
+                foreach (var s in _model.Supplies)
+                {
+                    if (!_inventories.Any(i => i.Id == s.SupplyId))
+                    {
+                        _inventories.Add(new InventoryDto(s.SupplyId, "Cargado", s.SupplyName ?? "Insumo", 0, 0, null, s.SupplyUnit, 1));
+                    }
+                }
+            }
             return;
         }
 
-        _inventories = await Http.GetFromJsonAsync<List<InventoryDto>>($"api/inventory?search={Uri.EscapeDataString(value)}&pageSize=10") ?? new();
+        var results = await Http.GetFromJsonAsync<List<InventoryDto>>($"api/inventory?search={Uri.EscapeDataString(value)}&pageSize=20") ?? new();
+        
+        // #25: Keep current supplies in the list so other rows don't go blank when searching in one row
+        if (_model.Supplies != null)
+        {
+            foreach (var s in _model.Supplies)
+            {
+                if (s.SupplyId != Guid.Empty && !results.Any(i => i.Id == s.SupplyId))
+                {
+                    results.Add(new InventoryDto(s.SupplyId, "Cargado", s.SupplyName ?? "Insumo", 0, 0, null, s.SupplyUnit, 1));
+                }
+            }
+        }
+        
+        _inventories = results;
         StateHasChanged();
     }
 
@@ -979,13 +1033,13 @@
                 
                 if (result?.Labor != null)
                 {
-                    _model = result.Labor;
-                    LaborId = _model.Id;
-                    _lastLaborId = LaborId;
+                    // Do not overwrite LaborId parameter locally as it causes issues with Blazor's parameter tracking
+                    // Instead, use the ID from the result to link files if necessary
+                    var newLaborId = result.Labor.Id;
 
                     if (_attachmentsRef != null)
                     {
-                        var linkResult = await _attachmentsRef.LinkPendingFiles(LaborId);
+                        var linkResult = await _attachmentsRef.LinkPendingFiles(newLaborId);
                         if (!linkResult.Success)
                         {
                             Message.Warning("La labor se guardó pero hubo un problema al vincular archivos. Reintentá desde la biblioteca.");

@@ -5,6 +5,7 @@
 @inject HttpClient Http
 @inject IMessageService Message
 @inject GestorOT.Client.Services.CampaignState CampaignState
+@implements IDisposable
 
 <div style="min-height: 500px; display: flex; flex-direction: column;">
     @if (_step == 1)
@@ -87,10 +88,15 @@
                 }
 
                 <FormItem Label="Filtrar por Campo">
-                    <Select TItemValue="Guid" TItem="FieldDto" DataSource="_fields"
+                    <Select TItemValue="Guid" TItem="FieldDto" DataSource="FilteredFields"
                             @bind-Value="_filterFieldId"
                             LabelName="@nameof(FieldDto.Name)" ValueName="@nameof(FieldDto.Id)"
-                            Placeholder="Todos los campos" AllowClear Style="width: 100%;" />
+                            Placeholder="Todos los campos" AllowClear Style="width: 100%;">
+                        @foreach (var field in FilteredFields)
+                        {
+                            <SelectOption TItemValue="Guid" TItem="FieldDto" Value="@field.Id" Label="@field.Name" />
+                        }
+                    </Select>
                 </FormItem>
 
                 <FormItem Label="@($"Lotes ({FilteredCampaignLots.Count()} seleccionados)")">
@@ -282,9 +288,17 @@
     private CropStrategyDto? _selectedStrategy;
 
     private IEnumerable<CampaignLotDto> FilteredCampaignLots =>
-        _filterFieldId == Guid.Empty
+        (_filterFieldId == Guid.Empty
             ? _campaignLots
-            : _campaignLots.Where(l => l.FieldId == _filterFieldId);
+            : _campaignLots.Where(l => l.FieldId == _filterFieldId))
+        .OrderBy(l => l.LotName);
+    
+    private List<FieldDto> FilteredFields => _campaignLots
+        .Where(l => l.FieldId.HasValue)
+        .GroupBy(l => l.FieldId!.Value)
+        .Select(g => new FieldDto { Id = g.Key, Name = g.First().FieldName ?? "Campo sin nombre" })
+        .OrderBy(f => f.Name)
+        .ToList();
 
     private WizardModel _wizardModel = new();
     private List<LaborPreview> _previews = new();
@@ -319,12 +333,23 @@
 
     protected override async Task OnInitializedAsync()
     {
+        CampaignState.OnChange += OnCampaignChanged;
         _strategyPreset = InitialStrategyId.HasValue;
         if (_strategyPreset)
         {
             _wizardModel.StrategyId = InitialStrategyId!.Value;
         }
         await LoadData();
+    }
+
+    private void OnCampaignChanged()
+    {
+        InvokeAsync(async () => { await LoadData(); StateHasChanged(); });
+    }
+
+    public void Dispose()
+    {
+        CampaignState.OnChange -= OnCampaignChanged;
     }
 
     private async Task LoadData()
@@ -348,11 +373,7 @@
             _contacts = await contactsTask ?? new();
             if (lotsTask != null) _campaignLots = await lotsTask ?? new();
 
-            _fields = _campaignLots
-                .Where(l => l.FieldId.HasValue)
-                .GroupBy(l => l.FieldId!.Value)
-                .Select(g => new FieldDto { Id = g.Key, Name = g.First().FieldName ?? "Campo sin nombre" })
-                .ToList();
+
 
             if (_strategyPreset)
             {

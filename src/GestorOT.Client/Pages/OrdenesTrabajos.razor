@@ -58,9 +58,47 @@
 </AntDesign.Row>
 
 <div class="glass-card">
-    <Table TItem="WorkOrderDto" DataSource="_workOrders" Loading="_loading" Size="@TableSize.Small" ScrollX="1200">
+    <Table TItem="WorkOrderDto" DataSource="_workOrders" Loading="_loading" Size="@TableSize.Small" ScrollX="1200"
+           OnRow="GetRowAttributes">
         <PropertyColumn Property="c => c.Name" Title="Nombre" Sortable>
-            <span style="font-weight: 700; color: #fff;">@(context.Name ?? context.OTNumber)</span>
+            <Popover Visible="@(_hoveredWoId == context.Id && !_suppressPreview)" Title="@($"Labores \u2014 {context.Name ?? context.OTNumber}")" OverlayStyle="max-width: 480px; padding: 0;">
+                <ContentTemplate>
+                    @if (_previewLoading.Contains(context.Id))
+                    {
+                        <div style="padding: 12px; text-align: center;"><Spin Size="AntDesign.SpinSize.Small" /></div>
+                    }
+                    else if (_laborPreviews.TryGetValue(context.Id, out var labors) && labors.Count > 0)
+                    {
+                        <div style="padding: 4px 0; min-width: 380px;">
+                            <div style="display: grid; grid-template-columns: 1fr 1fr auto auto; gap: 4px 12px; font-size: 11px; color: rgba(255,255,255,0.4); padding: 4px 12px; border-bottom: 1px solid rgba(255,255,255,0.08); text-transform: uppercase; letter-spacing: 0.5px;">
+                                <span>Tipo</span><span>Lote</span><span>Ha</span><span>Estado</span>
+                            </div>
+                            @foreach (var l in labors.Take(8))
+                            {
+                                var stColor = l.Status == "Realized" ? "#2ECC71" : l.Status == "AwaitingValidation" ? "#F1C40F" : "#3498DB";
+                                var stLabel = l.Status == "Realized" ? "Real." : l.Status == "AwaitingValidation" ? "Val." : "Plan.";
+                                <div style="display: grid; grid-template-columns: 1fr 1fr auto auto; gap: 4px 12px; padding: 5px 12px; border-bottom: 1px solid rgba(255,255,255,0.04); align-items: center;">
+                                    <span style="color: #eee; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">@l.LaborTypeName</span>
+                                    <span style="color: rgba(255,255,255,0.6); font-size: 12px;">@l.LotName</span>
+                                    <span style="color: #fff; font-size: 12px; font-weight: 600;">@l.Hectares.ToString("N0")</span>
+                                    <span style="background: @(stColor)22; color: @stColor; border: 1px solid @(stColor)44; border-radius: 10px; font-size: 10px; font-weight: 700; padding: 1px 7px;">@stLabel</span>
+                                </div>
+                            }
+                            @if (labors.Count > 8)
+                            {
+                                <div style="padding: 6px 12px; font-size: 11px; color: rgba(255,255,255,0.4); text-align: center;">+ @(labors.Count - 8) más</div>
+                            }
+                        </div>
+                    }
+                    else
+                    {
+                        <div style="padding: 12px; color: rgba(255,255,255,0.4); font-size: 12px;">Sin labores registradas</div>
+                    }
+                </ContentTemplate>
+                <ChildContent>
+                    <span style="font-weight: 700; color: #fff;">@(context.Name ?? context.OTNumber)</span>
+                </ChildContent>
+            </Popover>
         </PropertyColumn>
         <PropertyColumn Property="c => c.Description" Title="Descripción">
             <span style="font-weight: 600;">@context.Description</span>
@@ -78,29 +116,39 @@
             @context.DueDate.ToString("dd/MM/yyyy")
         </PropertyColumn>
         <ActionColumn Title="Acciones" Width="220">
-            <Space>
-                <SpaceItem>
-                    <Button Size="@ButtonSize.Small" OnClick="() => OpenDetail(context.Id)"
-                            Style="border-radius: 6px; background: #3498DB20; border-color: #3498DB40; color: #3498DB; font-size: 11px;">
-                        <Icon Type="eye" Theme="IconThemeType.Outline" /> Ver
-                    </Button>
-                </SpaceItem>
-                <SpaceItem>
-                    <Button Size="@ButtonSize.Small" OnClick="() => OpenEditModal(context)"
-                            Style="border-radius: 6px; border-color: rgba(255,255,255,0.15); color: rgba(255,255,255,0.7);">
-                        <Icon Type="edit" Theme="IconThemeType.Outline" />
-                    </Button>
-                </SpaceItem>
-                <SpaceItem>
-                    <Popconfirm Title="¿Eliminar esta orden de trabajo?"
-                                OnConfirm="() => DeleteWorkOrder(context.Id)"
-                                OkText="@("Eliminar")" CancelText="@("Cancelar")">
-                        <Button Danger Size="@ButtonSize.Small" Style="border-radius: 6px;">
-                            <Icon Type="delete" Theme="IconThemeType.Outline" />
+            <div @onmouseenter="() => { _suppressPreview = true; StateHasChanged(); }" 
+                 @onmouseleave="() => { _suppressPreview = false; StateHasChanged(); }"
+                 style="width: 100%; height: 100%; display: flex; align-items: center;">
+                <Space>
+                    <SpaceItem>
+                        <Button Size="@ButtonSize.Small" OnClick="() => OpenDetail(context.Id)"
+                                Style="border-radius: 6px; background: #3498DB20; border-color: #3498DB40; color: #3498DB; font-size: 11px;">
+                            <Icon Type="eye" Theme="IconThemeType.Outline" /> Ver
                         </Button>
-                    </Popconfirm>
-                </SpaceItem>
-            </Space>
+                    </SpaceItem>
+                    <SpaceItem>
+                        <Button Size="@ButtonSize.Small" OnClick="() => OpenEditModal(context)"
+                                Style="border-radius: 6px; border-color: rgba(255,255,255,0.15); color: rgba(255,255,255,0.7);">
+                            <Icon Type="edit" Theme="IconThemeType.Outline" />
+                        </Button>
+                    </SpaceItem>
+                    <SpaceItem>
+                        <Button Size="@ButtonSize.Small" OnClick='() => Navigation.NavigateTo($"/workorder-final/{context.Id}")'
+                                Style="border-radius: 6px; background: #2ECC7120; border-color: #2ECC7140; color: #2ECC71;">
+                            <Icon Type="check-circle" Theme="IconThemeType.Outline" /> Finalizar
+                        </Button>
+                    </SpaceItem>
+                    <SpaceItem>
+                        <Popconfirm Title="¿Eliminar esta orden de trabajo?"
+                                    OnConfirm="() => DeleteWorkOrder(context.Id)"
+                                    OkText="@("Eliminar")" CancelText="@("Cancelar")">
+                            <Button Danger Size="@ButtonSize.Small" Style="border-radius: 6px;">
+                                <Icon Type="delete" Theme="IconThemeType.Outline" />
+                            </Button>
+                        </Popconfirm>
+                    </SpaceItem>
+                </Space>
+            </div>
         </ActionColumn>
     </Table>
 </div>
@@ -199,6 +247,55 @@
     private bool _loading;
     private bool _loadingStatuses;
     private string? _errorMessage;
+
+    // Labor preview popover state
+    private Dictionary<Guid, List<LaborDto>> _laborPreviews = new();
+    private HashSet<Guid> _previewLoading = new();
+    private Guid? _hoveredWoId;
+    private bool _suppressPreview;
+
+    private Dictionary<string, object> GetRowAttributes(RowData<WorkOrderDto> row) => new()
+    {
+        { "onmouseenter", EventCallback.Factory.Create<MouseEventArgs>(this, async () => await OnRowHover(row.Data.Id)) },
+        { "onmouseleave", EventCallback.Factory.Create<MouseEventArgs>(this, _ => OnRowLeave()) }
+    };
+
+    private async Task OnRowHover(Guid woId)
+    {
+        _suppressPreview = false;
+        _hoveredWoId = woId;
+        await LoadLaborPreview(woId);
+        StateHasChanged();
+    }
+
+    private void OnRowLeave()
+    {
+        _hoveredWoId = null;
+        StateHasChanged();
+    }
+
+    private async Task LoadLaborPreview(Guid workOrderId)
+    {
+        if (_laborPreviews.ContainsKey(workOrderId)) return; // already cached
+        _previewLoading.Add(workOrderId);
+        StateHasChanged();
+        try
+        {
+            var detail = await Http.GetFromJsonAsync<WorkOrderDetailDto>(
+                $"api/workorders/{workOrderId}",
+                AppJsonSerializerContext.Default.WorkOrderDetailDto);
+            _laborPreviews[workOrderId] = detail?.Labors ?? new();
+        }
+        catch
+        {
+            _laborPreviews[workOrderId] = new();
+        }
+        finally
+        {
+            _previewLoading.Remove(workOrderId);
+            StateHasChanged();
+        }
+    }
 
     private bool _modalVisible;
     private bool _saving;

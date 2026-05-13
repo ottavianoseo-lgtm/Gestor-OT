@@ -53,10 +53,6 @@
             <Tag Style="@($"background: #2ECC7120; color: #2ECC71; border: 1px solid #2ECC7140; border-radius: 8px; font-size: 11px; font-weight: 600; padding: 2px 10px; cursor: default;")">
                 <Icon Type="calendar" Theme="IconThemeType.Outline" Style="font-size: 11px;" /> @CampaignState.CurrentCampaign.Name
             </Tag>
-            <Button Size="@ButtonSize.Small" OnClick="ToggleCampaignFilter"
-                    Style="@(_filterByCampaign ? "background: rgba(46,204,113,0.15); color: #2ECC71; border: 1px solid rgba(46,204,113,0.3); border-radius: 6px;" : "background: rgba(255,255,255,0.04); color: rgba(255,255,255,0.5); border: 1px solid rgba(255,255,255,0.08); border-radius: 6px;")">
-                @(_filterByCampaign ? "Filtrando campaña" : "Ver todas")
-            </Button>
         }
         <Button Type="@ButtonType.Primary" OnClick="() => _quickLaborSelectorVisible = true"
                 Style="background: #2ECC71; border-color: #2ECC71; border-radius: 8px; font-weight: 600;">
@@ -106,22 +102,22 @@
     </Alert>
 }
 
-<div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 20px;">
-    <div class="kpi-card">
+<div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 16px;">
+    <div class="kpi-card" style="cursor:pointer; border-color: @(_quickStatusFilter == null ? "rgba(255,255,255,0.3)" : "rgba(255,255,255,0.06)")" @onclick="() => { _quickStatusFilter = null; }">
         <div class="kpi-value">@_labors.Count</div>
         <div class="kpi-label">Total Labores</div>
     </div>
-    <div class="kpi-card">
+    <div class="kpi-card" style="cursor:pointer; border-color: @(_quickStatusFilter == "unassigned" ? "rgba(255,255,255,0.3)" : "rgba(255,255,255,0.06)")" @onclick='() => { _quickStatusFilter = "unassigned"; }'>
         <div class="kpi-value">@_labors.Count(l => l.WorkOrderId == null)</div>
         <div class="kpi-label">Sin Asignar</div>
     </div>
-    <div class="kpi-card">
-        <div class="kpi-value">@_labors.Count(l => l.Status == "Realized")</div>
-        <div class="kpi-label">Realizadas</div>
+    <div class="kpi-card" style="cursor:pointer; border-color: @(_quickStatusFilter == "Planned" ? "#3498DB" : "rgba(255,255,255,0.06)")" @onclick='() => { _quickStatusFilter = "Planned"; }'>
+        <div class="kpi-value" style="color: #3498DB;">@_labors.Count(l => l.Status == "Planned")</div>
+        <div class="kpi-label">Planeadas</div>
     </div>
-    <div class="kpi-card">
-        <div class="kpi-value">@_labors.Sum(l => l.Hectares).ToString("N0") ha</div>
-        <div class="kpi-label">Hectáreas Totales</div>
+    <div class="kpi-card" style="cursor:pointer; border-color: @(_quickStatusFilter == "Realized" ? "#2ECC71" : "rgba(255,255,255,0.06)")" @onclick='() => { _quickStatusFilter = "Realized"; }'>
+        <div class="kpi-value" style="color: #2ECC71;">@_labors.Count(l => l.Status == "Realized")</div>
+        <div class="kpi-label">Realizadas</div>
     </div>
 </div>
 
@@ -402,7 +398,8 @@ else
     private string? _filterAssigned;
     private string? _filterStatus;
     private string _sortBy = "default";
-    private bool _filterByCampaign = true;
+    private string? _quickStatusFilter;
+
     private bool _quickLaborSelectorVisible;
     private bool _strategyWizardVisible;
     private bool _drawerVisible;
@@ -436,6 +433,12 @@ else
                     result = result.Where(l => string.Equals(l.FieldName, targetWo.FieldName, StringComparison.OrdinalIgnoreCase)).ToList();
                 }
             }
+
+            // Quick filter from KPI cards
+            if (_quickStatusFilter == "unassigned")
+                result = result.Where(l => l.WorkOrderId == null).ToList();
+            else if (_quickStatusFilter != null)
+                result = result.Where(l => l.Status == _quickStatusFilter).ToList();
 
             return result;
         }
@@ -488,7 +491,7 @@ else
             if (!string.IsNullOrEmpty(_filterStatus)) url.Append($"status={_filterStatus}&");
             if (_filterTypeId.HasValue && _filterTypeId != Guid.Empty) url.Append($"laborTypeId={_filterTypeId}&");
             if (_filterContactId.HasValue && _filterContactId != Guid.Empty) url.Append($"contactId={_filterContactId}&");
-            if (_filterByCampaign && CampaignState.CurrentCampaign != null) url.Append($"campaignId={CampaignState.CurrentCampaign.Id}&");
+            if (CampaignState.CurrentCampaign != null) url.Append($"campaignId={CampaignState.CurrentCampaign.Id}&");
             url.Append($"sortBy={_sortBy}");
 
             var laborsTask = Http.GetFromJsonAsync(url.ToString(),
@@ -500,7 +503,7 @@ else
             var contactsTask = Http.GetFromJsonAsync("api/catalogs/contacts",
                 AppJsonSerializerContext.Default.ListContactDto, cts.Token);
             
-            Task<List<CampaignLotDto>>? lotsTask = null;
+            Task<List<CampaignLotDto>?>? lotsTask = null;
             if (CampaignState.CurrentCampaign != null)
             {
                 lotsTask = Http.GetFromJsonAsync(
@@ -545,11 +548,7 @@ else
         await LoadData();
     }
 
-    private async Task ToggleCampaignFilter()
-    {
-        _filterByCampaign = !_filterByCampaign;
-        await LoadData();
-    }
+
 
     private async Task UpdatePriority(LaborDto labor, LaborPriority newPriority)
     {
@@ -597,11 +596,15 @@ else
         StateHasChanged();
     }
 
-    private void OpenQuickCreator()
+    private async Task OpenQuickCreator()
     {
         _quickLaborSelectorVisible = false;
         _editingLaborId = Guid.Empty;
         _drawerVisible = true;
+        if (_laborFormRef != null)
+        {
+            await _laborFormRef.Reset();
+        }
     }
 
     private void OpenStrategyWizard()
@@ -610,11 +613,15 @@ else
         _strategyWizardVisible = true;
     }
 
-    private void EditLabor(Guid id, bool isExecuting = false)
+    private async Task EditLabor(Guid id, bool isExecuting = false)
     {
         _editingLaborId = id;
         _isExecuting = isExecuting;
         _drawerVisible = true;
+        if (_laborFormRef != null)
+        {
+            await _laborFormRef.Reset();
+        }
     }
 
     private async Task HandleCancelLaborModal()
@@ -787,26 +794,24 @@ else
 
     private string GetStatusLabel(string? status) => status switch
     {
-        "Planned" => "Planeada",
+        "Realized"           => "Realizada",
+        "Validated"          => "Validada",
         "AwaitingValidation" => "En Validación",
-        "Validated" => "Validada",
-        "Realized" => "Realizada",
-        "Pending" => "Pendiente",
-        _ => status ?? "Unknown"
+        "Pending"            => "Pendiente",
+        _                    => "Planeada"
     };
 
     private string GetStatusTagStyle(string? status)
     {
         var color = status switch
         {
-            "Planned" => "#1890FF",
-            "AwaitingValidation" => "#FAAD14",
-            "Validated" => "#FA8C16",
-            "Realized" => "#52C41A",
-            "Pending" => "#FAAD14",
-            _ => "#d9d9d9"
+            "Realized"           => "#2ECC71",
+            "Validated"          => "#9B59B6",
+            "AwaitingValidation" => "#F1C40F",
+            "Pending"            => "#F1C40F",
+            _                    => "#3498DB"
         };
-        return $"background: {color}20; color: {color}; border: 1px solid {color}40; border-radius: 12px; font-size: 11px; padding: 2px 10px;";
+        return $"background: {color}22; color: {color}; border: 1px solid {color}44; border-radius: 12px; font-size: 11px; font-weight: 700; padding: 2px 10px; letter-spacing: 0.3px;";
     }
 }
 

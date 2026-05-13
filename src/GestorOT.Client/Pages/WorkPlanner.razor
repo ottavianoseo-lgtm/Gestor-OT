@@ -577,17 +577,25 @@ else if (_viewMode == "month")
 
     private DateTime _drawerDate = DateTime.Today;
 
-    private void OpenCreateDrawer(DateTime date)
+    private async Task OpenCreateDrawer(DateTime date)
     {
         _editingLaborId = Guid.Empty;
         _drawerDate = date;
         _drawerVisible = true;
+        if (_laborFormRef != null)
+        {
+            await _laborFormRef.Reset();
+        }
     }
 
-    private void EditLabor(Guid id)
+    private async Task EditLabor(Guid id)
     {
         _editingLaborId = id;
         _drawerVisible = true;
+        if (_laborFormRef != null)
+        {
+            await _laborFormRef.Reset();
+        }
     }
 
     private async Task HandleCancelLaborModal()
