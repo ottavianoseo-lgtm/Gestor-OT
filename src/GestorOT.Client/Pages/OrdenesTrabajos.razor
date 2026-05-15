@@ -57,11 +57,17 @@
     </AntDesign.Col>
 </AntDesign.Row>
 
-<div class="glass-card">
+<div class="glass-card" @onmouseleave="OnRowLeave">
     <Table TItem="WorkOrderDto" DataSource="_workOrders" Loading="_loading" Size="@TableSize.Small" ScrollX="1200"
            OnRow="GetRowAttributes">
-        <PropertyColumn Property="c => c.Name" Title="Nombre" Sortable>
-            <Popover Visible="@(_hoveredWoId == context.Id && !_suppressPreview)" Title="@($"Labores \u2014 {context.Name ?? context.OTNumber}")" OverlayStyle="max-width: 480px; padding: 0;">
+        <PropertyColumn Property="c => _workOrders.IndexOf(c) + 1" Title="#" Width="70" Fixed="ColumnFixPlacement.Left">
+            <span style="color: #fff; font-weight: 600;">@(_workOrders.IndexOf(context) + 1)</span>
+        </PropertyColumn>
+        <PropertyColumn Property="c => c.Name" Title="Nombre" Sortable Width="180">
+            <Popover Visible="@(_hoveredWoId == context.Id && !_suppressPreview)" 
+                     Trigger="@(new AntDesign.Trigger[] { })"
+                     Title="@($"Labores — {context.Name ?? context.OTNumber}")" 
+                     OverlayStyle="max-width: 480px; padding: 0;">
                 <ContentTemplate>
                     @if (_previewLoading.Contains(context.Id))
                     {
@@ -100,10 +106,10 @@
                 </ChildContent>
             </Popover>
         </PropertyColumn>
-        <PropertyColumn Property="c => c.Description" Title="Descripción">
+        <PropertyColumn Property="c => c.Description" Title="Descripción" Width="250">
             <span style="font-weight: 600;">@context.Description</span>
         </PropertyColumn>
-        <Column TData="string" Title="Estado">
+        <Column TData="string" Title="Estado" Width="120">
             @{
                 var (color, label) = GetStatusDisplay(context.WorkOrderStatusId);
             }
@@ -111,11 +117,11 @@
                 @label
             </Tag>
         </Column>
-        <PropertyColumn Property="c => c.AssignedTo" Title="Asignado a" Sortable />
-        <PropertyColumn Property="c => c.DueDate" Title="Fecha" Sortable>
+        <PropertyColumn Property="c => c.AssignedTo" Title="Asignado a" Sortable Width="150" />
+        <PropertyColumn Property="c => c.DueDate" Title="Fecha" Sortable DefaultSortOrder="@SortDirection.Ascending" Width="120">
             @context.DueDate.ToString("dd/MM/yyyy")
         </PropertyColumn>
-        <ActionColumn Title="Acciones" Width="220">
+        <ActionColumn Title="Acciones" Width="220" Fixed="ColumnFixPlacement.Right">
             <div @onmouseenter="() => { _suppressPreview = true; StateHasChanged(); }" 
                  @onmouseleave="() => { _suppressPreview = false; StateHasChanged(); }"
                  style="width: 100%; height: 100%; display: flex; align-items: center;">
@@ -167,28 +173,22 @@
         <FormItem Label="Descripción (opcional)">
             <TextArea @bind-Value="_formModel.Description" Placeholder="Notas o detalles adicionales..." AutoSize="true" />
         </FormItem>
-        <AntDesign.Row Gutter="16">
-            <AntDesign.Col Span="12">
-                @if (!_formModel.AcceptsMultiplePeople)
-                {
-                    <FormItem Label="Responsable (Contacto)">
-                        <Select TItem="ContactDto" TItemValue="Guid" DataSource="_availableContacts" @bind-Value="_formModel.ContactId"
-                                LabelName="@nameof(ContactDto.FullName)" ValueName="@nameof(ContactDto.Id)" Placeholder="Seleccionar contacto"
-                                Style="width: 100%;" EnableSearch />
-                    </FormItem>
-                }
-            </AntDesign.Col>
-            <AntDesign.Col Span="12">
-                @if (!_formModel.AcceptsMultipleDates)
-                {
-                    <FormItem Label="Fecha">
-                        <DatePicker @bind-Value="_formModel.DueDate" Style="width: 100%;" Format="dd/MM/yyyy" />
-                    </FormItem>
-                }
-            </AntDesign.Col>
-        </AntDesign.Row>
-        <AntDesign.Row Gutter="16">
-            <AntDesign.Col Span="12">
+        <Row Gutter="16">
+            <Col Span="12">
+                <FormItem Label="Responsable (Contacto)">
+                    <Select TItem="ContactDto" TItemValue="Guid?" DataSource="_availableContacts" @bind-Value="_formModel.ContactId"
+                            LabelName="@nameof(ContactDto.FullName)" ValueName="@nameof(ContactDto.Id)" Placeholder="Seleccionar contacto"
+                            Style="width: 100%;" EnableSearch AllowClear />
+                </FormItem>
+            </Col>
+            <Col Span="12">
+                <FormItem Label="Fecha">
+                    <DatePicker @bind-Value="_formModel.DueDate" Style="width: 100%;" Format="dd/MM/yyyy" />
+                </FormItem>
+            </Col>
+        </Row>
+        <Row Gutter="16">
+            <Col Span="12">
                 <FormItem Label="Estado">
                     @if (_loadingStatuses)
                     {
@@ -208,14 +208,14 @@
                         <Alert Type="@AlertType.Error" Message="No hay estados de OT configurados. Cree al menos un estado inicial en Administración > Estados de OT." ShowIcon="true" />
                     }
                 </FormItem>
-            </AntDesign.Col>
-            <AntDesign.Col Span="12">
-                <div style="display: flex; gap: 8px; height: 100%; align-items: center; padding-top: 24px;">
-                    <Checkbox @bind-Checked="_formModel.AcceptsMultiplePeople" OnChange="() => StateHasChanged()">Mult. Pers.</Checkbox>
-                    <Checkbox @bind-Checked="_formModel.AcceptsMultipleDates" OnChange="() => StateHasChanged()">Mult. Fechas</Checkbox>
+            </Col>
+            <Col Span="12">
+                <div style="display: flex; gap: 12px; height: 100%; align-items: center; padding-top: 24px;">
+                    <Checkbox @bind-Checked="_formModel.AcceptsMultiplePeople">Mult. Pers.</Checkbox>
+                    <Checkbox @bind-Checked="_formModel.AcceptsMultipleDates">Mult. Fechas</Checkbox>
                 </div>
-            </AntDesign.Col>
-        </AntDesign.Row>
+            </Col>
+        </Row>
     </Form>
 </Modal>
 
@@ -262,10 +262,11 @@
 
     private async Task OnRowHover(Guid woId)
     {
+        if (_hoveredWoId == woId) return;
         _suppressPreview = false;
         _hoveredWoId = woId;
-        await LoadLaborPreview(woId);
         StateHasChanged();
+        await LoadLaborPreview(woId);
     }
 
     private void OnRowLeave()
@@ -316,12 +317,13 @@
 
         public string? Description { get; set; }
         
-        public Guid CampaignId { get; set; }
-        public Guid ContactId { get; set; }
+        public Guid? CampaignId { get; set; }
+        public Guid? ContactId { get; set; }
         public DateTime DueDate { get; set; } = DateTime.Today.AddDays(7);
         public Guid? WorkOrderStatusId { get; set; }
         public bool AcceptsMultiplePeople { get; set; }
         public bool AcceptsMultipleDates { get; set; }
+        public string AssignedTo { get; set; } = string.Empty;
     }
 
     private int EditablesCount => _workOrders.Count(w => 
@@ -403,7 +405,8 @@
 
             await Task.WhenAll(ordersTask, contactsTask);
 
-            _workOrders = await ordersTask ?? new();
+            var orders = await ordersTask ?? new();
+            _workOrders = orders.OrderBy(o => o.DueDate).ToList();
             _availableContacts = await contactsTask ?? new();
             _errorMessage = null;
         }
@@ -425,28 +428,23 @@
 
     private void OpenCreateModal()
     {
-        _errorMessage = null;
-
         if (CampaignState.CurrentCampaign == null)
         {
-            _errorMessage = "Seleccione una campaña activa para crear una OT.";
-            return;
-        }
-
-        if (CampaignState.IsLocked)
-        {
-            _errorMessage = "La campaña está bloqueada. Solo consulta.";
+            Message.Warning("Debe seleccionar una campaña activa.");
             return;
         }
 
         _isEditing = false;
         _formModel = new WoFormModel();
+        _formModel.CampaignId = CampaignState.CurrentCampaign.Id;
+        
+        // Incremental ID por pantalla para la descripción por defecto
+        var nextId = _workOrders.Count + 1;
+        _formModel.Description = $"Nueva Orden de Trabajo #{nextId}";
 
         var defaultStatus = _workOrderStatuses.FirstOrDefault(s => s.IsDefault)
                            ?? _workOrderStatuses.OrderBy(s => s.SortOrder).FirstOrDefault();
         _formModel.WorkOrderStatusId = defaultStatus?.Id;
-
-        _formModel.CampaignId = CampaignState.CurrentCampaign.Id;
 
         _modalVisible = true;
     }
@@ -473,12 +471,13 @@
         {
             Name = wo.Name,
             Description = wo.Description,
-            CampaignId = wo.CampaignId ?? Guid.Empty,
-            ContactId = wo.ContactId ?? Guid.Empty,
+            CampaignId = wo.CampaignId,
+            ContactId = wo.ContactId,
             DueDate = wo.DueDate,
             WorkOrderStatusId = wo.WorkOrderStatusId,
             AcceptsMultiplePeople = wo.AcceptsMultiplePeople,
-            AcceptsMultipleDates = wo.AcceptsMultipleDates
+            AcceptsMultipleDates = wo.AcceptsMultipleDates,
+            AssignedTo = wo.AssignedTo
         };
         _modalVisible = true;
     }
@@ -492,7 +491,7 @@
     {
         if (_saving) return;
 
-        if (!_formModel.AcceptsMultiplePeople && _formModel.ContactId == Guid.Empty)
+        if (!_formModel.AcceptsMultiplePeople && (_formModel.ContactId == null || _formModel.ContactId == Guid.Empty))
         {
             Message.Warning("Debe seleccionar un responsable (Contacto) o marcar 'Mult. Pers.'");
             return;
@@ -512,11 +511,12 @@
                 Description = _formModel.Description,
                 Status = selectedStatus?.Name ?? string.Empty,
                 WorkOrderStatusId = selectedStatus?.Id,
-                ContactId = _formModel.ContactId,
+                ContactId = _formModel.ContactId != Guid.Empty ? _formModel.ContactId : null,
                 OTNumber = _isEditing ? null : $"OT_{Guid.NewGuid().ToString().Substring(0, 5).ToUpper()}",
                 DueDate = _formModel.DueDate,
                 AcceptsMultiplePeople = _formModel.AcceptsMultiplePeople,
-                AcceptsMultipleDates = _formModel.AcceptsMultipleDates
+                AcceptsMultipleDates = _formModel.AcceptsMultipleDates,
+                AssignedTo = _formModel.AssignedTo ?? string.Empty
             };
 
             HttpResponseMessage response;

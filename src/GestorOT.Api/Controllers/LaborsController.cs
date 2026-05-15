@@ -373,6 +373,12 @@ public class LaborsController : ControllerBase
         }
 
         await _context.SaveChangesAsync();
+
+        if (labor.WorkOrderId.HasValue)
+        {
+            await _workOrderService.ConsolidateSuppliesAsync(labor.WorkOrderId.Value);
+        }
+
         return NoContent();
     }
 
@@ -436,6 +442,11 @@ public class LaborsController : ControllerBase
 
         _context.Labors.Add(newLabor);
         await _context.SaveChangesAsync();
+
+        if (newLabor.WorkOrderId.HasValue)
+        {
+            await _workOrderService.ConsolidateSuppliesAsync(newLabor.WorkOrderId.Value);
+        }
 
         var created = await _context.Labors
             .AsNoTracking()
@@ -520,6 +531,12 @@ public class LaborsController : ControllerBase
 
                 _context.Labors.Add(newLabor);
                 await _context.SaveChangesAsync();
+
+                if (newLabor.WorkOrderId.HasValue)
+                {
+                    await _workOrderService.ConsolidateSuppliesAsync(newLabor.WorkOrderId.Value);
+                }
+
                 await transaction.CommitAsync();
 
                 return (ActionResult<Guid>)Ok(newLabor.Id);

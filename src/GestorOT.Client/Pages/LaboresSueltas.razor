@@ -130,76 +130,14 @@
 else
 {
     <div class="glass-card table-container">
-        <Table TItem="LaborDto"
-               DataSource="@FilteredLabors"
-               Loading="@_loading"
-               Size="TableSize.Small"
-               ScrollX="1200"
-               OnRowClick="r => EditLabor(r.Data.Id)"
-               SelectedRowsChanged="OnSelectedRowsChanged"
-               RowClassName='r => _selectedIds.Contains(r.Data.Id) ? "labor-selected" : ""'>
-            <ChildContent>
-                <Selection Key="@(context.Id.ToString())" Type="SelectionType.Checkbox" Disabled="@(context.WorkOrderId != null)" />
-                <PropertyColumn Property="l => l.LaborTypeName" Title="Labor" Sortable>
-                    <div style="display: flex; align-items: center; gap: 8px;">
-                        <div class="labor-type-dot" style="background: @(GetTypeBgColor(context.LaborTypeName ?? "Labor")); width: 8px; height: 8px; border-radius: 50%;"></div>
-                        @context.LaborTypeName
-                @if (context.IsOriginalPlan) {
-                    <Tag Color="@("gold")" Style="font-size: 10px; margin-left: 6px;" Title="Planeamiento Original: solo lectura">P.O.</Tag>
-                }
-                    </div>
-                </PropertyColumn>
-                <PropertyColumn Property="l => l.CreatedAt" Title="Fecha" Sortable Format="dd/MM/yyyy" />
-                <PropertyColumn Property="l => l.LotName" Title="Lote" Sortable />
-                <PropertyColumn Property="l => l.FieldName" Title="Campo" Sortable />
-                <PropertyColumn Property="l => l.AssignedTo" Title="Responsable" Sortable />
-                <PropertyColumn Property="l => l.Hectares" Title="Ha" Sortable Format="N1" />
-                <Column TData="string" Title="OT" Sortable>
-                    @if (context.WorkOrderId != null)
-                    {
-                        <div @onclick:stopPropagation="true">
-                            <Tag Color="@("blue")" Style="cursor: pointer;" OnClick='() => Nav.NavigateTo($"/workorders/{context.WorkOrderId}")'>
-                                <Icon Type="link" /> @context.OTNumber
-                            </Tag>
-                        </div>
-                    }
-                    else
-                    {
-                        <span style="color: rgba(255,255,255,0.2);">Sin OT</span>
-                    }
-                </Column>
-                <Column TData="string" Title="Estado" Sortable>
-                    <Tag Style="@GetStatusTagStyle(context.Status)">
-                        @GetStatusLabel(context.Status)
-                    </Tag>
-                </Column>
-                <ActionColumn Title="Acciones" Width="100">
-                    <div style="display: flex; gap: 4px;" @onclick:stopPropagation="true">
-                        @if (context.Status != "Realized")
-                        {
-                            <Tooltip Title="@("Ejecutar")">
-                                <Button Type="@ButtonType.Text" Size="@ButtonSize.Small" OnClick="() => EditLabor(context.Id, true)">
-                                    <Icon Type="play-circle" Theme="IconThemeType.Outline" Style="color: #2ECC71;" />
-                                </Button>
-                            </Tooltip>
-
-                        }
-                        <Tooltip Title="@("Editar")">
-                            <Button Type="@ButtonType.Text" Size="@ButtonSize.Small" OnClick="() => EditLabor(context.Id)">
-                                <Icon Type="edit" Theme="IconThemeType.Outline" Style="color: #3498DB;" />
-                            </Button>
-                        </Tooltip>
-                        <Tooltip Title="@("Eliminar")">
-                            <Popconfirm Title="¿Eliminar esta labor?" OnConfirm="() => DeleteLabor(context.Id)">
-                                <Button Type="@ButtonType.Text" Danger Size="@ButtonSize.Small">
-                                    <Icon Type="delete" Theme="IconThemeType.Outline" />
-                                </Button>
-                            </Popconfirm>
-                        </Tooltip>
-                    </div>
-                </ActionColumn>
-            </ChildContent>
-        </Table>
+        <LaborList Labors="@FilteredLabors"
+                   ShowOtColumn="true"
+                   IsLocked="false"
+                   OnEdit="id => EditLabor(id)"
+                   OnExecute='(args) => EditLabor(args.Id, true)'
+                   OnDelete="DeleteLabor"
+                   DisableSelection="l => l.WorkOrderId != null"
+                   OnSelectedRowsChanged="OnSelectedRowsChanged" />
     </div>
 }
 

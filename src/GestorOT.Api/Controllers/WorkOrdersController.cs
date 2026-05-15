@@ -18,19 +18,22 @@ public class WorkOrdersController : ControllerBase
     private readonly IStockValidatorService _stockValidator;
     private readonly IIsoXmlExporterService _isoXmlExporter;
     private readonly IHtmlLaborExporterService _htmlExporter;
+    private readonly IWorkOrderService _workOrderService;
 
     public WorkOrdersController(
         IApplicationDbContext context,
         IWorkOrderQueryService queryService,
         IStockValidatorService stockValidator,
         IIsoXmlExporterService isoXmlExporter,
-        IHtmlLaborExporterService htmlExporter)
+        IHtmlLaborExporterService htmlExporter,
+        IWorkOrderService workOrderService)
     {
         _context = context;
         _queryService = queryService;
         _stockValidator = stockValidator;
         _isoXmlExporter = isoXmlExporter;
         _htmlExporter = htmlExporter;
+        _workOrderService = workOrderService;
     }
 
     [HttpGet]
@@ -403,43 +406,7 @@ public class WorkOrdersController : ControllerBase
     [HttpPost("{id:guid}/consolidate-supplies")]
     public async Task<IActionResult> ConsolidateSupplies(Guid id)
     {
-        var workOrder = await _context.WorkOrders
-            .Include(w => w.Labors)
-                .ThenInclude(l => l.Supplies)
-            .Include(w => w.SupplyApprovals)
-            .FirstOrDefaultAsync(w => w.Id == id);
-
-        if (workOrder == null) return NotFound();
-
-        var suppliesInLabors = workOrder.Labors
-            .SelectMany(l => l.Supplies)
-            .GroupBy(s => s.SupplyId)
-            .Select(g => new { SupplyId = g.Key, Total = g.Sum(s => s.PlannedTotal) })
-            .ToList();
-
-        foreach (var item in suppliesInLabors)
-        {
-            var approval = workOrder.SupplyApprovals.FirstOrDefault(a => a.SupplyId == item.SupplyId);
-            if (approval == null)
-            {
-                approval = new WorkOrderSupplyApproval
-                {
-                    Id = Guid.NewGuid(),
-                    WorkOrderId = id,
-                    SupplyId = item.SupplyId,
-                    ApprovedWithdrawal = item.Total // Default to total
-                };
-                _context.WorkOrderSupplyApprovals.Add(approval);
-            }
-            approval.TotalCalculated = item.Total;
-        }
-
-        // Cleanup approvals for supplies no longer in labors
-        var laborSupplyIds = suppliesInLabors.Select(s => s.SupplyId).ToHashSet();
-        var toRemove = workOrder.SupplyApprovals.Where(a => !laborSupplyIds.Contains(a.SupplyId)).ToList();
-        _context.WorkOrderSupplyApprovals.RemoveRange(toRemove);
-
-        await _context.SaveChangesAsync();
+        await _workOrderService.ConsolidateSuppliesAsync(id);
         return Ok();
     }
 

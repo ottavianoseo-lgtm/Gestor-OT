@@ -77,11 +77,16 @@ namespace GestorOT.Client.Pages
             _loading = true;
             try {
                 _order = await _http.GetFromJsonAsync<WorkOrderDetailDto>($"api/workorders/{WorkOrderId}");
-                if (_order != null) _originalStatus = _order.Status;
+                if (_order != null) {
+                    _originalStatus = _order.Status;
+                    if (_order.Labors != null) {
+                        _order.Labors = _order.Labors.OrderBy(l => l.CreatedAt).ToList();
+                    }
+                }
                 _availableStatuses = await _http.GetFromJsonAsync<List<WorkOrderStatusDto>>("api/workorderstatuses") ?? new();
                 _availableContacts = await _http.GetFromJsonAsync<List<ContactDto>>("api/catalogs/contacts") ?? new();
             } catch (Exception ex) { _message.Error($"Error: {ex.Message}"); }
-            finally { _loading = false; }
+            finally { _loading = false; StateHasChanged(); }
         }
 
         protected void BackToList() => _navigation.NavigateTo("/workorders");
@@ -103,13 +108,36 @@ namespace GestorOT.Client.Pages
             _savingGlobal = true;
             try {
                 // Save header
-                var dto = new WorkOrderDto(_order.Id, _order.FieldId, _order.Description, _order.Status, _order.AssignedTo, _order.DueDate, null, _order.OTNumber, _order.PlannedDate, _order.ExpirationDate, _order.StockReserved, _order.ContractorId, _order.ContactId, _order.CampaignId, _order.Name, _order.AcceptsMultiplePeople, _order.AcceptsMultipleDates, _order.IsLocked);
+                var dto = new WorkOrderDto {
+                    Id = _order.Id,
+                    FieldId = _order.FieldId,
+                    Description = _order.Description,
+                    Status = _order.Status,
+                    AssignedTo = _order.AssignedTo,
+                    DueDate = _order.DueDate,
+                    FieldName = _order.FieldName,
+                    OTNumber = _order.OTNumber,
+                    PlannedDate = _order.PlannedDate,
+                    ExpirationDate = _order.ExpirationDate,
+                    StockReserved = _order.StockReserved,
+                    ContractorId = _order.ContractorId,
+                    ContactId = _order.ContactId,
+                    CampaignId = _order.CampaignId,
+                    Name = _order.Name,
+                    AcceptsMultiplePeople = _order.AcceptsMultiplePeople,
+                    AcceptsMultipleDates = _order.AcceptsMultipleDates,
+                    IsLocked = _order.IsLocked
+                };
                 var resp = await _http.PutAsJsonAsync($"api/workorders/{WorkOrderId}", dto);
                 
                 // Save approvals (real totals)
                 var respApp = await _http.PutAsJsonAsync($"api/workorders/{WorkOrderId}/approvals", _order.SupplyApprovals);
 
-                if (resp.IsSuccessStatusCode && respApp.IsSuccessStatusCode) { _message.Success("Orden de Trabajo actualizada correctamente."); await LoadData(); }
+                if (resp.IsSuccessStatusCode && respApp.IsSuccessStatusCode) { 
+                    _message.Success("Orden de Trabajo actualizada correctamente."); 
+                    await ConsolidateSupplies();
+                    await LoadData(); 
+                }
                 else { _message.Error("Hubo un error al guardar algunos cambios."); }
             } catch (Exception ex) { _message.Error($"Error al guardar cambios: {ex.Message}"); }
             finally { _savingGlobal = false; }
@@ -211,6 +239,17 @@ namespace GestorOT.Client.Pages
             "Validated"          => "Validada",
             "AwaitingValidation" => "En Validación",
             _                    => "Planeada"
+        };
+
+        protected static string GetTypeBgColor(string laborType) => laborType switch
+        {
+            "Fertilizacion" => "#27AE60",
+            "Pulverizacion" => "#2980B9",
+            "Siembra" => "#8E44AD",
+            "Cosecha" => "#D35400",
+            "Monitoreo" => "#16A085",
+            "Laboreo" => "#7F8C8D",
+            _ => "#95A5A6"
         };
     }
 }
