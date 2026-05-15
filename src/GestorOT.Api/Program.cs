@@ -3,7 +3,14 @@ using GestorOT.Api.Middleware;
 using GestorOT.Client.Pages;
 using GestorOT.Client;
 using GestorOT.Infrastructure.Data;
-using GestorOT.Client.Services; 
+using GestorOT.Client.Services;
+using QuestPDF.Infrastructure;
+
+QuestPDF.Settings.License = LicenseType.Community;
+
+var defaultCulture = new System.Globalization.CultureInfo("es-AR");
+System.Globalization.CultureInfo.DefaultThreadCurrentCulture = defaultCulture;
+System.Globalization.CultureInfo.DefaultThreadCurrentUICulture = defaultCulture;
 
 var builder = WebApplication.CreateBuilder(args);
 

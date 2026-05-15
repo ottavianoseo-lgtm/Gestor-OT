@@ -19,6 +19,7 @@ public class WorkOrdersController : ControllerBase
     private readonly IIsoXmlExporterService _isoXmlExporter;
     private readonly IHtmlLaborExporterService _htmlExporter;
     private readonly IWorkOrderService _workOrderService;
+    private readonly IWorkOrderPdfExporterService _pdfExporter;
 
     public WorkOrdersController(
         IApplicationDbContext context,
@@ -26,7 +27,8 @@ public class WorkOrdersController : ControllerBase
         IStockValidatorService stockValidator,
         IIsoXmlExporterService isoXmlExporter,
         IHtmlLaborExporterService htmlExporter,
-        IWorkOrderService workOrderService)
+        IWorkOrderService workOrderService,
+        IWorkOrderPdfExporterService pdfExporter)
     {
         _context = context;
         _queryService = queryService;
@@ -34,6 +36,7 @@ public class WorkOrdersController : ControllerBase
         _isoXmlExporter = isoXmlExporter;
         _htmlExporter = htmlExporter;
         _workOrderService = workOrderService;
+        _pdfExporter = pdfExporter;
     }
 
     [HttpGet]
@@ -410,6 +413,28 @@ public class WorkOrdersController : ControllerBase
         return Ok();
     }
 
+    [HttpPut("{id:guid}/approvals/{approvalId:guid}/real-total")]
+    public async Task<IActionResult> UpdateApprovalRealTotal(
+        Guid id, Guid approvalId, [FromBody] decimal? realTotalUsed)
+    {
+        var workOrder = await _context.WorkOrders
+            .Include(w => w.SupplyApprovals)
+            .Include(w => w.WorkOrderStatus)
+            .FirstOrDefaultAsync(w => w.Id == id);
+
+        if (workOrder == null) return NotFound();
+        if (workOrder.WorkOrderStatus?.IsEditable == false)
+            return Conflict("La OT no es editable.");
+
+        var approval = workOrder.SupplyApprovals.FirstOrDefault(a => a.Id == approvalId);
+        if (approval == null) return NotFound("Approval no encontrado.");
+
+        approval.RealTotalUsed = realTotalUsed;
+        await _context.SaveChangesAsync();
+
+        return NoContent();
+    }
+
     [HttpDelete("{id:guid}")]
     public async Task<IActionResult> DeleteWorkOrder(Guid id)
     {
@@ -499,5 +524,18 @@ public class WorkOrdersController : ControllerBase
         }
 
         return Ok(report);
+    }
+
+    [HttpGet("{id:guid}/export-pdf")]
+    public async Task<IActionResult> ExportPdf(Guid id, CancellationToken ct)
+    {
+        var wo = await _context.WorkOrders
+            .AsNoTracking()
+            .FirstOrDefaultAsync(w => w.Id == id, ct);
+        if (wo == null) return NotFound();
+
+        var pdf = await _pdfExporter.GeneratePdfAsync(id, ct);
+        var fileName = $"OT-{wo.OTNumber}-{DateTime.Now:yyyyMMdd}.pdf";
+        return File(pdf, "application/pdf", fileName);
     }
 }

@@ -73,6 +73,7 @@ public static class ServiceExtensions
             services.AddScoped<IHtmlLaborExporterService, HtmlLaborExporterService>();
             services.AddScoped<ICampaignManagerService, CampaignManagerService>();
             services.AddScoped<IWorkOrderQueryService, WorkOrderQueryService>();
+            services.AddScoped<IWorkOrderPdfExporterService, WorkOrderPdfExporterService>();
             services.AddScoped<ILotQueryService, LotQueryService>();
             services.AddScoped<IDashboardQueryService, DashboardQueryService>();
             services.AddScoped<IAuditLogQueryService, AuditLogQueryService>();

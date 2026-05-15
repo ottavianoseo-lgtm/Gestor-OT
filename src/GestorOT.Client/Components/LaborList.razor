@@ -95,16 +95,36 @@
         <div style="padding: 12px; background: rgba(255,255,255,0.02); border-radius: 8px; border: 1px solid rgba(255,255,255,0.05);">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 8px;">
                 <h4 style="margin: 0; color: #3498DB; font-size: 14px; display: flex; align-items: center; gap: 8px;">
-                    <Icon Type="info-circle" /> Detalles de Insumos
+                    <Icon Type="info-circle" /> Detalle de Insumos
                 </h4>
             </div>
             @if (laborRow.Data.Supplies != null && laborRow.Data.Supplies.Any())
             {
                 <Table TItem="LaborSupplyDto" DataSource="@laborRow.Data.Supplies" Size="TableSize.Small" HidePagination Style="background: transparent;">
+
                     <PropertyColumn Property="s => s.SupplyName" Title="Insumo" />
-                    <PropertyColumn Property="s => s.PlannedTotal" Title="Cant. Plan." Format="N2" />
-                    <PropertyColumn Property="s => s.RealTotal" Title="Cant. Real" Format="N2" />
-                    <PropertyColumn Property="s => s.UnitOfMeasure" Title="Unidad" />
+
+                    <PropertyColumn Property="s => s.SupplyUnit" Title="Unidad" />
+
+                    <Column TData="decimal" Title="Ha. Plan.">
+                        <span class="planned-cell">@((context.PlannedHectares > 0 ? context.PlannedHectares : laborRow.Data.Hectares).ToString("N2"))</span>
+                    </Column>
+                    <Column TData="decimal" Title="Coef. Plan.">
+                        <span class="planned-cell">@context.PlannedDose.ToString("N2")</span>
+                    </Column>
+                    <Column TData="decimal" Title="Total Plan.">
+                        <span class="planned-cell">@context.PlannedTotal.ToString("N2")</span>
+                    </Column>
+
+                    <Column TData="decimal?" Title="Ha. Real">
+                        <span class="real-cell">@(context.RealHectares?.ToString("N2") ?? "—")</span>
+                    </Column>
+                    <Column TData="decimal?" Title="Coef. Real">
+                        <span class="real-cell">@(context.RealDose?.ToString("N2") ?? "—")</span>
+                    </Column>
+                    <Column TData="decimal?" Title="Total Real">
+                        <span class="real-cell">@(context.RealTotal?.ToString("N2") ?? "—")</span>
+                    </Column>
                 </Table>
             }
             else
@@ -124,6 +144,14 @@
     }
     .ant-table-row:hover .labor-type-dot {
         transform: scale(1.3);
+    }
+    .planned-cell {
+        color: rgba(52, 152, 219, 0.85);
+        font-weight: 500;
+    }
+    .real-cell {
+        color: rgba(46, 204, 113, 0.85);
+        font-weight: 500;
     }
 </style>
 

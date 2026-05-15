@@ -224,7 +224,121 @@ namespace GestorOT.Client.Pages
             } catch (Exception ex) { _message.Error($"Error: {ex.Message}"); }
         }
 
+        protected async Task ExportPdf()
+        {
+            try
+            {
+                var response = await _http.GetAsync($"api/workorders/{WorkOrderId}/export-pdf");
+                if (!response.IsSuccessStatusCode)
+                {
+                    _message.Error($"Error al generar PDF: {response.StatusCode}");
+                    return;
+                }
+
+                var bytes = await response.Content.ReadAsByteArrayAsync();
+                var fileName = response.Content.Headers.ContentDisposition?.FileName?.Trim('"')
+                               ?? $"OT-{WorkOrderId}.pdf";
+
+                await _js.InvokeVoidAsync("utilsInterop.downloadFile", fileName, "application/pdf", bytes);
+            }
+            catch (Exception ex)
+            {
+                _message.Error($"Error: {ex.Message}");
+            }
+        }
+
         protected string? _filterLaborStatus;
+        protected bool _breakdownDrawerVisible;
+        protected WorkOrderSupplyApprovalDto? _breakdownSupply;
+        protected decimal _breakdownPlannedTotal;
+        protected List<SupplyBreakdownRow> _plannedRows = new();
+        protected List<SupplyBreakdownRow> _realizedRows = new();
+
+        public record SupplyBreakdownRow(string? LotName, decimal Hectares, decimal Coef, decimal Cantidad, decimal Percent);
+
+        protected void RecalculateProportionalSupplies(Guid supplyId)
+        {
+            if (_order == null) return;
+
+            var approval = _order.SupplyApprovals.FirstOrDefault(a => a.SupplyId == supplyId);
+            if (approval?.RealTotalUsed == null) return;
+
+            var laborsWithSupply = _order.Labors
+                .Where(l => l.Supplies.Any(s => s.SupplyId == supplyId))
+                .ToList();
+
+            var totalPlanned = laborsWithSupply
+                .Sum(l => l.Supplies.Where(s => s.SupplyId == supplyId).Sum(s => s.PlannedTotal));
+
+            if (totalPlanned <= 0) return;
+
+            foreach (var labor in laborsWithSupply)
+            {
+                foreach (var supply in labor.Supplies.Where(s => s.SupplyId == supplyId))
+                {
+                    var proportion = supply.PlannedTotal / totalPlanned;
+                    supply.CalculatedTotal = approval.RealTotalUsed.Value * proportion;
+
+                    var area = supply.RealHectares ?? labor.Hectares;
+                    if (area > 0)
+                    {
+                        supply.CalculatedDose = supply.CalculatedTotal / area;
+                    }
+                }
+            }
+        }
+
+        protected void HandleRealTotalChange(WorkOrderSupplyApprovalDto context, decimal? newValue)
+        {
+            context.RealTotalUsed = newValue;
+
+            if (newValue.HasValue)
+            {
+                RecalculateProportionalSupplies(context.SupplyId);
+            }
+        }
+
+        protected void ClearOverride(WorkOrderSupplyApprovalDto context)
+        {
+            context.RealTotalUsed = null;
+        }
+
+        protected void OpenSupplyBreakdownDrawer(Guid supplyId)
+        {
+            _breakdownSupply = _order!.SupplyApprovals.FirstOrDefault(a => a.SupplyId == supplyId);
+            if (_breakdownSupply == null) return;
+
+            var laborsWithSupply = _order.Labors
+                .Where(l => l.Supplies.Any(s => s.SupplyId == supplyId))
+                .ToList();
+
+            _breakdownPlannedTotal = laborsWithSupply
+                .Sum(l => l.Supplies.Where(s => s.SupplyId == supplyId).Sum(s => s.PlannedTotal));
+
+            _plannedRows = laborsWithSupply.SelectMany(l => l.Supplies
+                .Where(s => s.SupplyId == supplyId)
+                .Select(s => new SupplyBreakdownRow(
+                    l.LotName,
+                    s.PlannedHectares > 0 ? s.PlannedHectares : l.Hectares,
+                    s.PlannedDose,
+                    s.PlannedTotal,
+                    _breakdownPlannedTotal > 0 ? (s.PlannedTotal / _breakdownPlannedTotal) * 100 : 0
+                ))).ToList();
+
+            _realizedRows = laborsWithSupply.SelectMany(l => l.Supplies
+                .Where(s => s.SupplyId == supplyId)
+                .Select(s => new SupplyBreakdownRow(
+                    l.LotName,
+                    s.RealHectares ?? l.Hectares,
+                    s.CalculatedDose ?? 0,
+                    s.CalculatedTotal ?? 0,
+                    _breakdownPlannedTotal > 0 ? (s.PlannedTotal / _breakdownPlannedTotal) * 100 : 0
+                ))).ToList();
+
+            _breakdownDrawerVisible = true;
+            StateHasChanged();
+        }
+
         protected string StatusTagStyle(string colorHex) => $"background: {colorHex}33; color: #fff; border: 1px solid {colorHex}80; border-radius: 12px; font-size: 11px; font-weight: 600; padding: 2px 10px; text-shadow: 0 1px 2px rgba(0,0,0,0.4);";
         protected string GetRowKey(LaborDto l) => l.Id.ToString();
         protected string StatusBadgeStyle(string colorHex) => $"display: inline-flex; align-items: center; gap: 6px; background: {colorHex}33; color: #fff; border: 1px solid {colorHex}80; border-radius: 12px; font-size: 12px; font-weight: 600; padding: 3px 10px; text-shadow: 0 1px 2px rgba(0,0,0,0.4);";

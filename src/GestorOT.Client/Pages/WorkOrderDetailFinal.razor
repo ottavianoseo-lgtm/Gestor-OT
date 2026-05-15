@@ -25,6 +25,7 @@ else if (_order != null)
             </div>
         </div>
         <div style="display: flex; gap: 12px;">
+             <Button OnClick="ExportPdf" Icon="file-pdf" Ghost>Descargar PDF</Button>
              <Button OnClick="ExportHtmlInteractivo" Icon="share-alt" Ghost>Compartir Reporte</Button>
              <Button Type="@ButtonType.Primary" OnClick="SaveAllChanges" Loading="_savingGlobal" Icon="save" Style="background: #2ECC71; border-color: #2ECC71;" Disabled="@(_order.IsLocked && _order.Status == _originalStatus)">Guardar Cambios</Button>
         </div>
@@ -130,23 +131,102 @@ else if (_order != null)
                 </TabPane>
 
                 <TabPane Tab="Insumos Consolidados" Key="3">
-                    <div class="section-header" style="margin-top: 16px;"><h3 class="section-title">Plan vs. Real</h3><Button Size="@ButtonSize.Small" Ghost Icon="sync" OnClick="ConsolidateSupplies">Recalcular de Labores</Button></div>
+                    <div class="section-header" style="margin-top: 16px;">
+                        <h3 class="section-title">Plan vs. Real — Orden de Retiro</h3>
+                        <Button Size="@ButtonSize.Small" Ghost Icon="sync" OnClick="ConsolidateSupplies">Recalcular de Labores</Button>
+                    </div>
                     <div class="glass-card table-container">
-                        <Table TItem="WorkOrderSupplyApprovalDto" DataSource="_order.SupplyApprovals" Size="TableSize.Small" HidePagination>
+                        <Table TItem="WorkOrderSupplyApprovalDto" DataSource="_order.SupplyApprovals" Size="TableSize.Small" HidePagination ScrollX="1100">
+
                             <Column TData="string" Title="Insumo">@context.SupplyName</Column>
+
+                            <Column TData="string" Title="Unidad">
+                                <span style="color: rgba(255,255,255,0.6);">@(context.SupplyUnit ?? "—")</span>
+                            </Column>
+
                             <Column TData="decimal" Title="Planeado">@context.TotalCalculated.ToString("N2")</Column>
-                            <Column TData="decimal?" Title="Real">
+
+                            <Column TData="decimal" Title="Total Retiro Aprobado">
                                 @if (_order.IsLocked)
                                 {
-                                    @(context.RealTotalUsed?.ToString("N2") ?? "0.00")
+                                    @context.ApprovedWithdrawal.ToString("N2")
                                 }
                                 else
                                 {
-                                    <AntDesign.InputNumber TValue="decimal?" @bind-Value="context.RealTotalUsed" Size="InputSize.Small" Style="width: 100px;" />
+                                    <AntDesign.InputNumber TValue="decimal"
+                                                           @bind-Value="context.ApprovedWithdrawal"
+                                                           Min="0m" Step="0.01m"
+                                                           Size="InputSize.Small"
+                                                           Style="width: 110px;" />
                                 }
                             </Column>
-                            <Column TData="decimal" Title="Delta">@{ var delta = (context.RealTotalUsed ?? 0) - context.TotalCalculated; var color = delta > 0 ? "#ff4d4f" : (delta < 0 ? "#52c41a" : "rgba(255,255,255,0.4)"); } <span style="color: @color; font-weight: 600;">@(delta > 0 ? "+" : "")@delta.ToString("N2")</span></Column>
-                            <Column TData="string" Title="% Uso">@{ var usage = context.TotalCalculated > 0 ? ((context.RealTotalUsed ?? 0) / context.TotalCalculated) * 100 : 0; } <Progress Percent='(double)usage' Size="ProgressSize.Small" Steps="5" StrokeColor='usage > 100 ? "#ff4d4f" : "#52c41a"' /></Column>
+
+                            <Column TData="string" Title="Centro de Retiro">
+                                @if (_order.IsLocked)
+                                {
+                                    <span>@(context.WithdrawalCenter ?? "—")</span>
+                                }
+                                else
+                                {
+                                    <AntDesign.Input @bind-Value="context.WithdrawalCenter"
+                                                     Placeholder="Ej: Depósito Norte"
+                                                     Size="InputSize.Small"
+                                                     Style="width: 160px;" />
+                                }
+                            </Column>
+
+                            <Column TData="decimal?" Title="Real">
+                                @if (_order.IsLocked)
+                                {
+                                    @((context.RealTotalUsed ?? context.SumOfLaborsRealTotal).ToString("N2"))
+                                }
+                                else
+                                {
+                                    <div style="display: flex; align-items: center; gap: 4px;">
+                                        <AntDesign.InputNumber TValue="decimal?"
+                                                               Value="@(context.RealTotalUsed ?? context.SumOfLaborsRealTotal)"
+                                                               ValueChanged="@(v => HandleRealTotalChange(context, v))"
+                                                               Size="InputSize.Small"
+                                                               Style="@(context.RealTotalUsed == null ? "width: 100px; color: #a0a0a0; font-style: italic;" : "width: 100px;")" />
+
+                                        @if (context.RealTotalUsed != null)
+                                        {
+                                            <Tooltip Title="Limpiar Override y volver a la suma de labores">
+                                                <Button Type="@ButtonType.Text" Size="@ButtonSize.Small" OnClick="() => ClearOverride(context)">
+                                                    <Icon Type="close-circle" Style="color: rgba(255,255,255,0.4);" />
+                                                </Button>
+                                            </Tooltip>
+                                        }
+                                    </div>
+                                }
+                            </Column>
+
+                            <Column TData="decimal" Title="Delta">
+                                @{
+                                    var effectiveReal = context.RealTotalUsed ?? context.SumOfLaborsRealTotal;
+                                    var delta = effectiveReal - context.TotalCalculated;
+                                    var color = delta > 0 ? "#ff4d4f" : (delta < 0 ? "#52c41a" : "rgba(255,255,255,0.4)");
+                                }
+                                <span style="color: @color; font-weight: 600;">@(delta > 0 ? "+" : "")@delta.ToString("N2")</span>
+                            </Column>
+
+                            <Column TData="string" Title="% Uso">
+                                @{
+                                    var effectiveRealForPct = context.RealTotalUsed ?? context.SumOfLaborsRealTotal;
+                                    var usage = context.TotalCalculated > 0 ? (effectiveRealForPct / context.TotalCalculated) * 100 : 0;
+                                }
+                                <Progress Percent='(double)usage' Size="ProgressSize.Small" Steps="5"
+                                           StrokeColor='usage > 100 ? "#ff4d4f" : "#52c41a"' />
+                            </Column>
+
+                            <ActionColumn Title="" Width="50">
+                                <Tooltip Title="Ver desglose por labor">
+                                    <Button Type="@ButtonType.Text" Size="@ButtonSize.Small"
+                                            OnClick="() => OpenSupplyBreakdownDrawer(context.SupplyId)">
+                                        <Icon Type="unordered-list" Style="color: #3498DB;" />
+                                    </Button>
+                                </Tooltip>
+                            </ActionColumn>
                         </Table>
                     </div>
                 </TabPane>
@@ -188,6 +268,37 @@ else if (_order != null)
 </Modal>
 
 <ValidationSuccessModal Visible="_showValidationModal" ValidationUrl="@_validationUrl" OnClose="() => _showValidationModal = false" />
+
+<Drawer Title='@("Desglose por labor")'
+        Visible="_breakdownDrawerVisible"
+        Width="600"
+        OnClose="() => _breakdownDrawerVisible = false">
+    @if (_breakdownSupply != null)
+    {
+        <h4 style="color: #fff;">@_breakdownSupply.SupplyName (@_breakdownSupply.SupplyUnit)</h4>
+        <p style="color: rgba(255,255,255,0.6);">
+            Total planeado: @_breakdownPlannedTotal.ToString("N2") · Total real: @(_breakdownSupply.RealTotalUsed?.ToString("N2") ?? "—")
+        </p>
+
+        <h5 style="color: #3498DB; margin-top: 20px;">Planeado</h5>
+        <Table TItem="SupplyBreakdownRow" DataSource="@_plannedRows" Size="TableSize.Small" HidePagination>
+            <PropertyColumn Property="r => r.LotName" Title="Lote" />
+            <PropertyColumn Property="r => r.Hectares" Title="Ha" Format="N2" />
+            <PropertyColumn Property="r => r.Coef" Title="Coef/Ha" Format="N2" />
+            <PropertyColumn Property="r => r.Cantidad" Title="Cantidad" Format="N2" />
+            <PropertyColumn Property="r => r.Percent" Title="% del Total" Format="N1" />
+        </Table>
+
+        <h5 style="color: #2ECC71; margin-top: 20px;">Realizado (calculado)</h5>
+        <Table TItem="SupplyBreakdownRow" DataSource="@_realizedRows" Size="TableSize.Small" HidePagination>
+            <PropertyColumn Property="r => r.LotName" Title="Lote" />
+            <PropertyColumn Property="r => r.Hectares" Title="Ha Real" Format="N2" />
+            <PropertyColumn Property="r => r.Coef" Title="Coef. Calc." Format="N2" />
+            <PropertyColumn Property="r => r.Cantidad" Title="Total Calc." Format="N2" />
+            <PropertyColumn Property="r => r.Percent" Title="% del Total" Format="N1" />
+        </Table>
+    }
+</Drawer>
 
 <style>
     .ot-label { display: block; font-size: 11px; color: rgba(255,255,255,0.4); font-weight: 700; margin-bottom: 6px; letter-spacing: 0.5px; }

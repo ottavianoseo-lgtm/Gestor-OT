@@ -247,15 +247,6 @@
             </Button>
         </div>
 
-        @if (_model.Mode == "Planned" || _model.Status == "Planned")
-        {
-            <FormItem Label="Retiro de Insumos" Style="margin-top: 16px;">
-                <TextArea @bind-Value="_model.SupplyWithdrawalNotes" Rows="2" 
-                          Placeholder="Ej: Retirar de depósito norte el 15/05..." MaxLength="1000"
-                          Style="color: var(--text-primary); background: rgba(255,255,255,0.05);" />
-            </FormItem>
-        }
-
         <Collapse DefaultActiveKey="@(new[] { "" })" Style="margin-top: 16px; background: transparent; border: 1px solid rgba(255,255,255,0.08);">
             <Panel Header="Condiciones Climáticas (Opcional)" Key="1">
                 <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 16px;">

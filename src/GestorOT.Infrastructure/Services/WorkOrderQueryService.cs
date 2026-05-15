@@ -209,11 +209,20 @@ public class WorkOrderQueryService : IWorkOrderQueryService
                 a.WorkOrderId, 
                 a.SupplyId, 
                 a.Supply?.ItemName, 
+                a.Supply?.UnitA,
                 a.TotalCalculated, 
                 a.ApprovedWithdrawal, 
                 a.WithdrawalCenter, 
                 a.RealTotalUsed
             )).ToList();
+
+        var allSupplies = workOrder.Labors.SelectMany(l => l.Supplies).ToList();
+        foreach (var approval in supplyApprovalsDto)
+        {
+            approval.SumOfLaborsRealTotal = allSupplies
+                .Where(s => s.SupplyId == approval.SupplyId)
+                .Sum(s => s.RealTotal ?? 0);
+        }
 
         return new WorkOrderDetailDto(
             workOrder.Id,
