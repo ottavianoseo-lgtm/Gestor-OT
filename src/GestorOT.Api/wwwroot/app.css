@@ -17,6 +17,7 @@
 /* AntDesign overrides */
 .ant-picker, .ant-picker input,
 .ant-select-selection-item,
+.ant-input-number,
 .ant-input-number-input,
 .ant-input,
 .ant-select-selection-placeholder,
@@ -24,13 +25,14 @@
 .ant-input-number-handler-wrap,
 .ant-input-affix-wrapper,
 .ant-input-affix-wrapper input {
-  color: var(--text-primary) !important;
+  color: #ffffff !important;
   background-color: transparent !important;
 }
 
 .ant-form-item-label > label, 
 .ant-modal-title,
-.ant-card-head-title {
+.ant-card-head-title,
+.ant-progress-text {
   color: #FFFFFF !important;
 }
 
@@ -50,9 +52,68 @@
   color: var(--text-primary) !important;
 }
 
-/* Fix for black text in buttons and tags */
-.ant-btn-primary {
+/* AntDesign Buttons Dark Theme Overrides */
+.ant-btn {
+    background-color: rgba(255, 255, 255, 0.05) !important;
+    border-color: rgba(255, 255, 255, 0.15) !important;
+    color: var(--text-primary) !important;
+}
+
+.ant-btn:hover, .ant-btn:focus {
+    background-color: rgba(255, 255, 255, 0.1) !important;
+    border-color: rgba(255, 255, 255, 0.3) !important;
     color: #fff !important;
+}
+
+.ant-btn-primary {
+    background-color: var(--primary) !important;
+    border-color: var(--primary) !important;
+    color: #fff !important;
+}
+
+.ant-btn-primary:hover, .ant-btn-primary:focus {
+    background-color: var(--secondary) !important;
+    border-color: var(--secondary) !important;
+    color: #fff !important;
+}
+
+.ant-btn[disabled], .ant-btn-primary[disabled] {
+    background-color: rgba(255, 255, 255, 0.04) !important;
+    border-color: rgba(255, 255, 255, 0.08) !important;
+    color: rgba(255, 255, 255, 0.3) !important;
+}
+
+.ant-btn-text, .ant-btn-link, .ant-btn-ghost {
+    background-color: transparent !important;
+    border-color: transparent !important;
+}
+
+.ant-btn-text:hover, .ant-btn-ghost:hover {
+    background-color: rgba(255, 255, 255, 0.08) !important;
+    border-color: transparent !important;
+}
+
+.ant-btn-dangerous {
+    background-color: rgba(231, 76, 60, 0.1) !important;
+    border-color: rgba(231, 76, 60, 0.3) !important;
+    color: #E74C3C !important;
+}
+
+.ant-btn-dangerous:hover {
+    background-color: rgba(231, 76, 60, 0.2) !important;
+    border-color: #E74C3C !important;
+    color: #E74C3C !important;
+}
+
+.ant-btn-primary.ant-btn-dangerous {
+    background-color: #E74C3C !important;
+    border-color: #E74C3C !important;
+    color: #fff !important;
+}
+
+.ant-btn-primary.ant-btn-dangerous:hover {
+    background-color: #C0392B !important;
+    border-color: #C0392B !important;
 }
 
 .ant-tag {
@@ -141,7 +202,12 @@ input, textarea, select {
 
 .ant-popover-inner, .ant-popover-inner-content, .ant-popover-arrow-content {
   background-color: var(--bg-card) !important;
-  color: var(--text-primary) !important;
+  color: #ffffff !important;
+}
+
+.ant-popover-title {
+  color: #ffffff !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
 }
 
 .ant-modal-content, .ant-modal-header {
@@ -250,6 +316,34 @@ input, textarea, select {
 .ant-table-tbody > tr.ant-table-row-selected > td,
 .ant-table-tbody > tr.ant-table-row-selected:hover > td {
     background: rgba(52, 152, 219, 0.15) !important;
+}
+
+/* Fix for Fixed Columns white background */
+.ant-table-cell-fix-left,
+.ant-table-cell-fix-right,
+.ant-table-cell-fix-left-first,
+.ant-table-cell-fix-left-last,
+.ant-table-cell-fix-right-first,
+.ant-table-cell-fix-right-last {
+    background-color: var(--bg-card) !important;
+}
+
+.ant-table-thead > tr > th.ant-table-cell-fix-left,
+.ant-table-thead > tr > th.ant-table-cell-fix-right,
+.ant-table-thead > tr > th.ant-table-cell-fix-left-first,
+.ant-table-thead > tr > th.ant-table-cell-fix-left-last,
+.ant-table-thead > tr > th.ant-table-cell-fix-right-first,
+.ant-table-thead > tr > th.ant-table-cell-fix-right-last {
+    background-color: #28283C !important;
+}
+
+.ant-table-tbody > tr.ant-table-row:hover > td.ant-table-cell-fix-left,
+.ant-table-tbody > tr.ant-table-row:hover > td.ant-table-cell-fix-right,
+.ant-table-tbody > tr.ant-table-row:hover > td.ant-table-cell-fix-left-first,
+.ant-table-tbody > tr.ant-table-row:hover > td.ant-table-cell-fix-left-last,
+.ant-table-tbody > tr.ant-table-row:hover > td.ant-table-cell-fix-right-first,
+.ant-table-tbody > tr.ant-table-row:hover > td.ant-table-cell-fix-right-last {
+    background-color: #252538 !important;
 }
 
 
