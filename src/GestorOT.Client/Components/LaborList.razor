@@ -7,7 +7,6 @@
        TItem="LaborDto" 
        DataSource="@Labors" 
        Size="TableSize.Small" 
-       ScrollX="1300" 
        OnRowClick="r => OnEdit.InvokeAsync(r.Data.Id)"
        SelectedRowsChanged="OnSelectedRowsChanged"
        RowKey="l => l.Id.ToString()"
@@ -55,7 +54,7 @@
             </Tag>
         </Column>
 
-        <ActionColumn Title="Acciones" Width="140" Fixed="@AntDesign.ColumnFixPlacement.Right">
+        <ActionColumn Title="Acciones" Width="180" Fixed="@AntDesign.ColumnFixPlacement.Right">
             <div style="display: flex; gap: 6px;" @onclick:stopPropagation="true">
                 @if (context.Status != "Realized" && !IsLocked)
                 {

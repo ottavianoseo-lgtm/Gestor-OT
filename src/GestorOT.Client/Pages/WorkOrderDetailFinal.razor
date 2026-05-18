@@ -144,9 +144,9 @@ else if (_order != null)
                                 <span style="color: rgba(255,255,255,0.6);">@(context.SupplyUnit ?? "—")</span>
                             </Column>
 
-                            <Column TData="decimal" Title="Planeado">@context.TotalCalculated.ToString("N2")</Column>
+                            <Column TData="decimal" Title="Planeado" Width="100">@context.TotalCalculated.ToString("N2")</Column>
 
-                            <Column TData="decimal" Title="Total Retiro Aprobado">
+                            <Column TData="decimal" Title="Total Retiro Aprobado" Width="160">
                                 @if (_order.IsLocked)
                                 {
                                     @context.ApprovedWithdrawal.ToString("N2")
@@ -155,13 +155,13 @@ else if (_order != null)
                                 {
                                     <AntDesign.InputNumber TValue="decimal"
                                                            @bind-Value="context.ApprovedWithdrawal"
-                                                           Min="0m" Step="0.01m"
+                                                           Min="0m" Step="0.01m" Precision="2"
                                                            Size="InputSize.Small"
                                                            Style="width: 110px;" />
                                 }
                             </Column>
 
-                            <Column TData="string" Title="Centro de Retiro">
+                            <Column TData="string" Title="Centro de Retiro" Width="200">
                                 @if (_order.IsLocked)
                                 {
                                     <span>@(context.WithdrawalCenter ?? "—")</span>
@@ -175,7 +175,7 @@ else if (_order != null)
                                 }
                             </Column>
 
-                            <Column TData="decimal?" Title="Real">
+                            <Column TData="decimal?" Title="Real" Width="160">
                                 @if (_order.IsLocked)
                                 {
                                     @((context.RealTotalUsed ?? context.SumOfLaborsRealTotal).ToString("N2"))
@@ -186,7 +186,7 @@ else if (_order != null)
                                         <AntDesign.InputNumber TValue="decimal?"
                                                                Value="@(context.RealTotalUsed ?? context.SumOfLaborsRealTotal)"
                                                                ValueChanged="@(v => HandleRealTotalChange(context, v))"
-                                                               Size="InputSize.Small"
+                                                               Size="InputSize.Small" Precision="2"
                                                                Style="@(context.RealTotalUsed == null ? "width: 100px; color: #a0a0a0; font-style: italic;" : "width: 100px;")" />
 
                                         @if (context.RealTotalUsed != null)
@@ -201,7 +201,7 @@ else if (_order != null)
                                 }
                             </Column>
 
-                            <Column TData="decimal" Title="Delta">
+                            <Column TData="decimal" Title="Delta" Width="90">
                                 @{
                                     var effectiveReal = context.RealTotalUsed ?? context.SumOfLaborsRealTotal;
                                     var delta = effectiveReal - context.TotalCalculated;
@@ -210,7 +210,7 @@ else if (_order != null)
                                 <span style="color: @color; font-weight: 600;">@(delta > 0 ? "+" : "")@delta.ToString("N2")</span>
                             </Column>
 
-                            <Column TData="string" Title="% Uso">
+                            <Column TData="string" Title="% Uso" Width="120">
                                 @{
                                     var effectiveRealForPct = context.RealTotalUsed ?? context.SumOfLaborsRealTotal;
                                     var usage = context.TotalCalculated > 0 ? (effectiveRealForPct / context.TotalCalculated) * 100 : 0;
