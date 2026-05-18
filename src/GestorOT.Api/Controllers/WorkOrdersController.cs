@@ -420,6 +420,8 @@ public class WorkOrdersController : ControllerBase
         var workOrder = await _context.WorkOrders
             .Include(w => w.SupplyApprovals)
             .Include(w => w.WorkOrderStatus)
+            .Include(w => w.Labors)
+                .ThenInclude(l => l.Supplies)
             .FirstOrDefaultAsync(w => w.Id == id);
 
         if (workOrder == null) return NotFound();
@@ -430,8 +432,63 @@ public class WorkOrdersController : ControllerBase
         if (approval == null) return NotFound("Approval no encontrado.");
 
         approval.RealTotalUsed = realTotalUsed;
-        await _context.SaveChangesAsync();
 
+        if (realTotalUsed.HasValue && realTotalUsed > 0)
+        {
+            var supplyId = approval.SupplyId;
+
+            var suppliesAcrossLabors = workOrder.Labors
+                .SelectMany(l => l.Supplies)
+                .Where(s => s.SupplyId == supplyId)
+                .ToList();
+
+            var totalPlanned = suppliesAcrossLabors.Sum(s => s.PlannedTotal);
+
+            if (totalPlanned > 0)
+            {
+                foreach (var supply in suppliesAcrossLabors)
+                {
+                    var proportion = supply.PlannedTotal / totalPlanned;
+                    supply.RealTotal = Math.Round(realTotalUsed.Value * proportion, 4);
+
+                    var parentLabor = workOrder.Labors
+                        .FirstOrDefault(l => l.Supplies.Contains(supply));
+                    var effectiveArea = supply.RealHectares ?? supply.PlannedHectares;
+                    if (effectiveArea > 0)
+                    {
+                        supply.RealDose = Math.Round(supply.RealTotal.Value / effectiveArea, 4);
+                    }
+                }
+            }
+            else
+            {
+                var countWithSupply = suppliesAcrossLabors.Count;
+                if (countWithSupply > 0)
+                {
+                    var perLabor = Math.Round(realTotalUsed.Value / countWithSupply, 4);
+                    foreach (var supply in suppliesAcrossLabors)
+                    {
+                        supply.RealTotal = perLabor;
+                    }
+                }
+            }
+        }
+        else if (realTotalUsed == null)
+        {
+            var supplyId = approval.SupplyId;
+            var suppliesAcrossLabors = workOrder.Labors
+                .SelectMany(l => l.Supplies)
+                .Where(s => s.SupplyId == supplyId)
+                .ToList();
+
+            foreach (var supply in suppliesAcrossLabors)
+            {
+                supply.RealTotal = null;
+                supply.RealDose = null;
+            }
+        }
+
+        await _context.SaveChangesAsync();
         return NoContent();
     }
 

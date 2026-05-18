@@ -419,6 +419,7 @@
     private List<CampaignSummaryDto> _allCampaigns = new();
     private List<ErpActivityDto> _allActivities = new();
     private bool _addCampaignModalVisible;
+    private bool _addingCampaign;
     private Guid _selectedCampaignId;
     private decimal _newCampaignProductiveArea;
 
@@ -752,7 +753,9 @@
     private async Task AddLotToLotCampaign()
     {
         if (_selectedCampaignId == Guid.Empty) return;
-        
+        if (_addingCampaign) return;
+
+        _addingCampaign = true;
         try
         {
             var lot = _lots.FirstOrDefault(l => l.Id == _editingId);
@@ -780,6 +783,10 @@
         catch (Exception ex)
         {
             Message.Error($"Error al actualizar la superficie productiva: {ex.Message}");
+        }
+        finally
+        {
+            _addingCampaign = false;
         }
     }
 
@@ -877,6 +884,27 @@
                         {
                             var lotAddErr = await lotAddResp.Content.ReadAsStringAsync();
                             Message.Warning($"El lote se creó pero no pudo asignarse a la campaña: {lotAddErr}");
+                        }
+                    }
+                }
+
+                if (_isEditing && _editingAreas.Count != 0)
+                {
+                    foreach (var c in _lotCampaigns)
+                    {
+                        if (!_editingAreas.TryGetValue(c.Id, out var newArea)) continue;
+                        if (newArea == c.ProductiveArea) continue;
+
+                        if (IsCampaignLocked(c.CampaignId)) continue;
+
+                        var updated = c with { ProductiveArea = newArea };
+                        var areaResp = await Http.PutAsJsonAsync(
+                            $"api/campaigns/{c.CampaignId}/lots/{c.LotId}", updated);
+
+                        if (!areaResp.IsSuccessStatusCode)
+                        {
+                            var err = await areaResp.Content.ReadAsStringAsync();
+                            Message.Warning($"Lote guardado pero error al actualizar Ha de {c.CampaignName}: {err}");
                         }
                     }
                 }

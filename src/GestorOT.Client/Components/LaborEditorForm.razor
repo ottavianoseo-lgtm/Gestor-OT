@@ -468,6 +468,11 @@
         _magicLinkModalVisible = false;
         _magicLinkUrl = "";
         _filterFieldId = Guid.Empty;
+
+        _saveWarnings.Clear();
+        _saveError = null;
+        _fieldErrors.Clear();
+        _validationSummary = "";
     }
 
     private async Task InitializeForm()
@@ -639,6 +644,21 @@
                 }
             }
         }
+
+        bool openingAsRealized = InitialStatus == "Realized" || _model.Status == "Realized";
+        if (openingAsRealized)
+        {
+            foreach (var supply in _model.Supplies)
+            {
+                supply.RealHectares ??= supply.PlannedHectares;
+                supply.RealDose ??= supply.PlannedDose;
+            }
+
+            if (_model.EffectiveArea == 0)
+            {
+                _model.EffectiveArea = _model.Hectares;
+            }
+        }
     }
 
     private async Task SubmitForValidation()
@@ -682,9 +702,21 @@
             return;
         }
         _model.Mode = status;
-        if (status == "Realized" && !_model.ExecutionDate.HasValue)
+        if (status == "Realized")
         {
-            _model.ExecutionDate = DateTime.Today;
+            if (!_model.ExecutionDate.HasValue)
+                _model.ExecutionDate = DateTime.Today;
+
+            foreach (var supply in _model.Supplies)
+            {
+                supply.RealHectares ??= supply.PlannedHectares;
+                supply.RealDose ??= supply.PlannedDose;
+            }
+
+            if (_model.EffectiveArea == 0)
+            {
+                _model.EffectiveArea = _model.Hectares;
+            }
         }
     }
 

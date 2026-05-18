@@ -113,6 +113,9 @@ namespace GestorOT.Shared;
 [JsonSerializable(typeof(PublicLaborExecutionRequest))]
 [JsonSerializable(typeof(LinkPendingResult))]
 [JsonSerializable(typeof(BulkDeleteUnlinkedRequest))]
+[JsonSerializable(typeof(BulkFromStrategyRequest))]
+[JsonSerializable(typeof(LaborOverrideDto))]
+[JsonSerializable(typeof(List<LaborOverrideDto>))]
 [JsonSourceGenerationOptions(
     PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,
     WriteIndented = false,

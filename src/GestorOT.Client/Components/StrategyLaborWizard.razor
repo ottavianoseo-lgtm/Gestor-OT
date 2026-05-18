@@ -72,14 +72,26 @@
                             </div>
                         </div>
                         <div style="margin-top: 8px;">
-                            @foreach (var item in _selectedStrategy.Items!.OrderBy(i => i.DayOffset))
+                            @{
+                                var strategyItems = _selectedStrategy.Items!.OrderBy(i => i.DayOffset).ToList();
+                            }
+                            @for (int idx = 0; idx < strategyItems.Count; idx++)
                             {
+                                var item = strategyItems[idx];
+                                var delta = idx == 0 ? 0 : item.DayOffset - strategyItems[idx - 1].DayOffset;
+
                                 <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
                                     <div style="width: 8px; height: 8px; border-radius: 50%; background: #2ECC71; flex-shrink: 0;"></div>
                                     <span style="color: #fff; font-size: 13px;">@(item.LaborTypeName ?? "Labor")</span>
-                                    @if (item.DayOffset > 0)
+                                    @if (idx == 0)
                                     {
-                                        <span style="color: rgba(255,255,255,0.4); font-size: 11px;">+@item.DayOffset días</span>
+                                        <span style="color: rgba(255,255,255,0.4); font-size: 11px;">Día base</span>
+                                    }
+                                    else
+                                    {
+                                        <span style="color: rgba(255,255,255,0.4); font-size: 11px;">
+                                            +@delta día@(delta == 1 ? "" : "s") desde anterior
+                                        </span>
                                     }
                                 </div>
                             }
@@ -543,7 +555,7 @@
                 WorkOrderId
             );
 
-            var response = await Http.PostAsJsonAsync("api/labors/bulk-from-strategy", request);
+            var response = await Http.PostAsJsonAsync("api/labors/bulk-from-strategy", request, AppJsonSerializerContext.Default.BulkFromStrategyRequest);
             if (response.IsSuccessStatusCode)
             {
                 using var jsonDoc = await System.Text.Json.JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());

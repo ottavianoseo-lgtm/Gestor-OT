@@ -185,7 +185,7 @@ else if (_order != null)
                                     <div style="display: flex; align-items: center; gap: 4px;">
                                         <AntDesign.InputNumber TValue="decimal?"
                                                                Value="@(context.RealTotalUsed ?? context.SumOfLaborsRealTotal)"
-                                                               ValueChanged="@(v => HandleRealTotalChange(context, v))"
+                                                               ValueChanged="@(async v => await HandleRealTotalChange(context, v))"
                                                                Size="InputSize.Small" Precision="2"
                                                                Style="@(context.RealTotalUsed == null ? "width: 100px; color: #a0a0a0; font-style: italic;" : "width: 100px;")" />
 
@@ -213,10 +213,15 @@ else if (_order != null)
                             <Column TData="string" Title="% Uso" Width="120">
                                 @{
                                     var effectiveRealForPct = context.RealTotalUsed ?? context.SumOfLaborsRealTotal;
-                                    var usage = context.TotalCalculated > 0 ? (effectiveRealForPct / context.TotalCalculated) * 100 : 0;
+                                    var usageRaw = context.TotalCalculated > 0 ? (effectiveRealForPct / context.TotalCalculated) * 100 : 0;
+                                    var usage = Math.Round(usageRaw, 2);
+                                    var usageText = $"{usage:N2}%";
                                 }
-                                <Progress Percent='(double)usage' Size="ProgressSize.Small" Steps="5"
-                                           StrokeColor='usage > 100 ? "#ff4d4f" : "#52c41a"' />
+                                <div style="display: flex; align-items: center; gap: 6px;">
+                                    <Progress Percent='(double)usage' Size="ProgressSize.Small" Steps="5"
+                                               StrokeColor='usage > 100 ? "#ff4d4f" : "#52c41a"' />
+                                    <span style="font-size: 11px; color: rgba(255,255,255,0.6);">@usageText</span>
+                                </div>
                             </Column>
 
                             <ActionColumn Title="" Width="50">

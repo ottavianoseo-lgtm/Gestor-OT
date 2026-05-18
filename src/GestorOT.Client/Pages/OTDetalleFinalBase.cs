@@ -199,7 +199,7 @@ namespace GestorOT.Client.Pages
             _showLaborModal = false;
         }
 
-        protected async Task OnLaborSaved() { _showLaborModal = false; await LoadData(); }
+        protected async Task OnLaborSaved() { _showLaborModal = false; await ConsolidateSupplies(); }
 
         protected void ReviewUnassignedLabors()
         {
@@ -288,8 +288,14 @@ namespace GestorOT.Client.Pages
             }
         }
 
-        protected void HandleRealTotalChange(WorkOrderSupplyApprovalDto context, decimal? newValue)
+        protected async Task HandleRealTotalChange(WorkOrderSupplyApprovalDto context, decimal? newValue)
         {
+            var confirmed = await _js.InvokeAsync<bool>("confirm",
+                "Este valor modificará los valores realizados en las labores de esta OT " +
+                "de forma proporcional. ¿Estás seguro?");
+
+            if (!confirmed) return;
+
             context.RealTotalUsed = newValue;
 
             if (newValue.HasValue)
