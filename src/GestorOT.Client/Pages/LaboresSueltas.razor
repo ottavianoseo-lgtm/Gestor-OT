@@ -78,6 +78,10 @@
                     Style="background: #E74C3C; border-color: #E74C3C;">
                 <Icon Type="file-add" Theme="IconThemeType.Outline" /> Crear OT con la selección
             </Button>
+            <Button Type="@ButtonType.Primary" OnClick="SendToContratista"
+                    Style="background: #8E44AD; border-color: #8E44AD;">
+                <Icon Type="send" Theme="IconThemeType.Outline" /> Enviar a contratista
+            </Button>
         </div>
     </div>
 }
@@ -188,6 +192,27 @@ else
             Disabled="@(_assignTargetOT == Guid.Empty)">
         <Icon Type="link" Theme="IconThemeType.Outline" /> Asignar a OT
     </Button>
+</Modal>
+
+<Modal Title="Enlace generado" Visible="@_bulkValidationModalOpen"
+       OnCancel="() => _bulkValidationModalOpen = false" Footer="null" Width="480"
+       BodyStyle="background: #1E1E2E; padding: 24px;">
+    <div style="margin-bottom: 16px; color: rgba(255,255,255,0.6); font-size: 13px; text-align: center;">
+        Se ha generado un enlace para <strong style="color: #fff;">@_bulkValidationLaborCount labores</strong>.
+        Comparta este enlace con el contratista:
+    </div>
+    <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+        <AntDesign.Input Value="@_bulkValidationLink" ReadOnly="true"
+                         Style="flex: 1; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #fff; border-radius: 8px;" />
+        <Button Type="@ButtonType.Primary" OnClick="CopyBulkValidationLink"
+                Style="background: #2ECC71; border-color: #2ECC71; border-radius: 8px; font-weight: 600; min-width: 100px;">
+            <Icon Type="copy" Theme="IconThemeType.Outline" /> Copiar
+        </Button>
+    </div>
+    <div style="text-align: center; margin-top: 8px;">
+        <Button Type="@ButtonType.Default" OnClick="() => _bulkValidationModalOpen = false"
+                Style="border-radius: 8px;">Cerrar</Button>
+    </div>
 </Modal>
 
 <!-- Removed redundant execute modal -->
@@ -349,6 +374,9 @@ else
     private bool _executing;
     private LaborDto? _laborToExecute;
     private LaborEditorForm? _laborFormRef;
+    private bool _bulkValidationModalOpen;
+    private string? _bulkValidationLink;
+    private int _bulkValidationLaborCount;
 
     private bool _allSelected => _labors.Count > 0 && _selectedIds.Count == _labors.Count;
 
@@ -682,6 +710,50 @@ else
         {
             _saving = false;
             StateHasChanged();
+        }
+    }
+
+    private async Task SendToContratista()
+    {
+        if (_selectedIds.Count == 0) return;
+        try
+        {
+            _saving = true;
+            var body = JsonSerializer.Serialize(new BulkValidationRequest(_selectedIds.ToList()));
+            var content = new StringContent(body, Encoding.UTF8, "application/json");
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+            var response = await Http.PostAsync("api/labors/submit-bulk-validation", content, cts.Token);
+            if (response.IsSuccessStatusCode)
+            {
+                var result = await response.Content.ReadFromJsonAsync<JsonElement>(cancellationToken: cts.Token);
+                _bulkValidationLink = result.GetProperty("url").GetString();
+                _bulkValidationLaborCount = result.GetProperty("laborCount").GetInt32();
+                _bulkValidationModalOpen = true;
+                Message.Success($"Enlace generado para {_bulkValidationLaborCount} labores.");
+            }
+            else
+            {
+                var err = await response.Content.ReadAsStringAsync();
+                Message.Error($"Error: {err}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Message.Error($"Error: {ex.Message}");
+        }
+        finally
+        {
+            _saving = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task CopyBulkValidationLink()
+    {
+        if (!string.IsNullOrEmpty(_bulkValidationLink))
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", _bulkValidationLink);
+            Message.Success("Enlace copiado al portapapeles.");
         }
     }
 

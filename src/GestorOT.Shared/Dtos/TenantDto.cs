@@ -43,6 +43,10 @@ public record PublicLaborExecutionRequest(
     List<PublicLaborSupplyDto> Supplies
 );
 
+public record BulkValidationRequest(
+    List<Guid> LaborIds
+);
+
 public record PublicWorkOrderDto(
     Guid Id,
     string Description,
@@ -50,10 +54,11 @@ public record PublicWorkOrderDto(
     string AssignedTo,
     DateTime DueDate,
     string? FieldName,
-    List<PublicLaborDto>? Labors = null
+    List<PublicLaborDto>? Labors = null,
+    bool TokenIsUsed = false
 )
 {
-    public PublicWorkOrderDto() : this(Guid.Empty, string.Empty, string.Empty, string.Empty, DateTime.MinValue, null, null) { }
+    public PublicWorkOrderDto() : this(Guid.Empty, string.Empty, string.Empty, string.Empty, DateTime.MinValue, null, null, false) { }
 }
 
 public record PublicLaborDto(

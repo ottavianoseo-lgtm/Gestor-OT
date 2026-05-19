@@ -78,7 +78,9 @@ public class ShareController : ControllerBase
             return BadRequest("Este enlace ha expirado.");
 
         if (sharedToken.IsUsed)
-            return BadRequest("Este enlace ya fue utilizado.");
+        {
+            Response.Headers["X-Token-Used"] = "true";
+        }
 
         WorkOrder? wo = null;
         List<Labor> labors;
@@ -118,6 +120,21 @@ public class ShareController : ControllerBase
 
             labors = new List<Labor> { singleLabor };
         }
+        else if (metadataInfo.AllowedLaborIds.Any())
+        {
+            labors = await _context.Labors
+                .AsNoTracking()
+                .IgnoreQueryFilters()
+                .Include(l => l.Type)
+                .Include(l => l.Lot).ThenInclude(lot => lot!.Field)
+                .Include(l => l.Supplies).ThenInclude(s => s.Supply)
+                .Where(l => metadataInfo.AllowedLaborIds.Contains(l.Id))
+                .OrderBy(l => l.CreatedAt)
+                .ToListAsync();
+
+            if (labors.Count == 0)
+                return NotFound("Labores no encontradas.");
+        }
         else
         {
             return BadRequest("Token sin destino válido.");
@@ -150,7 +167,8 @@ public class ShareController : ControllerBase
             wo?.AssignedTo,
             wo?.DueDate ?? labors.First().EstimatedDate ?? DateTime.UtcNow,
             wo?.Field?.Name ?? labors.First().Lot?.Field?.Name,
-            publicLabors
+            publicLabors,
+            sharedToken.IsUsed
         );
     }
 
@@ -173,10 +191,12 @@ public class ShareController : ControllerBase
         if (sharedToken.ExpiresAt < DateTime.UtcNow)
             return BadRequest("Este enlace ha expirado.");
 
-        if (sharedToken.IsUsed)
-            return BadRequest("Este enlace ya fue utilizado.");
-
         var metadataInfo = ParseTokenMetadata(sharedToken);
+
+        var isMultiLabor = metadataInfo.AllowedLaborIds.Count > 1;
+
+        if (sharedToken.IsUsed && !isMultiLabor)
+            return BadRequest("Este enlace ya fue utilizado.");
 
         Labor? labor;
         if (sharedToken.WorkOrderId.HasValue && sharedToken.WorkOrderId != Guid.Empty)
@@ -220,7 +240,20 @@ public class ShareController : ControllerBase
             }
         }
 
-        sharedToken.IsUsed = true;
+        if (isMultiLabor)
+        {
+            var pendingCount = await _context.Labors
+                .IgnoreQueryFilters()
+                .CountAsync(l => metadataInfo.AllowedLaborIds.Contains(l.Id) && l.Status != LaborStatus.Realized);
+            if (pendingCount == 0)
+            {
+                sharedToken.IsUsed = true;
+            }
+        }
+        else
+        {
+            sharedToken.IsUsed = true;
+        }
         await _context.SaveChangesAsync();
         return NoContent();
     }

@@ -153,11 +153,11 @@ public class LaborsController : ControllerBase
                     LaborId = labor.Id,
                     SupplyId = supplyDto.SupplyId,
                     PlannedDose = pDose,
-                    PlannedTotal = supplyDto.PlannedTotal > 0 ? supplyDto.PlannedTotal : pDose * pHa,
+                    PlannedTotal = Math.Round(pDose * pHa, 4),
                     PlannedHectares = pHa,
                     RealDose = supplyDto.RealDose,
                     RealHectares = supplyDto.RealHectares,
-                    RealTotal = supplyDto.RealTotal ?? (supplyDto.RealDose.HasValue ? supplyDto.RealDose.Value * (supplyDto.RealHectares ?? labor.Hectares) : null),
+                    RealTotal = supplyDto.RealDose.HasValue ? Math.Round(supplyDto.RealDose.Value * (supplyDto.RealHectares ?? labor.Hectares), 4) : supplyDto.RealTotal,
                     UnitOfMeasure = supplyDto.UnitOfMeasure,
                     TankMixOrder = supplyDto.TankMixOrder,
                     IsSubstitute = supplyDto.IsSubstitute
@@ -293,10 +293,10 @@ public class LaborsController : ControllerBase
                     existing.SupplyId = supplyDto.SupplyId;
                     existing.PlannedDose = supplyDto.PlannedDose;
                     existing.PlannedHectares = supplyDto.PlannedHectares > 0 ? supplyDto.PlannedHectares : labor.Hectares;
-                    existing.PlannedTotal = supplyDto.PlannedTotal > 0 ? supplyDto.PlannedTotal : supplyDto.PlannedDose * existing.PlannedHectares;
+                    existing.PlannedTotal = Math.Round(supplyDto.PlannedDose * existing.PlannedHectares, 4);
                     existing.RealDose = supplyDto.RealDose;
                     existing.RealHectares = supplyDto.RealHectares;
-                    existing.RealTotal = supplyDto.RealTotal ?? (supplyDto.RealDose.HasValue ? supplyDto.RealDose.Value * (supplyDto.RealHectares ?? labor.Hectares) : null);
+                    existing.RealTotal = supplyDto.RealDose.HasValue ? Math.Round(supplyDto.RealDose.Value * (supplyDto.RealHectares ?? existing.RealHectares ?? labor.Hectares), 4) : supplyDto.RealTotal;
                     existing.UnitOfMeasure = supplyDto.UnitOfMeasure ?? "";
                     existing.TankMixOrder = supplyDto.TankMixOrder;
                     existing.IsSubstitute = supplyDto.IsSubstitute;
@@ -311,10 +311,10 @@ public class LaborsController : ControllerBase
                         SupplyId = supplyDto.SupplyId,
                         PlannedDose = supplyDto.PlannedDose,
                         PlannedHectares = supplyDto.PlannedHectares > 0 ? supplyDto.PlannedHectares : labor.Hectares,
-                        PlannedTotal = supplyDto.PlannedTotal > 0 ? supplyDto.PlannedTotal : supplyDto.PlannedDose * (supplyDto.PlannedHectares > 0 ? supplyDto.PlannedHectares : labor.Hectares),
+                        PlannedTotal = Math.Round(supplyDto.PlannedDose * (supplyDto.PlannedHectares > 0 ? supplyDto.PlannedHectares : labor.Hectares), 4),
                         RealDose = supplyDto.RealDose,
                         RealHectares = supplyDto.RealHectares,
-                        RealTotal = supplyDto.RealTotal ?? (supplyDto.RealDose.HasValue ? supplyDto.RealDose.Value * (supplyDto.RealHectares ?? labor.Hectares) : null),
+                        RealTotal = supplyDto.RealDose.HasValue ? Math.Round(supplyDto.RealDose.Value * (supplyDto.RealHectares ?? labor.Hectares), 4) : supplyDto.RealTotal,
                         UnitOfMeasure = supplyDto.UnitOfMeasure ?? "",
                         TankMixOrder = supplyDto.TankMixOrder,
                         IsSubstitute = supplyDto.IsSubstitute
@@ -598,6 +598,67 @@ public class LaborsController : ControllerBase
         var publicUrl = $"{baseUrl}/public/labor-execution/{rawToken}";
 
         return Ok(new { Url = publicUrl, Token = rawToken });
+    }
+
+    [HttpPost("submit-bulk-validation")]
+    public async Task<ActionResult<object>> SubmitBulkValidation([FromBody] BulkValidationRequest request)
+    {
+        if (request.LaborIds == null || request.LaborIds.Count == 0)
+            return BadRequest("Debe seleccionar al menos una labor.");
+
+        if (request.LaborIds.Count > 20)
+            return BadRequest("Máximo 20 labores por enlace.");
+
+        var labors = await _context.Labors
+            .Where(l => request.LaborIds.Contains(l.Id))
+            .ToListAsync();
+
+        if (labors.Count != request.LaborIds.Count)
+            return BadRequest("Algunas labores no fueron encontradas.");
+
+        foreach (var labor in labors)
+        {
+            if (labor.Status == LaborStatus.Realized || labor.Status == LaborStatus.Validated)
+                return BadRequest($"La labor '{labor.Type?.Name}' ya fue procesada.");
+            if (labor.Status == LaborStatus.AwaitingValidation)
+                return BadRequest($"La labor '{labor.Type?.Name}' ya se encuentra en validación.");
+        }
+
+        foreach (var labor in labors)
+        {
+            labor.Status = LaborStatus.AwaitingValidation;
+        }
+
+        var rawToken = Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32))
+            .Replace("+", "-").Replace("/", "_").TrimEnd('=');
+
+        var bytes = System.Text.Encoding.UTF8.GetBytes(rawToken);
+        var hash = System.Security.Cryptography.SHA256.HashData(bytes);
+        var tokenHash = Convert.ToHexStringLower(hash);
+
+        var sharedToken = new SharedToken
+        {
+            Id = Guid.NewGuid(),
+            TenantId = labors.First().TenantId == Guid.Empty ? _context.CurrentTenantId : labors.First().TenantId,
+            TokenHash = tokenHash,
+            ExpiresAt = DateTime.UtcNow.AddHours(72),
+            IsRevoked = false,
+            IsUsed = false,
+            CreatedAt = DateTime.UtcNow,
+            Metadata = JsonSerializer.Serialize(new { laborIds = request.LaborIds, action = "bulk-validate" })
+        };
+
+        _context.SharedTokens.Add(sharedToken);
+        await _context.SaveChangesAsync();
+
+        var baseUrl = _configuration.GetValue<string?>("App:PublicBaseUrl");
+        if (string.IsNullOrWhiteSpace(baseUrl))
+        {
+            baseUrl = $"{Request.Scheme}://{Request.Host}";
+        }
+        var publicUrl = $"{baseUrl}/public/labor-execution/{rawToken}";
+
+        return Ok(new { url = publicUrl, token = rawToken, laborCount = request.LaborIds.Count });
     }
 
     [HttpPost("{id:guid}/unpin-original-plan")]

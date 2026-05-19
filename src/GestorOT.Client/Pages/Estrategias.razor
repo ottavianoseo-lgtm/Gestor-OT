@@ -505,7 +505,13 @@
             }
             else
             {
-                Message.Error($"Error: {response.StatusCode}");
+                var msg = response.StatusCode switch
+                {
+                    System.Net.HttpStatusCode.Conflict => "Error: Conflicto al guardar (409). Verifique los datos ingresados.",
+                    System.Net.HttpStatusCode.NotFound => "El recurso no fue encontrado. Actualice la página e intente nuevamente.",
+                    _ => $"Error al guardar: {response.StatusCode}"
+                };
+                Message.Error(msg);
             }
         }
         catch (Exception ex)
@@ -530,12 +536,19 @@
             }
             else
             {
-                Message.Error($"Error: {response.StatusCode}");
+                var msg = response.StatusCode switch
+                {
+                    System.Net.HttpStatusCode.MethodNotAllowed => "Error: Método no permitido (405). Verifique la configuración del proxy o reverse proxy.",
+                    System.Net.HttpStatusCode.Conflict => "Error: Conflicto al eliminar (409). La estrategia puede estar siendo utilizada por órdenes de trabajo.",
+                    System.Net.HttpStatusCode.NotFound => "La estrategia no fue encontrada. Puede que ya haya sido eliminada.",
+                    _ => $"Error al eliminar: {response.StatusCode}"
+                };
+                Message.Error(msg);
             }
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            Message.Error($"Error: {ex.Message}");
+            Message.Error("Error de conexión al eliminar la estrategia. Verifique que el servidor esté disponible.");
         }
     }
 
