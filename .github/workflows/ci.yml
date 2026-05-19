@@ -45,7 +45,7 @@ jobs:
       - name: Deploy application locally
         run: |
           # Como el runner ya está en tu servidor, ejecutamos los comandos directamente
-          cd /home/worlscuffi/workspace/desarrollos/Gestor-OT
+          cd /home/lscuffi/workspace/desarrollos/Gestor-OT
           git pull origin main
           docker compose up -d --build gestor-ot-app
           docker image prune -f
