@@ -558,7 +558,7 @@ public class WorkOrdersController : ControllerBase
                 PlannedTotal = group.Sum(s => s.PlannedTotal),
                 RealTotal = group.Sum(s => s.RealTotal ?? 0),
                 DeviationPercent = group.Sum(s => s.PlannedTotal) > 0
-                    ? ((group.Sum(s => s.RealTotal ?? 0) - group.Sum(s => s.PlannedTotal)) / group.Sum(s => s.PlannedTotal)) * 100
+                    ? Math.Round(((group.Sum(s => s.RealTotal ?? 0) - group.Sum(s => s.PlannedTotal)) / group.Sum(s => s.PlannedTotal)) * 100, 2)
                     : 0,
                 Unit = first.UnitOfMeasure
             });
@@ -574,7 +574,7 @@ public class WorkOrdersController : ControllerBase
                 Description = wo.Description ?? "",
                 PlanHa = planHa,
                 RealHa = realHa,
-                HaDeviationPercent = planHa > 0 ? ((realHa - planHa) / planHa) * 100 : 0,
+                HaDeviationPercent = planHa > 0 ? Math.Round(((realHa - planHa) / planHa) * 100, 2) : 0,
                 TotalLabors = wo.Labors.Count,
                 RealizedLabors = wo.Labors.Count(l => l.Status == GestorOT.Domain.Enums.LaborStatus.Realized)
             });

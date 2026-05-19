@@ -217,12 +217,12 @@
                         </FormItem>
                         <FormItem Label="@(_model.Status == "Realized" ? "Ha. Reales" : "Hectáreas")" Style="margin-bottom: 0;">
                             <AntDesign.InputNumber TValue="decimal" Value="@(_model.Status == "Realized" ? (supply.RealHectares ?? supply.PlannedHectares) : supply.PlannedHectares)" 
-                                                   OnChange="@(v => { if (_model.Status == "Realized") supply.RealHectares = v; else supply.PlannedHectares = v; })"
+                                                   OnChange="@(v => { if (_model.Status == "Realized") { supply.RealHectares = v; supply.RealTotal = v * (supply.RealDose ?? supply.PlannedDose); } else { supply.PlannedHectares = v; supply.PlannedTotal = v * supply.PlannedDose; } })"
                                                    Min="0m" Step="0.1m" Style="width: 100%; color: var(--text-primary);" />
                         </FormItem>
                         <FormItem Label="@(_model.Status == "Realized" ? "Dosis Real" : "Dosis Plan.")" Style="margin-bottom: 0;">
                             <AntDesign.InputNumber TValue="decimal" Value="@(_model.Status == "Realized" ? (supply.RealDose ?? supply.PlannedDose) : supply.PlannedDose)" 
-                                                   OnChange="@(v => { if (_model.Status == "Realized") supply.RealDose = v; else supply.PlannedDose = v; })"
+                                                   OnChange="@(v => { if (_model.Status == "Realized") { supply.RealDose = v; supply.RealTotal = v * (supply.RealHectares ?? supply.PlannedHectares); } else { supply.PlannedDose = v; supply.PlannedTotal = supply.PlannedHectares * v; } })"
                                                    Min="0m" Step="0.01m" Style="width: 100%; color: var(--text-primary);" />
                         </FormItem>
                         <FormItem Label="Cantidad" Style="margin-bottom: 0;">

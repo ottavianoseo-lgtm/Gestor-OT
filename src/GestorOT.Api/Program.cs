@@ -79,9 +79,9 @@ app.Use(async (context, next) =>
     await next();
 });
 
-app.MapStaticAssets();
 app.MapGroup("/api").DisableAntiforgery();
 app.MapControllers();
+app.MapStaticAssets();
 app.MapRazorComponents<GestorOT.Api.Components.App>()
     .AddInteractiveWebAssemblyRenderMode()
     .AddAdditionalAssemblies(typeof(GestorOT.Client._Imports).Assembly);

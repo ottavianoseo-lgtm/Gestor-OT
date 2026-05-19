@@ -51,6 +51,15 @@
             </div>
         </div>
 
+        @if (_allLaborsCompleted)
+        {
+            <div class="glass-card" style="text-align: center; padding: 24px; background: rgba(46, 204, 113, 0.12); border: 1px solid rgba(46, 204, 113, 0.3); border-radius: 12px; margin-bottom: 16px;">
+                <Icon Type="check-circle" Theme="IconThemeType.Fill" Style="font-size: 48px; color: #2ECC71; margin-bottom: 8px;" />
+                <h3 style="color: #2ECC71; margin: 0 0 4px; font-size: 18px; font-weight: 700;">Todas las labores completadas</h3>
+                <p style="color: rgba(255,255,255,0.6); margin: 0; font-size: 13px;">La ejecución de esta orden ha finalizado exitosamente.</p>
+            </div>
+        }
+
         @if (_labors != null && _labors.Any())
         {
             @foreach (var labor in _labors)
@@ -64,7 +73,7 @@
                             <div style="margin-top: 4px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
                                 <Tag Style="@GetStatusTagStyle(currentLabor.Status)">@currentLabor.Status</Tag>
                                 <span style="color: rgba(255,255,255,0.4); font-size: 11px;">Planificado: @currentLabor.Hectares.ToString("N2") ha</span>
-                                @if (!isRealized)
+                                @if (!isRealized && !_isReadOnly)
                                 {
                                     <div style="display: flex; align-items: center; gap: 4px; margin-left: 8px;">
                                         <span style="color: #fff; font-size: 11px; font-weight: 600;">HA. REALES:</span>
@@ -79,7 +88,7 @@
                                 }
                             </div>
                         </div>
-                        @if (!isRealized)
+                        @if (!isRealized && !_isReadOnly)
                         {
                             <Button Type="@ButtonType.Primary" Size="@ButtonSize.Small"
                                     OnClick="() => RealizeLabor(currentLabor)"
@@ -88,7 +97,7 @@
                                 <Icon Type="check-circle" Theme="IconThemeType.Outline" /> Realizar
                             </Button>
                         }
-                        else
+                        else if (isRealized)
                         {
                             <Tag Style="background: #2ECC7120; color: #2ECC71; border: 1px solid #2ECC7140; border-radius: 12px; font-size: 12px; padding: 4px 12px;">
                                 <Icon Type="check-circle" Theme="IconThemeType.Outline" /> Realizada
@@ -127,7 +136,7 @@
                                                    ValueChanged="@((decimal v) => SetRealDose(laborId, supplyId, v))"
                                                    Min="0" Step="0.01m"
                                                    Style="width: 120px;"
-                                                   Disabled="@isRealized" />
+                                                    Disabled="@(isRealized || _isReadOnly)" />
                                         <span style="color: rgba(255,255,255,0.5); font-size: 11px; margin-left: 4px;">@currentSupply.UnitOfMeasure</span>
                                     </div>
                                 </div>
@@ -166,7 +175,7 @@
                                 <AntDesign.InputNumber TValue="double?" Value="@wl.Temperature"
                                            ValueChanged="@((double? v) => { wl.Temperature = v; })"
                                            Placeholder="°C" Style="width: 100%;"
-                                           Disabled="@isRealized" />
+                                            Disabled="@(isRealized || _isReadOnly)" />
                             </div>
                             <div class="weather-field">
                                 <label>Humedad (%)</label>
@@ -174,7 +183,7 @@
                                            ValueChanged="@((double? v) => { wl.Humidity = v; })"
                                            Min="0" Max="100" Placeholder="%"
                                            Style="width: 100%;"
-                                           Disabled="@isRealized" />
+                                           Disabled="@(isRealized || _isReadOnly)" />
                             </div>
                              <div class="weather-field">
                                  <label>Viento (km/h)</label>
@@ -182,12 +191,12 @@
                                             ValueChanged="@((double? v) => { wl.WindSpeed = v; })"
                                             Min="0" Placeholder="km/h"
                                             Style="width: 100%;"
-                                            Disabled="@isRealized" />
+                                            Disabled="@(isRealized || _isReadOnly)" />
                              </div>
                              <div class="weather-field">
                                  <label>Dir. Viento</label>
                                  <Select TItemValue="string" TItem="string" @bind-Value="wl.WindDirection"
-                                         Placeholder="Dir." Style="width: 100%;" Disabled="@isRealized">
+                                         Placeholder="Dir." Style="width: 100%;" Disabled="@(isRealized || _isReadOnly)">
                                      <SelectOption TItemValue="string" TItem="string" Value="@("N")" Label="N" />
                                      <SelectOption TItemValue="string" TItem="string" Value="@("NE")" Label="NE" />
                                      <SelectOption TItemValue="string" TItem="string" Value="@("E")" Label="E" />
@@ -204,7 +213,7 @@
                             <TextArea @bind-Value="wl.Notes"
                                       Rows="2" Placeholder="Observaciones climáticas..."
                                       Style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #fff; border-radius: 8px;"
-                                      Disabled="@isRealized" />
+                                      Disabled="@(isRealized || _isReadOnly)" />
                         </div>
                     </div>
                 </div>
@@ -371,6 +380,8 @@
     private Dictionary<string, decimal> _realDoses = new();
     private Dictionary<Guid, decimal> _realHectares = new();
     private Dictionary<Guid, WeatherLogModel> _weatherLogs = new();
+    private bool _allLaborsCompleted;
+    private bool _isReadOnly;
 
     private bool IsPublic => !string.IsNullOrEmpty(Token);
 
@@ -411,6 +422,8 @@
                     
                     if (publicOrder != null)
                     {
+                        _isReadOnly = publicOrder.TokenIsUsed;
+
                         // Map PublicWorkOrderDto to WorkOrderDetailDto for internal logic reuse
                         _order = new WorkOrderDetailDto
                         {
@@ -465,6 +478,7 @@
 
             if (_labors != null)
             {
+                _allLaborsCompleted = _labors.All(l => l.Status == "Realized" || l.Status == "Done");
                 foreach (var labor in _labors)
                 {
                     if (!_realHectares.ContainsKey(labor.Id))
@@ -611,7 +625,18 @@
             if (response.IsSuccessStatusCode)
             {
                 Message.Success("Labor confirmada como realizada.");
-                await LoadData();
+                if (IsPublic)
+                {
+                    var lab = _labors.FirstOrDefault(l => l.Id == labor.Id);
+                    if (lab != null) lab.Status = "Realized";
+                    _allLaborsCompleted = _labors.All(l => l.Status == "Realized" || l.Status == "Done");
+                    _isReadOnly = true;
+                    StateHasChanged();
+                }
+                else
+                {
+                    await LoadData();
+                }
             }
             else
             {

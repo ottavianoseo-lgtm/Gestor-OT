@@ -90,7 +90,7 @@ else if (_report != null)
                         </Column>
                         <PropertyColumn Property="s => s.Unit" Title="U.M." />
                         <Column TData="decimal" Title="Barra">
-                            <Progress Percent='(double)Math.Min(Math.Abs(context.DeviationPercent), 100)' Size="ProgressSize.Small" StrokeColor='context.DeviationPercent > 5 ? "#ff4d4f" : "#52c41a"' />
+                            <Progress Percent='(double)Math.Min(Math.Abs(context.DeviationPercent), 100)' Size="ProgressSize.Small" ShowInfo="false" StrokeColor='context.DeviationPercent > 5 ? "#ff4d4f" : "#52c41a"' />
                         </Column>
                     </Table>
                 }
