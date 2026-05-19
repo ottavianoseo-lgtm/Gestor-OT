@@ -498,6 +498,56 @@ namespace GestorOT.Infrastructure.Migrations
                     b.ToTable("Fields", "public");
                 });
 
+            modelBuilder.Entity("GestorOT.Domain.Entities.FileAsset", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<byte[]>("Content")
+                        .IsRequired()
+                        .HasColumnType("bytea");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("Hash")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("MimeType")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<long>("SizeBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Tags")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("UploadedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("UploadedBy")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("Visibility")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("FileAssets", "public");
+                });
+
             modelBuilder.Entity("GestorOT.Domain.Entities.Inventory", b =>
                 {
                     b.Property<Guid>("Id")
@@ -733,6 +783,34 @@ namespace GestorOT.Infrastructure.Migrations
                     b.ToTable("LaborAttachments", "public");
                 });
 
+            modelBuilder.Entity("GestorOT.Domain.Entities.LaborFileAsset", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("FileAssetId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("LaborId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("LinkedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FileAssetId");
+
+                    b.HasIndex("LaborId", "FileAssetId")
+                        .IsUnique();
+
+                    b.ToTable("LaborFileAssets", "public");
+                });
+
             modelBuilder.Entity("GestorOT.Domain.Entities.LaborSupply", b =>
                 {
                     b.Property<Guid>("Id")
@@ -964,12 +1042,17 @@ namespace GestorOT.Infrastructure.Migrations
                     b.Property<Guid>("LaborTypeId")
                         .HasColumnType("uuid");
 
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer");
+
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uuid");
 
                     b.HasKey("Id");
 
                     b.HasIndex("CropStrategyId");
+
+                    b.HasIndex("LaborTypeId");
 
                     b.ToTable("StrategyItems", "public");
                 });
@@ -1112,7 +1195,6 @@ namespace GestorOT.Infrastructure.Migrations
                         .HasColumnType("uuid");
 
                     b.Property<string>("Description")
-                        .IsRequired()
                         .HasMaxLength(1000)
                         .HasColumnType("character varying(1000)");
 
@@ -1176,6 +1258,9 @@ namespace GestorOT.Infrastructure.Migrations
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
+
+                    b.Property<string>("AllowedTransitionsJson")
+                        .HasColumnType("text");
 
                     b.Property<string>("ColorHex")
                         .IsRequired()
@@ -1369,6 +1454,25 @@ namespace GestorOT.Infrastructure.Migrations
                     b.Navigation("Labor");
                 });
 
+            modelBuilder.Entity("GestorOT.Domain.Entities.LaborFileAsset", b =>
+                {
+                    b.HasOne("GestorOT.Domain.Entities.FileAsset", "FileAsset")
+                        .WithMany()
+                        .HasForeignKey("FileAssetId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GestorOT.Domain.Entities.Labor", "Labor")
+                        .WithMany()
+                        .HasForeignKey("LaborId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("FileAsset");
+
+                    b.Navigation("Labor");
+                });
+
             modelBuilder.Entity("GestorOT.Domain.Entities.LaborSupply", b =>
                 {
                     b.HasOne("GestorOT.Domain.Entities.Labor", "Labor")
@@ -1435,6 +1539,14 @@ namespace GestorOT.Infrastructure.Migrations
                         .HasForeignKey("CropStrategyId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.HasOne("GestorOT.Domain.Entities.LaborType", "LaborType")
+                        .WithMany()
+                        .HasForeignKey("LaborTypeId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("LaborType");
 
                     b.Navigation("Strategy");
                 });

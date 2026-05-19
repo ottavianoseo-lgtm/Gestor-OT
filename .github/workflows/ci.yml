@@ -1,0 +1,51 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build-and-test:
+    name: Build and Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Install wasm-tools workload
+        run: dotnet workload install wasm-tools
+
+      - name: Restore dependencies
+        run: dotnet restore src/GestorOT.Api/GestorOT.Api.csproj
+
+      - name: Build project
+        run: dotnet build src/GestorOT.Api/GestorOT.Api.csproj --configuration Release --no-restore
+
+      # Descomentar si agregas proyectos de test en el futuro
+      # - name: Run tests
+      #   run: dotnet test --configuration Release --no-build --verbosity normal
+
+  deploy:
+    name: Deploy to Local Server
+    runs-on: self-hosted # 🚀 La magia está aquí: Corre directamente en tu server sin puertos abiertos
+    needs: build-and-test
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Deploy application locally
+        run: |
+          # Como el runner ya está en tu servidor, ejecutamos los comandos directamente
+          cd /home/worlscuffi/workspace/desarrollos/Gestor-OT
+          git pull origin main
+          docker compose up -d --build gestor-ot-app
+          docker image prune -f

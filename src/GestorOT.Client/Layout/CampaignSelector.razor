@@ -57,30 +57,42 @@
                 </div>
             </div>
 
-            @if (CampaignState.IsSelected)
-            {
-                <div class="campaign-clear" @onclick="ClearCampaign">
-                    <Icon Type="eye" Theme="IconThemeType.Outline" Style="font-size: 14px;" />
-                    <span>Ver todas las campañas (sin filtro)</span>
-                </div>
-            }
+
 
             <div class="campaign-list">
                 @foreach (var campaign in _campaigns.OrderByDescending(c => c.Name))
                 {
                     var isSelected = campaign.Id == CampaignState.CurrentCampaign?.Id;
-                    <div class="campaign-item @(isSelected ? "campaign-item-selected" : "")" @onclick="() => SelectCampaign(campaign)">
+                    var isLocked = campaign.Status == CampaignStatus.Locked;
+                    var statusLabel = campaign.Status switch
+                    {
+                        CampaignStatus.Active => "Activa",
+                        CampaignStatus.Locked => "Bloqueada",
+                        _ => "Inactiva"
+                    };
+                    var statusColor = campaign.Status switch
+                    {
+                        CampaignStatus.Active => "#2ECC71",
+                        CampaignStatus.Locked => "#95A5A6",
+                        _ => "#F1C40F"
+                    };
+                    <div class="campaign-item @(isSelected ? "campaign-item-selected" : "") @(isLocked ? "campaign-item-locked" : "")" @onclick="() => SelectCampaign(campaign)">
                         <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
-                            <div style="display: flex; align-items: center; gap: 8px;">
-                                <span>@campaign.Name</span>
-                                @if (campaign.IsActive)
+                            <div style="display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0;">
+                                <span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">@campaign.Name</span>
+                                <Tag Style="@($"background: {statusColor}20; color: {statusColor}; border: 1px solid {statusColor}40; border-radius: 8px; font-size: 10px; padding: 1px 8px;")">
+                                    @statusLabel
+                                </Tag>
+                                @if (isLocked)
                                 {
-                                    <Badge Status="@BadgeStatus.Success" />
+                                    <Tag Style="background: #E67E2220; color: #E67E22; border: 1px solid #E67E2240; border-radius: 8px; font-size: 10px; padding: 1px 8px;">
+                                        <Icon Type="lock" Theme="IconThemeType.Outline" Style="font-size: 10px; margin-right: 2px;" /> Solo lectura
+                                    </Tag>
                                 }
                             </div>
-                            @if (campaign.Id == CampaignState.CurrentCampaign?.Id)
+                            @if (isSelected)
                             {
-                                <Icon Type="check" Theme="IconThemeType.Outline" Style="color: #2ECC71; font-size: 16px;" />
+                                <Icon Type="check" Theme="IconThemeType.Outline" Style="color: #2ECC71; font-size: 16px; margin-left: 8px; flex-shrink: 0;" />
                             }
                         </div>
                     </div>
@@ -213,6 +225,10 @@
         background: rgba(46, 204, 113, 0.12);
         border-color: rgba(46, 204, 113, 0.3);
     }
+
+    .campaign-item-locked {
+        opacity: 0.85;
+    }
 </style>
 
 @code {
@@ -223,30 +239,64 @@
     protected override async Task OnInitializedAsync()
     {
         CampaignState.OnChange += StateHasChanged;
-        await LoadCampaigns();
+        CampaignState.OnCampaignsChanged += HandleCampaignsChanged;
+        await LoadCampaigns(skipAutoSelect: false);
     }
 
-    private async Task LoadCampaigns()
+    private async Task HandleCampaignsChanged()
+    {
+        try
+        {
+            _loading = true;
+            await InvokeAsync(StateHasChanged);
+            await LoadCampaigns(skipAutoSelect: true);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[CampaignSelector] Error handling campaign change: {ex.Message}");
+        }
+        finally
+        {
+            _loading = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task LoadCampaigns(bool skipAutoSelect = false)
     {
         try
         {
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-            var allCampaigns = await Http.GetFromJsonAsync("api/campaigns/active",
+            var allCampaigns = await Http.GetFromJsonAsync("api/campaigns/selector",
                 AppJsonSerializerContext.Default.ListCampaignSummaryDto, cts.Token);
 
-            _campaigns = allCampaigns?.Select(c => new CampaignSummaryDto(c.Id, c.Name, c.Status, c.IsActive)).ToList() ?? new();
+            _campaigns = allCampaigns?.ToList() ?? new();
 
-            if (_campaigns.Count == 1 && !CampaignState.IsSelected)
+            if (_campaigns.Count > 0)
             {
-                CampaignState.SetCampaign(_campaigns[0]);
-            }
-            else if (_campaigns.Count > 1 && !CampaignState.IsSelected)
-            {
-                _modalVisible = true;
+                var savedId = await CampaignState.GetSavedCampaignId();
+                var currentId = CampaignState.CurrentCampaign?.Id;
+                
+                // If we have a saved ID and no selection (or stale selection), try to restore it
+                if (savedId.HasValue && (!CampaignState.IsSelected || currentId != savedId))
+                {
+                    var savedCampaign = _campaigns.FirstOrDefault(c => c.Id == savedId.Value);
+                    if (savedCampaign != null)
+                    {
+                        CampaignState.SetCampaign(savedCampaign);
+                    }
+                }
+
+                // If still no selection, or the current selection is no longer in the list, pick the first one
+                if (!CampaignState.IsSelected || !_campaigns.Any(c => c.Id == CampaignState.CurrentCampaign?.Id))
+                {
+                    CampaignState.SetCampaign(_campaigns[0]);
+                }
             }
         }
-        catch
+        catch (Exception ex)
         {
+            Console.WriteLine($"[CampaignSelector] Error loading campaigns: {ex.Message}");
             _campaigns = new();
         }
         finally
@@ -265,7 +315,10 @@
 
     private void CloseModal()
     {
-        _modalVisible = false;
+        if (CampaignState.IsSelected || _campaigns.Count == 0)
+        {
+            _modalVisible = false;
+        }
     }
 
     private void SelectCampaign(CampaignSummaryDto campaign)
@@ -274,14 +327,11 @@
         _modalVisible = false;
     }
 
-    private void ClearCampaign()
-    {
-        CampaignState.Clear();
-        _modalVisible = false;
-    }
+
 
     public void Dispose()
     {
         CampaignState.OnChange -= StateHasChanged;
+        CampaignState.OnCampaignsChanged -= HandleCampaignsChanged;
     }
 }

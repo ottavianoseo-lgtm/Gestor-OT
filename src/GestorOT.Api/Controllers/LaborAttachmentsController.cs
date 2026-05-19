@@ -29,6 +29,16 @@ public class LaborAttachmentsController : ControllerBase
             .ToListAsync();
     }
 
+    private async Task<bool> IsLaborInLockedCampaignAsync(Guid laborId)
+    {
+        var labor = await _context.Labors
+            .AsNoTracking()
+            .Include(l => l.CampaignLot)
+                .ThenInclude(cl => cl!.Campaign)
+            .FirstOrDefaultAsync(l => l.Id == laborId);
+        return labor?.CampaignLot?.Campaign?.Status == "Locked";
+    }
+
     [HttpPost("labor/{laborId:guid}/upload")]
     [DisableRequestSizeLimit]
     public async Task<ActionResult<LaborAttachmentDto>> Upload(Guid laborId, IFormFile file)
@@ -36,9 +46,13 @@ public class LaborAttachmentsController : ControllerBase
         if (file == null || file.Length == 0)
             return BadRequest("No se proporcionó ningún archivo.");
 
-        var labor = await _context.Labors.FindAsync(laborId);
+        var labor = await _context.Labors
+            .FirstOrDefaultAsync(l => l.Id == laborId);
         if (labor == null)
             return NotFound("Labor no encontrada.");
+
+        if (await IsLaborInLockedCampaignAsync(laborId))
+            return Conflict("No se pueden adjuntar archivos a labores de una campaña bloqueada.");
 
         using var ms = new MemoryStream();
         await file.CopyToAsync(ms);
@@ -64,7 +78,8 @@ public class LaborAttachmentsController : ControllerBase
     [HttpGet("{id:guid}/download")]
     public async Task<IActionResult> Download(Guid id)
     {
-        var attachment = await _context.LaborAttachments.FindAsync(id);
+        var attachment = await _context.LaborAttachments
+            .FirstOrDefaultAsync(a => a.Id == id);
         if (attachment == null)
             return NotFound();
 
@@ -74,9 +89,13 @@ public class LaborAttachmentsController : ControllerBase
     [HttpDelete("{id:guid}")]
     public async Task<IActionResult> Delete(Guid id)
     {
-        var attachment = await _context.LaborAttachments.FindAsync(id);
+        var attachment = await _context.LaborAttachments
+            .FirstOrDefaultAsync(a => a.Id == id);
         if (attachment == null)
             return NotFound();
+
+        if (await IsLaborInLockedCampaignAsync(attachment.LaborId))
+            return Conflict("No se pueden eliminar adjuntos de labores en una campaña bloqueada.");
 
         _context.LaborAttachments.Remove(attachment);
         await _context.SaveChangesAsync();

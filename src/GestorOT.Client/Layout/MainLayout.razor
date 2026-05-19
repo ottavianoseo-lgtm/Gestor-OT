@@ -44,6 +44,11 @@ else if (!string.IsNullOrEmpty(Loading.SuccessMessage))
             <Menu Theme="MenuTheme.Dark" Mode="MenuMode.Inline" @bind-SelectedKeys="_selectedKeys"
                   Style="background: transparent; border-right: none; margin-bottom: 48px;">
                 
+                <MenuItem Key="search" RouterLink="/buscar" Style="@MenuItemStyle">
+                    <Icon Type="search" Theme="IconThemeType.Outline" />
+                    <span>Buscar</span>
+                </MenuItem>
+                
                 <MenuItem Key="1" RouterLink="/" Style="@MenuItemStyle">
                     <Icon Type="dashboard" Theme="IconThemeType.Outline" />
                     <span>Dashboard</span>
@@ -65,6 +70,10 @@ else if (!string.IsNullOrEmpty(Loading.SuccessMessage))
                         <MenuItem Key="16" RouterLink="/planeamiento-original" Style="@MenuItemStyle">
                             <Icon Type="lock" Theme="IconThemeType.Outline" />
                             <span>Planeamiento Original</span>
+                        </MenuItem>
+                        <MenuItem Key="17" RouterLink="/reportes" Style="@MenuItemStyle">
+                            <Icon Type="bar-chart" Theme="IconThemeType.Outline" />
+                            <span>Reportes</span>
                         </MenuItem>
                         <MenuItem Key="11" RouterLink="/labores-sueltas" Style="@MenuItemStyle">
                             <Icon Type="thunderbolt" Theme="IconThemeType.Outline" />
@@ -114,9 +123,13 @@ else if (!string.IsNullOrEmpty(Loading.SuccessMessage))
                             <Icon Type="database" Theme="IconThemeType.Outline" />
                             <span>Inventario</span>
                         </MenuItem>
-                        <MenuItem Key="12" RouterLink="/erp-directory" Style="@MenuItemStyle">
+                        <MenuItem Key="12" RouterLink="/personas" Style="@MenuItemStyle">
                             <Icon Type="contacts" Theme="IconThemeType.Outline" />
-                            <span>Directorio ERP</span>
+                            <span>Personas</span>
+                        </MenuItem>
+                        <MenuItem Key="18" RouterLink="/biblioteca" Style="@MenuItemStyle">
+                            <Icon Type="folder-open" Theme="IconThemeType.Outline" />
+                            <span>Biblioteca de Archivos</span>
                         </MenuItem>
                         <MenuItem Key="14" RouterLink="/admin/labor-catalog" Style="@MenuItemStyle">
                             <Icon Type="bars" Theme="IconThemeType.Outline" />
@@ -130,10 +143,6 @@ else if (!string.IsNullOrEmpty(Loading.SuccessMessage))
                         @if (!_collapsed) { <span>Sistema</span> }
                     </TitleTemplate>
                     <ChildContent>
-                        <MenuItem Key="13" RouterLink="/personal" Style="@MenuItemStyle">
-                            <Icon Type="team" Theme="IconThemeType.Outline" />
-                            <span>Personal Activo</span>
-                        </MenuItem>
                         <MenuItem Key="8" RouterLink="/admin" Style="@MenuItemStyle">
                             <Icon Type="setting" Theme="IconThemeType.Outline" />
                             <span>Administración</span>
@@ -199,8 +208,8 @@ else if (!string.IsNullOrEmpty(Loading.SuccessMessage))
             var p when p.StartsWith("/lots") => new[] { "3" },
             var p when p.StartsWith("/mapa") => new[] { "5" },
             var p when p.StartsWith("/inventory") => new[] { "6" },
-            var p when p.StartsWith("/erp-directory") => new[] { "12" },
-            var p when p.StartsWith("/personal") => new[] { "13" },
+            var p when p.StartsWith("/personas") => new[] { "12" },
+            var p when p.StartsWith("/biblioteca") => new[] { "18" },
             var p when p.StartsWith("/admin/labor-catalog") => new[] { "14" },
             var p when p.StartsWith("/admin/workorder-statuses") => new[] { "15" },
             var p when p.StartsWith("/admin") => new[] { "8" },

@@ -38,7 +38,7 @@
         </div>
     }
 
-    @if (!_polygonMenuVisible && _selectedLot == null && _drawnWkt == null)
+    @if (!_polygonMenuVisible && _selectedLot == null && _drawnWkt == null && !_editingExistingLot)
     {
         <div class="gis-toolbar">
             <Tooltip Title="@("Importar archivo GeoJSON/KML")">
@@ -159,7 +159,7 @@
                             <div style="font-size: 11px; color: rgba(255,255,255,0.4);">@(lot.FieldName ?? "Sin campo")</div>
                         </div>
                         <div style="text-align: right;">
-                            <div style="font-size: 11px; color: #fff; font-weight: 700;">@lot.Area.ToString("N1") ha</div>
+                            <div style="font-size: 11px; color: #fff; font-weight: 700;">@lot.Area.ToString("N2") ha</div>
                             @if (string.IsNullOrEmpty(lot.WktGeometry))
                             {
                                 <span style="font-size: 9px; color: #E74C3C;">Sin GIS</span>
@@ -172,7 +172,7 @@
     }
 
     <div class="gis-rail @(_selectedLot != null || _drawnWkt != null ? "gis-rail--open" : "")">
-        @if (_drawnWkt != null && _selectedLot == null)
+        @if ((_drawnWkt != null || _editingExistingLot) && _selectedLot == null)
         {
             <div class="rail-header">
                 <span class="rail-title">Polígono Dibujado</span>
@@ -186,43 +186,53 @@
                     <span class="rail-value">@_drawnArea.ToString("N2") ha</span>
                 </div>
                 <div style="margin-top: 16px;">
-                    <div style="font-size: 12px; color: rgba(255,255,255,0.5); margin-bottom: 8px;">Vincular a lote:</div>
-                    @if (!_showCreateLotInline)
+                    @if (_editingExistingLot)
                     {
-                        <Select TItem="LotDto"
-                                TItemValue="Guid"
-                                DataSource="_orphanLots"
-                                @bind-Value="_linkingLotId"
-                                LabelName="@nameof(LotDto.Name)"
-                                ValueName="@nameof(LotDto.Id)"
-                                Placeholder="Seleccionar lote huérfano"
-                                Style="width: 100%;"
-                                EnableSearch />
-                        
-                        <Button Type="@ButtonType.Link" OnClick="() => _showCreateLotInline = true" Style="padding: 0; margin-top: 8px; font-size: 12px;">
-                            <Icon Type="plus" /> O crear nuevo lote
-                        </Button>
+                        <div style="font-size: 12px; color: rgba(255,255,255,0.5); margin-bottom: 8px;">Redibujando geometría para:</div>
+                        <div style="background: rgba(46, 204, 113, 0.1); border: 1px solid rgba(46, 204, 113, 0.2); border-radius: 8px; padding: 8px 12px; color: #2ECC71; font-weight: 600; font-size: 13px;">
+                            @_editingExistingLotName
+                        </div>
                     }
                     else
                     {
-                        <div style="background: rgba(255,255,255,0.03); border: 1px dashed rgba(255,255,255,0.1); border-radius: 8px; padding: 12px; display: grid; gap: 12px;">
-                            <div style="font-weight: 600; font-size: 11px; color: #fff;">NUEVO LOTE</div>
-                            <Input @bind-Value="_newLotName" Placeholder="Nombre del lote..." Size="@InputSize.Small" />
-                            <Select TItem="FieldDto"
+                        <div style="font-size: 12px; color: rgba(255,255,255,0.5); margin-bottom: 8px;">Vincular a lote:</div>
+                        @if (!_showCreateLotInline)
+                        {
+                            <Select TItem="LotDto"
                                     TItemValue="Guid"
-                                    DataSource="_allFields"
-                                    @bind-Value="_newLotFieldId"
-                                    LabelName="@nameof(FieldDto.Name)"
-                                    ValueName="@nameof(FieldDto.Id)"
-                                    Placeholder="Seleccionar campo"
-                                    Size="@InputSize.Small"
+                                    DataSource="_orphanLots"
+                                    @bind-Value="_linkingLotId"
+                                    LabelName="@nameof(LotDto.Name)"
+                                    ValueName="@nameof(LotDto.Id)"
+                                    Placeholder="Seleccionar lote huérfano"
+                                    Style="width: 100%;"
                                     EnableSearch />
                             
-                            <div style="display: flex; gap: 8px;">
-                                <Button Size="@ButtonSize.Small" Type="@ButtonType.Primary" OnClick="CreateAndLinkLot" Loading="_creatingLot">Crear</Button>
-                                <Button Size="@ButtonSize.Small" OnClick="() => _showCreateLotInline = false">Cancelar</Button>
+                            <Button Type="@ButtonType.Link" OnClick="() => _showCreateLotInline = true" Style="padding: 0; margin-top: 8px; font-size: 12px;">
+                                <Icon Type="plus" /> O crear nuevo lote
+                            </Button>
+                        }
+                        else
+                        {
+                            <div style="background: rgba(255,255,255,0.03); border: 1px dashed rgba(255,255,255,0.1); border-radius: 8px; padding: 12px; display: grid; gap: 12px;">
+                                <div style="font-weight: 600; font-size: 11px; color: #fff;">NUEVO LOTE</div>
+                                <Input @bind-Value="_newLotName" Placeholder="Nombre del lote..." Size="@InputSize.Small" />
+                                <Select TItem="FieldDto"
+                                        TItemValue="Guid"
+                                        DataSource="_allFields"
+                                        @bind-Value="_newLotFieldId"
+                                        LabelName="@nameof(FieldDto.Name)"
+                                        ValueName="@nameof(FieldDto.Id)"
+                                        Placeholder="Seleccionar campo"
+                                        Size="@InputSize.Small"
+                                        EnableSearch />
+                                
+                                <div style="display: flex; gap: 8px;">
+                                    <Button Size="@ButtonSize.Small" Type="@ButtonType.Primary" OnClick="CreateAndLinkLot" Loading="_creatingLot">Crear</Button>
+                                    <Button Size="@ButtonSize.Small" OnClick="() => _showCreateLotInline = false">Cancelar</Button>
+                                </div>
                             </div>
-                        </div>
+                        }
                     }
                 </div>
             </div>
@@ -272,6 +282,14 @@
                         OnClick="() => CenterOnSelectedLot()">
                     <Icon Type="aim" Theme="IconThemeType.Outline" /> Centrar en mapa
                 </Button>
+                @if (!string.IsNullOrEmpty(_selectedLot.WktGeometry))
+                {
+                    <Button Type="@ButtonType.Primary" Block Size="@ButtonSize.Small"
+                            Style="background: #1890FF; border-color: #1890FF; border-radius: 8px;"
+                            OnClick="() => EditLotGeometry(_selectedLot)">
+                        <Icon Type="edit" Theme="IconThemeType.Outline" /> Editar Geometría
+                    </Button>
+                }
                 <Button Block Size="@ButtonSize.Small"
                         Style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; color: #fff;"
                         OnClick='() => Navigation.NavigateTo($"/lots?editId={_selectedLot.Id}")'>
@@ -630,6 +648,8 @@
     private bool _showLotsPanel;
     private string _lotsSearch = "";
     private bool _polygonMenuVisible;
+    private bool _editingExistingLot;
+    private string _editingExistingLotName = "";
 
     [Parameter][SupplyParameterFromQuery] public string? lotId { get; set; }
 
@@ -687,6 +707,34 @@
         _linkingLotId = lot.Id;
         _showOrphanPanel = false;
         await JS.InvokeVoidAsync("mapInterop.enableDrawing");
+    }
+
+    private async Task EditLotGeometry(LotDto lot)
+    {
+        _editingExistingLot = true;
+        _editingExistingLotName = lot.Name;
+        _linkingLotId = lot.Id;
+        _selectedLot = null;
+        _drawnWkt = null;
+
+        var coordinatesJson = lot.WktGeometry != null
+            ? await ConvertWktToLeafletCoords(lot.WktGeometry)
+            : "[]";
+        await JS.InvokeVoidAsync("mapInterop.startEditExistingLot",
+            lot.Id.ToString(), lot.Name, lot.Status, lot.Area, lot.FieldName ?? "", coordinatesJson);
+    }
+
+    private async Task<string> ConvertWktToLeafletCoords(string wkt)
+    {
+        try
+        {
+            return await JS.InvokeAsync<string>("eval",
+                $"(function(){{ var m = '{wkt}'.match(/POLYGON\\s*\\(\\((.+)\\)\\)/i); if(!m) return '[]'; var coords = m[1].split(',').map(function(p){{ var parts = p.trim().split(/\\s+/); return [parseFloat(parts[1]), parseFloat(parts[0])]; }}); if(coords[0][0]!==coords[coords.length-1][0]||coords[0][1]!==coords[coords.length-1][1]) coords.push(coords[0]); return JSON.stringify([coords]); }})()");
+        }
+        catch
+        {
+            return "[]";
+        }
     }
 
     public class ImportResult
@@ -854,13 +902,32 @@
         _selectedLot = null;
     }
 
-    private void ClearDrawn()
+    private async void ClearDrawn()
     {
         _drawnWkt = null;
         _drawnArea = 0;
         _polygonMenuVisible = false;
+        var savedLinkingId = _linkingLotId;
         _linkingLotId = Guid.Empty;
-        JS.InvokeVoidAsync("mapInterop.clearDrawn");
+        _editingExistingLot = false;
+        _editingExistingLotName = "";
+
+        if (savedLinkingId != Guid.Empty)
+        {
+            var lot = _allLots.FirstOrDefault(l => l.Id == savedLinkingId);
+            if (lot != null && !string.IsNullOrEmpty(lot.WktGeometry))
+            {
+                try
+                {
+                    var coordsJson = await ConvertWktToLeafletCoords(lot.WktGeometry);
+                    await JS.InvokeVoidAsync("mapInterop.cancelEditExistingLot",
+                        lot.Id.ToString(), lot.Name, lot.Status, lot.Area, lot.FieldName ?? "", coordsJson);
+                    return;
+                }
+                catch { }
+            }
+        }
+        await JS.InvokeVoidAsync("mapInterop.clearDrawn");
     }
 
     private async Task SaveDrawnGeometry()
@@ -898,6 +965,8 @@
                 _drawnArea = 0;
                 _polygonMenuVisible = false;
                 _linkingLotId = Guid.Empty;
+                _editingExistingLot = false;
+                _editingExistingLotName = "";
                 await ReloadMap(savedBounds);
             }
             else
@@ -955,7 +1024,8 @@
         _drawnArea = area;
         _polygonMenuVisible = true;
         _selectedLot = null;
-        _linkingLotId = Guid.Empty;
+        if (!_editingExistingLot)
+            _linkingLotId = Guid.Empty;
         StateHasChanged();
     }
 

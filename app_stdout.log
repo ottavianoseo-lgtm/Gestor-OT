@@ -1,0 +1,36 @@
+Usando la configuración de inicio de C:\Users\HWFOttaviano\Gestor-OT\src\GestorOT.Api\Properties\launchSettings.json...
+Compilando...
+C:\Users\HWFOttaviano\Gestor-OT\src\GestorOT.Infrastructure\GestorOT.Infrastructure.csproj : warning NU1603: GestorOT.Infrastructure depende de QuestPDF (>= 2025.9.0), pero no se encontró QuestPDF 2025.9.0. QuestPDF 2025.12.0 se resolvió en su lugar. [C:\Users\HWFOttaviano\Gestor-OT\src\GestorOT.Api\GestorOT.Api.csproj]
+C:\Users\HWFOttaviano\Gestor-OT\src\GestorOT.Api\GestorOT.Api.csproj : warning NU1603: GestorOT.Api depende de QuestPDF (>= 2025.9.0), pero no se encontró QuestPDF 2025.9.0. QuestPDF 2025.12.0 se resolvió en su lugar.
+C:\Users\HWFOttaviano\Gestor-OT\src\GestorOT.Api\GestorOT.Api.csproj : warning NU1603: GestorOT.Api depende de QuestPDF (>= 2025.9.0), pero no se encontró QuestPDF 2025.9.0. QuestPDF 2025.12.0 se resolvió en su lugar.
+C:\Users\HWFOttaviano\Gestor-OT\src\GestorOT.Infrastructure\GestorOT.Infrastructure.csproj : warning NU1603: GestorOT.Infrastructure depende de QuestPDF (>= 2025.9.0), pero no se encontró QuestPDF 2025.9.0. QuestPDF 2025.12.0 se resolvió en su lugar.
+warn: Microsoft.EntityFrameworkCore.Model.Validation[10400]
+      Sensitive data logging is enabled. Log entries and exception messages may include sensitive application data; this mode should only be enabled during development.
+warn: Microsoft.EntityFrameworkCore.Model.Validation[20601]
+      The 'LaborPriority' property 'Priority' on entity type 'Labor' is configured with a database-generated default, but has no configured sentinel value. The database-generated default will always be used for inserts when the property has the value 'Baja', since this is the CLR default for the 'LaborPriority' type. Consider using a nullable type, using a nullable backing field, or setting the sentinel value for the property to ensure the database default is used when, and only when, appropriate. See https://aka.ms/efcore-docs-default-values for more information.
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (5ms) [Parameters=[], CommandType='Text', CommandTimeout='300']
+      SELECT "MigrationId", "ProductVersion"
+      FROM "__EFMigrationsHistory"
+      ORDER BY "MigrationId";
+info: GestorOT.Infrastructure.Data.ApplicationDbContext[0]
+      Database schema is up to date — no pending migrations.
+info: GestorOT.Infrastructure.Services.ErpSyncWorker[0]
+      ERP Sync Worker iniciado.
+info: GestorOT.Infrastructure.Services.ErpSyncWorker[0]
+      Iniciando sincronización masiva de todos los tenants...
+info: Microsoft.Hosting.Lifetime[14]
+      Now listening on: http://localhost:5159
+info: Microsoft.Hosting.Lifetime[0]
+      Application started. Press Ctrl+C to shut down.
+info: Microsoft.Hosting.Lifetime[0]
+      Hosting environment: Development
+info: Microsoft.Hosting.Lifetime[0]
+      Content root path: C:\Users\HWFOttaviano\Gestor-OT\src\GestorOT.Api
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (2ms) [Parameters=[], CommandType='Text', CommandTimeout='300']
+      SELECT t."Id", t."CreatedAt", t."GestorMaxApiKeyEncrypted", t."GestorMaxDatabaseId", t."Name"
+      FROM public."Tenants" AS t
+      WHERE t."GestorMaxApiKeyEncrypted" IS NOT NULL AND t."GestorMaxApiKeyEncrypted" <> '' AND t."GestorMaxDatabaseId" IS NOT NULL AND t."GestorMaxDatabaseId" <> ''
+info: GestorOT.Infrastructure.Services.ErpSyncWorker[0]
+      Sincronización masiva finalizada.

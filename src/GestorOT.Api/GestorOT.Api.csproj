@@ -7,6 +7,9 @@
     <UserSecretsId>ed55827d-d2df-429f-a051-8996eb5e27cf</UserSecretsId>
   </PropertyGroup>
   <ItemGroup>
+    <InternalsVisibleTo Include="GestorOT.Tests" />
+  </ItemGroup>
+  <ItemGroup>
     <PackageReference Include="AntDesign" Version="1.6.1" />
     <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.Server" Version="10.0.1" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.0">
@@ -15,6 +18,7 @@
     </PackageReference>
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.0" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL.NetTopologySuite" Version="10.0.0" />
+    <PackageReference Include="QuestPDF" Version="2025.9.0" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\GestorOT.Client\GestorOT.Client.csproj" />

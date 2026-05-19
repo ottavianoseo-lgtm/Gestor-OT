@@ -1,0 +1,218 @@
+@page "/biblioteca"
+@using GestorOT.Shared.Dtos
+@using GestorOT.Shared
+@using System.Net.Http.Json
+@using AntDesign
+@inject HttpClient Http
+@inject IMessageService Message
+@inject NavigationManager Nav
+
+<PageTitle>Biblioteca de Archivos - GestorOT</PageTitle>
+
+<div class="page-header">
+    <div>
+        <h2 class="page-title">Biblioteca de Archivos</h2>
+        <span class="page-subtitle">Archivos conservados. Previsualice, descargue o asocie a labores.</span>
+    </div>
+    <div style="display: flex; gap: 8px;">
+        <Input @bind-Value="@_searchText" Placeholder="Buscar por nombre..." Style="width: 250px;" />
+        <Button Icon="search" OnClick="LoadData" />
+        <Button Icon="reload" OnClick="LoadData">Refrescar</Button>
+    </div>
+</div>
+
+@if (_loading)
+{
+    <div style="text-align: center; padding: 60px;">
+        <Spin Size="AntDesign.SpinSize.Large" Tip="Cargando biblioteca..." />
+    </div>
+}
+else if (_files.Count == 0)
+{
+    <div style="text-align: center; padding: 80px; color: rgba(255,255,255,0.3);">
+        <Icon Type="file" Theme="IconThemeType.Outline" Style="font-size: 64px; margin-bottom: 16px; display: block;" />
+        <p style="font-size: 16px;">No hay archivos en la biblioteca.</p>
+        <p style="font-size: 13px;">Los archivos aparecerán aquí cuando los conserve al subirlos a una labor.</p>
+    </div>
+}
+else
+{
+    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 16px;">
+        @foreach (var file in FilteredFiles)
+        {
+            <div class="file-card" @onclick="() => OpenPreview(file)" style="cursor: pointer;">
+                <div class="file-preview">
+                    @if (file.MimeType.StartsWith("image/"))
+                    {
+                        <div style="width: 100%; height: 120px; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.2); border-radius: 8px 8px 0 0; overflow: hidden;">
+                            <img src="@($"api/files/{file.Id}/download")" style="max-width: 100%; max-height: 120px; object-fit: cover;" alt="@file.FileName" />
+                        </div>
+                    }
+                    else if (file.MimeType == "application/pdf")
+                    {
+                        <div style="width: 100%; height: 120px; display: flex; align-items: center; justify-content: center; background: rgba(231, 76, 60, 0.15); border-radius: 8px 8px 0 0;">
+                            <Icon Type="file-pdf" Theme="IconThemeType.Outline" Style="font-size: 48px; color: #E74C3C;" />
+                        </div>
+                    }
+                    else
+                    {
+                        <div style="width: 100%; height: 120px; display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,0.05); border-radius: 8px 8px 0 0;">
+                            <Icon Type="file" Theme="IconThemeType.Outline" Style="font-size: 48px; color: rgba(255,255,255,0.3);" />
+                        </div>
+                    }
+                </div>
+                <div class="file-info">
+                    <div class="file-name" title="@file.FileName">@file.FileName</div>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px;">
+                        <span style="font-size: 11px; color: rgba(255,255,255,0.4);">@FormatSize(file.SizeBytes)</span>
+                        @if (file.LinkCount > 0)
+                        {
+                            <Tag Style="background: rgba(52,152,219,0.15); color: #3498DB; border: none; border-radius: 6px; font-size: 10px; padding: 0 6px;">
+                                @file.LinkCount enlace(s)
+                            </Tag>
+                        }
+                    </div>
+                    <div style="font-size: 10px; color: rgba(255,255,255,0.25); margin-top: 2px;">@file.UploadedAt.ToString("dd/MM/yyyy HH:mm")</div>
+                </div>
+                <div class="file-actions" @onclick:stopPropagation="true">
+                    <Button Size="@ButtonSize.Small" OnClick="() => DownloadFile(file)"
+                            Style="border-radius: 6px; background: rgba(52,152,219,0.15); border-color: transparent; color: #3498DB;">
+                        <Icon Type="download" Theme="IconThemeType.Outline" />
+                    </Button>
+                    <Button Size="@ButtonSize.Small" OnClick="() => OpenPreview(file)"
+                            Style="border-radius: 6px; background: rgba(255,255,255,0.05); border-color: transparent; color: rgba(255,255,255,0.7);">
+                        <Icon Type="eye" Theme="IconThemeType.Outline" />
+                    </Button>
+                </div>
+            </div>
+        }
+    </div>
+}
+
+<Modal Title="@_previewFile?.FileName" Visible="_previewVisible"
+       OnCancel="ClosePreview" Width="800" Footer="null">
+    @if (_previewFile != null)
+    {
+        <div style="text-align: center; background: rgba(0,0,0,0.3); border-radius: 8px; min-height: 400px; display: flex; align-items: center; justify-content: center;">
+            @if (_previewFile.MimeType.StartsWith("image/"))
+            {
+                <img src="@($"api/files/{_previewFile.Id}/download")" style="max-width: 100%; max-height: 70vh;" alt="@_previewFile.FileName" />
+            }
+            else if (_previewFile.MimeType == "application/pdf")
+            {
+                <iframe src="@($"api/files/{_previewFile.Id}/download")" style="width: 100%; height: 70vh; border: none;" frameborder="0"></iframe>
+            }
+            else
+            {
+                <div style="padding: 40px; color: rgba(255,255,255,0.5); text-align: center;">
+                    <Icon Type="file" Theme="IconThemeType.Outline" Style="font-size: 48px; margin-bottom: 16px;" />
+                    <p>La previsualización no está disponible para este tipo de archivo.</p>
+                    <p style="font-size: 12px;">Puede descargarlo para verlo.</p>
+                    <Button Type="@ButtonType.Primary" OnClick="() => DownloadFile(_previewFile)" Style="margin-top: 12px;">
+                        <Icon Type="download" Theme="IconThemeType.Outline" /> Descargar
+                    </Button>
+                </div>
+            }
+        </div>
+        <div style="display: flex; gap: 8px; margin-top: 16px; justify-content: flex-end;">
+            <Button OnClick="() => DownloadFile(_previewFile)" Type="@ButtonType.Primary"
+                    Style="background: #3498DB; border-color: #3498DB; border-radius: 8px;">
+                <Icon Type="download" Theme="IconThemeType.Outline" /> Descargar
+            </Button>
+            <Button OnClick="ClosePreview" Style="border-radius: 8px;">Cerrar</Button>
+        </div>
+    }
+</Modal>
+
+<style>
+    .file-card {
+        background: rgba(255,255,255,0.03);
+        border: 1px solid rgba(255,255,255,0.08);
+        border-radius: 10px;
+        overflow: hidden;
+        transition: all 0.2s;
+    }
+    .file-card:hover {
+        background: rgba(255,255,255,0.06);
+        border-color: rgba(255,255,255,0.15);
+    }
+    .file-info {
+        padding: 12px;
+    }
+    .file-name {
+        font-size: 13px;
+        font-weight: 600;
+        color: #fff;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .file-actions {
+        display: flex;
+        gap: 8px;
+        padding: 0 12px 12px;
+    }
+</style>
+
+@code {
+    private List<FileAssetDto> _files = new();
+    private bool _loading = true;
+    private string _searchText = string.Empty;
+
+    private bool _previewVisible;
+    private FileAssetDto? _previewFile;
+
+    private IEnumerable<FileAssetDto> FilteredFiles => string.IsNullOrWhiteSpace(_searchText)
+        ? _files
+        : _files.Where(f => f.FileName.Contains(_searchText, StringComparison.OrdinalIgnoreCase));
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        _loading = true;
+        try
+        {
+            var url = string.IsNullOrWhiteSpace(_searchText)
+                ? "api/files"
+                : $"api/files?search={Uri.EscapeDataString(_searchText)}";
+            _files = await Http.GetFromJsonAsync<List<FileAssetDto>>(url) ?? new();
+        }
+        catch (Exception ex)
+        {
+            Message.Error($"Error cargando archivos: {ex.Message}");
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task DownloadFile(FileAssetDto file)
+    {
+        Nav.NavigateTo($"api/files/{file.Id}/download", forceLoad: true);
+    }
+
+    private void OpenPreview(FileAssetDto file)
+    {
+        _previewFile = file;
+        _previewVisible = true;
+    }
+
+    private void ClosePreview()
+    {
+        _previewVisible = false;
+        _previewFile = null;
+    }
+
+    private static string FormatSize(long bytes)
+    {
+        if (bytes < 1024) return $"{bytes} B";
+        if (bytes < 1024 * 1024) return $"{bytes / 1024.0:F1} KB";
+        return $"{bytes / (1024.0 * 1024.0):F1} MB";
+    }
+}

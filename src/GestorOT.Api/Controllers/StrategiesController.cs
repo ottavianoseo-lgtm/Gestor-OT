@@ -25,11 +25,32 @@ public class StrategiesController : ControllerBase
     {
         var strategies = await _context.CropStrategies
             .AsNoTracking()
+            .Include(s => s.Activity)
             .Include(s => s.Items)
+                .ThenInclude(i => i.LaborType)
             .OrderByDescending(s => s.CreatedAt)
             .ToListAsync();
 
-        return strategies.Select(MapToDto).ToList();
+        var supplyIds = strategies
+            .SelectMany(s => s.Items)
+            .SelectMany(i => DeserializeSupplies(i.DefaultSuppliesJson))
+            .Where(sd => sd.SupplyId != Guid.Empty)
+            .Select(sd => sd.SupplyId)
+            .Distinct()
+            .ToList();
+
+        var inventoryMap = new Dictionary<Guid, string>();
+        if (supplyIds.Any())
+        {
+            var inventories = await _context.Inventories
+                .AsNoTracking()
+                .Where(inv => supplyIds.Contains(inv.Id))
+                .Select(inv => new { inv.Id, inv.ItemName })
+                .ToListAsync();
+            inventoryMap = inventories.ToDictionary(x => x.Id, x => x.ItemName);
+        }
+
+        return strategies.Select(s => MapToDto(s, inventoryMap)).ToList();
     }
 
     [HttpGet("{id:guid}")]
@@ -37,18 +58,53 @@ public class StrategiesController : ControllerBase
     {
         var strategy = await _context.CropStrategies
             .AsNoTracking()
+            .Include(s => s.Activity)
             .Include(s => s.Items)
+                .ThenInclude(i => i.LaborType)
             .FirstOrDefaultAsync(s => s.Id == id);
 
         if (strategy == null)
             return NotFound();
 
-        return MapToDto(strategy);
+        var supplyIds = strategy.Items
+            .SelectMany(i => DeserializeSupplies(i.DefaultSuppliesJson))
+            .Where(sd => sd.SupplyId != Guid.Empty)
+            .Select(sd => sd.SupplyId)
+            .Distinct()
+            .ToList();
+
+        var inventoryMap = new Dictionary<Guid, string>();
+        if (supplyIds.Any())
+        {
+            var inventories = await _context.Inventories
+                .AsNoTracking()
+                .Where(inv => supplyIds.Contains(inv.Id))
+                .Select(inv => new { inv.Id, inv.ItemName })
+                .ToListAsync();
+            inventoryMap = inventories.ToDictionary(x => x.Id, x => x.ItemName);
+        }
+
+        return MapToDto(strategy, inventoryMap);
     }
 
     [HttpPost]
     public async Task<ActionResult<CropStrategyDto>> CreateStrategy(CropStrategyDto dto)
     {
+        if (string.IsNullOrWhiteSpace(dto.Name))
+            return BadRequest("El nombre es obligatorio.");
+
+        if (dto.ErpActivityId == Guid.Empty)
+            return BadRequest("La actividad ERP es obligatoria.");
+
+        if (dto.Items == null || dto.Items.Count == 0)
+            return BadRequest("Debe definir al menos una labor.");
+
+        foreach (var item in dto.Items)
+        {
+            if (item.LaborTypeId == Guid.Empty)
+                return BadRequest("Cada labor debe tener un tipo de labor definido.");
+        }
+
         var strategy = new CropStrategy
         {
             Id = Guid.NewGuid(),
@@ -66,8 +122,8 @@ public class StrategiesController : ControllerBase
                     Id = Guid.NewGuid(),
                     CropStrategyId = strategy.Id,
                     LaborTypeId = item.LaborTypeId,
-                    ErpActivityId = item.ErpActivityId,
                     DayOffset = item.DayOffset,
+                    SortOrder = item.SortOrder,
                     DefaultSuppliesJson = item.DefaultSupplies != null
                         ? JsonSerializer.Serialize(item.DefaultSupplies.Where(s => s.SupplyId != Guid.Empty).ToList(), AppJsonSerializerContext.Default.ListStrategySupplyDefault)
                         : null
@@ -80,15 +136,50 @@ public class StrategiesController : ControllerBase
 
         var created = await _context.CropStrategies
             .AsNoTracking()
+            .Include(s => s.Activity)
             .Include(s => s.Items)
+                .ThenInclude(i => i.LaborType)
             .FirstAsync(s => s.Id == strategy.Id);
 
-        return CreatedAtAction(nameof(GetStrategy), new { id = strategy.Id }, MapToDto(created));
+        var supplyIds = created.Items
+            .SelectMany(i => DeserializeSupplies(i.DefaultSuppliesJson))
+            .Where(sd => sd.SupplyId != Guid.Empty)
+            .Select(sd => sd.SupplyId)
+            .Distinct()
+            .ToList();
+
+        var inventoryMap = new Dictionary<Guid, string>();
+        if (supplyIds.Any())
+        {
+            var inventories = await _context.Inventories
+                .AsNoTracking()
+                .Where(inv => supplyIds.Contains(inv.Id))
+                .Select(inv => new { inv.Id, inv.ItemName })
+                .ToListAsync();
+            inventoryMap = inventories.ToDictionary(x => x.Id, x => x.ItemName);
+        }
+
+        return CreatedAtAction(nameof(GetStrategy), new { id = strategy.Id }, MapToDto(created, inventoryMap));
     }
 
     [HttpPut("{id:guid}")]
     public async Task<IActionResult> UpdateStrategy(Guid id, CropStrategyDto dto)
     {
+        if (string.IsNullOrWhiteSpace(dto.Name))
+            return BadRequest("El nombre es obligatorio.");
+
+        if (dto.ErpActivityId == Guid.Empty)
+            return BadRequest("La actividad ERP es obligatoria.");
+
+        if (dto.Items == null || dto.Items.Count == 0)
+            return BadRequest("Debe definir al menos una labor.");
+
+        foreach (var item in dto.Items)
+        {
+            if (item.LaborTypeId == Guid.Empty)
+                return BadRequest("Cada labor debe tener un tipo de labor definido.");
+        }
+
         var strategy = await _context.CropStrategies
             .Include(s => s.Items)
             .FirstOrDefaultAsync(s => s.Id == id);
@@ -99,8 +190,6 @@ public class StrategiesController : ControllerBase
         strategy.Name = dto.Name;
         strategy.ErpActivityId = dto.ErpActivityId;
 
-        // Snapshot existing items, clear navigation, then remove — prevents EF Core concurrency
-        // confusion when it tries to DELETE + UPDATE the same entities in one batch.
         var existingItems = strategy.Items.ToList();
         strategy.Items.Clear();
         _context.StrategyItems.RemoveRange(existingItems);
@@ -109,14 +198,13 @@ public class StrategiesController : ControllerBase
         {
             foreach (var item in dto.Items)
             {
-                // Add directly to DbSet (not via navigation property) to avoid change-tracker conflicts
                 _context.StrategyItems.Add(new StrategyItem
                 {
                     Id = Guid.NewGuid(),
                     CropStrategyId = strategy.Id,
                     LaborTypeId = item.LaborTypeId,
-                    ErpActivityId = item.ErpActivityId,
                     DayOffset = item.DayOffset,
+                    SortOrder = item.SortOrder,
                     DefaultSuppliesJson = item.DefaultSupplies != null
                         ? JsonSerializer.Serialize(item.DefaultSupplies.Where(s => s.SupplyId != Guid.Empty).ToList(), AppJsonSerializerContext.Default.ListStrategySupplyDefault)
                         : null
@@ -176,7 +264,7 @@ public class StrategiesController : ControllerBase
                 DueDate = request.StartDate.AddDays(strategy.Items.Any() ? strategy.Items.Max(i => i.DayOffset) + 7 : 30)
             };
 
-            foreach (var item in strategy.Items)
+            foreach (var item in strategy.Items.OrderBy(i => i.SortOrder).ThenBy(i => i.DayOffset))
             {
                 var labor = new Labor
                 {
@@ -227,7 +315,7 @@ public class StrategiesController : ControllerBase
         return new ApplyStrategyResult(workOrderIds.Count, laborsCreated, workOrderIds);
     }
 
-    private static CropStrategyDto MapToDto(CropStrategy strategy)
+    private static CropStrategyDto MapToDto(CropStrategy strategy, Dictionary<Guid, string>? inventoryMap = null)
     {
         return new CropStrategyDto(
             strategy.Id,
@@ -235,16 +323,32 @@ public class StrategiesController : ControllerBase
             strategy.ErpActivityId ?? Guid.Empty,
             strategy.Activity?.Name,
             strategy.CreatedAt,
-            strategy.Items.OrderBy(i => i.DayOffset).Select(i =>
+            strategy.Items.OrderBy(i => i.SortOrder).ThenBy(i => i.DayOffset).Select(i =>
             {
-                List<StrategySupplyDefault>? supplies = null;
-                if (!string.IsNullOrEmpty(i.DefaultSuppliesJson))
+                List<StrategySupplyDefault> supplies = DeserializeSupplies(i.DefaultSuppliesJson);
+                if (inventoryMap != null)
                 {
-                    supplies = JsonSerializer.Deserialize(i.DefaultSuppliesJson,
-                        AppJsonSerializerContext.Default.ListStrategySupplyDefault);
+                    foreach (var s in supplies)
+                    {
+                        if (string.IsNullOrEmpty(s.SupplyName) && s.SupplyId != Guid.Empty)
+                            s.SupplyName = inventoryMap.GetValueOrDefault(s.SupplyId);
+                    }
                 }
-                return new StrategyItemDto(i.Id, i.CropStrategyId, i.LaborTypeId, i.ErpActivityId, null, null, i.DayOffset, supplies ?? new());
+                return new StrategyItemDto(i.Id, i.CropStrategyId, i.LaborTypeId, i.ErpActivityId, i.LaborType?.Name, null, i.DayOffset, supplies, i.SortOrder);
             }).ToList()
         );
+    }
+
+    private static List<StrategySupplyDefault> DeserializeSupplies(string? json)
+    {
+        if (string.IsNullOrEmpty(json)) return new();
+        try
+        {
+            return JsonSerializer.Deserialize(json, AppJsonSerializerContext.Default.ListStrategySupplyDefault) ?? new();
+        }
+        catch
+        {
+            return new();
+        }
     }
 }

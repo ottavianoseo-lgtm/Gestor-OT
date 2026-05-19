@@ -53,13 +53,48 @@ public class WorkOrderQueryService : IWorkOrderQueryService
             w.Name,
             w.AcceptsMultiplePeople,
             w.AcceptsMultipleDates,
-            w.WorkOrderStatus?.IsEditable == false)).ToList();
+            w.WorkOrderStatus?.IsEditable == false,
+            w.WorkOrderStatusId)).ToList();
+    }
+
+    public async Task<PagedResult<WorkOrderDto>> GetPagedAsync(int page = 1, int pageSize = 50, CancellationToken ct = default)
+    {
+        var campaignId = _campaignContext.CurrentCampaignId;
+
+        var query = _context.WorkOrders
+            .AsNoTracking()
+            .Include(w => w.Field)
+            .Include(w => w.WorkOrderStatus)
+            .AsQueryable();
+
+        if (campaignId.HasValue && campaignId != Guid.Empty)
+        {
+            query = query.Where(w => w.CampaignId == campaignId);
+        }
+
+        var total = await query.CountAsync(ct);
+        var workOrders = await query
+            .OrderByDescending(w => w.DueDate)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync(ct);
+
+        var items = workOrders.Select(w => new WorkOrderDto(
+            w.Id, w.FieldId, w.Description, w.Status, w.AssignedTo, w.DueDate,
+            w.Field?.Name, w.OTNumber, w.PlannedDate, w.ExpirationDate,
+            w.StockReserved, w.ContractorId, w.ContactId, w.CampaignId,
+            w.Name, w.AcceptsMultiplePeople, w.AcceptsMultipleDates,
+            w.WorkOrderStatus?.IsEditable == false,
+            w.WorkOrderStatusId)).ToList();
+
+        return new PagedResult<WorkOrderDto>(items, total, page, pageSize);
     }
 
     public async Task<WorkOrderDetailDto?> GetByIdAsync(Guid id, CancellationToken ct = default)
     {
         var workOrder = await _context.WorkOrders
             .AsNoTracking()
+            .AsSplitQuery()
             .Include(w => w.Field)
             .Include(w => w.WorkOrderStatus)
             .Include(w => w.SupplyApprovals)
@@ -174,11 +209,20 @@ public class WorkOrderQueryService : IWorkOrderQueryService
                 a.WorkOrderId, 
                 a.SupplyId, 
                 a.Supply?.ItemName, 
+                a.Supply?.UnitA,
                 a.TotalCalculated, 
                 a.ApprovedWithdrawal, 
                 a.WithdrawalCenter, 
                 a.RealTotalUsed
             )).ToList();
+
+        var allSupplies = workOrder.Labors.SelectMany(l => l.Supplies).ToList();
+        foreach (var approval in supplyApprovalsDto)
+        {
+            approval.SumOfLaborsRealTotal = allSupplies
+                .Where(s => s.SupplyId == approval.SupplyId)
+                .Sum(s => s.RealTotal ?? 0);
+        }
 
         return new WorkOrderDetailDto(
             workOrder.Id,

@@ -17,5 +17,10 @@ public class StrategyItemConfiguration : IEntityTypeConfiguration<StrategyItem>
             .WithMany(s => s.Items)
             .HasForeignKey(e => e.CropStrategyId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        builder.HasOne(e => e.LaborType)
+            .WithMany()
+            .HasForeignKey(e => e.LaborTypeId)
+            .IsRequired();
     }
 }

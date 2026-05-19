@@ -8,32 +8,63 @@ namespace GestorOT.Infrastructure.Services;
 public class DashboardQueryService : IDashboardQueryService
 {
     private readonly IApplicationDbContext _context;
+    private readonly ICampaignContextService _campaignContext;
 
-    public DashboardQueryService(IApplicationDbContext context)
+    public DashboardQueryService(IApplicationDbContext context, ICampaignContextService campaignContext)
     {
         _context = context;
+        _campaignContext = campaignContext;
     }
 
     public async Task<DashboardStatsDto> GetStatsAsync(CancellationToken ct = default)
     {
-        // 1 query: Fields count
-        var fieldsCount = await _context.Fields.CountAsync(CancellationToken.None);
+        var campaignId = _campaignContext.CurrentCampaignId;
+        var hasCampaign = campaignId.HasValue && campaignId != Guid.Empty;
 
-        // 1 query: Total productive area from all lots in the context (using CampaignLots)
-        var totalProductiveArea = await _context.CampaignLots
-            .AsNoTracking()
-            .SumAsync(cl => cl.ProductiveArea, CancellationToken.None);
+        // 1 query: Fields count — via CampaignFields when campaign is selected
+        var fieldsCount = hasCampaign
+            ? await _context.CampaignFields
+                .Where(cf => cf.CampaignId == campaignId)
+                .Select(cf => cf.FieldId)
+                .Distinct()
+                .CountAsync(CancellationToken.None)
+            : await _context.Fields.CountAsync(CancellationToken.None);
 
-        // 1 query: Lots total + active
-        var lotStats = await _context.Lots
-            .AsNoTracking()
-            .GroupBy(_ => 1)
-            .Select(g => new { Total = g.Count(), Active = g.Count(l => l.Status == "Active") })
-            .FirstOrDefaultAsync(CancellationToken.None);
+        // 1 query: Total productive area — filtered by campaign
+        var productiveQuery = _context.CampaignLots.AsNoTracking().AsQueryable();
+        if (hasCampaign)
+            productiveQuery = productiveQuery.Where(cl => cl.CampaignId == campaignId);
+        var totalProductiveArea = await productiveQuery.SumAsync(cl => cl.ProductiveArea, CancellationToken.None);
 
-        // 1 query: WorkOrders grouped by status
-        var workOrderCounts = await _context.WorkOrders
-            .AsNoTracking()
+        // 1 query: Lots total + active — via CampaignLots when campaign is selected
+        int lotsTotal, lotsActive;
+        if (hasCampaign)
+        {
+            var campaignLotIds = _context.CampaignLots
+                .Where(cl => cl.CampaignId == campaignId)
+                .Select(cl => cl.LotId);
+
+            lotsTotal = await campaignLotIds.CountAsync(CancellationToken.None);
+            lotsActive = await _context.Lots
+                .Where(l => campaignLotIds.Contains(l.Id) && l.Status == "Active")
+                .CountAsync(CancellationToken.None);
+        }
+        else
+        {
+            var lotStats = await _context.Lots
+                .AsNoTracking()
+                .GroupBy(_ => 1)
+                .Select(g => new { Total = g.Count(), Active = g.Count(l => l.Status == "Active") })
+                .FirstOrDefaultAsync(CancellationToken.None);
+            lotsTotal = lotStats?.Total ?? 0;
+            lotsActive = lotStats?.Active ?? 0;
+        }
+
+        // 1 query: WorkOrders grouped by status — filtered by campaign
+        var woQuery = _context.WorkOrders.AsNoTracking().AsQueryable();
+        if (hasCampaign)
+            woQuery = woQuery.Where(w => w.CampaignId == campaignId);
+        var workOrderCounts = await woQuery
             .GroupBy(w => w.Status)
             .Select(g => new { Status = g.Key, Count = g.Count() })
             .ToListAsync(CancellationToken.None);
@@ -44,8 +75,8 @@ public class DashboardQueryService : IDashboardQueryService
 
         return new DashboardStatsDto(
             fieldsCount,
-            lotStats?.Total ?? 0,
-            lotStats?.Active ?? 0,
+            lotsTotal,
+            lotsActive,
             pendingOrders,
             inProgressOrders,
             completedOrders,
@@ -54,9 +85,18 @@ public class DashboardQueryService : IDashboardQueryService
 
     public async Task<List<RecentWorkOrderDto>> GetRecentOrdersAsync(int count = 10, CancellationToken ct = default)
     {
-        return await _context.WorkOrders
+        var campaignId = _campaignContext.CurrentCampaignId;
+        var hasCampaign = campaignId.HasValue && campaignId != Guid.Empty;
+
+        var query = _context.WorkOrders
             .AsNoTracking()
             .Include(w => w.Field)
+            .AsQueryable();
+
+        if (hasCampaign)
+            query = query.Where(w => w.CampaignId == campaignId);
+
+        return await query
             .OrderByDescending(w => w.DueDate)
             .Take(count)
             .Select(w => new RecentWorkOrderDto(

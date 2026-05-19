@@ -8,6 +8,7 @@
 @using System.Text.Json
 @using AntDesign
 @inject HttpClient Http
+@inject IJSRuntime JS
 @inject IMessageService Message
 @inject NavigationManager Nav
 @inject GestorOT.Client.Services.CampaignState CampaignState
@@ -21,40 +22,65 @@
         <h2 class="page-title">Gestión de Labores</h2>
         <span class="page-subtitle">Todas las labores de la campaña</span>
     </div>
-    <div style="display: flex; gap: 8px; align-items: center;">
+    <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap; row-gap: 8px;">
         <Select TItemValue="string?" TItem="string" @bind-Value="_filterAssigned"
-                Placeholder="Asignación" AllowClear Style="width: 140px;" OnSelectedItemChanged="LoadData">
+                Placeholder="Asignación" AllowClear Style="width: 130px;" OnSelectedItemChanged="LoadData">
             <SelectOption TItemValue="string?" TItem="string" Value="@("assigned")" Label="Asignadas" />
             <SelectOption TItemValue="string?" TItem="string" Value="@("unassigned")" Label="Sin OT" />
         </Select>
         <Select TItemValue="string?" TItem="string" @bind-Value="_filterStatus"
-                Placeholder="Estado" AllowClear Style="width: 130px;" OnSelectedItemChanged="LoadData">
+                Placeholder="Estado" AllowClear Style="width: 120px;" OnSelectedItemChanged="LoadData">
             <SelectOption TItemValue="string?" TItem="string" Value="@("Planned")" Label="Planeadas" />
             <SelectOption TItemValue="string?" TItem="string" Value="@("Realized")" Label="Realizadas" />
+            <SelectOption TItemValue="string?" TItem="string" Value="@("AwaitingValidation")" Label="En Validación" />
         </Select>
+        <Select TItemValue="Guid?" TItem="LaborTypeDto" @bind-Value="_filterTypeId"
+                Placeholder="Tipo labor" AllowClear Style="width: 140px;" OnSelectedItemChanged="LoadData"
+                DataSource="@_laborTypes"
+                LabelName="@nameof(LaborTypeDto.Name)" ValueName="@nameof(LaborTypeDto.Id)" />
+        <Select TItemValue="Guid?" TItem="ContactDto" @bind-Value="_filterContactId"
+                Placeholder="Responsable" AllowClear Style="width: 150px;" OnSelectedItemChanged="LoadData"
+                DataSource="@_contacts"
+                LabelName="@nameof(ContactDto.FullName)" ValueName="@nameof(ContactDto.Id)" />
         <Select TItemValue="string" TItem="string" Value="@_sortBy" ValueChanged="OnSortChanged" Style="width: 160px;">
             <SelectOption TItemValue="string" TItem="string" Value="@("default")" Label="Fecha Creación" />
             <SelectOption TItemValue="string" TItem="string" Value="@("priority")" Label="Prioridad" />
             <SelectOption TItemValue="string" TItem="string" Value="@("date")" Label="Fecha Estimada" />
         </Select>
         <Button Icon="sync" OnClick="LoadData" />
+        @if (CampaignState.CurrentCampaign != null)
+        {
+            <Tag Style="@($"background: #2ECC7120; color: #2ECC71; border: 1px solid #2ECC7140; border-radius: 8px; font-size: 11px; font-weight: 600; padding: 2px 10px; cursor: default;")">
+                <Icon Type="calendar" Theme="IconThemeType.Outline" Style="font-size: 11px;" /> @CampaignState.CurrentCampaign.Name
+            </Tag>
+        }
         <Button Type="@ButtonType.Primary" OnClick="() => _quickLaborSelectorVisible = true"
                 Style="background: #2ECC71; border-color: #2ECC71; border-radius: 8px; font-weight: 600;">
             <Icon Type="plus" Theme="IconThemeType.Outline" /> Labor Rápida
         </Button>
-        @if (_selectedIds.Count > 0)
-        {
-            <Button Type="@ButtonType.Primary" OnClick="OpenAssignModal"
-                    Style="background: #3498DB; border-color: #3498DB; border-radius: 8px; font-weight: 600;">
-                <Icon Type="link" Theme="IconThemeType.Outline" /> Asignar @_selectedIds.Count a OT
-            </Button>
-            <Button Type="@ButtonType.Primary" OnClick="CreateOTFromSelected"
-                    Style="background: #E74C3C; border-color: #E74C3C; border-radius: 8px; font-weight: 600;">
-                <Icon Type="file-add" Theme="IconThemeType.Outline" /> Crear OT con @_selectedIds.Count seleccionadas
-            </Button>
-        }
     </div>
 </div>
+
+@if (_selectedIds.Count > 0)
+{
+    <div class="selection-action-bar">
+        <span class="selection-count">
+            <Icon Type="check-circle" Theme="IconThemeType.Fill" Style="color: #2ECC71;" />
+            @_selectedIds.Count labor@(_selectedIds.Count == 1 ? "" : "es") seleccionada@(_selectedIds.Count == 1 ? "" : "s")
+        </span>
+        <div class="selection-actions">
+            <Button Size="@ButtonSize.Small" OnClick="ClearSelection">Limpiar</Button>
+            <Button Type="@ButtonType.Primary" OnClick="OpenAssignModal"
+                    Style="background: #3498DB; border-color: #3498DB;">
+                <Icon Type="link" Theme="IconThemeType.Outline" /> Asignar a OT
+            </Button>
+            <Button Type="@ButtonType.Primary" OnClick="CreateOTFromSelected"
+                    Style="background: #E74C3C; border-color: #E74C3C;">
+                <Icon Type="file-add" Theme="IconThemeType.Outline" /> Crear OT con la selección
+            </Button>
+        </div>
+    </div>
+}
 
 @if (!string.IsNullOrEmpty(_errorMessage))
 {
@@ -76,22 +102,22 @@
     </Alert>
 }
 
-<div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 20px;">
-    <div class="kpi-card">
+<div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 16px;">
+    <div class="kpi-card" style="cursor:pointer; border-color: @(_quickStatusFilter == null ? "rgba(255,255,255,0.3)" : "rgba(255,255,255,0.06)")" @onclick="() => { _quickStatusFilter = null; }">
         <div class="kpi-value">@_labors.Count</div>
         <div class="kpi-label">Total Labores</div>
     </div>
-    <div class="kpi-card">
+    <div class="kpi-card" style="cursor:pointer; border-color: @(_quickStatusFilter == "unassigned" ? "rgba(255,255,255,0.3)" : "rgba(255,255,255,0.06)")" @onclick='() => { _quickStatusFilter = "unassigned"; }'>
         <div class="kpi-value">@_labors.Count(l => l.WorkOrderId == null)</div>
         <div class="kpi-label">Sin Asignar</div>
     </div>
-    <div class="kpi-card">
-        <div class="kpi-value">@_labors.Count(l => l.Status == "Realized")</div>
-        <div class="kpi-label">Realizadas</div>
+    <div class="kpi-card" style="cursor:pointer; border-color: @(_quickStatusFilter == "Planned" ? "#3498DB" : "rgba(255,255,255,0.06)")" @onclick='() => { _quickStatusFilter = "Planned"; }'>
+        <div class="kpi-value" style="color: #3498DB;">@_labors.Count(l => l.Status == "Planned")</div>
+        <div class="kpi-label">Planeadas</div>
     </div>
-    <div class="kpi-card">
-        <div class="kpi-value">@_labors.Sum(l => l.Hectares).ToString("N0") ha</div>
-        <div class="kpi-label">Hectáreas Totales</div>
+    <div class="kpi-card" style="cursor:pointer; border-color: @(_quickStatusFilter == "Realized" ? "#2ECC71" : "rgba(255,255,255,0.06)")" @onclick='() => { _quickStatusFilter = "Realized"; }'>
+        <div class="kpi-value" style="color: #2ECC71;">@_labors.Count(l => l.Status == "Realized")</div>
+        <div class="kpi-label">Realizadas</div>
     </div>
 </div>
 
@@ -104,76 +130,14 @@
 else
 {
     <div class="glass-card table-container">
-        <Table TItem="LaborDto"
-               DataSource="@FilteredLabors"
-               Loading="@_loading"
-               Size="TableSize.Small"
-               ScrollX="1200"
-               OnRowClick="r => EditLabor(r.Data.Id)"
-               SelectedRowsChanged="OnSelectedRowsChanged"
-               RowClassName='r => _selectedIds.Contains(r.Data.Id) ? "labor-selected" : ""'>
-            <ChildContent>
-                <Selection Key="@(context.Id.ToString())" Type="SelectionType.Checkbox" Disabled="@(context.WorkOrderId != null)" />
-                <PropertyColumn Property="l => l.LaborTypeName" Title="Labor" Sortable>
-                    <div style="display: flex; align-items: center; gap: 8px;">
-                        <div class="labor-type-dot" style="background: @(GetTypeBgColor(context.LaborTypeName ?? "Labor")); width: 8px; height: 8px; border-radius: 50%;"></div>
-                        @context.LaborTypeName
-                        @if (context.IsOriginalPlan) {
-                            <Tag Color="@("gold")" Style="font-size: 10px; margin-left: 6px;">BASE</Tag>
-                        }
-                    </div>
-                </PropertyColumn>
-                <PropertyColumn Property="l => l.CreatedAt" Title="Fecha" Sortable Format="dd/MM/yyyy" />
-                <PropertyColumn Property="l => l.LotName" Title="Lote" Sortable />
-                <PropertyColumn Property="l => l.FieldName" Title="Campo" Sortable />
-                <PropertyColumn Property="l => l.AssignedTo" Title="Responsable" Sortable />
-                <PropertyColumn Property="l => l.Hectares" Title="Ha" Sortable Format="N1" />
-                <Column TData="string" Title="OT" Sortable>
-                    @if (context.WorkOrderId != null)
-                    {
-                        <div @onclick:stopPropagation="true">
-                            <Tag Color="@("blue")" Style="cursor: pointer;" OnClick='() => Nav.NavigateTo($"/workorders/{context.WorkOrderId}")'>
-                                <Icon Type="link" /> @context.OTNumber
-                            </Tag>
-                        </div>
-                    }
-                    else
-                    {
-                        <span style="color: rgba(255,255,255,0.2);">Sin OT</span>
-                    }
-                </Column>
-                <Column TData="string" Title="Estado" Sortable>
-                    <Tag Style="@GetStatusTagStyle(context.Status)">
-                        @GetStatusLabel(context.Status)
-                    </Tag>
-                </Column>
-                <ActionColumn Title="Acciones" Width="100">
-                    <div style="display: flex; gap: 4px;" @onclick:stopPropagation="true">
-                        @if (context.Status != "Realized")
-                        {
-                            <Tooltip Title="@("Ejecutar")">
-                                <Button Type="@ButtonType.Text" Size="@ButtonSize.Small" OnClick="() => EditLabor(context.Id, true)">
-                                    <Icon Type="play-circle" Theme="IconThemeType.Outline" Style="color: #2ECC71;" />
-                                </Button>
-                            </Tooltip>
-
-                        }
-                        <Tooltip Title="@("Editar")">
-                            <Button Type="@ButtonType.Text" Size="@ButtonSize.Small" OnClick="() => EditLabor(context.Id)">
-                                <Icon Type="edit" Theme="IconThemeType.Outline" Style="color: #3498DB;" />
-                            </Button>
-                        </Tooltip>
-                        <Tooltip Title="@("Eliminar")">
-                            <Popconfirm Title="¿Eliminar esta labor?" OnConfirm="() => DeleteLabor(context.Id)">
-                                <Button Type="@ButtonType.Text" Danger Size="@ButtonSize.Small">
-                                    <Icon Type="delete" Theme="IconThemeType.Outline" />
-                                </Button>
-                            </Popconfirm>
-                        </Tooltip>
-                    </div>
-                </ActionColumn>
-            </ChildContent>
-        </Table>
+        <LaborList Labors="@FilteredLabors"
+                   ShowOtColumn="true"
+                   IsLocked="false"
+                   OnEdit="id => EditLabor(id)"
+                   OnExecute='(args) => EditLabor(args.Id, true)'
+                   OnDelete="DeleteLabor"
+                   DisableSelection="l => l.WorkOrderId != null"
+                   OnSelectedRowsChanged="OnSelectedRowsChanged" />
     </div>
 }
 
@@ -199,10 +163,10 @@ else
 
 <Modal Title="@(_editingLaborId == Guid.Empty ? "Nueva Labor Suelta" : (_isExecuting ? "Ejecutar Labor" : "Editar Labor"))"
        Visible="@_drawerVisible"
-       OnCancel="() => _drawerVisible = false"
+       OnCancel="HandleCancelLaborModal"
        Footer="null"
        Width="800">
-    <LaborEditorForm LaborId="@_editingLaborId" InitialStatus="@(_isExecuting ? "Realized" : null)" OnSaved="OnSaved" />
+    <LaborEditorForm @ref="_laborFormRef" LaborId="@_editingLaborId" InitialStatus="@(_isExecuting ? "Realized" : null)" OnSaved="OnSaved" />
 </Modal>
 
 <Modal Title="@("Asignar Labores a Orden de Trabajo")" Visible="@_assignModalOpen"
@@ -229,6 +193,33 @@ else
 <!-- Removed redundant execute modal -->
 
 <style>
+    .selection-action-bar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 16px;
+        flex-wrap: wrap;
+        padding: 10px 16px;
+        margin-bottom: 16px;
+        background: rgba(52, 152, 219, 0.08);
+        border: 1px solid rgba(52, 152, 219, 0.25);
+        border-radius: 10px;
+    }
+
+    .selection-action-bar .selection-count {
+        color: #fff;
+        font-weight: 600;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .selection-action-bar .selection-actions {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+    }
+
     .kpi-card {
         background: rgba(255,255,255,0.04);
         backdrop-filter: blur(10px);
@@ -340,9 +331,13 @@ else
     private bool _saving;
     private HashSet<Guid> _selectedIds = new();
     private Guid? _filterTypeId;
+    private Guid? _filterContactId;
+    private List<ContactDto> _contacts = new();
     private string? _filterAssigned;
     private string? _filterStatus;
     private string _sortBy = "default";
+    private string? _quickStatusFilter;
+
     private bool _quickLaborSelectorVisible;
     private bool _strategyWizardVisible;
     private bool _drawerVisible;
@@ -353,6 +348,7 @@ else
     private bool _executeModalOpen;
     private bool _executing;
     private LaborDto? _laborToExecute;
+    private LaborEditorForm? _laborFormRef;
 
     private bool _allSelected => _labors.Count > 0 && _selectedIds.Count == _labors.Count;
 
@@ -375,6 +371,12 @@ else
                     result = result.Where(l => string.Equals(l.FieldName, targetWo.FieldName, StringComparison.OrdinalIgnoreCase)).ToList();
                 }
             }
+
+            // Quick filter from KPI cards
+            if (_quickStatusFilter == "unassigned")
+                result = result.Where(l => l.WorkOrderId == null).ToList();
+            else if (_quickStatusFilter != null)
+                result = result.Where(l => l.Status == _quickStatusFilter).ToList();
 
             return result;
         }
@@ -425,6 +427,9 @@ else
                 url.Append($"assigned={isAssigned.ToString().ToLower()}&");
             }
             if (!string.IsNullOrEmpty(_filterStatus)) url.Append($"status={_filterStatus}&");
+            if (_filterTypeId.HasValue && _filterTypeId != Guid.Empty) url.Append($"laborTypeId={_filterTypeId}&");
+            if (_filterContactId.HasValue && _filterContactId != Guid.Empty) url.Append($"contactId={_filterContactId}&");
+            if (CampaignState.CurrentCampaign != null) url.Append($"campaignId={CampaignState.CurrentCampaign.Id}&");
             url.Append($"sortBy={_sortBy}");
 
             var laborsTask = Http.GetFromJsonAsync(url.ToString(),
@@ -433,8 +438,10 @@ else
                 AppJsonSerializerContext.Default.ListWorkOrderDto, cts.Token);
             var typesTask = Http.GetFromJsonAsync("api/catalogs/labor-types",
                 AppJsonSerializerContext.Default.ListLaborTypeDto, cts.Token);
+            var contactsTask = Http.GetFromJsonAsync("api/catalogs/contacts",
+                AppJsonSerializerContext.Default.ListContactDto, cts.Token);
             
-            Task<List<CampaignLotDto>>? lotsTask = null;
+            Task<List<CampaignLotDto>?>? lotsTask = null;
             if (CampaignState.CurrentCampaign != null)
             {
                 lotsTask = Http.GetFromJsonAsync(
@@ -442,7 +449,7 @@ else
                     AppJsonSerializerContext.Default.ListCampaignLotDto, cts.Token);
             }
 
-            var tasks = new List<Task?> { laborsTask, woTask, typesTask, lotsTask };
+            var tasks = new List<Task?> { laborsTask, woTask, typesTask, contactsTask, lotsTask };
             await Task.WhenAll(tasks.Where(t => t != null).Select(t => t!));
 
             _labors = await laborsTask ?? new();
@@ -450,6 +457,7 @@ else
                 _lots = await lotsTask ?? new();
             _workOrders = await woTask ?? new();
             _laborTypes = await typesTask ?? new();
+            _contacts = await contactsTask ?? new();
             _errorMessage = null;
         }
         catch (Exception ex)
@@ -477,6 +485,8 @@ else
         _sortBy = value;
         await LoadData();
     }
+
+
 
     private async Task UpdatePriority(LaborDto labor, LaborPriority newPriority)
     {
@@ -518,11 +528,21 @@ else
         StateHasChanged();
     }
 
-    private void OpenQuickCreator()
+    private void ClearSelection()
+    {
+        _selectedIds.Clear();
+        StateHasChanged();
+    }
+
+    private async Task OpenQuickCreator()
     {
         _quickLaborSelectorVisible = false;
         _editingLaborId = Guid.Empty;
         _drawerVisible = true;
+        if (_laborFormRef != null)
+        {
+            await _laborFormRef.Reset();
+        }
     }
 
     private void OpenStrategyWizard()
@@ -531,11 +551,27 @@ else
         _strategyWizardVisible = true;
     }
 
-    private void EditLabor(Guid id, bool isExecuting = false)
+    private async Task EditLabor(Guid id, bool isExecuting = false)
     {
         _editingLaborId = id;
         _isExecuting = isExecuting;
         _drawerVisible = true;
+        if (_laborFormRef != null)
+        {
+            await _laborFormRef.Reset();
+        }
+    }
+
+    private async Task HandleCancelLaborModal()
+    {
+        if (_laborFormRef != null)
+        {
+            await _laborFormRef.HandleCancel();
+        }
+        else
+        {
+            _drawerVisible = false;
+        }
     }
 
     private async Task OnLaborSaved()
@@ -696,26 +732,24 @@ else
 
     private string GetStatusLabel(string? status) => status switch
     {
-        "Planned" => "Planeada",
+        "Realized"           => "Realizada",
+        "Validated"          => "Validada",
         "AwaitingValidation" => "En Validación",
-        "Validated" => "Validada",
-        "Realized" => "Realizada",
-        "Pending" => "Pendiente",
-        _ => status ?? "Unknown"
+        "Pending"            => "Pendiente",
+        _                    => "Planeada"
     };
 
     private string GetStatusTagStyle(string? status)
     {
         var color = status switch
         {
-            "Planned" => "#1890FF",
-            "AwaitingValidation" => "#FAAD14",
-            "Validated" => "#FA8C16",
-            "Realized" => "#52C41A",
-            "Pending" => "#FAAD14",
-            _ => "#d9d9d9"
+            "Realized"           => "#2ECC71",
+            "Validated"          => "#9B59B6",
+            "AwaitingValidation" => "#F1C40F",
+            "Pending"            => "#F1C40F",
+            _                    => "#3498DB"
         };
-        return $"background: {color}20; color: {color}; border: 1px solid {color}40; border-radius: 12px; font-size: 11px; padding: 2px 10px;";
+        return $"background: {color}22; color: {color}; border: 1px solid {color}44; border-radius: 12px; font-size: 11px; font-weight: 700; padding: 2px 10px; letter-spacing: 0.3px;";
     }
 }
 

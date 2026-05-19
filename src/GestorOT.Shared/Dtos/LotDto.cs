@@ -32,6 +32,7 @@ public record WorkOrderDto
     public Guid? ContractorId { get; set; }
     public Guid? ContactId { get; set; }
     public Guid? CampaignId { get; set; }
+    public Guid? WorkOrderStatusId { get; set; }
     public bool AcceptsMultiplePeople { get; set; }
     public bool AcceptsMultipleDates { get; set; }
     public bool IsLocked { get; set; }
@@ -47,9 +48,9 @@ public record WorkOrderDto
                 .Where(s => !string.IsNullOrWhiteSpace(s)));
 
     public WorkOrderDto() { }
-    public WorkOrderDto(Guid id, Guid? fieldId, string description, string status, string assignedTo, DateTime dueDate, string? fieldName, string? otNumber, DateTime? plannedDate, DateTime? expirationDate, bool stockReserved, Guid? contractorId, Guid? contactId, Guid? campaignId, string? name = null, bool acceptsMultiplePeople = false, bool acceptsMultipleDates = false, bool isLocked = false)
+    public WorkOrderDto(Guid id, Guid? fieldId, string description, string status, string assignedTo, DateTime dueDate, string? fieldName, string? otNumber, DateTime? plannedDate, DateTime? expirationDate, bool stockReserved, Guid? contractorId, Guid? contactId, Guid? campaignId, string? name = null, bool acceptsMultiplePeople = false, bool acceptsMultipleDates = false, bool isLocked = false, Guid? workOrderStatusId = null)
     {
-        Id = id; FieldId = fieldId; Description = description; Status = status; AssignedTo = assignedTo; DueDate = dueDate; FieldName = fieldName; OTNumber = otNumber; PlannedDate = plannedDate; ExpirationDate = expirationDate; StockReserved = stockReserved; ContractorId = contractorId; ContactId = contactId; CampaignId = campaignId; Name = name; AcceptsMultiplePeople = acceptsMultiplePeople; AcceptsMultipleDates = acceptsMultipleDates; IsLocked = isLocked;
+        Id = id; FieldId = fieldId; Description = description; Status = status; AssignedTo = assignedTo; DueDate = dueDate; FieldName = fieldName; OTNumber = otNumber; PlannedDate = plannedDate; ExpirationDate = expirationDate; StockReserved = stockReserved; ContractorId = contractorId; ContactId = contactId; CampaignId = campaignId; Name = name; AcceptsMultiplePeople = acceptsMultiplePeople; AcceptsMultipleDates = acceptsMultipleDates; IsLocked = isLocked; WorkOrderStatusId = workOrderStatusId;
     }
 }
 

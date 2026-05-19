@@ -37,10 +37,12 @@ public record CampaignSummaryDto(
     Guid Id,
     string Name,
     CampaignStatus Status,
-    bool IsActive
+    bool IsActive,
+    DateOnly StartDate = default,
+    DateOnly EndDate = default
 )
 {
-    public CampaignSummaryDto() : this(Guid.Empty, string.Empty, CampaignStatus.Active, true) { }
+    public CampaignSummaryDto() : this(Guid.Empty, string.Empty, CampaignStatus.Active, true, default, default) { }
 }
 
 public record CampaignLotDto(

@@ -23,7 +23,7 @@ public class WorkOrderStatusesController : ControllerBase
         return await _context.WorkOrderStatuses
             .AsNoTracking()
             .OrderBy(s => s.SortOrder)
-            .Select(s => new WorkOrderStatusDto(s.Id, s.Name, s.ColorHex, s.IsEditable, s.IsDefault, s.SortOrder))
+            .Select(s => new WorkOrderStatusDto(s.Id, s.Name, s.ColorHex, s.IsEditable, s.IsDefault, s.SortOrder, s.AllowedTransitionsJson))
             .ToListAsync();
     }
 
@@ -37,7 +37,8 @@ public class WorkOrderStatusesController : ControllerBase
             ColorHex = dto.ColorHex,
             IsEditable = dto.IsEditable,
             IsDefault = dto.IsDefault,
-            SortOrder = dto.SortOrder
+            SortOrder = dto.SortOrder,
+            AllowedTransitionsJson = dto.AllowedTransitionsJson
         };
 
         if (status.IsDefault)
@@ -65,6 +66,7 @@ public class WorkOrderStatusesController : ControllerBase
         status.IsEditable = dto.IsEditable;
         status.IsDefault = dto.IsDefault;
         status.SortOrder = dto.SortOrder;
+        status.AllowedTransitionsJson = dto.AllowedTransitionsJson;
 
         if (status.IsDefault)
         {

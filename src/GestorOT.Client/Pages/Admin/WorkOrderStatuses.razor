@@ -81,6 +81,10 @@
             <Checkbox @bind-Checked="_formModel.IsEditable">Permite editar la OT y Labores</Checkbox>
             <Checkbox @bind-Checked="_formModel.IsDefault">Estado Inicial</Checkbox>
         </div>
+        <FormItem Label="Transiciones permitidas (IDs separados por coma)" Style="margin-top: 16px;">
+            <Input @bind-Value="_transitionsText" Placeholder="Ej: id1,id2,id3" />
+            <span style="color: rgba(255,255,255,0.4); font-size: 11px;">IDs de estados a los que se puede transicionar desde este estado.</span>
+        </FormItem>
     </Form>
 </Modal>
 
@@ -91,6 +95,7 @@
     private bool _isEditing;
     private bool _saving;
     private WorkOrderStatusDto _formModel = new();
+    private string _transitionsText = "";
 
     protected override async Task OnInitializedAsync()
     {
@@ -115,12 +120,14 @@
     {
         _isEditing = true;
         _formModel = new WorkOrderStatusDto(status.Id, status.Name, status.ColorHex, status.IsEditable, status.IsDefault, status.SortOrder);
+        _transitionsText = status.AllowedTransitionsJson ?? "";
         _modalVisible = true;
     }
 
     private async Task SaveStatus()
     {
         _saving = true;
+        _formModel.AllowedTransitionsJson = string.IsNullOrWhiteSpace(_transitionsText) ? null : _transitionsText;
         HttpResponseMessage response;
         if (_isEditing)
             response = await Http.PutAsJsonAsync($"api/workorderstatuses/{_formModel.Id}", _formModel);

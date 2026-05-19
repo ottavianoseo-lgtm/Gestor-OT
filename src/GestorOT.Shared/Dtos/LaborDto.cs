@@ -114,15 +114,17 @@ public class WorkOrderSupplyApprovalDto
     public Guid WorkOrderId { get; set; }
     public Guid SupplyId { get; set; }
     public string? SupplyName { get; set; }
+    public string? SupplyUnit { get; set; }
     public decimal TotalCalculated { get; set; }
     public decimal ApprovedWithdrawal { get; set; }
     public string? WithdrawalCenter { get; set; }
     public decimal? RealTotalUsed { get; set; }
+    public decimal SumOfLaborsRealTotal { get; set; }
 
     public WorkOrderSupplyApprovalDto() { }
-    public WorkOrderSupplyApprovalDto(Guid id, Guid workOrderId, Guid supplyId, string? supplyName, decimal totalCalculated, decimal approvedWithdrawal, string? withdrawalCenter, decimal? realTotalUsed)
+    public WorkOrderSupplyApprovalDto(Guid id, Guid workOrderId, Guid supplyId, string? supplyName, string? supplyUnit, decimal totalCalculated, decimal approvedWithdrawal, string? withdrawalCenter, decimal? realTotalUsed)
     {
-        Id = id; WorkOrderId = workOrderId; SupplyId = supplyId; SupplyName = supplyName; TotalCalculated = totalCalculated; ApprovedWithdrawal = approvedWithdrawal; WithdrawalCenter = withdrawalCenter; RealTotalUsed = realTotalUsed;
+        Id = id; WorkOrderId = workOrderId; SupplyId = supplyId; SupplyName = supplyName; SupplyUnit = supplyUnit; TotalCalculated = totalCalculated; ApprovedWithdrawal = approvedWithdrawal; WithdrawalCenter = withdrawalCenter; RealTotalUsed = realTotalUsed;
     }
 }
 
@@ -163,7 +165,8 @@ public record BulkFromStrategyRequest(
     DateTime BaseDate,
     bool ForceDateSeparation,
     List<LaborOverrideDto> LaborsOverride,
-    bool IsOriginalPlan = false
+    bool IsOriginalPlan = false,
+    Guid? WorkOrderId = null
 );
 
 public record LaborOverrideDto(

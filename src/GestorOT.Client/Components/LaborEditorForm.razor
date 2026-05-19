@@ -1,5 +1,6 @@
 @using GestorOT.Shared.Dtos
 @using GestorOT.Shared
+@using GestorOT.Domain.Enums
 @using System.Net.Http.Json
 @using System.Text.Json
 @using AntDesign
@@ -13,18 +14,44 @@
 <Card Title="@(LaborId == Guid.Empty ? "Nueva Labor" : "Editar Labor")"
       Style="border-radius: 12px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1);">
     <Form Model="@_model" OnFinish="HandleSubmit" Layout="@FormLayout.Vertical">
+        @if (_model.IsOriginalPlan && !ForceOriginalPlan)
+        {
+            <Alert Type="@AlertType.Info" ShowIcon="true" Style="margin-bottom: 16px; background: rgba(241,196,15,0.1); border: 1px solid rgba(241,196,15,0.3); color: #F1C40F;"
+                   MessageTemplate="@((RenderFragment)(builder => { builder.AddContent(0, "Planeamiento Original (P.O.): solo lectura. Solo un administrador puede modificar o desanclar esta labor."); }))" />
+        }
+        @if (CampaignState.CurrentCampaign != null && _lots.Count == 0 && !_loading)
+        {
+            <Alert Type="@AlertType.Warning" Message="La campaña actual no tiene lotes asignados. Asigne lotes a la campaña antes de crear labores." ShowIcon="true" Style="margin-bottom: 16px;" />
+        }
+        @if (!string.IsNullOrEmpty(_saveError))
+        {
+            <Alert Type="@AlertType.Error" Message="@_saveError" ShowIcon="true" Closable="true" OnClose="() => _saveError = null" Style="margin-bottom: 16px;" />
+        }
+        @if (_saveWarnings != null && _saveWarnings.Any())
+        {
+            <Alert Type="@AlertType.Warning" ShowIcon="true" Style="margin-bottom: 16px;">
+                <MessageTemplate>
+                    <ul style="margin: 0; padding-left: 18px;">
+                        @foreach (var w in _saveWarnings)
+                        {
+                            <li>@w</li>
+                        }
+                    </ul>
+                </MessageTemplate>
+            </Alert>
+        }
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
             <FormItem Label="Campo (Filtro)">
                 <Select TItemValue="Guid" TItem="FieldDto" @bind-Value="_filterFieldId"
                         Placeholder="Filtrar por campo" EnableSearch AllowClear
-                        DataSource="@_fields"
+                        DataSource="@FilteredFields"
                         LabelName="@nameof(FieldDto.Name)"
                         ValueName="@nameof(FieldDto.Id)"
                         OnSelectedItemChanged="OnFieldFilterChanged">
                 </Select>
             </FormItem>
 
-            <FormItem Label="Lote">
+            <FormItem Label="Lote" Style="@(HasError("lot") ? "border: 1px solid #E74C3C; border-radius: 8px; padding: 8px;" : "")">
                 <Select TItemValue="Guid" TItem="CampaignLotDto" @bind-Value="_model.LotId"
                         Placeholder="Seleccionar lote" EnableSearch 
                         DataSource="@FilteredLots"
@@ -32,9 +59,13 @@
                         ValueName="@nameof(CampaignLotDto.LotId)"
                         OnSelectedItemChanged="OnLotChanged">
                 </Select>
+                @if (HasError("lot"))
+                {
+                    <div style="color: #E74C3C; font-size: 11px; margin-top: 4px;">@GetError("lot")</div>
+                }
             </FormItem>
 
-            <FormItem Label="Hectáreas">
+            <FormItem Label="Hectáreas" Style="@(HasError("hectares") ? "border: 1px solid #E74C3C; border-radius: 8px; padding: 8px;" : "")">
                 <AntDesign.InputNumber TValue="decimal" Value="@_model.Hectares" OnChange="OnHectareasChanged" Min="0m" Step="0.1m" Style="width: 100%; color: var(--text-primary);" />
                 @if (_noProductiveAreaWarning)
                 {
@@ -48,11 +79,15 @@
                         <Icon Type="warning" /> La superficie supera el área productiva del lote (@_lotProductiveArea ha).
                     </div>
                 }
+                @if (HasError("hectares"))
+                {
+                    <div style="color: #E74C3C; font-size: 11px; margin-top: 4px;">@GetError("hectares")</div>
+                }
             </FormItem>
         </div>
         
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
-            <FormItem Label="Actividad (ERP)">
+            <FormItem Label="Actividad (ERP)" Style="@(HasError("activity") ? "border: 1px solid #E74C3C; border-radius: 8px; padding: 8px;" : "")">
                 <div style="display: flex; align-items: center; gap: 8px;">
                     <Select TItemValue="Guid?" TItem="ErpActivityDto" @bind-Value="_model.ErpActivityId"
                             Placeholder="Seleccionar actividad" Disabled="@_actividadLocked"
@@ -73,22 +108,31 @@
                         </Tooltip>
                     }
                 </div>
+                @if (HasError("activity"))
+                {
+                    <div style="color: #E74C3C; font-size: 11px; margin-top: 4px;">@GetError("activity")</div>
+                }
             </FormItem>
 
-            <FormItem Label="Tipo de Labor (Tarea)">
+            <FormItem Label="Tipo de Labor (Tarea)" Style="@(HasError("laborType") ? "border: 1px solid #E74C3C; border-radius: 8px; padding: 8px;" : "")">
                 <Select TItemValue="Guid" TItem="LaborTypeDto" @bind-Value="_model.LaborTypeId"
                         Placeholder="Seleccionar tipo de labor" EnableSearch
                         LabelName="@nameof(LaborTypeDto.Name)" ValueName="@nameof(LaborTypeDto.Id)"
                         DataSource="@_laborTypes">
                 </Select>
+                @if (HasError("laborType"))
+                {
+                    <div style="color: #E74C3C; font-size: 11px; margin-top: 4px;">@GetError("laborType")</div>
+                }
             </FormItem>
         </div>
 
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
-            <FormItem Label="Persona Responsable">
+            <FormItem Label="Persona Responsable" Style="@(HasError("contact") ? "border: 1px solid #E74C3C; border-radius: 8px; padding: 8px;" : "")">
                 <div style="display: flex; align-items: center; gap: 16px;">
                     <Select TItemValue="Guid?" TItem="ContactDto" @bind-Value="_model.ContactId"
-                            Placeholder="Seleccionar responsable" EnableSearch Style="flex: 1;">
+                            Placeholder="Seleccionar responsable" EnableSearch Style="flex: 1;"
+                            OnSelectedItemChanged="OnContactChanged">
                         @foreach (var contact in _contacts)
                         {
                             <SelectOption TItemValue="Guid?" TItem="ContactDto" Value="@((Guid?)contact.Id)" Label="@contact.FullName" />
@@ -99,9 +143,13 @@
                         <Radio Value="@true">Contratista</Radio>
                     </RadioGroup>
                 </div>
+                @if (HasError("contact"))
+                {
+                    <div style="color: #E74C3C; font-size: 11px; margin-top: 4px;">@GetError("contact")</div>
+                }
             </FormItem>
 
-            <FormItem Label="@($"Fecha {(_model.Status == "Realized" ? "Ejecución" : "Estimada")}")">
+            <FormItem Label="@($"Fecha {(_model.Status == "Realized" ? "Ejecución" : "Estimada")}")" Style="@(HasError("date") ? "border: 1px solid #E74C3C; border-radius: 8px; padding: 8px;" : "")">
                 <DatePicker TValue="DateTime?" Value="@(_model.Status == "Realized" ? _model.ExecutionDate : _model.EstimatedDate)" 
                             OnChange="@(async args => { if (_model.Status == "Realized") _model.ExecutionDate = args.Date; else await OnFechaEstimadaChanged(args); })" 
                             Style="width: 100%; color: var(--text-primary);" />
@@ -110,6 +158,10 @@
                     <div style="color: #FAAD14; font-size: 11px; margin-top: 4px;">
                         <Icon Type="warning" /> Fecha fuera del rango de rotación.
                     </div>
+                }
+                @if (HasError("date"))
+                {
+                    <div style="color: #E74C3C; font-size: 11px; margin-top: 4px;">@GetError("date")</div>
                 }
             </FormItem>
         </div>
@@ -125,10 +177,19 @@
             </FormItem>
 
             <FormItem Label="Estado de la Labor">
-                <RadioGroup @bind-Value="_model.Status" OnChange="@((string val) => OnStatusChanged(val))" TValue="string">
-                    <Radio Value="@("Planned")"><span style="color: var(--text-primary);">Planeada</span></Radio>
-                    <Radio Value="@("Realized")"><span style="color: var(--text-primary);">Realizada</span></Radio>
-                </RadioGroup>
+                @if (ForceOriginalPlan || _model.IsOriginalPlan)
+                {
+                    <Tag Color="@("#1890FF" + "33")" Style="color: #fff; border: 1px solid #1890FF80; border-radius: 12px; font-weight: 600; padding: 4px 16px;">
+                        Planeada
+                    </Tag>
+                }
+                else
+                {
+                    <RadioGroup @bind-Value="_model.Status" OnChange="@((string val) => OnStatusChanged(val))" TValue="string">
+                        <Radio Value="@("Planned")"><span style="color: var(--text-primary);">Planeada</span></Radio>
+                        <Radio Value="@("Realized")"><span style="color: var(--text-primary);">Realizada</span></Radio>
+                    </RadioGroup>
+                }
             </FormItem>
         </div>
 
@@ -186,15 +247,6 @@
             </Button>
         </div>
 
-        @if (_model.Mode == "Planned" || _model.Status == "Planned")
-        {
-            <FormItem Label="Retiro de Insumos" Style="margin-top: 16px;">
-                <TextArea @bind-Value="_model.SupplyWithdrawalNotes" Rows="2" 
-                          Placeholder="Ej: Retirar de depósito norte el 15/05..." MaxLength="1000"
-                          Style="color: var(--text-primary); background: rgba(255,255,255,0.05);" />
-            </FormItem>
-        }
-
         <Collapse DefaultActiveKey="@(new[] { "" })" Style="margin-top: 16px; background: transparent; border: 1px solid rgba(255,255,255,0.08);">
             <Panel Header="Condiciones Climáticas (Opcional)" Key="1">
                 <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 16px;">
@@ -223,7 +275,18 @@
             </Panel>
         </Collapse>
 
+        @if (!string.IsNullOrEmpty(_validationSummary))
+        {
+            <div style="margin-top: 16px; padding: 10px 14px; background: rgba(231, 76, 60, 0.1); border: 1px solid rgba(231, 76, 60, 0.3); border-radius: 8px; color: #E74C3C; font-size: 13px;">
+                <Icon Type="exclamation-circle" Theme="IconThemeType.Outline" Style="margin-right: 6px;" />
+                @_validationSummary
+            </div>
+        }
+
         <div style="display: flex; gap: 12px; margin-top: 24px;">
+            <Button Type="@ButtonType.Default" OnClick="HandleCancel" Style="flex: 1; height: 45px; border-radius: 8px;">
+                Cancelar
+            </Button>
             @if (LaborId != Guid.Empty && (_model.Mode == "Planned" || _model.Status == "Planned"))
             {
                 <Button Type="@ButtonType.Default" OnClick="SubmitForValidation" Loading="_submitting"
@@ -231,24 +294,27 @@
                     <Icon Type="send" /> Enviar para Validación
                 </Button>
             }
-            <Button Type="@ButtonType.Primary" HtmlType="submit" Loading="_loading" Block="@(LaborId == Guid.Empty || (_model.Mode != "Planned" && _model.Status != "Planned"))"
+            <Button Type="@ButtonType.Primary" HtmlType="submit" Loading="_loading" Block="false"
                     Style="flex: 2; height: 45px; border-radius: 8px; font-weight: 600;">
                 <Icon Type="save" /> Guardar Labor
             </Button>
         </div>
     </Form>
 
-    @if (LaborId != Guid.Empty)
-    {
-        <LaborAttachments LaborId="@LaborId" />
-    }
-    else
-    {
-        <div style="text-align: center; padding: 20px; background: rgba(255,255,255,0.02); border-radius: 8px; border: 1px dashed rgba(255,255,255,0.1); margin-top: 16px;">
-            <span style="color: rgba(255,255,255,0.3); font-size: 12px;">Podés adjuntar archivos una vez guardada la labor.</span>
-        </div>
-    }
+    <LaborAttachments @ref="_attachmentsRef" LaborId="@LaborId" />
 </Card>
+
+<Modal Title="Cerrar sin guardar" Visible="_confirmCancelVisible" OnCancel="() => _confirmCancelVisible = false" Footer="null">
+    <div style="padding: 10px 0;">
+        <p style="color: #fff;">Has subido archivos que no se han vinculado permanentemente a ninguna labor.</p>
+        <p style="color: rgba(255,255,255,0.6); font-size: 13px;">¿Qué deseas hacer con estos archivos?</p>
+        <div style="display: flex; flex-direction: column; gap: 10px; margin-top: 20px;">
+            <Button Type="@ButtonType.Primary" Danger Block OnClick="ConfirmDeleteFiles">Eliminar archivos subidos</Button>
+            <Button Type="@ButtonType.Default" Block OnClick="ConfirmKeepFiles" Style="color: #fff; background: rgba(255,255,255,0.05);">Conservar en biblioteca</Button>
+            <Button Type="@ButtonType.Text" Block OnClick="() => _confirmCancelVisible = false" Style="color: rgba(255,255,255,0.4);">Continuar editando</Button>
+        </div>
+    </div>
+</Modal>
 
 <ValidationSuccessModal Visible="_magicLinkModalVisible" 
                         ValidationUrl="@_magicLinkUrl" 
@@ -264,8 +330,17 @@
 
     private LaborDto _model = new();
     private List<CampaignLotDto> _lots = new();
-    private List<LotDto> _allLotsRaw = new();
-    private List<FieldDto> _fields = new();
+    private List<FieldDto> _allFieldsRaw = new();
+    
+    private List<FieldDto> FilteredFields =>
+        CampaignState.CurrentCampaign != null
+            ? _lots
+                .Where(l => l.FieldId.HasValue)
+                .GroupBy(l => l.FieldId!.Value)
+                .Select(g => new FieldDto { Id = g.Key, Name = g.First().FieldName ?? "Campo sin nombre" })
+                .OrderBy(f => f.Name)
+                .ToList()
+            : _allFieldsRaw.OrderBy(f => f.Name).ToList();
     private Guid _filterFieldId;
     private List<LaborTypeDto> _laborTypes = new();
     private List<ErpActivityDto> _activities = new();
@@ -281,15 +356,54 @@
     private bool _haSuperaLote;
     private bool _fechaFueraRotacion;
     private decimal _lotProductiveArea;
+    private string? _saveError;
+    private List<string> _saveWarnings = new();
 
     private IEnumerable<CampaignLotDto> FilteredLots =>
-        _filterFieldId == Guid.Empty
+        (_filterFieldId == Guid.Empty
             ? _lots
-            : _lots.Where(l => l.FieldId == _filterFieldId);
+            : _lots.Where(l => l.FieldId == _filterFieldId))
+        .OrderBy(l => l.LotName);
 
     private WeatherLogModel _weather = new();
     private bool _magicLinkModalVisible;
     private string _magicLinkUrl = "";
+    private bool _confirmCancelVisible;
+
+    private LaborAttachments? _attachmentsRef;
+    public bool HasDraftUploads() => _attachmentsRef?.HasDraftUploads ?? false;
+    public List<Guid> GetDraftUploadIds() => _attachmentsRef?.GetDraftUploadIds() ?? new();
+    public void DiscardDraftUploads() => _attachmentsRef?.DiscardDraftUploads();
+
+    public async Task HandleCancel()
+    {
+        if (LaborId == Guid.Empty && _attachmentsRef?.HasDraftUploads == true)
+        {
+            _confirmCancelVisible = true;
+        }
+        else
+        {
+            await OnSaved.InvokeAsync();
+        }
+    }
+
+    private async Task ConfirmDeleteFiles()
+    {
+        var ids = _attachmentsRef?.GetDraftUploadIds();
+        if (ids != null && ids.Any())
+        {
+            await _attachmentsRef!.DeleteUnlinkedFiles(ids);
+        }
+        _confirmCancelVisible = false;
+        await OnSaved.InvokeAsync();
+    }
+
+    private async Task ConfirmKeepFiles()
+    {
+        _attachmentsRef?.DiscardDraftUploads();
+        _confirmCancelVisible = false;
+        await OnSaved.InvokeAsync();
+    }
 
     public class WeatherLogModel
     {
@@ -310,6 +424,13 @@
         CampaignState.OnChange += OnCampaignChanged;
         await InitializeForm();
         _initialized = true;
+    }
+
+    public async Task Reset()
+    {
+        ResetFormState();
+        await InitializeForm();
+        StateHasChanged();
     }
 
     /// <summary>
@@ -347,6 +468,11 @@
         _magicLinkModalVisible = false;
         _magicLinkUrl = "";
         _filterFieldId = Guid.Empty;
+
+        _saveWarnings.Clear();
+        _saveError = null;
+        _fieldErrors.Clear();
+        _validationSummary = "";
     }
 
     private async Task InitializeForm()
@@ -381,6 +507,7 @@
     {
         _model.LotId = Guid.Empty;
         _model.CampaignLotId = null;
+        ClearError("lot");
         StateHasChanged();
     }
 
@@ -425,12 +552,17 @@
             _inventories = (await itemsTask) ?? new();
             _contacts = (await contactsTask) ?? new();
             _workOrders = ((await workOrdersTask) ?? new()).GroupBy(w => w.Id).Select(g => g.First()).ToList();
-            _fields = (await fieldsTask) ?? new();
 
             if (lotsTask != null)
-                _lots = ((await lotsTask) ?? new()).GroupBy(l => l.Id).Select(g => g.First()).ToList();
+                _lots = ((await lotsTask) ?? new())
+                    .GroupBy(l => l.Id)
+                    .Select(g => g.First())
+                    .OrderBy(l => l.LotName)
+                    .ToList();
+
+            _allFieldsRaw = (await fieldsTask) ?? new();
                 
-            Console.WriteLine($"[DEBUG] Catalogs loaded: Types={_laborTypes.Count}, Lots={_lots.Count}, Fields={_fields.Count}");
+            Console.WriteLine($"[DEBUG] Catalogs loaded: Types={_laborTypes.Count}, Lots={_lots.Count}, Fields={FilteredFields.Count}");
         }
         catch (Exception ex)
         {
@@ -493,6 +625,40 @@
         {
             _filterFieldId = currentLot.FieldId.Value;
         }
+
+        // #25: Ensure all labor supplies are in the _inventories list so the Select component can display them
+        if (_model.Supplies != null)
+        {
+            foreach (var s in _model.Supplies)
+            {
+                if (s.SupplyId != Guid.Empty && !_inventories.Any(i => i.Id == s.SupplyId))
+                {
+                    _inventories.Add(new InventoryDto(
+                        s.SupplyId, 
+                        "Cargado", 
+                        s.SupplyName ?? "Insumo desconocido", 
+                        0, 0, 
+                        null, s.SupplyUnit, 1, 
+                        "INSUMOS", null
+                    ));
+                }
+            }
+        }
+
+        bool openingAsRealized = InitialStatus == "Realized" || _model.Status == "Realized";
+        if (openingAsRealized)
+        {
+            foreach (var supply in _model.Supplies)
+            {
+                supply.RealHectares ??= supply.PlannedHectares;
+                supply.RealDose ??= supply.PlannedDose;
+            }
+
+            if (_model.EffectiveArea == 0)
+            {
+                _model.EffectiveArea = _model.Hectares;
+            }
+        }
     }
 
     private async Task SubmitForValidation()
@@ -529,18 +695,52 @@
     
     private void OnStatusChanged(string status)
     {
-        _model.Mode = status;
-        if (status == "Realized" && !_model.ExecutionDate.HasValue)
+        if (ForceOriginalPlan || _model.IsOriginalPlan)
         {
-            _model.ExecutionDate = DateTime.Today;
+            _model.Status = "Planned";
+            _model.Mode = "Planned";
+            return;
+        }
+        _model.Mode = status;
+        if (status == "Realized")
+        {
+            if (!_model.ExecutionDate.HasValue)
+                _model.ExecutionDate = DateTime.Today;
+
+            foreach (var supply in _model.Supplies)
+            {
+                supply.RealHectares ??= supply.PlannedHectares;
+                supply.RealDose ??= supply.PlannedDose;
+            }
+
+            if (_model.EffectiveArea == 0)
+            {
+                _model.EffectiveArea = _model.Hectares;
+            }
         }
     }
 
-    // #22: flag to alert user when lot has no productive area defined
     private bool _noProductiveAreaWarning;
+
+    private Dictionary<string, string> _fieldErrors = new();
+    private string _validationSummary = "";
+
+    private bool HasError(string field) => _fieldErrors.ContainsKey(field);
+    private string GetError(string field) => _fieldErrors.GetValueOrDefault(field, "");
+    private void ClearError(string field) { _fieldErrors.Remove(field); _validationSummary = ""; }
+    private void SetError(string field, string message) { _fieldErrors[field] = message; _validationSummary = ""; }
+
+    private void OnContactChanged(ContactDto contact)
+    {
+        if (contact != null)
+        {
+            _model.IsExternalBilling = contact.Role == ContactRole.Contractor;
+        }
+    }
 
     private async Task OnLotChanged(CampaignLotDto lot)
     {
+        ClearError("lot");
         if (lot != null)
         {
             _model.LotId = lot.LotId;
@@ -574,6 +774,7 @@
     private void OnHectareasChanged(decimal val)
     {
         _model.Hectares = val;
+        ClearError("hectares");
         CheckHectaresWarning(val);
     }
 
@@ -710,18 +911,116 @@
         if (string.IsNullOrWhiteSpace(value))
         {
             await LoadCatalogs();
+            // Re-ensure current supplies are still there after reloading catalog
+            if (_model.Supplies != null)
+            {
+                foreach (var s in _model.Supplies)
+                {
+                    if (!_inventories.Any(i => i.Id == s.SupplyId))
+                    {
+                        _inventories.Add(new InventoryDto(s.SupplyId, "Cargado", s.SupplyName ?? "Insumo", 0, 0, null, s.SupplyUnit, 1));
+                    }
+                }
+            }
             return;
         }
 
-        _inventories = await Http.GetFromJsonAsync<List<InventoryDto>>($"api/inventory?search={Uri.EscapeDataString(value)}&pageSize=10") ?? new();
+        var results = await Http.GetFromJsonAsync<List<InventoryDto>>($"api/inventory?search={Uri.EscapeDataString(value)}&pageSize=20") ?? new();
+        
+        // #25: Keep current supplies in the list so other rows don't go blank when searching in one row
+        if (_model.Supplies != null)
+        {
+            foreach (var s in _model.Supplies)
+            {
+                if (s.SupplyId != Guid.Empty && !results.Any(i => i.Id == s.SupplyId))
+                {
+                    results.Add(new InventoryDto(s.SupplyId, "Cargado", s.SupplyName ?? "Insumo", 0, 0, null, s.SupplyUnit, 1));
+                }
+            }
+        }
+        
+        _inventories = results;
         StateHasChanged();
+    }
+
+    private bool ValidateForm()
+    {
+        _fieldErrors.Clear();
+        _validationSummary = "";
+
+        // Load lot selector: must use CampaignLotDto linked to current campaign
+        if (_lots.Count == 0 && CampaignState.CurrentCampaign == null)
+        {
+            _validationSummary = "Seleccione una campaña activa para crear labores.";
+            return false;
+        }
+
+        if (_lots.Count == 0 && CampaignState.CurrentCampaign != null)
+        {
+            _validationSummary = "La campaña actual no tiene lotes asignados. Asigne lotes a la campaña antes de crear labores.";
+            return false;
+        }
+
+        if (_model.IsOriginalPlan && _model.Status != "Planned")
+        {
+            _validationSummary = "Planeamiento Original (P.O.) solo permite labores planeadas.";
+            return false;
+        }
+
+        if (CampaignState.IsLocked)
+        {
+            _validationSummary = "La campaña está bloqueada. Solo consulta.";
+            return false;
+        }
+
+        if (_model.LotId == Guid.Empty)
+            SetError("lot", "El lote es obligatorio.");
+
+        if (_model.ErpActivityId == null || _model.ErpActivityId == Guid.Empty)
+            SetError("activity", "La actividad es obligatoria.");
+
+        if (_model.LaborTypeId == Guid.Empty)
+            SetError("laborType", "El tipo de labor es obligatorio.");
+
+        if (_model.Hectares <= 0)
+            SetError("hectares", "Las hectáreas deben ser mayores a cero.");
+
+        var laborDate = _model.ExecutionDate ?? _model.EstimatedDate;
+        if (laborDate == null || laborDate == default)
+            SetError("date", "La fecha es obligatoria.");
+
+        if (_model.ContactId == null || _model.ContactId == Guid.Empty)
+            SetError("contact", "El responsable es obligatorio.");
+
+        // Validate supplies: if supply is added, dose must be valid
+        if (_model.Supplies != null)
+        {
+            foreach (var s in _model.Supplies)
+            {
+                if (s.SupplyId != Guid.Empty && s.PlannedDose <= 0 && !s.RealDose.HasValue)
+                {
+                    _validationSummary = "Los insumos agregados deben tener dosis válida.";
+                    return false;
+                }
+            }
+        }
+
+        return !_fieldErrors.Any();
     }
 
     private async Task HandleSubmit()
     {
+        if (!ValidateForm())
+        {
+            Message.Warning("Corregí los campos marcados en rojo antes de guardar.");
+            return;
+        }
+
         if (_haSuperaLote)
         {
-            Message.Warning($"Atención: Las hectáreas ({_model.Hectares:N2}) superan la superficie productiva del lote.");
+            var confirmed = await JSRuntime.InvokeAsync<bool>("confirm",
+                $"Las hectáreas ({_model.Hectares:N2}) superan la superficie productiva del lote ({_lotProductiveArea} ha).\n\n¿Guardar de todas formas?");
+            if (!confirmed) return;
         }
 
         if (_fechaFueraRotacion && _model.Status != "Realized")
@@ -732,7 +1031,16 @@
         try
         {
             _loading = true;
+            _saveError = null;
+            _saveWarnings.Clear();
             _model.WeatherLogJson = JsonSerializer.Serialize(_weather);
+            
+            if (ForceOriginalPlan || _model.IsOriginalPlan)
+            {
+                _model.IsOriginalPlan = true;
+                _model.Status = "Planned";
+                _model.Mode = "Planned";
+            }
             
             Console.WriteLine($"[LaborEditorForm] Submitting Labor: Id={LaborId}, WorkOrderId={_model.WorkOrderId}, LotId={_model.LotId}, Hectares={_model.Hectares}");
 
@@ -748,18 +1056,23 @@
                 
                 if (result?.Labor != null)
                 {
-                    _model = result.Labor;
-                    LaborId = _model.Id;
-                    // Sync tracking vars so OnParametersSetAsync doesn't re-init after parent re-renders
-                    _lastLaborId = LaborId;
+                    // Do not overwrite LaborId parameter locally as it causes issues with Blazor's parameter tracking
+                    // Instead, use the ID from the result to link files if necessary
+                    var newLaborId = result.Labor.Id;
+
+                    if (_attachmentsRef != null)
+                    {
+                        var linkResult = await _attachmentsRef.LinkPendingFiles(newLaborId);
+                        if (!linkResult.Success)
+                        {
+                            Message.Warning("La labor se guardó pero hubo un problema al vincular archivos. Reintentá desde la biblioteca.");
+                        }
+                    }
                 }
 
                 if (result?.Warnings != null && result.Warnings.Any())
                 {
-                    foreach (var warning in result.Warnings)
-                    {
-                        Message.Warning(warning);
-                    }
+                    _saveWarnings = result.Warnings;
                 }
 
                 Message.Success("Labor guardada correctamente.");
@@ -768,7 +1081,7 @@
             else
             {
                 var body = await response.Content.ReadAsStringAsync();
-                Message.Error($"No se pudo guardar la labor: {body}");
+                _saveError = body;
             }
         }
         catch (Exception ex)

@@ -8,12 +8,21 @@ public class CampaignState
     private readonly IJSRuntime _jsRuntime;
     public CampaignSummaryDto? CurrentCampaign { get; private set; }
     public bool IsSelected => CurrentCampaign != null;
+    public bool IsLocked => CurrentCampaign?.Status == CampaignStatus.Locked;
+    public bool IsReadOnly => IsLocked;
 
     public event Action? OnChange;
+    public event Func<Task>? OnCampaignsChanged;
 
     public CampaignState(IJSRuntime jsRuntime)
     {
         _jsRuntime = jsRuntime;
+    }
+
+    public async Task<Guid?> GetSavedCampaignId()
+    {
+        var idStr = await _jsRuntime.InvokeAsync<string>("localStorage.getItem", "selected_campaign_id");
+        return Guid.TryParse(idStr, out var id) ? id : null;
     }
 
     public void SetCampaign(CampaignSummaryDto campaign)
@@ -28,5 +37,17 @@ public class CampaignState
         CurrentCampaign = null;
         _jsRuntime.InvokeVoidAsync("localStorage.removeItem", "selected_campaign_id");
         OnChange?.Invoke();
+    }
+
+    public async Task NotifyCampaignsChanged()
+    {
+        if (OnCampaignsChanged != null)
+        {
+            var tasks = OnCampaignsChanged.GetInvocationList()
+                .Cast<Func<Task>>()
+                .Select(delegate(Func<Task> handler) { return handler(); });
+            
+            await Task.WhenAll(tasks);
+        }
     }
 }

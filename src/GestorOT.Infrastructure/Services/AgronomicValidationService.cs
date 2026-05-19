@@ -48,7 +48,7 @@ public class AgronomicValidationService : IAgronomicValidationService
         return hectares <= campaignLot.ProductiveArea;
     }
 
-    public async Task<string?> ValidateLaborActivityMatchesRotationAsync(Guid campaignLotId, DateOnly date, Guid activityId, CancellationToken ct = default)
+    public async Task<LaborActivityValidationResult> ValidateLaborActivityAsync(Guid campaignLotId, DateOnly date, Guid activityId, CancellationToken ct = default)
     {
         var activeRotation = await _context.Rotations
             .AsNoTracking()
@@ -56,24 +56,21 @@ public class AgronomicValidationService : IAgronomicValidationService
             .Where(r => r.CampaignLotId == campaignLotId && r.StartDate <= date && r.EndDate >= date)
             .FirstOrDefaultAsync(ct);
 
-        if (activeRotation == null) 
-        {
-            Console.WriteLine($"[DEBUG] No rotation found for Lot {campaignLotId} on {date}");
-            return null; // No rotation for this date
-        }
+        if (activeRotation == null)
+            return LaborActivityValidationResult.NoRotation();
 
         if (activeRotation.ErpActivityId != activityId)
-        {
-            Console.WriteLine($"[DEBUG] Activity mismatch for Lot {campaignLotId}: RotationActivity={activeRotation.ErpActivityId}, LaborsActivity={activityId}");
-            return $"La actividad seleccionada no coincide con el cultivo proyectado ({activeRotation.ErpActivity?.Name}).";
-        }
+            return LaborActivityValidationResult.Conflict(
+                activeRotation.ErpActivityId,
+                activeRotation.ErpActivity?.Name ?? "Desconocida",
+                activityId,
+                "Actividad recibida");
 
-        return null;
+        return LaborActivityValidationResult.Match();
     }
 
     public async Task<string?> ValidateLaborDatesInRotationAsync(Guid campaignLotId, DateTime? estimatedDate, DateTime? executionDate, CancellationToken ct = default)
     {
-        // Use execution date if available, else estimated date
         var dateToValidate = executionDate ?? estimatedDate;
         if (dateToValidate == null) return null;
 
@@ -85,9 +82,7 @@ public class AgronomicValidationService : IAgronomicValidationService
             .FirstOrDefaultAsync(ct);
 
         if (activeRotation == null)
-        {
-            return "No existe una rotación activa para la fecha seleccionada.";
-        }
+            return null;
 
         return null;
     }

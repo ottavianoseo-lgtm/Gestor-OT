@@ -122,9 +122,9 @@
                 }
                 @if (hasGeometry)
                 {
-                    <Tag Color="@AntDesign.TagColor.Blue" Style="border-radius: 12px; font-size: 11px; padding: 2px 10px;">
-                        Con geometría
-                    </Tag>
+                    <a href="@($"/mapa?lotId={context.Id}")" style="border-radius: 12px; font-size: 11px; padding: 2px 10px; cursor: pointer; background: #1890FF20; color: #1890FF; border: 1px solid #1890FF40; text-decoration: none; display: inline-block;">
+                        Editar GIS
+                    </a>
                 }
                 else
                 {
@@ -183,27 +183,40 @@
             <div>
                 <div style="font-weight: 700; color: #fff; margin-bottom: 12px; font-size: 14px;">Campañas Asignadas</div>
                 <div style="display: grid; gap: 8px;">
-                    <div style="display: grid; grid-template-columns: 1fr 60px 85px; gap: 8px; font-size: 11px; color: rgba(255,255,255,0.4); text-transform: uppercase; padding: 0 4px;">
+                    <div style="display: grid; grid-template-columns: 1fr 65px 60px 28px 60px 28px; gap: 8px; font-size: 10px; color: rgba(255,255,255,0.4); text-transform: uppercase; padding: 0 4px;">
                         <span>Campaña</span>
                         <span>Ha</span>
+                        <span>Var.</span>
+                        <span></span>
                         <span></span>
                         <span></span>
                     </div>
 
                     @foreach (var c in _lotCampaigns)
                     {
-                        <div style="display: grid; grid-template-columns: 1fr 80px 28px 85px; gap: 8px; align-items: center;">
-                            <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; padding: 8px 12px; color: #fff; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                        var isLocked = IsCampaignLocked(c.CampaignId);
+                        var variation = _editingAreas.GetValueOrDefault(c.Id, c.ProductiveArea) - c.CadastralArea;
+                        var variationColor = variation > 0 ? "#2ECC71" : (variation < 0 ? "#E74C3C" : "rgba(255,255,255,0.3)");
+                        var variationText = variation > 0 ? $"+{variation:N2}" : variation.ToString("N2");
+                        var areaWarning = _editingAreas.GetValueOrDefault(c.Id, c.ProductiveArea) > c.CadastralArea && c.CadastralArea > 0;
+
+                        <div class="@(areaWarning ? "campaign-lot-warning" : "")" style="display: grid; grid-template-columns: 1fr 65px 60px 28px 60px 28px; gap: 6px; align-items: center; @(areaWarning ? "background: rgba(243, 156, 18, 0.06); border: 1px solid rgba(243, 156, 18, 0.2); border-radius: 10px; padding: 4px 6px;" : "")">
+                            <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; padding: 8px 10px; color: #fff; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
                                 @c.CampaignName
+                                @if (isLocked)
+                                {
+                                    <span style="font-size: 10px; color: #95A5A6; margin-left: 4px;">(Bloq.)</span>
+                                }
                             </div>
-                            <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; padding: 4px; display: flex; align-items: center;">
+                            <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; padding: 2px; display: flex; align-items: center;">
                                 @if (_editingAreas.ContainsKey(c.Id))
                                 {
                                     <input type="number" step="0.01" value="@_editingAreas[c.Id]"
                                            @oninput="@((ChangeEventArgs e) => { if (decimal.TryParse(e.Value?.ToString(), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var v)) _editingAreas[c.Id] = v; })"
-                                           style="width: 100%; background: transparent; color: #2ECC71; font-weight: 700; text-align: center; border: none; outline: none; font-size: 13px;" />
+                                           style="width: 100%; background: transparent; color: #2ECC71; font-weight: 700; text-align: center; border: none; outline: none; font-size: 12px;" />
                                 }
                             </div>
+                            <span style="font-size: 11px; font-weight: 600; color: @variationColor; text-align: center;">@variationText</span>
                             <Button Size="@ButtonSize.Small" Icon="check"
                                     Type="@ButtonType.Link"
                                     OnClick="() => SaveCampaignLotArea(c)"
@@ -212,6 +225,21 @@
                                     Style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; color: #fff; height: 36px; font-size: 11px; font-weight: 600;">
                                 Rotac.
                             </Button>
+                            @if (!isLocked)
+                            {
+                                <Popconfirm Title="¿Quitar esta campaña del lote?"
+                                            OnConfirm="() => RemoveLotFromCampaign(c.CampaignId, c.LotId)"
+                                            OkText="Quitar" CancelText="Cancelar">
+                                    <Button Size="@ButtonSize.Small" Danger
+                                            Style="border-radius: 6px; min-width: 28px; height: 28px; font-size: 12px;">
+                                        <Icon Type="close" Theme="IconThemeType.Outline" />
+                                    </Button>
+                                </Popconfirm>
+                            }
+                            else
+                            {
+                                <span></span>
+                            }
                         </div>
                     }
 
@@ -254,10 +282,14 @@
     <div style="display: grid; gap: 16px; padding: 10px 0;">
         <div>
             <label style="display: block; color: rgba(255,255,255,0.5); font-size: 11px; text-transform: uppercase; margin-bottom: 8px;">Seleccionar Campaña</label>
-            <Select TItem="CampaignSummaryDto" TItemValue="Guid" DataSource="_allCampaigns" @bind-Value="_selectedCampaignId"
+            <Select TItem="CampaignSummaryDto" TItemValue="Guid" DataSource="FilteredAvailableCampaigns" @bind-Value="_selectedCampaignId"
                     LabelName="@nameof(CampaignSummaryDto.Name)" ValueName="@nameof(CampaignSummaryDto.Id)"
                     OnSelectedItemChanged="OnAddCampaignChanged"
                     Placeholder="Campaña" Style="width: 100%;" />
+            @if (!FilteredAvailableCampaigns.Any())
+            {
+                <div style="color: rgba(255,255,255,0.4); font-size: 11px; margin-top: 4px;">No hay campañas disponibles para asignar.</div>
+            }
         </div>
         <div>
             <label style="display: block; margin-bottom: 8px; font-size: 12px; color: rgba(255,255,255,0.5);">Superficie Productiva (ha)</label>
@@ -387,6 +419,7 @@
     private List<CampaignSummaryDto> _allCampaigns = new();
     private List<ErpActivityDto> _allActivities = new();
     private bool _addCampaignModalVisible;
+    private bool _addingCampaign;
     private Guid _selectedCampaignId;
     private decimal _newCampaignProductiveArea;
 
@@ -409,6 +442,12 @@
         _filterByCampaign && CampaignState.IsSelected
             ? _lots.Where(l => _campaignLots.Any(cl => cl.LotId == l.Id))
             : _lots;
+
+    private IEnumerable<CampaignSummaryDto> FilteredAvailableCampaigns =>
+        _allCampaigns.Where(c => !_lotCampaigns.Any(lc => lc.CampaignId == c.Id));
+
+    private bool IsCampaignLocked(Guid campaignId) =>
+        _allCampaigns.FirstOrDefault(c => c.Id == campaignId)?.Status == CampaignStatus.Locked;
 
     public class LotFormModel
     {
@@ -577,7 +616,7 @@
         try
         {
             _lotCampaigns = await Http.GetFromJsonAsync<List<CampaignLotDto>>($"api/lots/{lotId}/campaigns") ?? new();
-            _editingAreas = _lotCampaigns.ToDictionary(c => c.Id, c => c.ProductiveArea);
+            _editingAreas = _lotCampaigns.ToDictionary(c => c.Id, c => Math.Round(c.ProductiveArea, 2));
         }
         catch (Exception)
         {
@@ -676,46 +715,17 @@
         try
         {
             var lot = _lots.FirstOrDefault(l => l.Id == item.LotId);
-            if (lot != null && newArea > lot.CadastralArea)
+            if (lot != null && newArea > lot.CadastralArea && lot.CadastralArea > 0)
             {
-                Message.Warning($"La superficie productiva ingresada ({newArea:N2}) es superior a las hectáreas reales del lote ({lot.CadastralArea:N2}).");
-                // if (!confirm) return; // Removed
+                var confirmed = await Js.InvokeAsync<bool>("confirm",
+                    $"La superficie productiva ({newArea:N2} ha) es superior a las hectáreas reales del lote ({lot.CadastralArea:N2} ha).\n\n¿Guardar de todas formas?");
+                if (!confirmed) return;
             }
 
             var updated = item with { ProductiveArea = newArea };
             var response = await Http.PutAsJsonAsync($"api/campaigns/{item.CampaignId}/lots/{item.LotId}", updated);
             if (response.IsSuccessStatusCode)
             {
-                Message.Success("Superficie productiva actualizada.");
-                await LoadLotCampaigns(_editingId);
-            }
-            else
-            {
-                var err = await response.Content.ReadAsStringAsync();
-                Message.Error(err);
-            }
-        }
-        catch (Exception ex) { Message.Error($"Error: {ex.Message}"); }
-    }
-
-    private async Task UpdateCampaignLotArea(CampaignLotDto item, decimal newArea)
-    {
-        try
-        {
-            var lot = _lots.FirstOrDefault(l => l.Id == item.LotId);
-            if (lot != null && newArea > lot.CadastralArea)
-            {
-                Message.Warning($"La superficie productiva ingresada ({newArea:N2}) es superior a las hectáreas reales del lote ({lot.CadastralArea:N2}).");
-                // if (!confirm) return; // Removed
-            }
-
-            var updated = item with { ProductiveArea = newArea };
-            var response = await Http.PutAsJsonAsync($"api/campaigns/{item.CampaignId}/lots/{item.LotId}", updated);
-            if (response.IsSuccessStatusCode)
-            {
-                // Actualizar lista local solo tras confirmar el back
-                var idx = _lotCampaigns.IndexOf(item);
-                if (idx >= 0) _lotCampaigns[idx] = updated;
                 Message.Success("Superficie productiva actualizada.");
                 await LoadLotCampaigns(_editingId);
             }
@@ -735,7 +745,7 @@
             var lot = _lots.FirstOrDefault(x => x.Id == _editingId);
             if (lot != null)
             {
-                _newCampaignProductiveArea = lot.CadastralArea;
+                _newCampaignProductiveArea = Math.Round(lot.CadastralArea, 2);
             }
         }
     }
@@ -743,13 +753,17 @@
     private async Task AddLotToLotCampaign()
     {
         if (_selectedCampaignId == Guid.Empty) return;
-        
+        if (_addingCampaign) return;
+
+        _addingCampaign = true;
         try
         {
             var lot = _lots.FirstOrDefault(l => l.Id == _editingId);
             if (lot != null && _newCampaignProductiveArea > lot.CadastralArea && lot.CadastralArea > 0)
             {
-                Message.Warning($"La superficie productiva ingresada ({_newCampaignProductiveArea:N2}) es superior a las hectáreas reales del lote ({lot.CadastralArea:N2}).");
+                var confirmed = await Js.InvokeAsync<bool>("confirm",
+                    $"La superficie productiva ({_newCampaignProductiveArea:N2} ha) es superior a las hectáreas reales del lote ({lot.CadastralArea:N2} ha).\n\n¿Guardar de todas formas?");
+                if (!confirmed) return;
             }
 
             var dto = new CampaignLotDto(Guid.Empty, _selectedCampaignId, _editingId, lot?.FieldId, null, null, 0, _newCampaignProductiveArea, null);
@@ -769,6 +783,33 @@
         catch (Exception ex)
         {
             Message.Error($"Error al actualizar la superficie productiva: {ex.Message}");
+        }
+        finally
+        {
+            _addingCampaign = false;
+        }
+    }
+
+    private async Task RemoveLotFromCampaign(Guid campaignId, Guid lotId)
+    {
+        try
+        {
+            var response = await Http.DeleteAsync($"api/campaigns/{campaignId}/lots/{lotId}");
+            if (response.IsSuccessStatusCode)
+            {
+                Message.Success("Relación campaña-lote eliminada.");
+                await LoadLotCampaigns(_editingId);
+                await LoadData();
+            }
+            else
+            {
+                var err = await response.Content.ReadAsStringAsync();
+                Message.Error($"Error: {err}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Message.Error($"Error: {ex.Message}");
         }
     }
 
@@ -843,6 +884,27 @@
                         {
                             var lotAddErr = await lotAddResp.Content.ReadAsStringAsync();
                             Message.Warning($"El lote se creó pero no pudo asignarse a la campaña: {lotAddErr}");
+                        }
+                    }
+                }
+
+                if (_isEditing && _editingAreas.Count != 0)
+                {
+                    foreach (var c in _lotCampaigns)
+                    {
+                        if (!_editingAreas.TryGetValue(c.Id, out var newArea)) continue;
+                        if (newArea == c.ProductiveArea) continue;
+
+                        if (IsCampaignLocked(c.CampaignId)) continue;
+
+                        var updated = c with { ProductiveArea = newArea };
+                        var areaResp = await Http.PutAsJsonAsync(
+                            $"api/campaigns/{c.CampaignId}/lots/{c.LotId}", updated);
+
+                        if (!areaResp.IsSuccessStatusCode)
+                        {
+                            var err = await areaResp.Content.ReadAsStringAsync();
+                            Message.Warning($"Lote guardado pero error al actualizar Ha de {c.CampaignName}: {err}");
                         }
                     }
                 }

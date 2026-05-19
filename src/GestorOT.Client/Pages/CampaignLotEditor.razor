@@ -140,6 +140,7 @@
                     DataSource="@FilteredAvailableLots"
                     LabelName="@nameof(LotDto.Name)"
                     ValueName="@nameof(LotDto.Id)"
+                    OnSelectedItemChanged="OnAddLotChanged"
                     EnableSearch
                     Style="width: 100%;" />
         </div>
@@ -256,6 +257,13 @@
             ? _availableLots
             : _availableLots.Where(l => l.FieldId == _addFilterFieldId);
 
+    private void OnAddLotChanged(LotDto lot)
+    {
+        if (lot != null)
+        {
+            _addProductiveArea = Math.Round((decimal)lot.CadastralArea, 2);
+        }
+    }
     private void OnAddFilterFieldChanged(Guid fieldId)
     {
         _addFilterFieldId = fieldId;
@@ -263,6 +271,7 @@
         if (_addLotId != Guid.Empty && !FilteredAvailableLots.Any(l => l.Id == _addLotId))
         {
             _addLotId = Guid.Empty;
+            _addProductiveArea = 0;
         }
     }
     private bool _savingArea;
@@ -300,7 +309,7 @@
     private async Task LoadRotations(Guid id) => _rotationsByLot[id] = await Http.GetFromJsonAsync<List<RotationDto>>($"api/campaigns/{CampaignId}/lots/{id}/rotations") ?? new();
     private List<RotationDto> GetRotations(Guid id) => _rotationsByLot.TryGetValue(id, out var r) ? r : new();
 
-    private void StartEdit(CampaignLotDto lot) { _editingLot = lot; _editProductiveArea = lot.ProductiveArea; _editModalVisible = true; }
+    private void StartEdit(CampaignLotDto lot) { _editingLot = lot; _editProductiveArea = Math.Round(lot.ProductiveArea, 2); _editModalVisible = true; }
     private async Task SaveProductiveArea()
     {
         if (_editingLot == null) return;

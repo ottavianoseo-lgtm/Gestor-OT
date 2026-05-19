@@ -1,30 +1,51 @@
 @using GestorOT.Shared.Dtos
+@using GestorOT.Shared
 @using System.Net.Http.Json
 @using AntDesign
 @inject HttpClient Http
 @inject IJSRuntime JS
 @inject IMessageService Message
+@inject GestorOT.Client.Services.CampaignState CampaignState
 
 <div class="attachments-container">
+    @if (_isCampaignLocked)
+    {
+        <Alert Type="@AlertType.Warning" Message="La campaña está bloqueada. Solo consulta." ShowIcon="true" Style="margin-bottom: 12px; border-radius: 8px;" />
+    }
+
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
         <h4 style="color: #fff; margin: 0;"><Icon Type="paper-clip" /> Adjuntos y Evidencia</h4>
-        <div style="position: relative;">
-            <Button Type="@ButtonType.Primary" Size="@ButtonSize.Small" Ghost>
-                <Icon Type="upload" /> Subir Archivo
-            </Button>
-            <InputFile OnChange="HandleFileSelected" 
-                       style="position: absolute; top: 0; left: 0; opacity: 0; width: 100%; height: 100%; cursor: pointer;" />
+        <div style="display: flex; gap: 8px;">
+            @if (!_isCampaignLocked)
+            {
+                <Button Type="@ButtonType.Default" Size="@ButtonSize.Small" OnClick="OpenLibrary"
+                        Style="border-radius: 6px; border-color: rgba(255,255,255,0.15); color: rgba(255,255,255,0.7);">
+                    <Icon Type="folder-open" /> Biblioteca
+                </Button>
+            }
+            @if (!_isCampaignLocked)
+            {
+                <div style="position: relative;">
+                    <Button Type="@ButtonType.Primary" Size="@ButtonSize.Small" Ghost>
+                        <Icon Type="upload" /> Subir Archivo
+                    </Button>
+                    <InputFile OnChange="HandleFileSelected" 
+                               style="position: absolute; top: 0; left: 0; opacity: 0; width: 100%; height: 100%; cursor: pointer;" />
+                </div>
+            }
         </div>
     </div>
 
-    @if (_loading)
+    @if (HasLaborId && _loading)
     {
         <Spin Tip="Cargando adjuntos..." />
     }
-    else if (_attachments.Count == 0)
+    else if (_attachments.Count == 0 && !_localFiles.Any())
     {
         <div style="text-align: center; padding: 20px; background: rgba(255,255,255,0.02); border-radius: 8px; border: 1px dashed rgba(255,255,255,0.1);">
-            <span style="color: rgba(255,255,255,0.3); font-size: 12px;">Sin archivos adjuntos</span>
+            <span style="color: rgba(255,255,255,0.3); font-size: 12px;">
+                @(HasLaborId ? "Sin archivos adjuntos" : "Subí o seleccioná archivos de la biblioteca")
+            </span>
         </div>
     }
     else
@@ -32,44 +53,88 @@
         <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px;">
             @foreach (var att in _attachments)
             {
-                <div class="attachment-card">
+                var isDraftUpload = _draftUploads.Contains(att.Id);
+                var isTempSelected = !HasLaborId && _localFiles.Contains(att.Id);
+                <div class="attachment-card" style="border-color: @(isDraftUpload ? "rgba(46,204,113,0.4)" : (isTempSelected ? "rgba(52,152,219,0.4)" : "rgba(255,255,255,0.1)"));">
                     <div class="attachment-icon">
-                        @if (att.MimeType.StartsWith("image/"))
-                        {
-                            <Icon Type="picture" Theme="IconThemeType.Fill" Style="font-size: 24px; color: #3498DB;" />
-                        }
-                        else if (att.MimeType.Contains("pdf"))
-                        {
-                            <Icon Type="file-pdf" Theme="IconThemeType.Fill" Style="font-size: 24px; color: #E74C3C;" />
-                        }
-                        else if (att.MimeType.StartsWith("audio/"))
-                        {
-                            <Icon Type="audio" Theme="IconThemeType.Fill" Style="font-size: 24px; color: #F1C40F;" />
-                        }
-                        else
-                        {
-                            <Icon Type="file" Theme="IconThemeType.Fill" Style="font-size: 24px; color: #95A5A6;" />
-                        }
+                        @FileIcon(att.MimeType)
                     </div>
                     <div class="attachment-info">
                         <div class="attachment-name" title="@att.FileName">@att.FileName</div>
-                        <div class="attachment-size">@FormatSize(att.FileSizeBytes)</div>
+                        <div class="attachment-size">@FormatSize(att.SizeBytes)</div>
+                        @if (isDraftUpload)
+                        {
+                            <Tag Style="background: rgba(46,204,113,0.15); color: #2ECC71; border: 1px solid rgba(46,204,113,0.3); border-radius: 4px; font-size: 9px; margin-top: 2px;">Subido ahora</Tag>
+                        }
+                        else if (isTempSelected)
+                        {
+                            <Tag Style="background: rgba(52,152,219,0.15); color: #3498DB; border: 1px solid rgba(52,152,219,0.3); border-radius: 4px; font-size: 9px; margin-top: 2px;">Seleccionado</Tag>
+                        }
                     </div>
                     <div class="attachment-actions">
-                        <Button Size="@ButtonSize.Small" Type="@ButtonType.Text" OnClick="() => Download(att)">
+                        <Button Size="@ButtonSize.Small" Type="@ButtonType.Text" OnClick="() => Download(att.Id)">
                             <Icon Type="download" />
                         </Button>
-                        <Popconfirm Title="¿Eliminar?" OnConfirm="() => Delete(att.Id)">
-                            <Button Size="@ButtonSize.Small" Type="@ButtonType.Text" Danger>
-                                <Icon Type="delete" />
-                            </Button>
-                        </Popconfirm>
+                        @if (!_isCampaignLocked)
+                        {
+                            <Popconfirm Title="@(HasLaborId && !isDraftUpload ? "¿Desvincular?" : "¿Quitar?")" OnConfirm="() => Remove(att.Id)">
+                                <Button Size="@ButtonSize.Small" Type="@ButtonType.Text" Danger>
+                                    <Icon Type="delete" />
+                                </Button>
+                            </Popconfirm>
+                        }
                     </div>
                 </div>
             }
         </div>
     }
 </div>
+
+<Modal Title="Biblioteca de Archivos" Visible="_libraryVisible" OnCancel="() => _libraryVisible = false" Footer="null" Width="700">
+    <div style="margin-bottom: 12px;">
+        <Input Value="@_librarySearch" ValueChanged="(string v) => { _librarySearch = v; _ = LoadLibrary(); }" Placeholder="Buscar por nombre..." 
+               Style="color: var(--text-primary); background: rgba(255,255,255,0.05);" />
+    </div>
+    <div style="max-height: 400px; overflow-y: auto;">
+        @if (_libraryFiles.Count == 0)
+        {
+            <div style="text-align: center; color: rgba(255,255,255,0.3); padding: 30px;">Biblioteca vacía</div>
+        }
+        @foreach (var libFile in _libraryFiles)
+        {
+            var isLinked = HasLaborId && _attachments.Any(a => a.Id == libFile.Id);
+            var isPending = !HasLaborId && _localFiles.Contains(libFile.Id);
+            var isSelected = isLinked || isPending;
+            <div style="display: flex; align-items: center; gap: 12px; padding: 8px 12px; background: @(isSelected ? "rgba(46,204,113,0.08)" : "transparent"); border: 1px solid @(isSelected ? "rgba(46,204,113,0.3)" : "rgba(255,255,255,0.06)"); border-radius: 8px; margin-bottom: 6px;">
+                @FileIconSmall(libFile.MimeType)
+                <div style="flex: 1;">
+                    <div style="color: #fff; font-size: 13px; font-weight: 500;">@libFile.FileName</div>
+                    <div style="color: rgba(255,255,255,0.4); font-size: 11px;">@FormatSize(libFile.SizeBytes) · @libFile.UploadedAt.ToString("dd/MM/yyyy")</div>
+                </div>
+                <Button Size="@ButtonSize.Small" Type="@ButtonType.Text" OnClick="() => Download(libFile.Id)">
+                    <Icon Type="download" />
+                </Button>
+                @if (!_isCampaignLocked)
+                {
+                    @if (isSelected)
+                    {
+                        <Button Size="@ButtonSize.Small" Type="@ButtonType.Primary" OnClick="() => ToggleLibraryFile(libFile)"
+                                Style="background: #E74C3C; border-color: #E74C3C; border-radius: 6px;">@(HasLaborId ? "Desvincular" : "Quitar")</Button>
+                    }
+                    else
+                    {
+                        <Button Size="@ButtonSize.Small" Type="@ButtonType.Primary" OnClick="() => ToggleLibraryFile(libFile)"
+                                Style="background: #2ECC71; border-color: #2ECC71; border-radius: 6px;">Seleccionar</Button>
+                    }
+                }
+                else
+                {
+                    <Tag Color="@("orange")">Bloqueado</Tag>
+                }
+            </div>
+        }
+    </div>
+</Modal>
 
 <style>
     .attachments-container {
@@ -122,12 +187,90 @@
 @code {
     [Parameter] public Guid LaborId { get; set; }
 
-    private List<LaborAttachmentDto> _attachments = new();
-    private bool _loading = true;
+    private bool HasLaborId => LaborId != Guid.Empty;
+    private bool _isCampaignLocked => CampaignState.IsLocked;
+    private List<FileAssetDto> _attachments = new();
+    private bool _loading;
+    private bool _libraryVisible;
+    private string _librarySearch = "";
+    private List<FileAssetDto> _libraryFiles = new();
+    private List<Guid> _localFiles = new();
+    private List<Guid> _draftUploads = new();
+
+    public bool HasPendingFiles => _localFiles.Count > 0;
+    public bool HasDraftUploads => _draftUploads.Count > 0;
+    public List<Guid> GetPendingFileIds() => _localFiles.ToList();
+    public List<Guid> GetDraftUploadIds() => _draftUploads.ToList();
+
+    public void ClearPendingFiles()
+    {
+        _localFiles.Clear();
+        _draftUploads.Clear();
+        _attachments.Clear();
+    }
+
+    public async Task<LinkPendingResult> LinkPendingFiles(Guid laborId)
+    {
+        if (!_localFiles.Any())
+            return new LinkPendingResult(true);
+
+        try
+        {
+            var request = new LinkFilesRequest(laborId, _localFiles.ToList());
+            var response = await Http.PostAsJsonAsync("api/files/link", request,
+                AppJsonSerializerContext.Default.LinkFilesRequest);
+
+            if (response.IsSuccessStatusCode)
+            {
+                _localFiles.Clear();
+                return new LinkPendingResult(true, _draftUploads.Count);
+            }
+            var errorBody = await response.Content.ReadAsStringAsync();
+            Message.Error($"Error al vincular archivos: {errorBody}");
+            return new LinkPendingResult(false, Errors: new List<string> { errorBody });
+        }
+        catch (Exception ex)
+        {
+            Message.Error($"Error al vincular archivos: {ex.Message}");
+            return new LinkPendingResult(false, Errors: new List<string> { ex.Message });
+        }
+    }
+
+    public void DiscardDraftUploads()
+    {
+        _draftUploads.Clear();
+    }
+
+    public async Task DeleteUnlinkedFiles(List<Guid> ids)
+    {
+        if (ids == null || !ids.Any()) return;
+        try
+        {
+            var request = new BulkDeleteUnlinkedRequest(ids);
+            var response = await Http.PostAsJsonAsync("api/files/delete-unlinked", request,
+                AppJsonSerializerContext.Default.BulkDeleteUnlinkedRequest);
+            if (response.IsSuccessStatusCode)
+            {
+                _draftUploads.RemoveAll(ids.Contains);
+                _localFiles.RemoveAll(ids.Contains);
+                _attachments.RemoveAll(a => ids.Contains(a.Id));
+                Message.Success("Archivos eliminados correctamente.");
+            }
+            else
+            {
+                var body = await response.Content.ReadAsStringAsync();
+                Message.Error($"Error al eliminar archivos: {body}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Message.Error($"Error al eliminar archivos: {ex.Message}");
+        }
+    }
 
     protected override async Task OnParametersSetAsync()
     {
-        if (LaborId != Guid.Empty)
+        if (HasLaborId)
         {
             await LoadAttachments();
         }
@@ -138,11 +281,23 @@
         _loading = true;
         try
         {
-            _attachments = await Http.GetFromJsonAsync<List<LaborAttachmentDto>>($"api/laborattachments/labor/{LaborId}") ?? new();
+            _attachments = await Http.GetFromJsonAsync<List<FileAssetDto>>(
+                $"api/files/labor/{LaborId}", AppJsonSerializerContext.Default.ListFileAssetDto) ?? new();
         }
-        catch (Exception)
+        catch
         {
-            Message.Error("Error al cargar adjuntos.");
+            try
+            {
+                var legacy = await Http.GetFromJsonAsync<List<LaborAttachmentDto>>(
+                    $"api/laborattachments/labor/{LaborId}");
+                _attachments = legacy?.Select(a => new FileAssetDto(
+                    a.Id, a.FileName, a.MimeType, a.FileSizeBytes, a.UploadedAt)).ToList()
+                    ?? new();
+            }
+            catch
+            {
+                Message.Error("Error al cargar adjuntos.");
+            }
         }
         finally
         {
@@ -157,21 +312,48 @@
 
         try
         {
+            var maxSize = 10 * 1024 * 1024;
+            if (file.Size > maxSize)
+            {
+                Message.Error($"El archivo supera el límite de {maxSize / (1024*1024)} MB.");
+                return;
+            }
+
             using var content = new MultipartFormDataContent();
-            var fileContent = new StreamContent(file.OpenReadStream(maxAllowedSize: 10 * 1024 * 1024)); // 10MB limit
+            var fileContent = new StreamContent(file.OpenReadStream(maxSize));
             fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(file.ContentType);
             content.Add(fileContent, "file", file.Name);
 
-            var response = await Http.PostAsync($"api/laborattachments/labor/{LaborId}/upload", content);
+            var url = HasLaborId
+                ? $"api/files/upload?laborId={LaborId}"
+                : "api/files/upload";
+
+            var response = await Http.PostAsync(url, content);
 
             if (response.IsSuccessStatusCode)
             {
-                Message.Success("Archivo subido.");
-                await LoadAttachments();
+                var result = await response.Content.ReadFromJsonAsync<FileAssetDto>(
+                    AppJsonSerializerContext.Default.FileAssetDto);
+
+                if (result != null)
+                {
+                    if (HasLaborId)
+                    {
+                        _attachments.Add(result);
+                    }
+                    else
+                    {
+                        _localFiles.Add(result.Id);
+                        _attachments.Add(result);
+                    }
+                    _draftUploads.Add(result.Id);
+                    Message.Success("Archivo subido.");
+                }
             }
             else
             {
-                Message.Error("Error al subir archivo.");
+                var body = await response.Content.ReadAsStringAsync();
+                Message.Error($"Error: {body}");
             }
         }
         catch (Exception)
@@ -180,12 +362,12 @@
         }
     }
 
-    private async Task Download(LaborAttachmentDto att)
+    private async Task Download(Guid id)
     {
         try
         {
-            var url = $"api/laborattachments/{att.Id}/download";
-            await JS.InvokeVoidAsync("utilsInterop.triggerFileDownload", att.FileName, url);
+            var url = $"api/files/{id}/download";
+            await JS.InvokeVoidAsync("utilsInterop.triggerFileDownload", "archivo", url);
         }
         catch
         {
@@ -193,17 +375,100 @@
         }
     }
 
-    private async Task Delete(Guid id)
+    private async Task Remove(Guid fileAssetId)
     {
-        var response = await Http.DeleteAsync($"api/laborattachments/{id}");
-        if (response.IsSuccessStatusCode)
+        if (HasLaborId)
         {
-            Message.Success("Adjunto eliminado.");
+            var response = await Http.DeleteAsync($"api/files/labor/{LaborId}/{fileAssetId}");
+            if (response.IsSuccessStatusCode)
+            {
+                _draftUploads.Remove(fileAssetId);
+                Message.Success("Archivo desvinculado.");
+                await LoadAttachments();
+            }
+            else
+            {
+                Message.Error("Error al desvincular.");
+            }
+        }
+        else
+        {
+            _localFiles.Remove(fileAssetId);
+            _draftUploads.Remove(fileAssetId);
+            _attachments.RemoveAll(a => a.Id == fileAssetId);
+        }
+    }
+
+    private async void OpenLibrary()
+    {
+        _libraryVisible = true;
+        await LoadLibrary();
+    }
+
+    private async Task LoadLibrary()
+    {
+        try
+        {
+            var url = string.IsNullOrWhiteSpace(_librarySearch)
+                ? "api/files"
+                : $"api/files?search={Uri.EscapeDataString(_librarySearch)}";
+
+            _libraryFiles = await Http.GetFromJsonAsync<List<FileAssetDto>>(
+                url, AppJsonSerializerContext.Default.ListFileAssetDto) ?? new();
+        }
+        catch (Exception ex)
+        {
+            Message.Warning($"Error al cargar biblioteca: {ex.Message}");
+        }
+    }
+
+    private async Task ToggleLibraryFile(FileAssetDto file)
+    {
+        if (HasLaborId)
+        {
+            if (_attachments.Any(a => a.Id == file.Id))
+            {
+                var response = await Http.DeleteAsync($"api/files/labor/{LaborId}/{file.Id}");
+                if (response.IsSuccessStatusCode)
+                {
+                    _draftUploads.Remove(file.Id);
+                    Message.Success("Archivo desvinculado.");
+                }
+                else
+                {
+                    Message.Error("Error al desvincular.");
+                }
+            }
+            else
+            {
+                var linkResponse = await Http.PostAsJsonAsync("api/files/link",
+                    new LinkFilesRequest(LaborId, new List<Guid> { file.Id }),
+                    AppJsonSerializerContext.Default.LinkFilesRequest);
+                if (linkResponse.IsSuccessStatusCode)
+                {
+                    Message.Success("Archivo vinculado.");
+                }
+                else
+                {
+                    var body = await linkResponse.Content.ReadAsStringAsync();
+                    Message.Error($"Error al vincular: {body}");
+                }
+            }
+            _libraryVisible = false;
             await LoadAttachments();
         }
         else
         {
-            Message.Error("Error al eliminar.");
+            if (_localFiles.Contains(file.Id))
+            {
+                _localFiles.Remove(file.Id);
+                _attachments.RemoveAll(a => a.Id == file.Id);
+            }
+            else
+            {
+                _localFiles.Add(file.Id);
+                _attachments.Add(file);
+            }
         }
     }
 
@@ -218,4 +483,60 @@
 
         return $"{dblSByte:0.#} {suffix[i]}";
     }
+
+    private RenderFragment FileIcon(string mime) => builder =>
+    {
+        if (mime.StartsWith("image/"))
+        {
+            builder.OpenComponent<Icon>(0);
+            builder.AddAttribute(1, "Type", "picture");
+            builder.AddAttribute(2, "Theme", "IconThemeType.Fill");
+            builder.AddAttribute(3, "Style", "font-size: 24px; color: #3498DB;");
+            builder.CloseComponent();
+        }
+        else if (mime.Contains("pdf"))
+        {
+            builder.OpenComponent<Icon>(0);
+            builder.AddAttribute(1, "Type", "file-pdf");
+            builder.AddAttribute(2, "Theme", "IconThemeType.Fill");
+            builder.AddAttribute(3, "Style", "font-size: 24px; color: #E74C3C;");
+            builder.CloseComponent();
+        }
+        else
+        {
+            builder.OpenComponent<Icon>(0);
+            builder.AddAttribute(1, "Type", "file");
+            builder.AddAttribute(2, "Theme", "IconThemeType.Fill");
+            builder.AddAttribute(3, "Style", "font-size: 24px; color: #95A5A6;");
+            builder.CloseComponent();
+        }
+    };
+
+    private RenderFragment FileIconSmall(string mime) => builder =>
+    {
+        if (mime.Contains("pdf"))
+        {
+            builder.OpenComponent<Icon>(0);
+            builder.AddAttribute(1, "Type", "file-pdf");
+            builder.AddAttribute(2, "Theme", "IconThemeType.Fill");
+            builder.AddAttribute(3, "Style", "font-size: 20px; color: #E74C3C;");
+            builder.CloseComponent();
+        }
+        else if (mime.StartsWith("image/"))
+        {
+            builder.OpenComponent<Icon>(0);
+            builder.AddAttribute(1, "Type", "picture");
+            builder.AddAttribute(2, "Theme", "IconThemeType.Fill");
+            builder.AddAttribute(3, "Style", "font-size: 20px; color: #3498DB;");
+            builder.CloseComponent();
+        }
+        else
+        {
+            builder.OpenComponent<Icon>(0);
+            builder.AddAttribute(1, "Type", "file");
+            builder.AddAttribute(2, "Theme", "IconThemeType.Fill");
+            builder.AddAttribute(3, "Style", "font-size: 20px; color: #95A5A6;");
+            builder.CloseComponent();
+        }
+    };
 }

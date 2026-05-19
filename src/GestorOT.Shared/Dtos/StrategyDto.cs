@@ -25,12 +25,13 @@ public record StrategyItemDto
     public string? LaborTypeName { get; set; }
     public string? ErpActivityName { get; set; }
     public int DayOffset { get; set; }
+    public int SortOrder { get; set; }
     public List<StrategySupplyDefault> DefaultSupplies { get; set; } = new();
 
     public StrategyItemDto() { }
-    public StrategyItemDto(Guid id, Guid cropStrategyId, Guid laborTypeId, Guid? erpActivityId, string? laborTypeName, string? erpActivityName, int dayOffset, List<StrategySupplyDefault> defaultSupplies)
+    public StrategyItemDto(Guid id, Guid cropStrategyId, Guid laborTypeId, Guid? erpActivityId, string? laborTypeName, string? erpActivityName, int dayOffset, List<StrategySupplyDefault> defaultSupplies, int sortOrder = 0)
     {
-        Id = id; CropStrategyId = cropStrategyId; LaborTypeId = laborTypeId; ErpActivityId = erpActivityId; LaborTypeName = laborTypeName; ErpActivityName = erpActivityName; DayOffset = dayOffset; DefaultSupplies = defaultSupplies;
+        Id = id; CropStrategyId = cropStrategyId; LaborTypeId = laborTypeId; ErpActivityId = erpActivityId; LaborTypeName = laborTypeName; ErpActivityName = erpActivityName; DayOffset = dayOffset; DefaultSupplies = defaultSupplies; SortOrder = sortOrder;
     }
 }
 
@@ -114,4 +115,37 @@ public record SupplyDiscrepancyDto
     {
         SupplyName = supplyName; PlannedDose = plannedDose; RealDose = realDose; DiscrepancyPercent = discrepancyPercent;
     }
+}
+
+public record CampaignDeviationReport
+{
+    public int TotalWorkOrders { get; set; }
+    public int TotalLabors { get; set; }
+    public int RealizedLabors { get; set; }
+    public decimal PlannedHectares { get; set; }
+    public decimal RealizedHectares { get; set; }
+    public List<SupplySummary> SupplySummary { get; set; } = new();
+    public List<WorkOrderDeviation> WorkOrderDeviations { get; set; } = new();
+
+    public CampaignDeviationReport() { }
+}
+
+public record SupplySummary
+{
+    public string SupplyName { get; set; } = "";
+    public decimal PlannedTotal { get; set; }
+    public decimal RealTotal { get; set; }
+    public decimal DeviationPercent { get; set; }
+    public string Unit { get; set; } = "";
+}
+
+public record WorkOrderDeviation
+{
+    public Guid WorkOrderId { get; set; }
+    public string Description { get; set; } = "";
+    public decimal PlanHa { get; set; }
+    public decimal RealHa { get; set; }
+    public decimal HaDeviationPercent { get; set; }
+    public int TotalLabors { get; set; }
+    public int RealizedLabors { get; set; }
 }

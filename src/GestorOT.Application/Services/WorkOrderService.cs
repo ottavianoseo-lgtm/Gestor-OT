@@ -31,7 +31,10 @@ public class WorkOrderService : IWorkOrderService
         var suppliesInLabors = workOrder.Labors
             .SelectMany(l => l.Supplies)
             .GroupBy(s => s.SupplyId)
-            .Select(g => new { SupplyId = g.Key, Total = g.Sum(s => s.PlannedTotal) })
+            .Select(g => new { 
+                SupplyId = g.Key, 
+                Total = g.Sum(s => s.PlannedTotal > 0 ? s.PlannedTotal : (s.RealTotal ?? 0)) 
+            })
             .ToList();
 
         foreach (var item in suppliesInLabors)

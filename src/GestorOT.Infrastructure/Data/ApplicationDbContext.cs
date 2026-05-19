@@ -44,6 +44,8 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
     public DbSet<ErpConcept> ErpConcepts => Set<ErpConcept>();
     public DbSet<WorkOrderStatus> WorkOrderStatuses => Set<WorkOrderStatus>();
     public DbSet<LaborAttachment> LaborAttachments => Set<LaborAttachment>();
+    public DbSet<FileAsset> FileAssets => Set<FileAsset>();
+    public DbSet<LaborFileAsset> LaborFileAssets => Set<LaborFileAsset>();
     public DbSet<WorkOrderSupplyApproval> WorkOrderSupplyApprovals => Set<WorkOrderSupplyApproval>();
 
     public Guid CurrentTenantId
@@ -167,6 +169,16 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
         });
 
         modelBuilder.Entity<WorkOrderStatus>(entity =>
+        {
+            entity.HasQueryFilter(e => CurrentTenantId == Guid.Empty || e.TenantId == CurrentTenantId);
+        });
+
+        modelBuilder.Entity<FileAsset>(entity =>
+        {
+            entity.HasQueryFilter(e => CurrentTenantId == Guid.Empty || e.TenantId == CurrentTenantId);
+        });
+
+        modelBuilder.Entity<LaborFileAsset>(entity =>
         {
             entity.HasQueryFilter(e => CurrentTenantId == Guid.Empty || e.TenantId == CurrentTenantId);
         });

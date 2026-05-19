@@ -32,83 +32,129 @@
 
 <AntDesign.Row Gutter="@((16, 16))" Style="margin-bottom: 16px;">
     <AntDesign.Col Xs="24" Sm="6">
-        <div class="kpi-card-sm" style="border-left: 3px solid #E74C3C;">
-            <span class="kpi-sm-value">@_workOrders.Count(w => w.Status == "Pending" || w.Status == "Draft")</span>
-            <span class="kpi-sm-label">Pendientes</span>
+        <div class="kpi-card-sm" style="border-left: 3px solid #3498DB;">
+            <span class="kpi-sm-value">@_workOrders.Count</span>
+            <span class="kpi-sm-label">Total</span>
         </div>
     </AntDesign.Col>
     <AntDesign.Col Xs="24" Sm="6">
         <div class="kpi-card-sm" style="border-left: 3px solid #F1C40F;">
-            <span class="kpi-sm-value">@_workOrders.Count(w => w.Status == "InProgress")</span>
-            <span class="kpi-sm-label">En Progreso</span>
-        </div>
-    </AntDesign.Col>
-    <AntDesign.Col Xs="24" Sm="6">
-        <div class="kpi-card-sm" style="border-left: 3px solid #3498DB;">
-            <span class="kpi-sm-value">@_workOrders.Count(w => w.Status == "Completed" || w.Status == "Done")</span>
-            <span class="kpi-sm-label">Completadas</span>
+            <span class="kpi-sm-value">@EditablesCount</span>
+            <span class="kpi-sm-label">Editables</span>
         </div>
     </AntDesign.Col>
     <AntDesign.Col Xs="24" Sm="6">
         <div class="kpi-card-sm" style="border-left: 3px solid #2ECC71;">
-            <span class="kpi-sm-value">@_workOrders.Count(w => w.Status == "Approved")</span>
-            <span class="kpi-sm-label">Aprobadas</span>
+            <span class="kpi-sm-value">@NoEditablesCount</span>
+            <span class="kpi-sm-label">No editables</span>
+        </div>
+    </AntDesign.Col>
+    <AntDesign.Col Xs="24" Sm="6">
+        <div class="kpi-card-sm" style="border-left: 3px solid #E74C3C;">
+            <span class="kpi-sm-value">@SinEstadoCount</span>
+            <span class="kpi-sm-label">Sin estado</span>
         </div>
     </AntDesign.Col>
 </AntDesign.Row>
 
-<div class="glass-card">
-    <Table TItem="WorkOrderDto" DataSource="_workOrders" Loading="_loading" Size="@TableSize.Small" ScrollX="1200">
-        <PropertyColumn Property="c => c.Name" Title="Nombre" Sortable>
-            <span style="font-weight: 700; color: #fff;">@(context.Name ?? context.OTNumber)</span>
+<div class="glass-card" @onmouseleave="OnRowLeave">
+    <Table TItem="WorkOrderDto" DataSource="_workOrders" Loading="_loading" Size="@TableSize.Small" ScrollX="1200"
+           OnRow="GetRowAttributes">
+        <PropertyColumn Property="c => _workOrders.IndexOf(c) + 1" Title="#" Width="70" Fixed="ColumnFixPlacement.Left">
+            <span style="color: #fff; font-weight: 600;">@(_workOrders.IndexOf(context) + 1)</span>
         </PropertyColumn>
-        <PropertyColumn Property="c => c.Description" Title="Descripción">
+        <PropertyColumn Property="c => c.Name" Title="Nombre" Sortable Width="180">
+            <Popover Visible="@(_hoveredWoId == context.Id && !_suppressPreview)" 
+                     Trigger="@(new AntDesign.Trigger[] { })"
+                     Title="@($"Labores — {context.Name ?? context.OTNumber}")" 
+                     OverlayStyle="max-width: 480px; padding: 0;">
+                <ContentTemplate>
+                    @if (_previewLoading.Contains(context.Id))
+                    {
+                        <div style="padding: 12px; text-align: center;"><Spin Size="AntDesign.SpinSize.Small" /></div>
+                    }
+                    else if (_laborPreviews.TryGetValue(context.Id, out var labors) && labors.Count > 0)
+                    {
+                        <div style="padding: 4px 0; min-width: 380px;">
+                            <div style="display: grid; grid-template-columns: 1fr 1fr auto auto; gap: 4px 12px; font-size: 11px; color: rgba(255,255,255,0.4); padding: 4px 12px; border-bottom: 1px solid rgba(255,255,255,0.08); text-transform: uppercase; letter-spacing: 0.5px;">
+                                <span>Tipo</span><span>Lote</span><span>Ha</span><span>Estado</span>
+                            </div>
+                            @foreach (var l in labors.Take(8))
+                            {
+                                var stColor = l.Status == "Realized" ? "#2ECC71" : l.Status == "AwaitingValidation" ? "#F1C40F" : "#3498DB";
+                                var stLabel = l.Status == "Realized" ? "Real." : l.Status == "AwaitingValidation" ? "Val." : "Plan.";
+                                <div style="display: grid; grid-template-columns: 1fr 1fr auto auto; gap: 4px 12px; padding: 5px 12px; border-bottom: 1px solid rgba(255,255,255,0.04); align-items: center;">
+                                    <span style="color: #eee; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">@l.LaborTypeName</span>
+                                    <span style="color: rgba(255,255,255,0.6); font-size: 12px;">@l.LotName</span>
+                                    <span style="color: #fff; font-size: 12px; font-weight: 600;">@l.Hectares.ToString("N0")</span>
+                                    <span style="background: @(stColor)22; color: @stColor; border: 1px solid @(stColor)44; border-radius: 10px; font-size: 10px; font-weight: 700; padding: 1px 7px;">@stLabel</span>
+                                </div>
+                            }
+                            @if (labors.Count > 8)
+                            {
+                                <div style="padding: 6px 12px; font-size: 11px; color: rgba(255,255,255,0.4); text-align: center;">+ @(labors.Count - 8) más</div>
+                            }
+                        </div>
+                    }
+                    else
+                    {
+                        <div style="padding: 12px; color: rgba(255,255,255,0.4); font-size: 12px;">Sin labores registradas</div>
+                    }
+                </ContentTemplate>
+                <ChildContent>
+                    <span style="font-weight: 700; color: #fff;">@(context.Name ?? context.OTNumber)</span>
+                </ChildContent>
+            </Popover>
+        </PropertyColumn>
+        <PropertyColumn Property="c => c.Description" Title="Descripción" Width="250">
             <span style="font-weight: 600;">@context.Description</span>
         </PropertyColumn>
-        <Column TData="string" Title="Estado">
+        <Column TData="string" Title="Estado" Width="120">
             @{
-                var (color, label) = context.Status switch
-                {
-                    "Approved" => ("#52C41A", "Aprobada"),
-                    "Completed" or "Done" => ("#1890FF", "Completada"),
-                    "InProgress" => ("#FAAD14", "En Progreso"),
-                    "Cancelled" => ("#95A5A6", "Cancelada"),
-                    "Draft" => ("#FA8C16", "Borrador"),
-                    _ => ("#E74C3C", "Pendiente")
-                };
+                var (color, label) = GetStatusDisplay(context.WorkOrderStatusId);
             }
             <Tag Style="@($"background: {color}20; color: {color}; border: 1px solid {color}40; border-radius: 12px; font-size: 11px; font-weight: 600; padding: 2px 10px;")">
                 @label
             </Tag>
         </Column>
-        <PropertyColumn Property="c => c.AssignedTo" Title="Asignado a" Sortable />
-        <PropertyColumn Property="c => c.DueDate" Title="Fecha" Sortable>
+        <PropertyColumn Property="c => c.AssignedTo" Title="Asignado a" Sortable Width="150" />
+        <PropertyColumn Property="c => c.DueDate" Title="Fecha" Sortable DefaultSortOrder="@SortDirection.Ascending" Width="120">
             @context.DueDate.ToString("dd/MM/yyyy")
         </PropertyColumn>
-        <ActionColumn Title="Acciones" Width="220">
-            <Space>
-                <SpaceItem>
-                    <Button Size="@ButtonSize.Small" OnClick="() => OpenDetail(context.Id)"
-                            Style="border-radius: 6px; background: #3498DB20; border-color: #3498DB40; color: #3498DB; font-size: 11px;">
-                        <Icon Type="eye" Theme="IconThemeType.Outline" /> Ver
-                    </Button>
-                </SpaceItem>
-                <SpaceItem>
-                    <Button Size="@ButtonSize.Small" OnClick="() => OpenEditModal(context)"
-                            Style="border-radius: 6px; border-color: rgba(255,255,255,0.15); color: rgba(255,255,255,0.7);">
-                        <Icon Type="edit" Theme="IconThemeType.Outline" />
-                    </Button>
-                </SpaceItem>
-                <SpaceItem>
-                    <Popconfirm Title="¿Eliminar esta orden de trabajo?"
-                                OnConfirm="() => DeleteWorkOrder(context.Id)"
-                                OkText="@("Eliminar")" CancelText="@("Cancelar")">
-                        <Button Danger Size="@ButtonSize.Small" Style="border-radius: 6px;">
-                            <Icon Type="delete" Theme="IconThemeType.Outline" />
+        <ActionColumn Title="Acciones" Width="220" Fixed="ColumnFixPlacement.Right">
+            <div @onmouseenter="() => { _suppressPreview = true; StateHasChanged(); }" 
+                 @onmouseleave="() => { _suppressPreview = false; StateHasChanged(); }"
+                 style="width: 100%; height: 100%; display: flex; align-items: center;">
+                <Space>
+                    <SpaceItem>
+                        <Button Size="@ButtonSize.Small" OnClick="() => OpenDetail(context.Id)"
+                                Style="border-radius: 6px; background: #3498DB20; border-color: #3498DB40; color: #3498DB; font-size: 11px;">
+                            <Icon Type="eye" Theme="IconThemeType.Outline" /> Ver
                         </Button>
-                    </Popconfirm>
-                </SpaceItem>
-            </Space>
+                    </SpaceItem>
+                    <SpaceItem>
+                        <Button Size="@ButtonSize.Small" OnClick="() => OpenEditModal(context)"
+                                Style="border-radius: 6px; border-color: rgba(255,255,255,0.15); color: rgba(255,255,255,0.7);">
+                            <Icon Type="edit" Theme="IconThemeType.Outline" />
+                        </Button>
+                    </SpaceItem>
+                    <SpaceItem>
+                        <Button Size="@ButtonSize.Small" OnClick='() => Navigation.NavigateTo($"/workorder-final/{context.Id}")'
+                                Style="border-radius: 6px; background: #2ECC7120; border-color: #2ECC7140; color: #2ECC71;">
+                            <Icon Type="check-circle" Theme="IconThemeType.Outline" /> Finalizar
+                        </Button>
+                    </SpaceItem>
+                    <SpaceItem>
+                        <Popconfirm Title="¿Eliminar esta orden de trabajo?"
+                                    OnConfirm="() => DeleteWorkOrder(context.Id)"
+                                    OkText="@("Eliminar")" CancelText="@("Cancelar")">
+                            <Button Danger Size="@ButtonSize.Small" Style="border-radius: 6px;">
+                                <Icon Type="delete" Theme="IconThemeType.Outline" />
+                            </Button>
+                        </Popconfirm>
+                    </SpaceItem>
+                </Space>
+            </div>
         </ActionColumn>
     </Table>
 </div>
@@ -127,28 +173,22 @@
         <FormItem Label="Descripción (opcional)">
             <TextArea @bind-Value="_formModel.Description" Placeholder="Notas o detalles adicionales..." AutoSize="true" />
         </FormItem>
-        <AntDesign.Row Gutter="16">
-            <AntDesign.Col Span="12">
-                @if (!_formModel.AcceptsMultiplePeople)
-                {
-                    <FormItem Label="Responsable (Contacto)">
-                        <Select TItem="ContactDto" TItemValue="Guid" DataSource="_availableContacts" @bind-Value="_formModel.ContactId"
-                                LabelName="@nameof(ContactDto.FullName)" ValueName="@nameof(ContactDto.Id)" Placeholder="Seleccionar contacto"
-                                Style="width: 100%;" EnableSearch />
-                    </FormItem>
-                }
-            </AntDesign.Col>
-            <AntDesign.Col Span="12">
-                @if (!_formModel.AcceptsMultipleDates)
-                {
-                    <FormItem Label="Fecha">
-                        <DatePicker @bind-Value="_formModel.DueDate" Style="width: 100%;" Format="dd/MM/yyyy" />
-                    </FormItem>
-                }
-            </AntDesign.Col>
-        </AntDesign.Row>
-        <AntDesign.Row Gutter="16">
-            <AntDesign.Col Span="12">
+        <Row Gutter="16">
+            <Col Span="12">
+                <FormItem Label="Responsable (Contacto)">
+                    <Select TItem="ContactDto" TItemValue="Guid?" DataSource="_availableContacts" @bind-Value="_formModel.ContactId"
+                            LabelName="@nameof(ContactDto.FullName)" ValueName="@nameof(ContactDto.Id)" Placeholder="Seleccionar contacto"
+                            Style="width: 100%;" EnableSearch AllowClear />
+                </FormItem>
+            </Col>
+            <Col Span="12">
+                <FormItem Label="Fecha">
+                    <DatePicker @bind-Value="_formModel.DueDate" Style="width: 100%;" Format="dd/MM/yyyy" />
+                </FormItem>
+            </Col>
+        </Row>
+        <Row Gutter="16">
+            <Col Span="12">
                 <FormItem Label="Estado">
                     @if (_loadingStatuses)
                     {
@@ -156,30 +196,26 @@
                     }
                     else if (_workOrderStatuses.Count > 0)
                     {
-                        <Select TItem="WorkOrderStatusDto" TItemValue="string"
+                        <Select TItem="WorkOrderStatusDto" TItemValue="Guid"
                                 DataSource="_workOrderStatuses"
-                                @bind-Value="_formModel.Status"
+                                @bind-Value="WorkOrderStatusIdBind"
                                 LabelName="@nameof(WorkOrderStatusDto.Name)"
-                                ValueName="@nameof(WorkOrderStatusDto.Name)"
+                                ValueName="@nameof(WorkOrderStatusDto.Id)"
                                 Style="width: 100%;" />
                     }
                     else
                     {
-                        <Select TItem="string" TItemValue="string" @bind-Value="_formModel.Status" Style="width: 100%;">
-                            <SelectOption Value="@("Draft")" Label="Borrador" />
-                            <SelectOption Value="@("Pending")" Label="Pendiente" />
-                            <SelectOption Value="@("InProgress")" Label="En Progreso" />
-                        </Select>
+                        <Alert Type="@AlertType.Error" Message="No hay estados de OT configurados. Cree al menos un estado inicial en Administración > Estados de OT." ShowIcon="true" />
                     }
                 </FormItem>
-            </AntDesign.Col>
-            <AntDesign.Col Span="12">
-                <div style="display: flex; gap: 8px; height: 100%; align-items: center; padding-top: 24px;">
-                    <Checkbox @bind-Checked="_formModel.AcceptsMultiplePeople" OnChange="() => StateHasChanged()">Mult. Pers.</Checkbox>
-                    <Checkbox @bind-Checked="_formModel.AcceptsMultipleDates" OnChange="() => StateHasChanged()">Mult. Fechas</Checkbox>
+            </Col>
+            <Col Span="12">
+                <div style="display: flex; gap: 12px; height: 100%; align-items: center; padding-top: 24px;">
+                    <Checkbox @bind-Checked="_formModel.AcceptsMultiplePeople">Mult. Pers.</Checkbox>
+                    <Checkbox @bind-Checked="_formModel.AcceptsMultipleDates">Mult. Fechas</Checkbox>
                 </div>
-            </AntDesign.Col>
-        </AntDesign.Row>
+            </Col>
+        </Row>
     </Form>
 </Modal>
 
@@ -206,12 +242,61 @@
 
 @code {
     private List<WorkOrderDto> _workOrders = new();
-    private List<CampaignSummaryDto> _availableCampaigns = new();
     private List<ContactDto> _availableContacts = new();
     private List<WorkOrderStatusDto> _workOrderStatuses = new();
     private bool _loading;
     private bool _loadingStatuses;
     private string? _errorMessage;
+
+    // Labor preview popover state
+    private Dictionary<Guid, List<LaborDto>> _laborPreviews = new();
+    private HashSet<Guid> _previewLoading = new();
+    private Guid? _hoveredWoId;
+    private bool _suppressPreview;
+
+    private Dictionary<string, object> GetRowAttributes(RowData<WorkOrderDto> row) => new()
+    {
+        { "onmouseenter", EventCallback.Factory.Create<MouseEventArgs>(this, async () => await OnRowHover(row.Data.Id)) },
+        { "onmouseleave", EventCallback.Factory.Create<MouseEventArgs>(this, _ => OnRowLeave()) }
+    };
+
+    private async Task OnRowHover(Guid woId)
+    {
+        if (_hoveredWoId == woId) return;
+        _suppressPreview = false;
+        _hoveredWoId = woId;
+        StateHasChanged();
+        await LoadLaborPreview(woId);
+    }
+
+    private void OnRowLeave()
+    {
+        _hoveredWoId = null;
+        StateHasChanged();
+    }
+
+    private async Task LoadLaborPreview(Guid workOrderId)
+    {
+        if (_laborPreviews.ContainsKey(workOrderId)) return; // already cached
+        _previewLoading.Add(workOrderId);
+        StateHasChanged();
+        try
+        {
+            var detail = await Http.GetFromJsonAsync<WorkOrderDetailDto>(
+                $"api/workorders/{workOrderId}",
+                AppJsonSerializerContext.Default.WorkOrderDetailDto);
+            _laborPreviews[workOrderId] = detail?.Labors ?? new();
+        }
+        catch
+        {
+            _laborPreviews[workOrderId] = new();
+        }
+        finally
+        {
+            _previewLoading.Remove(workOrderId);
+            StateHasChanged();
+        }
+    }
 
     private bool _modalVisible;
     private bool _saving;
@@ -220,20 +305,48 @@
     private WoFormModel _formModel = new();
     private Form<WoFormModel>? _form;
 
+    private Guid WorkOrderStatusIdBind
+    {
+        get => _formModel.WorkOrderStatusId ?? Guid.Empty;
+        set => _formModel.WorkOrderStatusId = value == Guid.Empty ? null : value;
+    }
+
     public class WoFormModel
     {
-        public string? Name { get; set; }  // #21: Optional human-readable name
+        public string? Name { get; set; }
 
         public string? Description { get; set; }
         
-        public Guid? FieldId { get; set; }
-        
-        public Guid CampaignId { get; set; }
-        public Guid ContactId { get; set; }
+        public Guid? CampaignId { get; set; }
+        public Guid? ContactId { get; set; }
         public DateTime DueDate { get; set; } = DateTime.Today.AddDays(7);
-        public string Status { get; set; } = "Draft";
+        public Guid? WorkOrderStatusId { get; set; }
         public bool AcceptsMultiplePeople { get; set; }
         public bool AcceptsMultipleDates { get; set; }
+        public string AssignedTo { get; set; } = string.Empty;
+    }
+
+    private int EditablesCount => _workOrders.Count(w => 
+        w.WorkOrderStatusId.HasValue && w.WorkOrderStatusId != Guid.Empty &&
+        _workOrderStatuses.Any(s => s.Id == w.WorkOrderStatusId.Value && s.IsEditable));
+
+    private int NoEditablesCount => _workOrders.Count(w => 
+        w.WorkOrderStatusId.HasValue && w.WorkOrderStatusId != Guid.Empty &&
+        _workOrderStatuses.Any(s => s.Id == w.WorkOrderStatusId.Value && !s.IsEditable));
+
+    private int SinEstadoCount => _workOrders.Count(w => 
+        w.WorkOrderStatusId == null || w.WorkOrderStatusId == Guid.Empty);
+
+    private (string ColorHex, string Name) GetStatusDisplay(Guid? workOrderStatusId)
+    {
+        if (workOrderStatusId == null || workOrderStatusId == Guid.Empty)
+            return ("#E74C3C", "Sin estado");
+        
+        var status = _workOrderStatuses.FirstOrDefault(s => s.Id == workOrderStatusId.Value);
+        if (status == null)
+            return ("#E74C3C", "Pendiente");
+        
+        return (status.ColorHex, status.Name);
     }
 
     protected override async Task OnInitializedAsync()
@@ -249,12 +362,18 @@
         try
         {
             _workOrderStatuses = await Http.GetFromJsonAsync<List<WorkOrderStatusDto>>(
-                "api/workorder-statuses",
+                "api/workorderstatuses",
                 AppJsonSerializerContext.Default.ListWorkOrderStatusDto) ?? new();
         }
-        catch
+        catch (HttpRequestException ex)
         {
             _workOrderStatuses = new();
+            Message.Error($"No se pudieron cargar los estados de OT: {ex.Message}");
+        }
+        catch (Exception ex)
+        {
+            _workOrderStatuses = new();
+            Message.Error($"Error inesperado al cargar estados de OT: {ex.Message}");
         }
         finally
         {
@@ -281,15 +400,13 @@
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
             var ordersTask = Http.GetFromJsonAsync("api/workorders",
                 AppJsonSerializerContext.Default.ListWorkOrderDto, cts.Token);
-            var campaignsTask = Http.GetFromJsonAsync("api/campaigns",
-                AppJsonSerializerContext.Default.ListCampaignSummaryDto, cts.Token);
             var contactsTask = Http.GetFromJsonAsync("api/catalogs/contacts",
                 AppJsonSerializerContext.Default.ListContactDto, cts.Token);
 
-            await Task.WhenAll(ordersTask, campaignsTask, contactsTask);
+            await Task.WhenAll(ordersTask, contactsTask);
 
-            _workOrders = await ordersTask ?? new();
-            _availableCampaigns = await campaignsTask ?? new();
+            var orders = await ordersTask ?? new();
+            _workOrders = orders.OrderBy(o => o.DueDate).ToList();
             _availableContacts = await contactsTask ?? new();
             _errorMessage = null;
         }
@@ -313,34 +430,54 @@
     {
         if (CampaignState.CurrentCampaign == null)
         {
-            Message.Warning("Debe seleccionar una campaña activa para crear una OT.");
+            Message.Warning("Debe seleccionar una campaña activa.");
             return;
         }
 
         _isEditing = false;
         _formModel = new WoFormModel();
+        _formModel.CampaignId = CampaignState.CurrentCampaign.Id;
         
-        _formModel.CampaignId = CampaignState.CurrentCampaign?.Id ?? Guid.Empty;
+        // Incremental ID por pantalla para la descripción por defecto
+        var nextId = _workOrders.Count + 1;
+        _formModel.Description = $"Nueva Orden de Trabajo #{nextId}";
+
+        var defaultStatus = _workOrderStatuses.FirstOrDefault(s => s.IsDefault)
+                           ?? _workOrderStatuses.OrderBy(s => s.SortOrder).FirstOrDefault();
+        _formModel.WorkOrderStatusId = defaultStatus?.Id;
 
         _modalVisible = true;
     }
 
     private void OpenEditModal(WorkOrderDto wo)
     {
-        Console.WriteLine($"OpenEditModal: Status={wo.Status}, Available: {string.Join(", ", _workOrderStatuses.Select(s => s.Name))}");
+        _errorMessage = null;
+
+        if (wo.CampaignId.HasValue && CampaignState.IsLocked)
+        {
+            _errorMessage = "La campaña está bloqueada. Solo consulta.";
+            return;
+        }
+
+        if (wo.IsLocked)
+        {
+            _errorMessage = "Esta orden no permite modificaciones.";
+            return;
+        }
+
         _isEditing = true;
         _editingId = wo.Id;
         _formModel = new WoFormModel
         {
             Name = wo.Name,
             Description = wo.Description,
-            CampaignId = wo.CampaignId ?? Guid.Empty,
-            FieldId = wo.FieldId,
-            ContactId = wo.ContactId ?? Guid.Empty,
+            CampaignId = wo.CampaignId,
+            ContactId = wo.ContactId,
             DueDate = wo.DueDate,
-            Status = wo.Status,
+            WorkOrderStatusId = wo.WorkOrderStatusId,
             AcceptsMultiplePeople = wo.AcceptsMultiplePeople,
-            AcceptsMultipleDates = wo.AcceptsMultipleDates
+            AcceptsMultipleDates = wo.AcceptsMultipleDates,
+            AssignedTo = wo.AssignedTo
         };
         _modalVisible = true;
     }
@@ -352,25 +489,34 @@
 
     private async Task SaveWorkOrder()
     {
-        if (_saving) return; // Prevent double clicks
+        if (_saving) return;
 
+        if (!_formModel.AcceptsMultiplePeople && (_formModel.ContactId == null || _formModel.ContactId == Guid.Empty))
+        {
+            Message.Warning("Debe seleccionar un responsable (Contacto) o marcar 'Mult. Pers.'");
+            return;
+        }
 
         _saving = true;
         try
         {
+            var selectedStatus = _formModel.WorkOrderStatusId.HasValue && _formModel.WorkOrderStatusId != Guid.Empty
+                ? _workOrderStatuses.FirstOrDefault(s => s.Id == _formModel.WorkOrderStatusId.Value)
+                : null;
             var dto = new WorkOrderDto
             {
                 Id = _isEditing ? _editingId : Guid.Empty,
                 Name = string.IsNullOrWhiteSpace(_formModel.Name) ? null : _formModel.Name.Trim(),
                 CampaignId = _formModel.CampaignId != Guid.Empty ? _formModel.CampaignId : null,
-                FieldId = _formModel.FieldId,
                 Description = _formModel.Description,
-                Status = _formModel.Status,
-                ContactId = _formModel.ContactId,
+                Status = selectedStatus?.Name ?? string.Empty,
+                WorkOrderStatusId = selectedStatus?.Id,
+                ContactId = _formModel.ContactId != Guid.Empty ? _formModel.ContactId : null,
                 OTNumber = _isEditing ? null : $"OT_{Guid.NewGuid().ToString().Substring(0, 5).ToUpper()}",
                 DueDate = _formModel.DueDate,
                 AcceptsMultiplePeople = _formModel.AcceptsMultiplePeople,
-                AcceptsMultipleDates = _formModel.AcceptsMultipleDates
+                AcceptsMultipleDates = _formModel.AcceptsMultipleDates,
+                AssignedTo = _formModel.AssignedTo ?? string.Empty
             };
 
             HttpResponseMessage response;

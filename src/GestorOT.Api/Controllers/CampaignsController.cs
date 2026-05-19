@@ -4,6 +4,7 @@ using GestorOT.Domain.Entities;
 using GestorOT.Shared.Dtos;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 namespace GestorOT.Api.Controllers;
 
@@ -13,11 +14,13 @@ public class CampaignsController : ControllerBase
 {
     private readonly IApplicationDbContext _context;
     private readonly ICampaignManagerService _campaignManager;
+    private readonly ILogger<CampaignsController> _logger;
 
-    public CampaignsController(IApplicationDbContext context, ICampaignManagerService campaignManager)
+    public CampaignsController(IApplicationDbContext context, ICampaignManagerService campaignManager, ILogger<CampaignsController> logger)
     {
         _context = context;
         _campaignManager = campaignManager;
+        _logger = logger;
     }
 
     [HttpGet]
@@ -72,7 +75,22 @@ public class CampaignsController : ControllerBase
             .ToListAsync();
 
         var campaigns = raw.Select(c => new CampaignSummaryDto(
-            c.Id, c.Name, ParseStatus(c.Status), c.IsActive
+            c.Id, c.Name, ParseStatus(c.Status), c.IsActive, c.StartDate, c.EndDate
+        )).ToList();
+
+        return campaigns;
+    }
+
+    [HttpGet("selector")]
+    public async Task<ActionResult<List<CampaignSummaryDto>>> GetSelectorCampaigns()
+    {
+        var raw = await _context.Campaigns
+            .AsNoTracking()
+            .OrderByDescending(c => c.StartDate)
+            .ToListAsync();
+
+        var campaigns = raw.Select(c => new CampaignSummaryDto(
+            c.Id, c.Name, ParseStatus(c.Status), c.IsActive, c.StartDate, c.EndDate
         )).ToList();
 
         return campaigns;
@@ -166,8 +184,12 @@ public class CampaignsController : ControllerBase
         if (campaign == null)
             return NotFound();
 
-        if (campaign.Status == "Locked" && newStatus != CampaignStatus.Locked)
+        if (campaign.Status == "Locked")
             return BadRequest("Una campaña cerrada no puede reactivarse.");
+
+        campaign.Status = newStatus.ToString();
+        if (newStatus == CampaignStatus.Locked)
+            campaign.IsActive = false;
 
         await _context.SaveChangesAsync();
         return NoContent();
@@ -301,7 +323,12 @@ public class CampaignsController : ControllerBase
             .AnyAsync(cl => cl.CampaignId == id && cl.LotId == lotId);
 
         if (exists)
-            return BadRequest("El lote ya está asignado a esta campaña.");
+        {
+            _logger.LogWarning(
+                "Intento de re-asignar lote {LotId} a campaña {CampaignId} que ya existe en CampaignLots.",
+                lotId, id);
+            return BadRequest($"Este lote ya está asignado a esta campaña. No se pueden crear asignaciones duplicadas.");
+        }
 
         var lot = await _context.Lots.FirstOrDefaultAsync(l => l.Id == lotId);
         if (lot == null)
@@ -335,7 +362,9 @@ public class CampaignsController : ControllerBase
             .FirstOrDefaultAsync();
 
         if (overlappingCampaign != null)
-            return BadRequest($"El lote ya está asignado a la campaña '{overlappingCampaign}' cuyas fechas se superponen con la actual.");
+            return BadRequest($"No se puede asignar: el lote ya está en la campaña '{overlappingCampaign}', " +
+                $"cuyas fechas se solapan con esta campaña. " +
+                $"Revisá las fechas de inicio y fin en la configuración de campañas.");
 
         _context.CampaignLots.Add(new CampaignLot
         {
@@ -424,6 +453,10 @@ public class CampaignsController : ControllerBase
     [HttpPost("{id:guid}/lots/import")]
     public async Task<IActionResult> ImportLotsFromPrevious(Guid id, ImportLotsRequest request)
     {
+        var campaign = await _context.Campaigns.AsNoTracking().FirstOrDefaultAsync(c => c.Id == id);
+        if (campaign?.Status == "Locked")
+            return BadRequest("No se pueden importar lotes en una campaña bloqueada.");
+
         try
         {
             var imported = await _campaignManager.ImportLotsFromPreviousCampaignAsync(
