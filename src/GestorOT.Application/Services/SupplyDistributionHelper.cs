@@ -18,14 +18,25 @@ public static class SupplyDistributionHelper
             foreach (var supply in suppliesAcrossLabors)
             {
                 var proportion = supply.PlannedTotal / totalPlanned;
-                supply.CalculatedTotal = Math.Round(realTotalUsed * proportion, 4);
+                var calculatedTotal = Math.Round(realTotalUsed * proportion, 4);
 
-                var parentLabor = workOrder.Labors
-                    .First(l => l.Supplies.Contains(supply));
+                // CalculatedTotal/Dose: para el drawer de desglose en Insumos Consolidados
+                supply.CalculatedTotal = calculatedTotal;
+
                 var effectiveArea = supply.RealHectares ?? supply.PlannedHectares;
                 if (effectiveArea > 0)
                 {
-                    supply.CalculatedDose = Math.Round(supply.CalculatedTotal.Value / effectiveArea, 4);
+                    var calculatedDose = Math.Round(calculatedTotal / effectiveArea, 4);
+                    supply.CalculatedDose = calculatedDose;
+
+                    // RealTotal/RealDose: lo que muestra "Detalle de Insumos" en cada labor
+                    supply.RealTotal = calculatedTotal;
+                    supply.RealDose = calculatedDose;
+                    supply.RealHectares ??= supply.PlannedHectares;
+                }
+                else
+                {
+                    supply.RealTotal = calculatedTotal;
                 }
             }
         }
@@ -35,6 +46,7 @@ public static class SupplyDistributionHelper
             foreach (var supply in suppliesAcrossLabors)
             {
                 supply.CalculatedTotal = perLabor;
+                supply.RealTotal = perLabor;
             }
         }
     }
@@ -50,6 +62,8 @@ public static class SupplyDistributionHelper
         {
             supply.CalculatedTotal = null;
             supply.CalculatedDose = null;
+            supply.RealTotal = null;
+            supply.RealDose = null;
         }
     }
 }
