@@ -58,6 +58,11 @@ public class WorkOrderService : IWorkOrderService
         var toRemove = workOrder.SupplyApprovals.Where(a => !laborSupplyIds.Contains(a.SupplyId)).ToList();
         _context.WorkOrderSupplyApprovals.RemoveRange(toRemove);
 
+        foreach (var approval in workOrder.SupplyApprovals.Where(a => a.RealTotalUsed.HasValue && a.RealTotalUsed > 0))
+        {
+            SupplyDistributionHelper.DistribuirProporcionalmente(workOrder, approval.SupplyId, approval.RealTotalUsed!.Value);
+        }
+
         await _context.SaveChangesAsync();
     }
 }

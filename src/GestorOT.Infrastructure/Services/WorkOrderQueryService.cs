@@ -188,6 +188,9 @@ public class WorkOrderQueryService : IWorkOrderQueryService
                 {
                     foreach (var supply in labor.Supplies.Where(s => s.SupplyId == supplyId))
                     {
+                        if (supply.CalculatedTotal.HasValue)
+                            continue;
+
                         var proportion = supply.PlannedTotal / totalPlannedForSupply;
                         supply.CalculatedTotal = realTotalUsed * proportion;
                         
