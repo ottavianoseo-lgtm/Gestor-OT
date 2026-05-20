@@ -169,38 +169,29 @@ public class WorkOrderQueryService : IWorkOrderQueryService
             l.Contact?.FullName
         )).ToList();
 
-        // Step 19: Rule of three for Realized labors
+        // Step 19: Rule of three — recalcular siempre desde RealTotalUsed
         foreach (var approval in workOrder.SupplyApprovals.Where(a => a.RealTotalUsed.HasValue))
         {
             var supplyId = approval.SupplyId;
             var realTotalUsed = approval.RealTotalUsed!.Value;
 
-            // Get all labors that use this supply
             var laborsWithSupply = laborsDto.Where(l => l.Supplies.Any(s => s.SupplyId == supplyId)).ToList();
             
-            // Calculate total planned across all labors for this supply
             var totalPlannedForSupply = laborsWithSupply
                 .Sum(l => l.Supplies.Where(s => s.SupplyId == supplyId).Sum(s => s.PlannedTotal));
 
-            if (totalPlannedForSupply > 0)
-            {
-                foreach (var labor in laborsWithSupply)
-                {
-                    foreach (var supply in labor.Supplies.Where(s => s.SupplyId == supplyId))
-                    {
-                        if (supply.CalculatedTotal.HasValue)
-                            continue;
+            if (totalPlannedForSupply <= 0) continue;
 
-                        var proportion = supply.PlannedTotal / totalPlannedForSupply;
-                        supply.CalculatedTotal = realTotalUsed * proportion;
-                        
-                        // Coef = Total / Area
-                        var area = supply.RealHectares ?? labor.Hectares;
-                        if (area > 0)
-                        {
-                            supply.CalculatedDose = supply.CalculatedTotal / area;
-                        }
-                    }
+            foreach (var labor in laborsWithSupply)
+            {
+                foreach (var supply in labor.Supplies.Where(s => s.SupplyId == supplyId))
+                {
+                    var proportion = supply.PlannedTotal / totalPlannedForSupply;
+                    supply.CalculatedTotal = Math.Round(realTotalUsed * proportion, 2);
+                    
+                    var area = supply.RealHectares ?? labor.Hectares;
+                    if (area > 0)
+                        supply.CalculatedDose = Math.Round(supply.CalculatedTotal.Value / area, 2);
                 }
             }
         }

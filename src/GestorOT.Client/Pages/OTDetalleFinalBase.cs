@@ -129,14 +129,14 @@ namespace GestorOT.Client.Pages
                     IsLocked = _order.IsLocked
                 };
                 var resp = await _http.PutAsJsonAsync($"api/workorders/{WorkOrderId}", dto);
-                
-                // Save approvals (real totals)
+
+                // Save approvals: persiste RealTotalUsed Y distribuye CalculatedTotal/Dose en LaborSupply
                 var respApp = await _http.PutAsJsonAsync($"api/workorders/{WorkOrderId}/approvals", _order.SupplyApprovals);
 
-                if (resp.IsSuccessStatusCode && respApp.IsSuccessStatusCode) { 
-                    _message.Success("Orden de Trabajo actualizada correctamente."); 
-                    await ConsolidateSupplies();
-                    await LoadData(); 
+                if (resp.IsSuccessStatusCode && respApp.IsSuccessStatusCode) {
+                    _message.Success("Orden de Trabajo actualizada correctamente.");
+                    // Recargar desde el servidor para mostrar los CalculatedTotal/Dose persistidos
+                    await LoadData();
                 }
                 else { _message.Error("Hubo un error al guardar algunos cambios."); }
             } catch (Exception ex) { _message.Error($"Error al guardar cambios: {ex.Message}"); }
@@ -298,10 +298,26 @@ namespace GestorOT.Client.Pages
 
             context.RealTotalUsed = newValue;
 
-            if (newValue.HasValue)
+            // Calcular inmediatamente en el modelo local para que el drawer muestre datos correctos
+            if (newValue.HasValue && newValue > 0)
             {
                 RecalculateProportionalSupplies(context.SupplyId);
             }
+            else
+            {
+                // Limpiar los calculados localmente si se borra el override
+                if (_order != null)
+                {
+                    foreach (var labor in _order.Labors)
+                        foreach (var supply in labor.Supplies.Where(s => s.SupplyId == context.SupplyId))
+                        {
+                            supply.CalculatedTotal = null;
+                            supply.CalculatedDose = null;
+                        }
+                }
+            }
+
+            StateHasChanged();
         }
 
         protected void ClearOverride(WorkOrderSupplyApprovalDto context)
@@ -311,8 +327,16 @@ namespace GestorOT.Client.Pages
 
         protected void OpenSupplyBreakdownDrawer(Guid supplyId)
         {
-            _breakdownSupply = _order!.SupplyApprovals.FirstOrDefault(a => a.SupplyId == supplyId);
+            if (_order == null) return;
+
+            _breakdownSupply = _order.SupplyApprovals.FirstOrDefault(a => a.SupplyId == supplyId);
             if (_breakdownSupply == null) return;
+
+            // Si hay RealTotalUsed, asegurarse de que el modelo local está calculado
+            if (_breakdownSupply.RealTotalUsed.HasValue && _breakdownSupply.RealTotalUsed > 0)
+            {
+                RecalculateProportionalSupplies(supplyId);
+            }
 
             var laborsWithSupply = _order.Labors
                 .Where(l => l.Supplies.Any(s => s.SupplyId == supplyId))
@@ -328,17 +352,18 @@ namespace GestorOT.Client.Pages
                     s.PlannedHectares > 0 ? s.PlannedHectares : l.Hectares,
                     s.PlannedDose,
                     s.PlannedTotal,
-                    _breakdownPlannedTotal > 0 ? (s.PlannedTotal / _breakdownPlannedTotal) * 100 : 0
+                    _breakdownPlannedTotal > 0 ? Math.Round((s.PlannedTotal / _breakdownPlannedTotal) * 100, 2) : 0
                 ))).ToList();
 
+            // Usar CalculatedTotal/CalculatedDose del modelo local (ya recalculados arriba)
             _realizedRows = laborsWithSupply.SelectMany(l => l.Supplies
                 .Where(s => s.SupplyId == supplyId)
                 .Select(s => new SupplyBreakdownRow(
                     l.LotName,
-                    s.RealHectares ?? l.Hectares,
-                    s.CalculatedDose ?? 0,
-                    s.CalculatedTotal ?? 0,
-                    _breakdownPlannedTotal > 0 ? (s.PlannedTotal / _breakdownPlannedTotal) * 100 : 0
+                    s.RealHectares ?? (s.PlannedHectares > 0 ? s.PlannedHectares : l.Hectares),
+                    s.CalculatedDose.HasValue ? Math.Round(s.CalculatedDose.Value, 2) : 0,
+                    s.CalculatedTotal.HasValue ? Math.Round(s.CalculatedTotal.Value, 2) : 0,
+                    _breakdownPlannedTotal > 0 ? Math.Round((s.PlannedTotal / _breakdownPlannedTotal) * 100, 2) : 0
                 ))).ToList();
 
             _breakdownDrawerVisible = true;
