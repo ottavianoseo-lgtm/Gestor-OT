@@ -785,6 +785,16 @@ else
     private async Task OnSaved()
     {
         _drawerVisible = false;
+
+        // Si la labor pertenece a una OT, consolidar los insumos de esa OT
+        // para que Insumos Consolidados y Reportes reflejen los cambios inmediatamente
+        var laborEditada = _labors.FirstOrDefault(l => l.Id == _editingLaborId);
+        if (laborEditada?.WorkOrderId != null)
+        {
+            await Http.PostAsync(
+                $"api/workorders/{laborEditada.WorkOrderId}/consolidate-supplies", null);
+        }
+
         await LoadData();
     }
 
