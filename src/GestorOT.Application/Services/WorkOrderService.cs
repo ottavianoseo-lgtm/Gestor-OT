@@ -28,12 +28,13 @@ public class WorkOrderService : IWorkOrderService
 
         if (workOrder == null) return;
 
+        // Agrupar supplies por insumo para calcular TotalCalculated
         var suppliesInLabors = workOrder.Labors
             .SelectMany(l => l.Supplies)
             .GroupBy(s => s.SupplyId)
-            .Select(g => new { 
-                SupplyId = g.Key, 
-                Total = g.Sum(s => s.PlannedTotal > 0 ? s.PlannedTotal : (s.RealTotal ?? 0)) 
+            .Select(g => new {
+                SupplyId = g.Key,
+                Total = g.Sum(s => s.PlannedTotal > 0 ? s.PlannedTotal : (s.RealTotal ?? 0))
             })
             .ToList();
 
@@ -52,18 +53,38 @@ public class WorkOrderService : IWorkOrderService
                 _context.WorkOrderSupplyApprovals.Add(approval);
             }
             approval.TotalCalculated = item.Total;
+
+            // Cuando se edita directamente una labor, la suma real de las labores
+            // cambia. Si había un override (RealTotalUsed), ya no es consistente
+            // con los valores reales individuales → lo limpiamos.
+            // El usuario puede volver a ingresar el override desde Insumos Consolidados.
+            if (approval.RealTotalUsed.HasValue)
+            {
+                var sumRealAcrossLabors = workOrder.Labors
+                    .SelectMany(l => l.Supplies)
+                    .Where(s => s.SupplyId == item.SupplyId)
+                    .Sum(s => s.RealTotal ?? 0);
+
+                // Si la suma real de las labores difiere del override, el usuario
+                // editó directamente una labor → el override queda inconsistente → limpiar
+                if (Math.Abs(sumRealAcrossLabors - approval.RealTotalUsed.Value) > 0.001m)
+                {
+                    approval.RealTotalUsed = null;
+                    foreach (var supply in workOrder.Labors
+                        .SelectMany(l => l.Supplies)
+                        .Where(s => s.SupplyId == item.SupplyId))
+                    {
+                        supply.CalculatedTotal = null;
+                        supply.CalculatedDose = null;
+                    }
+                }
+            }
         }
 
         var laborSupplyIds = suppliesInLabors.Select(s => s.SupplyId).ToHashSet();
-        var toRemove = workOrder.SupplyApprovals.Where(a => !laborSupplyIds.Contains(a.SupplyId)).ToList();
+        var toRemove = workOrder.SupplyApprovals
+            .Where(a => !laborSupplyIds.Contains(a.SupplyId)).ToList();
         _context.WorkOrderSupplyApprovals.RemoveRange(toRemove);
-
-        // Re-distribuir proporcionalmente ANTES del SaveChanges
-        // para que EF detecte los cambios en LaborSupply y los persista en el mismo SaveChanges
-        foreach (var approval in workOrder.SupplyApprovals.Where(a => a.RealTotalUsed.HasValue && a.RealTotalUsed > 0))
-        {
-            SupplyDistributionHelper.DistribuirProporcionalmente(workOrder, approval.SupplyId, approval.RealTotalUsed!.Value);
-        }
 
         await _context.SaveChangesAsync();
     }
