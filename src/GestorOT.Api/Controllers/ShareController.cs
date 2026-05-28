@@ -373,6 +373,106 @@ public class ShareController : ControllerBase
         return info;
     }
 
+    // Endpoint público para que el contratista adjunte un archivo a una labor
+    // No requiere autenticación — el token actúa como credencial
+    [HttpPost("upload-file/{token}/labor/{laborId:guid}")]
+    [IgnoreAntiforgeryToken]
+    [DisableRequestSizeLimit]
+    public async Task<IActionResult> UploadFilePublic(string token, Guid laborId, IFormFile file)
+    {
+        if (file == null || file.Length == 0)
+            return BadRequest("No se proporcionó ningún archivo.");
+
+        if (file.Length > 10 * 1024 * 1024)
+            return BadRequest("El archivo supera el límite de 10 MB.");
+
+        // Validar el token
+        var tokenHash = ComputeHash(token);
+        var sharedToken = await _context.SharedTokens
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(t => t.TokenHash == tokenHash);
+
+        if (sharedToken == null) return NotFound("Token inválido.");
+        if (sharedToken.IsRevoked) return BadRequest("Este enlace ha sido revocado.");
+        if (sharedToken.ExpiresAt < DateTime.UtcNow) return BadRequest("Este enlace ha expirado.");
+
+        // Verificar que la labor pertenece al token
+        var metadataInfo = ParseTokenMetadata(sharedToken);
+        bool laborAuthorizada = sharedToken.WorkOrderId.HasValue
+            ? await _context.Labors.IgnoreQueryFilters()
+                .AnyAsync(l => l.Id == laborId && l.WorkOrderId == sharedToken.WorkOrderId)
+            : metadataInfo.AllowedLaborIds.Contains(laborId);
+
+        if (!laborAuthorizada)
+            return NotFound("Labor no asociada a este enlace.");
+
+        // Verificar que la labor existe y obtener el TenantId
+        var labor = await _context.Labors
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(l => l.Id == laborId);
+
+        if (labor == null) return NotFound("Labor no encontrada.");
+
+        using var ms = new MemoryStream();
+        await file.CopyToAsync(ms);
+        var content = ms.ToArray();
+
+        var hash = Convert.ToHexString(SHA256.HashData(content));
+
+        // Nombre del archivo: {laborId}_{nombreOriginal}
+        var safeFileName = $"{laborId}_{file.FileName}";
+
+        // Si el archivo ya existe (mismo hash), reusar y solo vincular
+        var existing = await _context.FileAssets
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(f => f.Hash == hash);
+
+        FileAsset asset;
+        if (existing != null)
+        {
+            asset = existing;
+        }
+        else
+        {
+            asset = new FileAsset
+            {
+                Id = Guid.NewGuid(),
+                TenantId = labor.TenantId,
+                FileName = safeFileName,
+                MimeType = file.ContentType ?? "application/octet-stream",
+                SizeBytes = file.Length,
+                Content = content,
+                Hash = hash,
+                UploadedAt = DateTime.UtcNow,
+                Tags = "contratista",
+                UploadedBy = "contratista",
+                Visibility = "internal"
+            };
+            _context.FileAssets.Add(asset);
+        }
+
+        // Vincular a la labor si no estaba vinculado
+        var yaVinculado = await _context.LaborFileAssets
+            .IgnoreQueryFilters()
+            .AnyAsync(lf => lf.LaborId == laborId && lf.FileAssetId == asset.Id);
+
+        if (!yaVinculado)
+        {
+            _context.LaborFileAssets.Add(new LaborFileAsset
+            {
+                Id = Guid.NewGuid(),
+                TenantId = labor.TenantId,
+                LaborId = laborId,
+                FileAssetId = asset.Id,
+                LinkedAt = DateTime.UtcNow
+            });
+        }
+
+        await _context.SaveChangesAsync();
+
+        return Ok(new { FileId = asset.Id, FileName = safeFileName });
+    }
+
     internal sealed record TokenMetadataInfo
     {
         public Guid? SingleLaborId { get; set; }
