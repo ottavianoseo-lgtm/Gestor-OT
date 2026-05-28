@@ -216,6 +216,57 @@
                                       Disabled="@(isRealized || _isReadOnly)" />
                         </div>
                     </div>
+
+                    @* Sección de adjuntar archivo — disponible en modo público (token) *@
+                    @if (IsPublic)
+                    {
+                        <div style="border-top: 1px solid rgba(255,255,255,0.08); padding-top: 14px; margin-top: 14px;">
+                            <h4 style="color: rgba(255,255,255,0.8); font-size: 13px; margin: 0 0 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">
+                                <Icon Type="paper-clip" Theme="IconThemeType.Outline" Style="margin-right: 4px;" /> Adjuntar Comprobante
+                            </h4>
+                            <p style="color: rgba(255,255,255,0.45); font-size: 12px; margin: 0 0 10px;">
+                                Opcional — podés adjuntar una foto, remito o comprobante de esta labor. Quedará guardado en la biblioteca.
+                            </p>
+
+                            @if (_uploadSuccess.TryGetValue(currentLabor.Id, out var successMsg) && successMsg != null)
+                            {
+                                <Alert Type="@AlertType.Success"
+                                       Message="@($"Archivo adjuntado: {successMsg}")"
+                                       ShowIcon="true"
+                                       Style="margin-bottom: 8px; border-radius: 8px;" />
+                            }
+                            @if (_uploadError.TryGetValue(currentLabor.Id, out var errorMsg) && errorMsg != null)
+                            {
+                                <Alert Type="@AlertType.Error"
+                                       Message="@errorMsg"
+                                       ShowIcon="true"
+                                       Style="margin-bottom: 8px; border-radius: 8px;" />
+                            }
+
+                            <InputFile id="@($"file-{currentLabor.Id}")"
+                                       OnChange="@((InputFileChangeEventArgs e) => UploadFile(e, currentLabor.Id))"
+                                       style="display: none;"
+                                       accept="image/*,.pdf,.doc,.docx,.xls,.xlsx" />
+
+                            <label for="@($"file-{currentLabor.Id}")"
+                                   style="display: inline-flex; align-items: center; gap: 8px; padding: 8px 16px;
+                                          background: rgba(52,152,219,0.15); border: 1px solid rgba(52,152,219,0.4);
+                                          border-radius: 8px; color: #3498DB; cursor: pointer; font-size: 13px;
+                                          font-weight: 500; transition: background 0.2s;">
+                                @if (_uploadingFile.TryGetValue(currentLabor.Id, out var uploading) && uploading)
+                                {
+                                    <Spin Size="AntDesign.SpinSize.Small" />
+                                    <span>Subiendo...</span>
+                                }
+                                else
+                                {
+                                    <Icon Type="upload" Theme="IconThemeType.Outline" />
+                                    <span>Seleccionar archivo</span>
+                                }
+                            </label>
+                            <span style="color: rgba(255,255,255,0.3); font-size: 11px; margin-left: 8px;">Máx. 10 MB</span>
+                        </div>
+                    }
                 </div>
             }
         }
@@ -382,6 +433,11 @@
     private Dictionary<Guid, WeatherLogModel> _weatherLogs = new();
     private bool _allLaborsCompleted;
     private bool _isReadOnly;
+
+    // Upload de archivos por labor (solo en modo público)
+    private Dictionary<Guid, bool> _uploadingFile = new();
+    private Dictionary<Guid, string?> _uploadSuccess = new();
+    private Dictionary<Guid, string?> _uploadError = new();
 
     private bool IsPublic => !string.IsNullOrEmpty(Token);
 
@@ -554,6 +610,57 @@
         "Realized" or "Done" => "background: #52C41A20; color: #52C41A; border: 1px solid #52C41A40; border-radius: 12px; font-size: 11px; padding: 2px 10px;",
         _ => "background: rgba(255,255,255,0.1); color: rgba(255,255,255,0.7); border: 1px solid rgba(255,255,255,0.2); border-radius: 12px; font-size: 11px; padding: 2px 10px;"
     };
+
+    private async Task UploadFile(InputFileChangeEventArgs e, Guid laborId)
+    {
+        var file = e.File;
+        if (file == null) return;
+
+        _uploadError[laborId] = null;
+        _uploadSuccess[laborId] = null;
+        _uploadingFile[laborId] = true;
+        StateHasChanged();
+
+        try
+        {
+            if (file.Size > 10 * 1024 * 1024)
+            {
+                _uploadError[laborId] = "El archivo supera el límite de 10 MB.";
+                return;
+            }
+
+            using var content = new MultipartFormDataContent();
+            using var stream = file.OpenReadStream(maxAllowedSize: 10 * 1024 * 1024);
+            using var ms = new System.IO.MemoryStream();
+            await stream.CopyToAsync(ms);
+            var fileContent = new ByteArrayContent(ms.ToArray());
+            fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(
+                file.ContentType ?? "application/octet-stream");
+            content.Add(fileContent, "file", file.Name);
+
+            var response = await Http.PostAsync(
+                $"api/share/upload-file/{Token}/labor/{laborId}", content);
+
+            if (response.IsSuccessStatusCode)
+            {
+                _uploadSuccess[laborId] = file.Name;
+            }
+            else
+            {
+                var err = await response.Content.ReadAsStringAsync();
+                _uploadError[laborId] = $"Error al subir el archivo: {err}";
+            }
+        }
+        catch (Exception ex)
+        {
+            _uploadError[laborId] = $"Error: {ex.Message}";
+        }
+        finally
+        {
+            _uploadingFile[laborId] = false;
+            StateHasChanged();
+        }
+    }
 
     private async Task RealizeLabor(LaborDto labor)
     {
