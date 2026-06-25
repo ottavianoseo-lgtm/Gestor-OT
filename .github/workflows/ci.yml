@@ -49,3 +49,4 @@ jobs:
           git pull origin main
           docker compose up -d --build gestor-ot-app
           docker image prune -f
+          docker builder prune -f
