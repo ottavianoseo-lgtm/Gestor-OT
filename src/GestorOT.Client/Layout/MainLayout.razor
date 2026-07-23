@@ -135,6 +135,10 @@ else if (!string.IsNullOrEmpty(Loading.SuccessMessage))
                             <Icon Type="bars" Theme="IconThemeType.Outline" />
                             <span>Tipo de Labores</span>
                         </MenuItem>
+                        <MenuItem Key="19" RouterLink="/pases-g4" Style="@MenuItemStyle">
+                            <Icon Type="file-done" Theme="IconThemeType.Outline" />
+                            <span>Pases G4</span>
+                        </MenuItem>
                     </ChildContent>
                 </SubMenu>
 
@@ -212,6 +216,7 @@ else if (!string.IsNullOrEmpty(Loading.SuccessMessage))
             var p when p.StartsWith("/biblioteca") => new[] { "18" },
             var p when p.StartsWith("/admin/labor-catalog") => new[] { "14" },
             var p when p.StartsWith("/admin/workorder-statuses") => new[] { "15" },
+            var p when p.StartsWith("/pases-g4") => new[] { "19" },
             var p when p.StartsWith("/admin") => new[] { "8" },
             _ => Array.Empty<string>()
         };

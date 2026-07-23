@@ -79,6 +79,8 @@ public static class ServiceExtensions
             services.AddScoped<IAuditLogQueryService, AuditLogQueryService>();
             services.AddScoped<GestorOT.Application.Services.IRotationService, RotationService>();
             services.AddScoped<IErpSyncService, ErpSyncService>();
+            services.AddScoped<IPaseBuilderService, PaseBuilderService>();
+            services.AddScoped<IPaseXlsxExportService, PaseXlsxExportService>();
             services.AddHttpClient();
 #pragma warning disable EXTEXP0018
             services.AddHybridCache();

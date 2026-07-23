@@ -1,0 +1,270 @@
+@using GestorOT.Shared.Dtos
+@using System.Net.Http.Json
+@using AntDesign
+@inject HttpClient Http
+@inject IMessageService Message
+@inject GestorOT.Client.Services.CatalogCache CatalogCache
+
+<Modal Title="@($"Configuración Contable G4 — {(string.IsNullOrEmpty(_model.Description) ? (_model.LaborTypeName ?? "General / Defecto") : _model.Description)}")"
+       Visible="@Visible"
+       OnCancel="HandleClose"
+       OnOk="SaveConfiguration"
+       OkText="@("Guardar Configuración")"
+       ConfirmLoading="_saving"
+       Width="680">
+
+    <Form Model="_model" Layout="@FormLayout.Vertical">
+        <Row Gutter="16">
+            <Col Span="12">
+                <FormItem Label="Tipo de Labor">
+                    <Select TItemValue="Guid?" TItem="LaborTypeDto" @bind-Value="_model.LaborTypeId"
+                            Placeholder="General / Defecto (Sin tipo)"
+                            AllowClear
+                            DataSource="@_laborTypes"
+                            LabelName="@nameof(LaborTypeDto.Name)"
+                            ValueName="@nameof(LaborTypeDto.Id)" />
+                </FormItem>
+            </Col>
+            <Col Span="12">
+                <FormItem Label="Nombre / Descripción de Regla">
+                    <Input @bind-Value="_model.Description" Placeholder="Ej: Fumigación Terrestre Propia" />
+                </FormItem>
+            </Col>
+        </Row>
+
+        <Row Gutter="16">
+            <Col Span="12">
+                <FormItem Label="Código Empresa (CodEmpresa)">
+                    <AntDesign.InputNumber TValue="long?" @bind-Value="_model.CodEmpresa" Style="width: 100%;" Placeholder="Ej: 1" />
+                </FormItem>
+            </Col>
+            <Col Span="12">
+                <FormItem Label="Código Comprobante G4 (CodComprobante)">
+                    <AntDesign.InputNumber TValue="long?" @bind-Value="_model.CodComprobante" Style="width: 100%;" Placeholder="Ej: 1001" />
+                </FormItem>
+            </Col>
+        </Row>
+
+        <Row Gutter="16">
+            <Col Span="12">
+                <FormItem Label="Punto de Venta">
+                    <AntDesign.InputNumber TValue="int" @bind-Value="_model.PuntoVenta" Style="width: 100%;" />
+                </FormItem>
+            </Col>
+            <Col Span="12">
+                <FormItem Label="Código Moneda (CodMoneda)">
+                    <AntDesign.InputNumber TValue="long?" @bind-Value="_model.CodMoneda" Style="width: 100%;" Placeholder="Ej: 1 (Pesos)" />
+                </FormItem>
+            </Col>
+        </Row>
+
+        <Divider Text="Perfiles de Imputación (Opcional)" Style="color: rgba(255,255,255,0.6);" />
+
+        <Row Gutter="16">
+            <Col Span="12">
+                <FormItem Label="Cod Perfil Imputación Debe">
+                    <AntDesign.InputNumber TValue="long?" @bind-Value="_model.CodPerfilDebe" Style="width: 100%;" Placeholder="Ej: 501" />
+                </FormItem>
+            </Col>
+            <Col Span="12">
+                <FormItem Label="Cod Perfil Imputación Haber">
+                    <AntDesign.InputNumber TValue="long?" @bind-Value="_model.CodPerfilHaber" Style="width: 100%;" Placeholder="Ej: 502" />
+                </FormItem>
+            </Col>
+        </Row>
+
+        <Divider Text="Cuentas Directas (Imputación por Cuenta)" Style="color: rgba(255,255,255,0.6);" />
+
+        <Row Gutter="16">
+            <Col Span="12">
+                <FormItem Label="Cuenta Debe Gestión">
+                    <AntDesign.InputNumber TValue="long?" @bind-Value="_model.CodCuentaDebeGestion" Style="width: 100%;" />
+                </FormItem>
+            </Col>
+            <Col Span="12">
+                <FormItem Label="Cuenta Haber Gestión">
+                    <AntDesign.InputNumber TValue="long?" @bind-Value="_model.CodCuentaHaberGestion" Style="width: 100%;" />
+                </FormItem>
+            </Col>
+        </Row>
+
+        <Row Gutter="16">
+            <Col Span="12">
+                <FormItem Label="Cuenta Debe Centro Costo">
+                    <AntDesign.InputNumber TValue="long?" @bind-Value="_model.CodCuentaDebeCentro" Style="width: 100%;" />
+                </FormItem>
+            </Col>
+            <Col Span="12">
+                <FormItem Label="Cuenta Haber Centro Costo">
+                    <AntDesign.InputNumber TValue="long?" @bind-Value="_model.CodCuentaHaberCentro" Style="width: 100%;" />
+                </FormItem>
+            </Col>
+        </Row>
+
+        <Row Gutter="16">
+            <Col Span="12">
+                <FormItem Label="Cuenta Debe Contabilidad">
+                    <AntDesign.InputNumber TValue="long?" @bind-Value="_model.CodCuentaDebeContabilidad" Style="width: 100%;" />
+                </FormItem>
+            </Col>
+            <Col Span="12">
+                <FormItem Label="Cuenta Haber Contabilidad">
+                    <AntDesign.InputNumber TValue="long?" @bind-Value="_model.CodCuentaHaberContabilidad" Style="width: 100%;" />
+                </FormItem>
+            </Col>
+        </Row>
+
+        <Divider Text="Opciones de Exclusión" Style="color: rgba(255,255,255,0.6);" />
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+            <Checkbox @bind-Checked="_model.NoImputaGestion">No imputa Gestión</Checkbox>
+            <Checkbox @bind-Checked="_model.NoImputaContabilidad">No imputa Contabilidad</Checkbox>
+            <Checkbox @bind-Checked="_model.NoImputaCentro">No imputa Centro Costos</Checkbox>
+            <Checkbox @bind-Checked="_model.NoImputaAuxiliar">No imputa Auxiliar</Checkbox>
+        </div>
+    </Form>
+</Modal>
+
+@code {
+    [Parameter] public bool Visible { get; set; }
+    [Parameter] public EventCallback<bool> VisibleChanged { get; set; }
+    [Parameter] public AccountConfigurationDto? Configuration { get; set; }
+    [Parameter] public EventCallback OnSaved { get; set; }
+
+    private ConfigModel _model = new();
+    private List<LaborTypeDto> _laborTypes = new();
+    private bool _saving;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _laborTypes = await CatalogCache.GetLaborTypesAsync();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error al cargar tipos de labor: {ex.Message}");
+        }
+    }
+
+    protected override void OnParametersSet()
+    {
+        if (Configuration != null)
+        {
+            _model = new ConfigModel
+            {
+                Id = Configuration.Id,
+                TenantId = Configuration.TenantId,
+                LaborTypeId = Configuration.LaborTypeId,
+                LaborTypeName = Configuration.LaborTypeName,
+                Description = Configuration.Description,
+                CodEmpresa = Configuration.CodEmpresa,
+                CodComprobante = Configuration.CodComprobante,
+                PuntoVenta = Configuration.PuntoVenta,
+                CodMoneda = Configuration.CodMoneda,
+                CodPerfilDebe = Configuration.CodPerfilDebe,
+                CodPerfilHaber = Configuration.CodPerfilHaber,
+                CodPersona = Configuration.CodPersona,
+                NoImputaGestion = Configuration.NoImputaGestion,
+                NoImputaContabilidad = Configuration.NoImputaContabilidad,
+                NoImputaCentro = Configuration.NoImputaCentro,
+                NoImputaAuxiliar = Configuration.NoImputaAuxiliar,
+                CodCuentaDebeGestion = Configuration.CodCuentaDebeGestion,
+                CodCuentaHaberGestion = Configuration.CodCuentaHaberGestion,
+                CodCuentaDebeCentro = Configuration.CodCuentaDebeCentro,
+                CodCuentaHaberCentro = Configuration.CodCuentaHaberCentro,
+                CodCuentaDebeContabilidad = Configuration.CodCuentaDebeContabilidad,
+                CodCuentaHaberContabilidad = Configuration.CodCuentaHaberContabilidad
+            };
+        }
+    }
+
+    private async Task SaveConfiguration()
+    {
+        _saving = true;
+        try
+        {
+            var matchedLaborType = _laborTypes.FirstOrDefault(t => t.Id == _model.LaborTypeId);
+            var laborTypeName = matchedLaborType?.Name ?? _model.LaborTypeName;
+
+            var dto = new AccountConfigurationDto(
+                _model.Id,
+                _model.TenantId,
+                _model.LaborTypeId,
+                laborTypeName,
+                "", "", _model.Description ?? "", true,
+                _model.CodEmpresa,
+                _model.CodComprobante,
+                _model.PuntoVuntoOrDefault(),
+                _model.CodMoneda,
+                _model.CodPerfilDebe,
+                _model.CodPerfilHaber,
+                _model.CodPersona,
+                _model.NoImputaGestion,
+                _model.NoImputaContabilidad,
+                _model.NoImputaCentro,
+                _model.NoImputaAuxiliar,
+                _model.CodCuentaDebeGestion,
+                _model.CodCuentaHaberGestion,
+                _model.CodCuentaDebeCentro,
+                _model.CodCuentaHaberCentro,
+                _model.CodCuentaDebeContabilidad,
+                _model.CodCuentaHaberContabilidad,
+                null, null
+            );
+
+            var resp = await Http.PostAsJsonAsync("api/pases/account-configurations", dto);
+            if (resp.IsSuccessStatusCode)
+            {
+                Message.Success("Configuración contable guardada exitosamente.");
+                await VisibleChanged.InvokeAsync(false);
+                await OnSaved.InvokeAsync();
+            }
+            else
+            {
+                Message.Error("No se pudo guardar la configuración contable.");
+            }
+        }
+        catch (Exception ex)
+        {
+            Message.Error($"Error al guardar: {ex.Message}");
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private async Task HandleClose()
+    {
+        await VisibleChanged.InvokeAsync(false);
+    }
+
+    public class ConfigModel
+    {
+        public Guid Id { get; set; }
+        public Guid TenantId { get; set; }
+        public Guid? LaborTypeId { get; set; }
+        public string? LaborTypeName { get; set; }
+        public string? Description { get; set; }
+        public long? CodEmpresa { get; set; } = 1;
+        public long? CodComprobante { get; set; } = 1;
+        public int PuntoVenta { get; set; } = 1;
+        public long? CodMoneda { get; set; } = 1;
+        public long? CodPerfilDebe { get; set; }
+        public long? CodPerfilHaber { get; set; }
+        public long? CodPersona { get; set; }
+        public bool NoImputaGestion { get; set; }
+        public bool NoImputaContabilidad { get; set; }
+        public bool NoImputaCentro { get; set; }
+        public bool NoImputaAuxiliar { get; set; }
+        public long? CodCuentaDebeGestion { get; set; }
+        public long? CodCuentaHaberGestion { get; set; }
+        public long? CodCuentaDebeCentro { get; set; }
+        public long? CodCuentaHaberCentro { get; set; }
+        public long? CodCuentaDebeContabilidad { get; set; }
+        public long? CodCuentaHaberContabilidad { get; set; }
+
+        public int PuntoVuntoOrDefault() => PuntoVenta <= 0 ? 1 : PuntoVenta;
+    }
+}

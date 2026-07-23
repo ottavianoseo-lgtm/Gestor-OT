@@ -1,0 +1,222 @@
+@using GestorOT.Shared.Dtos
+@using System.Net.Http.Json
+@using AntDesign
+@inject HttpClient Http
+@inject IMessageService Message
+
+<Modal Title="Generar Lote de Pases G4"
+       Visible="@IsOpen"
+       OnCancel="HandleClose"
+       Footer="null"
+       Width="850">
+
+    <div style="display: flex; flex-direction: column; gap: 16px;">
+        <div>
+            <span style="font-size: 12px; color: rgba(255,255,255,0.6); display: block; margin-bottom: 6px;">Descripción del lote (opcional)</span>
+            <Input @bind-Value="_descripcion" Placeholder="Ej: Lote Labores Julio 2026 - Campaña Trigo" />
+        </div>
+
+        <Tabs DefaultActiveKey="wos" @bind-ActiveKey="_activeTab">
+            <TabPane Key="wos" Tab="@($"Órdenes de Trabajo ({_pendingWos.Count})")">
+                @if (_loading)
+                {
+                    <div style="text-align: center; padding: 40px;">
+                        <Spin Tip="Cargando Órdenes de Trabajo pendientes..." />
+                    </div>
+                }
+                else if (!_pendingWos.Any())
+                {
+                    <div style="text-align: center; padding: 40px; color: rgba(255,255,255,0.4);">
+                        <Icon Type="check-circle" Theme="IconThemeType.Outline" Style="font-size: 36px; margin-bottom: 8px; display: block;" />
+                        <span>No hay Órdenes de Trabajo pendientes de imputación.</span>
+                    </div>
+                }
+                else
+                {
+                    <Table TItem="PendingImputacionItemDto"
+                           DataSource="_pendingWos"
+                           Size="@TableSize.Small"
+                           PageSize="10"
+                           SelectedRowsChanged="SelectedWoRowsChanged"
+                           RowKey="x => x.Id.ToString()">
+                        <Selection Key="@(context.Id.ToString())" Type="SelectionType.Checkbox" />
+                        <PropertyColumn Property="c => c.Identifier" Title="Identificador" Sortable />
+                        <PropertyColumn Property="c => c.Date" Title="Fecha" Format="dd/MM/yyyy" Sortable />
+                        <PropertyColumn Property="c => c.Details" Title="Detalles" />
+                        <PropertyColumn Property="c => c.Area" Title="Superficie Total">
+                            <span style="font-weight: 600; font-family: monospace;">@context.Area.ToString("N1") ha</span>
+                        </PropertyColumn>
+                        <Column TData="string" Title="Estado">
+                            <Tag Color="@("green")">@context.Status</Tag>
+                        </Column>
+                    </Table>
+                }
+            </TabPane>
+
+            <TabPane Key="labors" Tab="@($"Labores Sueltas ({_pendingLabors.Count})")">
+                @if (_loading)
+                {
+                    <div style="text-align: center; padding: 40px;">
+                        <Spin Tip="Cargando labores sueltas..." />
+                    </div>
+                }
+                else if (!_pendingLabors.Any())
+                {
+                    <div style="text-align: center; padding: 40px; color: rgba(255,255,255,0.4);">
+                        <Icon Type="thunderbolt" Theme="IconThemeType.Outline" Style="font-size: 36px; margin-bottom: 8px; display: block;" />
+                        <span>No hay labores sueltas pendientes de imputación.</span>
+                    </div>
+                }
+                else
+                {
+                    <Table TItem="PendingImputacionItemDto"
+                           DataSource="_pendingLabors"
+                           Size="@TableSize.Small"
+                           PageSize="10"
+                           SelectedRowsChanged="SelectedLaborRowsChanged"
+                           RowKey="x => x.Id.ToString()">
+                        <Selection Key="@(context.Id.ToString())" Type="SelectionType.Checkbox" />
+                        <PropertyColumn Property="c => c.Identifier" Title="Labor / Lote" Sortable />
+                        <PropertyColumn Property="c => c.Date" Title="Fecha Ejecución" Format="dd/MM/yyyy" Sortable />
+                        <PropertyColumn Property="c => c.Details" Title="Detalles" />
+                        <PropertyColumn Property="c => c.Area" Title="Superficie">
+                            <span style="font-weight: 600; font-family: monospace;">@context.Area.ToString("N1") ha</span>
+                        </PropertyColumn>
+                        <Column TData="string" Title="Estado">
+                            <Tag Color="@("blue")">@context.Status</Tag>
+                        </Column>
+                    </Table>
+                }
+            </TabPane>
+        </Tabs>
+
+        @if (_warnings.Any())
+        {
+            <Alert Type="@AlertType.Warning" Message="Advertencias" Description="@(string.Join("\n", _warnings))" ShowIcon="true" />
+        }
+
+        <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 16px; margin-top: 8px;">
+            <span style="font-size: 13px; color: rgba(255,255,255,0.6);">
+                Seleccionados: <strong>@(_selectedWoIds.Count + _selectedLaborIds.Count)</strong> elementos
+            </span>
+            <div style="display: flex; gap: 8px;">
+                <Button OnClick="HandleClose">Cancelar</Button>
+                <Button Type="@ButtonType.Primary"
+                        Icon="file-done"
+                        Loading="_generando"
+                        Disabled="@(_selectedWoIds.Count == 0 && _selectedLaborIds.Count == 0)"
+                        OnClick="Generar"
+                        Style="background: #2ECC71; border-color: #2ECC71; font-weight: 600;">
+                    Generar Lote G4
+                </Button>
+            </div>
+        </div>
+    </div>
+</Modal>
+
+@code {
+    [Parameter] public bool IsOpen { get; set; }
+    [Parameter] public EventCallback<bool> IsOpenChanged { get; set; }
+    [Parameter] public EventCallback OnLoteGenerado { get; set; }
+
+    private string _activeTab = "wos";
+    private string _descripcion = "";
+    private bool _loading;
+    private bool _generando;
+    private List<string> _warnings = new();
+
+    private List<PendingImputacionItemDto> _pendingWos = new();
+    private List<PendingImputacionItemDto> _pendingLabors = new();
+
+    private HashSet<Guid> _selectedWoIds = new();
+    private HashSet<Guid> _selectedLaborIds = new();
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (IsOpen && !_pendingWos.Any() && !_pendingLabors.Any())
+        {
+            await CargarPendientesAsync();
+        }
+    }
+
+    private async Task CargarPendientesAsync()
+    {
+        _loading = true; _warnings.Clear();
+        try
+        {
+            var res = await Http.GetFromJsonAsync<List<PendingImputacionItemDto>>("api/pases/pending");
+            if (res != null)
+            {
+                _pendingWos = res.Where(i => i.Type == "WorkOrder").ToList();
+                _pendingLabors = res.Where(i => i.Type == "Labor").ToList();
+            }
+        }
+        catch (Exception ex)
+        {
+            Message.Error($"Error al cargar pendientes: {ex.Message}");
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private void SelectedWoRowsChanged(IEnumerable<PendingImputacionItemDto> selected)
+    {
+        _selectedWoIds = selected.Select(x => x.Id).ToHashSet();
+    }
+
+    private void SelectedLaborRowsChanged(IEnumerable<PendingImputacionItemDto> selected)
+    {
+        _selectedLaborIds = selected.Select(x => x.Id).ToHashSet();
+    }
+
+    private async Task Generar()
+    {
+        _generando = true; _warnings.Clear();
+        try
+        {
+            var req = new GenerarLoteRequestDto(
+                _selectedWoIds.ToList(),
+                _selectedLaborIds.ToList(),
+                _descripcion
+            );
+
+            var resp = await Http.PostAsJsonAsync("api/pases/lotes", req);
+            var result = await resp.Content.ReadFromJsonAsync<PaseLoteResult>();
+
+            if (result?.Success == true)
+            {
+                Message.Success($"Lote G4 generado exitosamente con {result.TotalPases} pases.");
+                await IsOpenChanged.InvokeAsync(false);
+                await OnLoteGenerado.InvokeAsync();
+            }
+            else
+            {
+                Message.Error(result?.Error ?? "Error al generar el lote.");
+                _warnings = result?.Warnings ?? new List<string>();
+            }
+        }
+        catch (Exception ex)
+        {
+            Message.Error($"Error inesperado: {ex.Message}");
+        }
+        finally
+        {
+            _generando = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task HandleClose()
+    {
+        _pendingWos.Clear();
+        _pendingLabors.Clear();
+        _selectedWoIds.Clear();
+        _selectedLaborIds.Clear();
+        _warnings.Clear();
+        _descripcion = "";
+        await IsOpenChanged.InvokeAsync(false);
+    }
+}

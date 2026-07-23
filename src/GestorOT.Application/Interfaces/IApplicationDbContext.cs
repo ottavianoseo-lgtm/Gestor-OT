@@ -33,6 +33,9 @@ public interface IApplicationDbContext
     DbSet<FileAsset> FileAssets { get; }
     DbSet<LaborFileAsset> LaborFileAssets { get; }
     DbSet<WorkOrderSupplyApproval> WorkOrderSupplyApprovals { get; }
+    DbSet<PaseLote> PasesLote { get; }
+    DbSet<PaseImputacion> PasesImputacion { get; }
+    DbSet<AccountConfiguration> AccountConfigurations { get; }
     DatabaseFacade Database { get; }
     Guid CurrentTenantId { get; }
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);

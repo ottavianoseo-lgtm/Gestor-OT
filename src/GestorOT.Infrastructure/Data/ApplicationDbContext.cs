@@ -47,6 +47,9 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
     public DbSet<FileAsset> FileAssets => Set<FileAsset>();
     public DbSet<LaborFileAsset> LaborFileAssets => Set<LaborFileAsset>();
     public DbSet<WorkOrderSupplyApproval> WorkOrderSupplyApprovals => Set<WorkOrderSupplyApproval>();
+    public DbSet<PaseLote> PasesLote => Set<PaseLote>();
+    public DbSet<PaseImputacion> PasesImputacion => Set<PaseImputacion>();
+    public DbSet<AccountConfiguration> AccountConfigurations => Set<AccountConfiguration>();
 
     public Guid CurrentTenantId
     {
@@ -199,6 +202,21 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
         });
 
         modelBuilder.Entity<StrategyItem>(entity =>
+        {
+            entity.HasQueryFilter(e => CurrentTenantId == Guid.Empty || e.TenantId == CurrentTenantId);
+        });
+
+        modelBuilder.Entity<PaseLote>(entity =>
+        {
+            entity.HasQueryFilter(e => CurrentTenantId == Guid.Empty || e.TenantId == CurrentTenantId);
+        });
+
+        modelBuilder.Entity<PaseImputacion>(entity =>
+        {
+            entity.HasQueryFilter(e => CurrentTenantId == Guid.Empty || e.TenantId == CurrentTenantId);
+        });
+
+        modelBuilder.Entity<AccountConfiguration>(entity =>
         {
             entity.HasQueryFilter(e => CurrentTenantId == Guid.Empty || e.TenantId == CurrentTenantId);
         });
