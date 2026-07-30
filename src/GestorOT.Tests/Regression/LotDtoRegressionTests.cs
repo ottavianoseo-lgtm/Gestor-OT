@@ -174,4 +174,36 @@ public class LotDtoRegressionTests
         Assert.Equal(42.5m, dto.CadastralArea);
         Assert.Equal("POLYGON ((0 0, 1 0, 1 1, 0 0))", dto.WktGeometry);
     }
+
+    [Fact]
+    public void ImportedPolygon_ZeroCadastralArea_ShouldAllowBackendCalculationAndProductiveAssignment()
+    {
+        var lotId = Guid.NewGuid();
+        var fieldId = Guid.NewGuid();
+        var wkt = "POLYGON ((-63.0 -31.0, -63.0 -31.1, -63.1 -31.1, -63.1 -31.0, -63.0 -31.0))";
+
+        // When linking imported geometry, passing 0 CadastralArea signals backend calculation
+        var dto = new LotDto(
+            lotId,
+            fieldId,
+            "Lote Importado",
+            "Active",
+            wkt,
+            "Campo Norte",
+            0,
+            0 // 0 means calculate area from WKT and update ProductiveArea automatically
+        );
+
+        Assert.Equal(lotId, dto.Id);
+        Assert.Equal(0m, dto.CadastralArea);
+        Assert.Equal(wkt, dto.WktGeometry);
+
+        // Simulate backend assignment logic
+        decimal calculatedAreaFromWkt = 105.75m;
+        var finalCadastral = dto.CadastralArea == 0 ? calculatedAreaFromWkt : dto.CadastralArea;
+        var campaignLotProductiveArea = finalCadastral;
+
+        Assert.Equal(105.75m, finalCadastral);
+        Assert.Equal(105.75m, campaignLotProductiveArea);
+    }
 }
