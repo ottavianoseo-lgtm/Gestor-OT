@@ -12,7 +12,7 @@ public class LotConfiguration : IEntityTypeConfiguration<Lot>
         builder.HasKey(e => e.Id);
         builder.Property(e => e.Name).IsRequired().HasMaxLength(200);
         builder.Property(e => e.Status).HasMaxLength(50);
-        builder.Property(e => e.Geometry).HasColumnType("geometry(Polygon, 4326)");
+        builder.Property(e => e.Geometry).HasColumnType("geometry(Geometry, 4326)");
         builder.HasIndex(e => e.Geometry).HasMethod("GIST");
         builder.Property(e => e.CadastralArea).HasPrecision(18, 4);
         builder.HasOne(e => e.Field)
