@@ -1,6 +1,7 @@
 @implements IDisposable
 @inject HttpClient Http
 @inject GestorOT.Client.Services.CampaignState CampaignState
+@inject GestorOT.Client.Services.TenantState TenantState
 @using GestorOT.Shared
 @using GestorOT.Shared.Dtos
 @using AntDesign
@@ -240,7 +241,17 @@
     {
         CampaignState.OnChange += StateHasChanged;
         CampaignState.OnCampaignsChanged += HandleCampaignsChanged;
+        TenantState.OnChange += OnTenantChanged;
         await LoadCampaigns(skipAutoSelect: false);
+    }
+
+    private void OnTenantChanged()
+    {
+        _ = InvokeAsync(async () =>
+        {
+            await LoadCampaigns(skipAutoSelect: false);
+            StateHasChanged();
+        });
     }
 
     private async Task HandleCampaignsChanged()
@@ -266,6 +277,13 @@
     {
         try
         {
+            if (!TenantState.IsSelected)
+            {
+                _campaigns = new();
+                CampaignState.Clear();
+                return;
+            }
+
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
             var allCampaigns = await Http.GetFromJsonAsync("api/campaigns/selector",
                 AppJsonSerializerContext.Default.ListCampaignSummaryDto, cts.Token);
@@ -275,23 +293,20 @@
             if (_campaigns.Count > 0)
             {
                 var savedId = await CampaignState.GetSavedCampaignId();
-                var currentId = CampaignState.CurrentCampaign?.Id;
-                
-                // If we have a saved ID and no selection (or stale selection), try to restore it
-                if (savedId.HasValue && (!CampaignState.IsSelected || currentId != savedId))
-                {
-                    var savedCampaign = _campaigns.FirstOrDefault(c => c.Id == savedId.Value);
-                    if (savedCampaign != null)
-                    {
-                        CampaignState.SetCampaign(savedCampaign);
-                    }
-                }
+                var savedCampaign = savedId.HasValue ? _campaigns.FirstOrDefault(c => c.Id == savedId.Value) : null;
 
-                // If still no selection, or the current selection is no longer in the list, pick the first one
-                if (!CampaignState.IsSelected || !_campaigns.Any(c => c.Id == CampaignState.CurrentCampaign?.Id))
+                if (savedCampaign != null && !skipAutoSelect)
+                {
+                    CampaignState.SetCampaign(savedCampaign);
+                }
+                else if (!CampaignState.IsSelected || !_campaigns.Any(c => c.Id == CampaignState.CurrentCampaign?.Id))
                 {
                     CampaignState.SetCampaign(_campaigns[0]);
                 }
+            }
+            else
+            {
+                CampaignState.Clear();
             }
         }
         catch (Exception ex)
@@ -327,11 +342,10 @@
         _modalVisible = false;
     }
 
-
-
     public void Dispose()
     {
         CampaignState.OnChange -= StateHasChanged;
         CampaignState.OnCampaignsChanged -= HandleCampaignsChanged;
+        TenantState.OnChange -= OnTenantChanged;
     }
 }
