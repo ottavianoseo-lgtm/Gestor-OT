@@ -211,9 +211,8 @@
                             <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; padding: 2px; display: flex; align-items: center;">
                                 @if (_editingAreas.ContainsKey(c.Id))
                                 {
-                                    <input type="number" step="0.01" value="@_editingAreas[c.Id]"
-                                           @oninput="@((ChangeEventArgs e) => { if (decimal.TryParse(e.Value?.ToString(), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var v)) _editingAreas[c.Id] = v; })"
-                                           style="width: 100%; background: transparent; color: #2ECC71; font-weight: 700; text-align: center; border: none; outline: none; font-size: 12px;" />
+                                    <AntDesign.InputNumber TValue="decimal" Value="@_editingAreas[c.Id]" ValueChanged="@((decimal v) => _editingAreas[c.Id] = v)" Min="0m" Step="0.01m"
+                                                           Style="width: 100%; background: transparent; color: #2ECC71; font-weight: 700; text-align: center; border: none; outline: none; font-size: 12px;" />
                                 }
                             </div>
                             <span style="font-size: 11px; font-weight: 600; color: @variationColor; text-align: center;">@variationText</span>
@@ -253,9 +252,8 @@
 
         <div>
             <label style="display: block; color: rgba(255,255,255,0.6); font-size: 13px; margin-bottom: 8px;">Hectáreas</label>
-            <input type="number" step="0.01" min="0" value="@_formModel.CadastralArea"
-                   @oninput="@((ChangeEventArgs e) => { if (decimal.TryParse(e.Value?.ToString(), out var v)) _formModel.CadastralArea = v; })"
-                   style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15); border-radius: 12px; height: 42px; color: #fff; width: 100%; padding: 4px 11px; font-size: 14px;" />
+            <AntDesign.InputNumber TValue="decimal" @bind-Value="_formModel.CadastralArea" Min="0m" Step="0.01m"
+                                   Style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15); border-radius: 12px; height: 42px; color: #fff; width: 100%; font-size: 14px;" />
         </div>
 
         <div style="margin-top: 10px;">
@@ -293,9 +291,8 @@
         </div>
         <div>
             <label style="display: block; margin-bottom: 8px; font-size: 12px; color: rgba(255,255,255,0.5);">Superficie Productiva (ha)</label>
-            <input type="number" step="0.01" value="@_newCampaignProductiveArea"
-                   @oninput="@((ChangeEventArgs e) => { if (decimal.TryParse(e.Value?.ToString(), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var v)) _newCampaignProductiveArea = v; })"
-                   style="width: 100%; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15); border-radius: 8px; padding: 4px 11px; color: #fff; font-size: 14px; height: 32px;" />
+            <AntDesign.InputNumber TValue="decimal" @bind-Value="_newCampaignProductiveArea" Min="0m" Step="0.01m"
+                                   Style="width: 100%; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15); border-radius: 8px; color: #fff; font-size: 14px; height: 32px;" />
         </div>
     </div>
 </Modal>
