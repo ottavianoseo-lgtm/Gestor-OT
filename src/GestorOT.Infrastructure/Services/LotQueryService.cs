@@ -84,8 +84,55 @@ public class LotQueryService : ILotQueryService
                 ["fieldName"] = l.Field?.Name ?? "",
                 ["area"] = areaMap.GetValueOrDefault(l.Id, 0)
             },
-            l.Geometry != null ? ParseGeometry((Polygon)l.Geometry) : null
+            l.Geometry != null ? ParseGeometry(l.Geometry) : null
         )).ToList();
+
+        return new GeoJsonFeatureCollection("FeatureCollection", features);
+    }
+
+    public async Task<GeoJsonFeatureCollection> GetFieldsGeoJsonAsync(CancellationToken ct = default)
+    {
+        var fields = await _context.Fields
+            .AsNoTracking()
+            .Include(f => f.Lots)
+            .Where(f => f.Lots.Any(l => l.Geometry != null))
+            .ToListAsync(ct);
+
+        var features = new List<GeoJsonFeature>();
+
+        foreach (var field in fields)
+        {
+            var validGeometries = field.Lots
+                .Where(l => l.Geometry != null && !l.Geometry.IsEmpty)
+                .Select(l => l.Geometry!)
+                .ToList();
+
+            if (validGeometries.Count == 0) continue;
+
+            Geometry? compositeGeometry;
+            if (validGeometries.Count == 1)
+            {
+                compositeGeometry = validGeometries[0];
+            }
+            else
+            {
+                compositeGeometry = NetTopologySuite.Operation.Union.UnaryUnionOp.Union(validGeometries);
+            }
+
+            var totalCadastralArea = field.Lots.Sum(l => l.CadastralArea);
+
+            features.Add(new GeoJsonFeature(
+                "Feature",
+                new Dictionary<string, object>
+                {
+                    ["id"] = field.Id.ToString(),
+                    ["name"] = field.Name,
+                    ["lotsCount"] = field.Lots.Count,
+                    ["area"] = (double)totalCadastralArea
+                },
+                ParseGeometry(compositeGeometry)
+            ));
+        }
 
         return new GeoJsonFeatureCollection("FeatureCollection", features);
     }
@@ -165,10 +212,34 @@ public class LotQueryService : ILotQueryService
         return Math.Round(result, 4);
     }
 
-    private static GeoJsonGeometry ParseGeometry(Polygon polygon)
+    private static GeoJsonGeometry? ParseGeometry(Geometry? geometry)
     {
-        var coords = polygon.Coordinates;
-        var ring = coords.Select(c => new double[] { c.X, c.Y }).ToArray();
-        return new GeoJsonGeometry("Polygon", new double[][][] { ring });
+        if (geometry == null) return null;
+
+        if (geometry is Polygon polygon)
+        {
+            var coords = polygon.Coordinates;
+            var ring = coords.Select(c => new double[] { c.X, c.Y }).ToArray();
+            return new GeoJsonGeometry("Polygon", new double[][][] { ring });
+        }
+        else if (geometry is MultiPolygon multiPolygon)
+        {
+            var polyRings = new List<double[][]>();
+            for (int i = 0; i < multiPolygon.NumGeometries; i++)
+            {
+                if (multiPolygon.GetGeometryN(i) is Polygon poly)
+                {
+                    var ring = poly.Coordinates.Select(c => new double[] { c.X, c.Y }).ToArray();
+                    polyRings.Add(ring);
+                }
+            }
+            return new GeoJsonGeometry("MultiPolygon", polyRings.ToArray());
+        }
+        else
+        {
+            var coords = geometry.Coordinates;
+            var ring = coords.Select(c => new double[] { c.X, c.Y }).ToArray();
+            return new GeoJsonGeometry("Polygon", new double[][][] { ring });
+        }
     }
 }

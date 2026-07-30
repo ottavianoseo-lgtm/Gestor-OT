@@ -1,4 +1,5 @@
 using GestorOT.Application.Interfaces;
+using GestorOT.Application.Services;
 using GestorOT.Domain.Entities;
 using GestorOT.Shared.Dtos;
 using Microsoft.AspNetCore.Mvc;
@@ -11,10 +12,18 @@ namespace GestorOT.Api.Controllers;
 public class FieldsController : ControllerBase
 {
     private readonly IApplicationDbContext _context;
+    private readonly ILotQueryService _queryService;
 
-    public FieldsController(IApplicationDbContext context)
+    public FieldsController(IApplicationDbContext context, ILotQueryService queryService)
     {
         _context = context;
+        _queryService = queryService;
+    }
+
+    [HttpGet("geojson")]
+    public async Task<ActionResult<GeoJsonFeatureCollection>> GetFieldsGeoJson(CancellationToken ct)
+    {
+        return await _queryService.GetFieldsGeoJsonAsync(ct);
     }
 
     [HttpGet]
