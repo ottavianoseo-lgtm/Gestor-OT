@@ -57,15 +57,16 @@ public class LotsController : ControllerBase
     [HttpPost]
     public async Task<ActionResult<LotDto>> CreateLot(LotDto dto)
     {
-        Polygon? geometry = null;
+        Geometry? geometry = null;
         double areaHa = 0;
         var cadastralArea = dto.CadastralArea;
 
         if (!string.IsNullOrEmpty(dto.WktGeometry))
         {
             var reader = new WKTReader();
-            geometry = (Polygon)reader.Read(dto.WktGeometry);
-            geometry.SRID = 4326;
+            var g = reader.Read(dto.WktGeometry);
+            g.SRID = 4326;
+            geometry = g;
 
             areaHa = await _queryService.CalculateAreaFromWktAsync(dto.WktGeometry);
             if (cadastralArea == 0)
@@ -105,23 +106,48 @@ public class LotsController : ControllerBase
         if (!string.IsNullOrEmpty(dto.WktGeometry))
         {
             var reader = new WKTReader();
-            lot.Geometry = (Polygon)reader.Read(dto.WktGeometry);
-            lot.Geometry.SRID = 4326;
+            var g = reader.Read(dto.WktGeometry);
+            g.SRID = 4326;
+            lot.Geometry = g;
 
-            // #20: Only update CadastralArea from GIS if explicitly provided as 0
-            // AND the lot had no catastral area before (first time assigning geometry).
-            // A user-provided value (even from the form) always wins.
+            var areaHa = await _queryService.CalculateAreaFromWktAsync(dto.WktGeometry);
+            var calculatedArea = (decimal)areaHa;
+
             if (dto.CadastralArea > 0)
             {
                 lot.CadastralArea = dto.CadastralArea;
             }
-            else if (lot.CadastralArea == 0)
+            else
             {
-                // Lot had no area at all — use calculated GIS area as initial value
-                var areaHa = await _queryService.CalculateAreaFromWktAsync(dto.WktGeometry);
-                lot.CadastralArea = (decimal)areaHa;
+                lot.CadastralArea = calculatedArea;
             }
-            // If dto.CadastralArea == 0 but lot already has a value → keep existing (no silent overwrite)
+
+            // Automatically assign imported polygon surface as productive area for campaign lots
+            var campaignLots = await _context.CampaignLots
+                .Where(cl => cl.LotId == lot.Id)
+                .ToListAsync();
+
+            foreach (var cl in campaignLots)
+            {
+                cl.ProductiveArea = lot.CadastralArea;
+            }
+
+            // Recalculate field allocated hectares for affected campaigns
+            var campaignIds = campaignLots.Select(cl => cl.CampaignId).Distinct().ToList();
+            foreach (var campId in campaignIds)
+            {
+                var campaignField = await _context.CampaignFields
+                    .FirstOrDefaultAsync(cf => cf.CampaignId == campId && cf.FieldId == lot.FieldId);
+
+                if (campaignField != null)
+                {
+                    var totalHa = await _context.CampaignLots
+                        .Where(cl => cl.CampaignId == campId && cl.Lot!.FieldId == lot.FieldId)
+                        .SumAsync(cl => cl.ProductiveArea);
+
+                    campaignField.AllocatedHectares = totalHa;
+                }
+            }
         }
         else if (dto.CadastralArea > 0)
         {

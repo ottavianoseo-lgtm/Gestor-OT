@@ -60,6 +60,11 @@
                     <Icon Type="reload" Theme="IconThemeType.Outline" />
                 </div>
             </Tooltip>
+            <Tooltip Title="@(_showFieldPolygons ? "Ocultar Polígonos de Campos" : "Mostrar Polígonos de Campos")">
+                <div class="toolbar-btn @(_showFieldPolygons ? "toolbar-btn--active" : "")" @onclick="ToggleFieldPolygons">
+                    <Icon Type="environment" Theme="IconThemeType.Outline" />
+                </div>
+            </Tooltip>
             <Tooltip Title="@("Explorador de Lotes")">
                 <div class="toolbar-btn" @onclick="() => _showLotsPanel = !_showLotsPanel">
                     <Icon Type="database" Theme="IconThemeType.Outline" />
@@ -335,25 +340,75 @@
     }
 </Modal>
 
-<Modal Title="Vincular Geometría Importada"
+<Modal Title="Crear o Vincular Lote desde Importación"
        Visible="_showLinkModal"
        OnCancel="() => _showLinkModal = false"
        OnOk="SaveImportedGeometry"
-       OkText="@("Vincular y Guardar")"
+       OkText="@(_importCreateNewLot ? "Crear y Vincular Lote" : "Vincular y Guardar")"
        ConfirmLoading="_savingGeometry"
-       Width="450">
-    <div style="margin-bottom: 12px; color: rgba(255,255,255,0.7); font-size: 13px;">
-        Seleccione el lote al que desea vincular esta geometría:
+       Width="500">
+    <div style="display: grid; gap: 16px; padding: 4px 0;">
+        <RadioGroup @bind-Value="_importCreateNewLot" OptionType="RadioGroupOptionType.Button" Style="width: 100%;">
+            <Radio Value="true" Style="width: 48%; text-align: center;">✨ Crear Nuevo Lote</Radio>
+            <Radio Value="false" Style="width: 48%; text-align: center;">🔗 Vincular a Lote Existente</Radio>
+        </RadioGroup>
+
+        @if (_importCreateNewLot)
+        {
+            <div style="display: grid; gap: 12px; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06); padding: 14px; border-radius: 8px;">
+                <div>
+                    <label style="display: block; margin-bottom: 6px; font-size: 12px; color: rgba(255,255,255,0.7);">
+                        Nombre del Nuevo Lote:
+                    </label>
+                    <Input TValue="string" @bind-Value="_newLotName" Placeholder="Ej. Lote 14 Norte" />
+                </div>
+                <div>
+                    <label style="display: block; margin-bottom: 6px; font-size: 12px; color: rgba(255,255,255,0.7);">
+                        Campo al que Pertenece:
+                    </label>
+                    <Select TItem="FieldDto"
+                            TItemValue="Guid"
+                            DataSource="_allFields"
+                            @bind-Value="_newLotFieldId"
+                            LabelName="@nameof(FieldDto.Name)"
+                            ValueName="@nameof(FieldDto.Id)"
+                            Placeholder="Seleccionar campo"
+                            Style="width: 100%;"
+                            EnableSearch />
+                </div>
+            </div>
+        }
+        else
+        {
+            <div>
+                <label style="display: block; margin-bottom: 8px; font-size: 13px; color: rgba(255,255,255,0.7);">
+                    Seleccione el lote al que desea vincular esta geometría:
+                </label>
+                <Select TItem="LotDto"
+                        TItemValue="Guid"
+                        DataSource="_allLots"
+                        @bind-Value="_linkingLotId"
+                        LabelName="@nameof(LotDto.Name)"
+                        ValueName="@nameof(LotDto.Id)"
+                        Placeholder="Seleccionar lote"
+                        Style="width: 100%;"
+                        EnableSearch />
+            </div>
+
+            @if (_allLots.FirstOrDefault(l => l.Id == _linkingLotId) is LotDto targetLot && !string.IsNullOrEmpty(targetLot.WktGeometry))
+            {
+                <div style="background: rgba(243, 156, 18, 0.08); border: 1px solid rgba(243, 156, 18, 0.2); border-radius: 8px; padding: 12px;">
+                    <div style="color: #F39C12; font-size: 12px; font-weight: 600; margin-bottom: 8px;">
+                        &#9888; Este lote ya posee una geometría asignada.
+                    </div>
+                    <RadioGroup @bind-Value="_linkModeCombine">
+                        <Radio Value="true" Style="color: #fff; font-size: 12px;">Agregar polígono (Combinar 1-to-N)</Radio>
+                        <Radio Value="false" Style="color: #fff; font-size: 12px;">Reemplazar geometría existente</Radio>
+                    </RadioGroup>
+                </div>
+            }
+        }
     </div>
-    <Select TItem="LotDto"
-            TItemValue="Guid"
-            DataSource="_orphanLots"
-            @bind-Value="_linkingLotId"
-            LabelName="@nameof(LotDto.Name)"
-            ValueName="@nameof(LotDto.Id)"
-            Placeholder="Seleccionar lote"
-            Style="width: 100%;"
-            EnableSearch />
 </Modal>
 
 <style>
@@ -795,6 +850,8 @@
                 AppJsonSerializerContext.Default.GeoJsonFeatureCollection, cts.Token);
             var fieldsTask = Http.GetFromJsonAsync("api/fields",
                 AppJsonSerializerContext.Default.ListFieldDto, cts.Token);
+            var fieldsGeoTask = Http.GetFromJsonAsync<GeoJsonFeatureCollection>(
+                "api/fields/geojson", AppJsonSerializerContext.Default.GeoJsonFeatureCollection, cts.Token);
 
             _allLots = await lotsTask ?? new();
             _allFields = await fieldsTask ?? new();
@@ -866,6 +923,35 @@
                     else
                     {
                         await JS.InvokeAsync<bool>("mapInterop.fitAllLots");
+                    }
+                }
+            }
+
+            if (_showFieldPolygons)
+            {
+                var fieldsFeatureCollection = await fieldsGeoTask;
+                if (fieldsFeatureCollection?.Features != null)
+                {
+                    await JS.InvokeVoidAsync("mapInterop.clearFields");
+                    foreach (var feature in fieldsFeatureCollection.Features)
+                    {
+                        if (feature.Geometry?.Coordinates != null && feature.Properties != null)
+                        {
+                            var fId = feature.Properties.TryGetValue("id", out var id) ? id?.ToString() ?? "" : "";
+                            var fName = feature.Properties.TryGetValue("name", out var name) ? name?.ToString() ?? "" : "";
+                            int lotsCount = 0;
+                            if (feature.Properties.TryGetValue("lotsCount", out var lc))
+                                lotsCount = Convert.ToInt32(lc);
+                            double fArea = 0;
+                            if (feature.Properties.TryGetValue("area", out var a))
+                                fArea = Convert.ToDouble(a);
+
+                            var leafletCoords = ConvertToLeafletCoords(feature.Geometry.Coordinates);
+                            var coordsJson = System.Text.Json.JsonSerializer.Serialize(leafletCoords);
+
+                            await JS.InvokeAsync<bool>("mapInterop.addFieldPolygon",
+                                fId, fName, lotsCount, fArea, coordsJson);
+                        }
                     }
                 }
             }
@@ -1005,6 +1091,36 @@
         }
     }
 
+    private bool _showFieldPolygons = true;
+
+    private async Task ToggleFieldPolygons()
+    {
+        _showFieldPolygons = !_showFieldPolygons;
+        if (!_showFieldPolygons)
+        {
+            await JS.InvokeVoidAsync("mapInterop.clearFields");
+        }
+        else
+        {
+            await ReloadMap();
+        }
+    }
+
+    [JSInvokable]
+    public async Task OnFieldSelected(string fieldIdStr)
+    {
+        if (Guid.TryParse(fieldIdStr, out var fieldId))
+        {
+            var field = _allFields.FirstOrDefault(f => f.Id == fieldId);
+            if (field != null)
+            {
+                Message.Info($"Campo: '{field.Name}'");
+                await JS.InvokeVoidAsync("mapInterop.centerOnField", fieldIdStr);
+            }
+        }
+        StateHasChanged();
+    }
+
     [JSInvokable]
     public void OnLotSelected(string lotId)
     {
@@ -1105,53 +1221,112 @@
         }
     }
 
+    private bool _importCreateNewLot = true;
+
     private void LinkImportedToLot(ImportResult result)
     {
         _importLinkWkt = result.Wkt;
         _linkingLotId = Guid.Empty;
+        _newLotName = result.Name ?? "";
+        _newLotFieldId = Guid.Empty;
+        _importCreateNewLot = true;
         _showLinkModal = true;
         _showImportModal = false;
     }
 
+    private bool _linkModeCombine = true;
+
     private async Task SaveImportedGeometry()
     {
-        if (string.IsNullOrEmpty(_importLinkWkt) || _linkingLotId == Guid.Empty) return;
+        if (string.IsNullOrEmpty(_importLinkWkt)) return;
 
         _savingGeometry = true;
         try
         {
-            var lot = _allLots.FirstOrDefault(l => l.Id == _linkingLotId);
-            if (lot == null) return;
-
             // Capture current viewport before reload (#7)
             MapBounds? savedBounds = null;
             try { savedBounds = await JS.InvokeAsync<MapBounds?>("mapInterop.getCurrentBounds"); } catch { }
 
-            var dto = new LotDto(
-                lot.Id,
-                lot.FieldId,
-                lot.Name,
-                lot.Status,
-                _importLinkWkt,
-                lot.FieldName,
-                lot.Area,
-                lot.CadastralArea
-            );
-
-            var response = await Http.PutAsJsonAsync($"api/lots/{lot.Id}",
-                dto, AppJsonSerializerContext.Default.LotDto);
-
-            if (response.IsSuccessStatusCode)
+            if (_importCreateNewLot)
             {
-                Message.Success($"Geometría vinculada a '{lot.Name}'.");
-                _showLinkModal = false;
-                _importLinkWkt = null;
-                _linkingLotId = Guid.Empty;
-                await ReloadMap(savedBounds);
+                if (string.IsNullOrWhiteSpace(_newLotName))
+                {
+                    Message.Warning("Ingrese el nombre para el nuevo lote.");
+                    return;
+                }
+                if (_newLotFieldId == Guid.Empty)
+                {
+                    Message.Warning("Seleccione un campo para el nuevo lote.");
+                    return;
+                }
+
+                var createDto = new LotDto(
+                    Guid.Empty,
+                    _newLotFieldId,
+                    _newLotName,
+                    "Active",
+                    _importLinkWkt,
+                    null,
+                    0,
+                    0
+                );
+
+                var response = await Http.PostAsJsonAsync("api/lots", createDto, AppJsonSerializerContext.Default.LotDto);
+                if (response.IsSuccessStatusCode)
+                {
+                    Message.Success($"Lote '{_newLotName}' creado y vinculado exitosamente.");
+                    _showLinkModal = false;
+                    _importLinkWkt = null;
+                    _newLotName = "";
+                    _newLotFieldId = Guid.Empty;
+                    await ReloadMap(savedBounds);
+                }
+                else
+                {
+                    Message.Error($"Error al crear lote: {response.StatusCode}");
+                }
             }
             else
             {
-                Message.Error($"Error: {response.StatusCode}");
+                if (_linkingLotId == Guid.Empty)
+                {
+                    Message.Warning("Seleccione un lote existente.");
+                    return;
+                }
+
+                var lot = _allLots.FirstOrDefault(l => l.Id == _linkingLotId);
+                if (lot == null) return;
+
+                var finalWkt = (_linkModeCombine && !string.IsNullOrEmpty(lot.WktGeometry))
+                    ? CombineWktGeometries(lot.WktGeometry, _importLinkWkt)
+                    : _importLinkWkt;
+
+                var dto = new LotDto(
+                    lot.Id,
+                    lot.FieldId,
+                    lot.Name,
+                    lot.Status,
+                    finalWkt,
+                    lot.FieldName,
+                    lot.Area,
+                    0
+                );
+
+                var response = await Http.PutAsJsonAsync($"api/lots/{lot.Id}",
+                    dto, AppJsonSerializerContext.Default.LotDto);
+
+                if (response.IsSuccessStatusCode)
+                {
+                    Message.Success($"Geometría vinculada a '{lot.Name}'.");
+                    _showLinkModal = false;
+                    _importLinkWkt = null;
+                    _linkingLotId = Guid.Empty;
+                    await ReloadMap(savedBounds);
+                }
+                else
+                {
+                    Message.Error($"Error: {response.StatusCode}");
+                }
             }
         }
         catch (Exception ex)
@@ -1164,10 +1339,97 @@
         }
     }
 
-    private static double[][][] ConvertToLeafletCoords(double[][][] geoJsonCoords)
+    private static string CombineWktGeometries(string existingWkt, string newWkt)
     {
-        return geoJsonCoords.Select(ring =>
-            ring.Select(coord => new double[] { coord[1], coord[0] }).ToArray()
-        ).ToArray();
+        if (string.IsNullOrWhiteSpace(existingWkt)) return newWkt;
+        try
+        {
+            var reader = new NetTopologySuite.IO.WKTReader();
+            var writer = new NetTopologySuite.IO.WKTWriter();
+
+            var g1 = reader.Read(existingWkt);
+            var g2 = reader.Read(newWkt);
+
+            var polygons = new List<NetTopologySuite.Geometries.Polygon>();
+
+            void CollectPolygons(NetTopologySuite.Geometries.Geometry geom)
+            {
+                if (geom is NetTopologySuite.Geometries.Polygon p) polygons.Add(p);
+                else if (geom is NetTopologySuite.Geometries.GeometryCollection gc)
+                {
+                    for (int i = 0; i < gc.NumGeometries; i++)
+                    {
+                        CollectPolygons(gc.GetGeometryN(i));
+                    }
+                }
+            }
+
+            CollectPolygons(g1);
+            CollectPolygons(g2);
+
+            if (polygons.Count == 0) return newWkt;
+            if (polygons.Count == 1) return writer.Write(polygons[0]);
+
+            var factory = g1.Factory ?? NetTopologySuite.NtsGeometryServices.Instance.CreateGeometryFactory(4326);
+            var multiPoly = factory.CreateMultiPolygon(polygons.ToArray());
+            return writer.Write(multiPoly);
+        }
+        catch
+        {
+            return newWkt;
+        }
+    }
+
+    private static object ConvertToLeafletCoords(object? rawCoordinates)
+    {
+        if (rawCoordinates == null) return new double[0][][];
+
+        if (rawCoordinates is System.Text.Json.JsonElement elem)
+        {
+            var json = elem.GetRawText();
+            if (elem.ValueKind == System.Text.Json.JsonValueKind.Array && elem.GetArrayLength() > 0)
+            {
+                var first = elem[0];
+                if (first.ValueKind == System.Text.Json.JsonValueKind.Array && first.GetArrayLength() > 0 &&
+                    first[0].ValueKind == System.Text.Json.JsonValueKind.Array && first[0].GetArrayLength() > 0 &&
+                    first[0][0].ValueKind == System.Text.Json.JsonValueKind.Array)
+                {
+                    // MultiPolygon (4D)
+                    var multi = System.Text.Json.JsonSerializer.Deserialize<double[][][][]>(json);
+                    if (multi != null)
+                    {
+                        return multi.Select(poly =>
+                            poly.Select(ring =>
+                                ring.Select(c => new double[] { c[1], c[0] }).ToArray()
+                            ).ToArray()
+                        ).ToArray();
+                    }
+                }
+            }
+
+            var poly3d = System.Text.Json.JsonSerializer.Deserialize<double[][][]>(json);
+            if (poly3d != null)
+            {
+                return poly3d.Select(ring =>
+                    ring.Select(c => new double[] { c[1], c[0] }).ToArray()
+                ).ToArray();
+            }
+        }
+        else if (rawCoordinates is double[][][] polyCoords)
+        {
+            return polyCoords.Select(ring =>
+                ring.Select(coord => new double[] { coord[1], coord[0] }).ToArray()
+            ).ToArray();
+        }
+        else if (rawCoordinates is double[][][][] multiCoords)
+        {
+            return multiCoords.Select(poly =>
+                poly.Select(ring =>
+                    ring.Select(coord => new double[] { coord[1], coord[0] }).ToArray()
+                ).ToArray()
+            ).ToArray();
+        }
+
+        return new double[0][][];
     }
 }

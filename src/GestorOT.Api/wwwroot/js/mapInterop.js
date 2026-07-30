@@ -2,6 +2,7 @@ window.mapInterop = {
     map: null,
     dashboardMap: null,
     lotLayers: {},
+    fieldLayers: {},
     selectedLayer: null,
     dotNetRef: null,
     drawControl: null,
@@ -321,6 +322,67 @@ window.mapInterop = {
         });
         this.lotLayers = {};
         this.selectedLayer = null;
+    },
+
+    addFieldPolygon: function (fieldId, fieldName, lotsCount, area, coordinatesJson) {
+        if (!this.map) return false;
+
+        try {
+            const coordinates = JSON.parse(coordinatesJson);
+            const color = '#F39C12'; // Amber / Gold for Field composite polygon
+
+            const polygon = L.polygon(coordinates, {
+                color: color,
+                fillColor: color,
+                fillOpacity: 0.18,
+                weight: 3,
+                dashArray: '5, 5'
+            }).addTo(this.map);
+
+            const popupContent = `
+                <div style="min-width: 200px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #1a1a2e;">
+                    <strong style="font-size: 14px; display: block; margin-bottom: 6px; color: #D35400;">🏡 Campo: ${fieldName}</strong>
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 4px; font-size: 12px;">
+                        <span style="color: #888;">Lotes</span>
+                        <span style="font-weight: 600;">${lotsCount} lotes</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 12px; font-size: 12px;">
+                        <span style="color: #888;">Superficie Total</span>
+                        <span style="font-weight: 600;">${area.toFixed(2)} ha</span>
+                    </div>
+                </div>
+            `;
+            polygon.bindPopup(popupContent, { maxWidth: 240 });
+
+            polygon.on('click', () => {
+                if (this.dotNetRef) {
+                    this.dotNetRef.invokeMethodAsync('OnFieldSelected', fieldId);
+                }
+            });
+
+            this.fieldLayers[fieldId] = polygon;
+            return true;
+        } catch (e) {
+            console.error('Error adding field polygon:', e);
+            return false;
+        }
+    },
+
+    clearFields: function () {
+        if (!this.map || !this.fieldLayers) return;
+
+        Object.values(this.fieldLayers).forEach(layer => {
+            this.map.removeLayer(layer);
+        });
+        this.fieldLayers = {};
+    },
+
+    centerOnField: function (fieldId) {
+        if (!this.map || !this.fieldLayers[fieldId]) return false;
+
+        const layer = this.fieldLayers[fieldId];
+        this.map.fitBounds(layer.getBounds(), { padding: [60, 60], maxZoom: 15 });
+        return true;
     },
 
     clearDrawn: function () {

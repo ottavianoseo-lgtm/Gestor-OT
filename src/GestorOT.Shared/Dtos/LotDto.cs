@@ -65,7 +65,7 @@ public record GeoJsonFeature(
 
 public record GeoJsonGeometry(
     string Type,
-    double[][][]? Coordinates
+    object? Coordinates
 )
 {
     public GeoJsonGeometry() : this("Polygon", null) { }

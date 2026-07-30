@@ -641,9 +641,7 @@
                     {
                         if (feature.Geometry?.Coordinates != null)
                         {
-                            var leafletCoords = feature.Geometry.Coordinates[0]
-                                .Select(c => new double[] { c[1], c[0] })
-                                .ToArray();
+                            var leafletCoords = ParseDashboardLeafletCoords(feature.Geometry.Coordinates);
                             var coordsJson = JsonSerializer.Serialize(leafletCoords);
                             var status = feature.Properties?.ContainsKey("status") == true
                                 ? feature.Properties["status"]?.ToString() ?? "Active"
@@ -691,9 +689,7 @@
                 {
                     if (feature.Geometry?.Coordinates != null)
                     {
-                        var leafletCoords = feature.Geometry.Coordinates[0]
-                            .Select(c => new double[] { c[1], c[0] })
-                            .ToArray();
+                        var leafletCoords = ParseDashboardLeafletCoords(feature.Geometry.Coordinates);
                         var coordsJson = System.Text.Json.JsonSerializer.Serialize(leafletCoords);
                         var status = feature.Properties?.ContainsKey("status") == true
                             ? feature.Properties["status"]?.ToString() ?? "Active"
@@ -710,6 +706,58 @@
         {
             // Map reload failures are non-critical; do not surface to user
         }
+    }
+
+    private static object ParseDashboardLeafletCoords(object? rawCoordinates)
+    {
+        if (rawCoordinates == null) return new double[0][][];
+
+        if (rawCoordinates is System.Text.Json.JsonElement elem)
+        {
+            var json = elem.GetRawText();
+            if (elem.ValueKind == System.Text.Json.JsonValueKind.Array && elem.GetArrayLength() > 0)
+            {
+                var first = elem[0];
+                if (first.ValueKind == System.Text.Json.JsonValueKind.Array && first.GetArrayLength() > 0 &&
+                    first[0].ValueKind == System.Text.Json.JsonValueKind.Array && first[0].GetArrayLength() > 0 &&
+                    first[0][0].ValueKind == System.Text.Json.JsonValueKind.Array)
+                {
+                    var multi = System.Text.Json.JsonSerializer.Deserialize<double[][][][]>(json);
+                    if (multi != null)
+                    {
+                        return multi.Select(poly =>
+                            poly.Select(ring =>
+                                ring.Select(c => new double[] { c[1], c[0] }).ToArray()
+                            ).ToArray()
+                        ).ToArray();
+                    }
+                }
+            }
+
+            var poly3d = System.Text.Json.JsonSerializer.Deserialize<double[][][]>(json);
+            if (poly3d != null)
+            {
+                return poly3d.Select(ring =>
+                    ring.Select(c => new double[] { c[1], c[0] }).ToArray()
+                ).ToArray();
+            }
+        }
+        else if (rawCoordinates is double[][][] polyCoords)
+        {
+            return polyCoords.Select(ring =>
+                ring.Select(coord => new double[] { coord[1], coord[0] }).ToArray()
+            ).ToArray();
+        }
+        else if (rawCoordinates is double[][][][] multiCoords)
+        {
+            return multiCoords.Select(poly =>
+                poly.Select(ring =>
+                    ring.Select(coord => new double[] { coord[1], coord[0] }).ToArray()
+                ).ToArray()
+            ).ToArray();
+        }
+
+        return new double[0][][];
     }
 
     public void Dispose()
