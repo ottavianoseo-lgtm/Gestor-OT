@@ -529,6 +529,45 @@ window.mapInterop = {
         return area / 10000;
     },
 
+    wktToLeafletCoords: function (wkt) {
+        if (!wkt) return [];
+        try {
+            var isMulti = wkt.toUpperCase().indexOf('MULTIPOLYGON') >= 0;
+            if (isMulti) {
+                var polyMatches = wkt.match(/\(\(\s*([^()]+)\s*\)\)/g);
+                if (!polyMatches) return [];
+                var allPolys = polyMatches.map(function (polyStr) {
+                    var clean = polyStr.replace(/^\(\(|\)\)$/g, '').trim();
+                    var pairs = clean.split(',');
+                    var ring = pairs.map(function (p) {
+                        var parts = p.trim().split(/\s+/);
+                        return [parseFloat(parts[1]), parseFloat(parts[0])];
+                    });
+                    if (ring[0][0] !== ring[ring.length - 1][0] || ring[0][1] !== ring[ring.length - 1][1]) {
+                        ring.push(ring[0]);
+                    }
+                    return ring;
+                });
+                return [allPolys];
+            } else {
+                var match = wkt.match(/POLYGON\s*\(\(\s*(.+)\s*\)\)/i);
+                if (!match) return [];
+                var pairs = match[1].split(',');
+                var ring = pairs.map(function (p) {
+                    var parts = p.trim().split(/\s+/);
+                    return [parseFloat(parts[1]), parseFloat(parts[0])];
+                });
+                if (ring[0][0] !== ring[ring.length - 1][0] || ring[0][1] !== ring[ring.length - 1][1]) {
+                    ring.push(ring[0]);
+                }
+                return [[ring]];
+            }
+        } catch (e) {
+            console.error('Error parsing WKT to coords:', e);
+            return [];
+        }
+    },
+
     parseGeoJsonFile: function (geoJsonString) {
         try {
             var geojson = JSON.parse(geoJsonString);
@@ -544,15 +583,34 @@ window.mapInterop = {
             }
 
             features.forEach(function (feature) {
-                if (feature.geometry && feature.geometry.type === 'Polygon') {
+                if (!feature.geometry) return;
+
+                var name = (feature.properties && (feature.properties.name || feature.properties.Name || feature.properties.NOMBRE || feature.properties.nombre || feature.properties.lote)) || '';
+
+                if (feature.geometry.type === 'Polygon') {
                     var coords = feature.geometry.coordinates[0];
                     var wktCoords = coords.map(function (c) {
                         return c[0].toFixed(8) + ' ' + c[1].toFixed(8);
                     });
                     var wkt = 'POLYGON ((' + wktCoords.join(', ') + '))';
-                    var name = (feature.properties && feature.properties.name) ||
-                        (feature.properties && feature.properties.Name) || '';
                     results.push({ wkt: wkt, name: name });
+                } else if (feature.geometry.type === 'MultiPolygon') {
+                    var polyStrings = [];
+                    var polygons = feature.geometry.coordinates;
+                    polygons.forEach(function (poly) {
+                        var outerRing = poly[0];
+                        if (outerRing && outerRing.length >= 3) {
+                            var wktCoords = outerRing.map(function (c) {
+                                return c[0].toFixed(8) + ' ' + c[1].toFixed(8);
+                            });
+                            polyStrings.push('((' + wktCoords.join(', ') + '))');
+                        }
+                    });
+
+                    if (polyStrings.length > 0) {
+                        var wkt = 'MULTIPOLYGON (' + polyStrings.join(', ') + ')';
+                        results.push({ wkt: wkt, name: name });
+                    }
                 }
             });
 
@@ -573,23 +631,54 @@ window.mapInterop = {
             for (var i = 0; i < placemarks.length; i++) {
                 var pm = placemarks[i];
                 var nameEl = pm.getElementsByTagName('name')[0];
-                var name = nameEl ? nameEl.textContent : '';
+                var name = nameEl ? nameEl.textContent.trim() : '';
 
-                var coordsEl = pm.getElementsByTagName('coordinates')[0];
-                if (!coordsEl) continue;
+                var polygonElements = pm.getElementsByTagName('Polygon');
+                var polyStrings = [];
 
-                var coordsText = coordsEl.textContent.trim();
-                var points = coordsText.split(/\s+/).filter(function (s) { return s.length > 0; });
-                var wktCoords = points.map(function (p) {
-                    var parts = p.split(',');
-                    return parseFloat(parts[0]).toFixed(8) + ' ' + parseFloat(parts[1]).toFixed(8);
-                });
+                if (polygonElements.length > 0) {
+                    for (var p = 0; p < polygonElements.length; p++) {
+                        var coordsEl = polygonElements[p].getElementsByTagName('coordinates')[0];
+                        if (!coordsEl) continue;
 
-                if (wktCoords.length >= 3) {
-                    if (wktCoords[0] !== wktCoords[wktCoords.length - 1]) {
-                        wktCoords.push(wktCoords[0]);
+                        var coordsText = coordsEl.textContent.trim();
+                        var points = coordsText.split(/\s+/).filter(function (s) { return s.length > 0; });
+                        var wktCoords = points.map(function (pt) {
+                            var parts = pt.split(',');
+                            return parseFloat(parts[0]).toFixed(8) + ' ' + parseFloat(parts[1]).toFixed(8);
+                        });
+
+                        if (wktCoords.length >= 3) {
+                            if (wktCoords[0] !== wktCoords[wktCoords.length - 1]) {
+                                wktCoords.push(wktCoords[0]);
+                            }
+                            polyStrings.push('((' + wktCoords.join(', ') + '))');
+                        }
                     }
-                    var wkt = 'POLYGON ((' + wktCoords.join(', ') + '))';
+                } else {
+                    var coordsEls = pm.getElementsByTagName('coordinates');
+                    for (var c = 0; c < coordsEls.length; c++) {
+                        var coordsText = coordsEls[c].textContent.trim();
+                        var points = coordsText.split(/\s+/).filter(function (s) { return s.length > 0; });
+                        var wktCoords = points.map(function (pt) {
+                            var parts = pt.split(',');
+                            return parseFloat(parts[0]).toFixed(8) + ' ' + parseFloat(parts[1]).toFixed(8);
+                        });
+
+                        if (wktCoords.length >= 3) {
+                            if (wktCoords[0] !== wktCoords[wktCoords.length - 1]) {
+                                wktCoords.push(wktCoords[0]);
+                            }
+                            polyStrings.push('((' + wktCoords.join(', ') + '))');
+                        }
+                    }
+                }
+
+                if (polyStrings.length === 1) {
+                    var wkt = 'POLYGON ' + polyStrings[0];
+                    results.push({ wkt: wkt, name: name });
+                } else if (polyStrings.length > 1) {
+                    var wkt = 'MULTIPOLYGON (' + polyStrings.join(', ') + ')';
                     results.push({ wkt: wkt, name: name });
                 }
             }
@@ -604,18 +693,36 @@ window.mapInterop = {
     addImportedPolygon: function (wkt, name) {
         if (!this.map || !wkt) return false;
         try {
-            var match = wkt.match(/POLYGON\s*\(\((.+)\)\)/i);
-            if (!match) return false;
+            var isMulti = wkt.toUpperCase().indexOf('MULTIPOLYGON') >= 0;
+            var coordsArray = [];
 
-            var coords = match[1].split(',').map(function (pair) {
-                var parts = pair.trim().split(/\s+/);
-                return [parseFloat(parts[1]), parseFloat(parts[0])];
-            });
+            if (isMulti) {
+                var polyMatches = wkt.match(/\(\(\s*([^()]+)\s*\)\)/g);
+                if (!polyMatches) return false;
 
-            var polygon = L.polygon(coords, {
+                coordsArray = polyMatches.map(function (polyStr) {
+                    var clean = polyStr.replace(/^\(\(|\)\)$/g, '').trim();
+                    var pairs = clean.split(',');
+                    return pairs.map(function (pair) {
+                        var parts = pair.trim().split(/\s+/);
+                        return [parseFloat(parts[1]), parseFloat(parts[0])];
+                    });
+                });
+            } else {
+                var match = wkt.match(/POLYGON\s*\(\(\s*(.+)\s*\)\)/i);
+                if (!match) return false;
+
+                var coords = match[1].split(',').map(function (pair) {
+                    var parts = pair.trim().split(/\s+/);
+                    return [parseFloat(parts[1]), parseFloat(parts[0])];
+                });
+                coordsArray = [coords];
+            }
+
+            var polygon = L.polygon(coordsArray, {
                 color: '#9B59B6',
                 fillColor: '#9B59B6',
-                fillOpacity: 0.3,
+                fillOpacity: 0.35,
                 weight: 3,
                 dashArray: '5,5'
             }).addTo(this.map);

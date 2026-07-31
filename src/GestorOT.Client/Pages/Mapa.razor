@@ -795,8 +795,8 @@
     {
         try
         {
-            return await JS.InvokeAsync<string>("eval",
-                $"(function(){{ var m = '{wkt}'.match(/POLYGON\\s*\\(\\((.+)\\)\\)/i); if(!m) return '[]'; var coords = m[1].split(',').map(function(p){{ var parts = p.trim().split(/\\s+/); return [parseFloat(parts[1]), parseFloat(parts[0])]; }}); if(coords[0][0]!==coords[coords.length-1][0]||coords[0][1]!==coords[coords.length-1][1]) coords.push(coords[0]); return JSON.stringify([coords]); }})()");
+            var coordsObj = await JS.InvokeAsync<object>("mapInterop.wktToLeafletCoords", wkt);
+            return System.Text.Json.JsonSerializer.Serialize(coordsObj);
         }
         catch
         {
