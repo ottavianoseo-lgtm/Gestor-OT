@@ -119,6 +119,7 @@ window.mapInterop = {
         }
 
         this.lotLayers = {};
+        this.fieldLayers = {};
         this.selectedLayer = null;
         this.editingLotId = null;
 
@@ -391,6 +392,18 @@ window.mapInterop = {
         }
     },
 
+    enableDrawing: function () {
+        if (this.map && this.drawControl) {
+            try {
+                if (typeof L !== 'undefined' && L.Draw && L.Draw.Polygon) {
+                    new L.Draw.Polygon(this.map, this.drawControl.options.draw.polygon).enable();
+                }
+            } catch (e) {
+                console.error('Error enabling polygon drawing:', e);
+            }
+        }
+    },
+
     invalidateSize: function () {
         if (this.map) {
             setTimeout(() => this.map.invalidateSize(), 100);
@@ -558,29 +571,54 @@ window.mapInterop = {
         return false;
     },
 
-    startEditExistingLot: function (lotId) {
-        if (!this.map || !this.lotLayers[lotId]) return false;
+    startEditExistingLot: function (lotId, lotName, status, area, fieldName, coordinatesJson) {
+        if (!this.map) return false;
 
-        var layer = this.lotLayers[lotId];
-
-        this.map.removeLayer(layer);
-        delete this.lotLayers[lotId];
-        if (this.selectedLayer === layer) {
-            this.selectedLayer = null;
+        if (this.drawnItems) {
+            this.drawnItems.clearLayers();
         }
 
-        layer.setStyle({
-            color: '#E74C3C',
-            fillColor: '#E74C3C',
-            fillOpacity: 0.3,
-            weight: 3
-        });
+        if (this.lotLayers && this.lotLayers[lotId]) {
+            var layer = this.lotLayers[lotId];
 
-        this.drawnItems.addLayer(layer);
-        this.editingLotId = lotId;
+            this.map.removeLayer(layer);
+            delete this.lotLayers[lotId];
+            if (this.selectedLayer === layer) {
+                this.selectedLayer = null;
+            }
 
-        this.map.fitBounds(layer.getBounds(), { padding: [80, 80], maxZoom: 16 });
-        return true;
+            layer.setStyle({
+                color: '#E74C3C',
+                fillColor: '#E74C3C',
+                fillOpacity: 0.3,
+                weight: 3
+            });
+
+            this.drawnItems.addLayer(layer);
+            this.editingLotId = lotId;
+
+            this.map.fitBounds(layer.getBounds(), { padding: [80, 80], maxZoom: 16 });
+            return true;
+        } else if (coordinatesJson) {
+            try {
+                var coords = JSON.parse(coordinatesJson);
+                if (coords && coords.length > 0) {
+                    var polygon = L.polygon(coords, {
+                        color: '#E74C3C',
+                        fillColor: '#E74C3C',
+                        fillOpacity: 0.3,
+                        weight: 3
+                    });
+                    this.drawnItems.addLayer(polygon);
+                    this.editingLotId = lotId;
+                    this.map.fitBounds(polygon.getBounds(), { padding: [80, 80], maxZoom: 16 });
+                    return true;
+                }
+            } catch (e) {
+                console.error('Error parsing coordinates for edit:', e);
+            }
+        }
+        return false;
     },
 
     cancelEditExistingLot: function (lotId, lotName, status, area, fieldName, coordinatesJson) {

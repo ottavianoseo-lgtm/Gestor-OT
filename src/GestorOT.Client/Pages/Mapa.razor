@@ -817,10 +817,14 @@
         InvokeAsync(async () => { await ReloadMap(); StateHasChanged(); });
     }
 
+    private DotNetObjectReference<Mapa>? _dotNetRef;
+
     public void Dispose()
     {
         CampaignState.OnChange -= OnCampaignChanged;
         TenantState.OnChange -= OnCampaignChanged;
+        _dotNetRef?.Dispose();
+        _dotNetRef = null;
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -839,8 +843,9 @@
         {
             await JS.InvokeAsync<bool>("mapInterop.initMap", "map", -34.6, -58.5, 10);
 
-            var dotNetRef = DotNetObjectReference.Create(this);
-            await JS.InvokeVoidAsync("mapInterop.setDotNetRef", dotNetRef);
+            _dotNetRef?.Dispose();
+            _dotNetRef = DotNetObjectReference.Create(this);
+            await JS.InvokeVoidAsync("mapInterop.setDotNetRef", _dotNetRef);
 
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
 
@@ -941,10 +946,20 @@
                             var fName = feature.Properties.TryGetValue("name", out var name) ? name?.ToString() ?? "" : "";
                             int lotsCount = 0;
                             if (feature.Properties.TryGetValue("lotsCount", out var lc))
-                                lotsCount = Convert.ToInt32(lc);
+                            {
+                                if (lc is System.Text.Json.JsonElement jeLc)
+                                    lotsCount = jeLc.ValueKind == System.Text.Json.JsonValueKind.Number ? jeLc.GetInt32() : 0;
+                                else
+                                    lotsCount = Convert.ToInt32(lc);
+                            }
                             double fArea = 0;
                             if (feature.Properties.TryGetValue("area", out var a))
-                                fArea = Convert.ToDouble(a);
+                            {
+                                if (a is System.Text.Json.JsonElement jeA)
+                                    fArea = jeA.ValueKind == System.Text.Json.JsonValueKind.Number ? jeA.GetDouble() : 0;
+                                else
+                                    fArea = Convert.ToDouble(a);
+                            }
 
                             var leafletCoords = ConvertToLeafletCoords(feature.Geometry.Coordinates);
                             var coordsJson = System.Text.Json.JsonSerializer.Serialize(leafletCoords);
@@ -988,7 +1003,7 @@
         _selectedLot = null;
     }
 
-    private async void ClearDrawn()
+    private async Task ClearDrawn()
     {
         _drawnWkt = null;
         _drawnArea = 0;
