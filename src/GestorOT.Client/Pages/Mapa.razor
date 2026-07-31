@@ -21,7 +21,19 @@
                 @bind-Value="_cityQuery"
                 OnSearch="SearchCity"
                 EnterButton="@(true)"
-                Style="width: 300px; border-radius: 20px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.2);" />
+                Style="width: 260px; border-radius: 20px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.2);" />
+    </div>
+
+    <div class="gis-mode-selector" style="position: absolute; top: 16px; left: 360px; z-index: 1000; background: rgba(26, 26, 46, 0.85); backdrop-filter: blur(8px); padding: 4px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.12); display: flex; gap: 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.2);">
+        <button class="mode-btn @(_gisViewMode == "interactive" ? "mode-btn--active" : "")" @onclick='() => ChangeViewMode("interactive")'>
+            🔍 Interactivo
+        </button>
+        <button class="mode-btn @(_gisViewMode == "fields" ? "mode-btn--active" : "")" @onclick='() => ChangeViewMode("fields")'>
+            🏡 Campos
+        </button>
+        <button class="mode-btn @(_gisViewMode == "lots" ? "mode-btn--active" : "")" @onclick='() => ChangeViewMode("lots")'>
+            🌾 Lotes
+        </button>
     </div>
 
     @if (_loading)
@@ -888,6 +900,7 @@
                         var lotName = feature.Properties.TryGetValue("name", out var name) ? name?.ToString() ?? "" : "";
                         var status = feature.Properties.TryGetValue("status", out var s) ? s?.ToString() ?? "Active" : "Active";
                         var fieldName = feature.Properties.TryGetValue("fieldName", out var fn) ? fn?.ToString() ?? "" : "";
+                        var fieldId = feature.Properties.TryGetValue("fieldId", out var fid) ? fid?.ToString() ?? "" : "";
                         double area = 0;
                         if (feature.Properties.TryGetValue("area", out var a))
                         {
@@ -901,7 +914,7 @@
                         var coordsJson = System.Text.Json.JsonSerializer.Serialize(leafletCoords);
 
                         await JS.InvokeAsync<bool>("mapInterop.addLotPolygon",
-                            lotId, lotName, status, area, fieldName, coordsJson);
+                            lotId, lotName, status, area, fieldName, coordsJson, fieldId);
                     }
                 }
 
@@ -1104,6 +1117,14 @@
         {
             Message.Info("El lote no tiene geometría definida.");
         }
+    }
+
+    private string _gisViewMode = "interactive";
+
+    private async Task ChangeViewMode(string mode)
+    {
+        _gisViewMode = mode;
+        await JS.InvokeVoidAsync("mapInterop.setGisViewMode", mode);
     }
 
     private bool _showFieldPolygons = true;
@@ -1448,3 +1469,26 @@
         return new double[0][][];
     }
 }
+
+<style>
+    .mode-btn {
+        font-size: 12px;
+        font-weight: 600;
+        padding: 5px 14px;
+        border-radius: 16px;
+        border: none;
+        background: transparent;
+        color: rgba(255, 255, 255, 0.7);
+        cursor: pointer;
+        transition: all 0.2s ease-in-out;
+    }
+    .mode-btn:hover {
+        color: #fff;
+        background: rgba(255, 255, 255, 0.1);
+    }
+    .mode-btn--active {
+        background: #16A085 !important;
+        color: #ffffff !important;
+        box-shadow: 0 2px 8px rgba(22, 160, 133, 0.4);
+    }
+</style>

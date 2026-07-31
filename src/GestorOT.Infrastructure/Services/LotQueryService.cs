@@ -81,6 +81,7 @@ public class LotQueryService : ILotQueryService
                 ["id"] = l.Id.ToString(),
                 ["name"] = l.Name,
                 ["status"] = l.Status,
+                ["fieldId"] = l.FieldId.ToString(),
                 ["fieldName"] = l.Field?.Name ?? "",
                 ["area"] = areaMap.GetValueOrDefault(l.Id, 0)
             },

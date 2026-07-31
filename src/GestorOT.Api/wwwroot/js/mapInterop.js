@@ -228,11 +228,14 @@ window.mapInterop = {
         return true;
     },
 
+    viewMode: 'interactive',
+    selectedFieldId: null,
+
     setDotNetRef: function (ref) {
         this.dotNetRef = ref;
     },
 
-    addLotPolygon: function (lotId, lotName, status, area, fieldName, coordinatesJson) {
+    addLotPolygon: function (lotId, lotName, status, area, fieldName, coordinatesJson, fieldId) {
         if (!this.map) return false;
 
         try {
@@ -245,7 +248,11 @@ window.mapInterop = {
                 fillColor: color,
                 fillOpacity: 0.35,
                 weight: 2
-            }).addTo(this.map);
+            });
+
+            if (this.viewMode === 'lots' || (this.viewMode === 'interactive' && this.selectedFieldId && this.selectedFieldId === fieldId)) {
+                polygon.addTo(this.map);
+            }
 
             const popupContent = `
                 <div style="min-width: 200px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #1a1a2e;">
@@ -275,6 +282,7 @@ window.mapInterop = {
                 }
             });
 
+            polygon._fieldId = fieldId;
             this.lotLayers[lotId] = polygon;
             return true;
         } catch (e) {
@@ -290,7 +298,10 @@ window.mapInterop = {
 
         if (this.lotLayers[lotId]) {
             this.selectedLayer = this.lotLayers[lotId];
-            this.selectedLayer.setStyle({ weight: 4, fillOpacity: 0.55 });
+            if (!this.map.hasLayer(this.selectedLayer)) {
+                this.selectedLayer.addTo(this.map);
+            }
+            this.selectedLayer.setStyle({ weight: 4, fillOpacity: 0.65 });
         }
     },
 
@@ -298,6 +309,9 @@ window.mapInterop = {
         if (!this.map || !this.lotLayers[lotId]) return false;
 
         const layer = this.lotLayers[lotId];
+        if (!this.map.hasLayer(layer)) {
+            layer.addTo(this.map);
+        }
         this.map.fitBounds(layer.getBounds(), { padding: [80, 80], maxZoom: 16 });
         this.highlightLot(lotId);
         layer.openPopup();
@@ -307,10 +321,10 @@ window.mapInterop = {
     fitAllLots: function () {
         if (!this.map) return false;
 
-        const layerIds = Object.keys(this.lotLayers);
-        if (layerIds.length === 0) return false;
+        const layers = Object.values(this.lotLayers).concat(Object.values(this.fieldLayers));
+        if (layers.length === 0) return false;
 
-        const group = L.featureGroup(Object.values(this.lotLayers));
+        const group = L.featureGroup(layers);
         this.map.fitBounds(group.getBounds(), { padding: [50, 50] });
         return true;
     },
@@ -330,19 +344,27 @@ window.mapInterop = {
 
         try {
             const coordinates = JSON.parse(coordinatesJson);
-            const color = '#F39C12'; // Amber / Gold for Field composite polygon
+            const color = '#16A085'; // Clean Ocean Teal for unified Field polygon
 
             const polygon = L.polygon(coordinates, {
                 color: color,
                 fillColor: color,
-                fillOpacity: 0.18,
-                weight: 3,
-                dashArray: '5, 5'
-            }).addTo(this.map);
+                fillOpacity: 0.22,
+                weight: 2.5
+            });
+
+            if (this.viewMode === 'fields' || this.viewMode === 'interactive') {
+                polygon.addTo(this.map);
+            }
+
+            polygon.bindTooltip(`🏡 <strong>${fieldName}</strong> (${area.toFixed(1)} ha - ${lotsCount} lotes)`, {
+                sticky: true,
+                direction: 'top'
+            });
 
             const popupContent = `
                 <div style="min-width: 200px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #1a1a2e;">
-                    <strong style="font-size: 14px; display: block; margin-bottom: 6px; color: #D35400;">🏡 Campo: ${fieldName}</strong>
+                    <strong style="font-size: 14px; display: block; margin-bottom: 6px; color: #16A085;">🏡 Campo: ${fieldName}</strong>
                     <div style="display: flex; justify-content: space-between; margin-bottom: 4px; font-size: 12px;">
                         <span style="color: #888;">Lotes</span>
                         <span style="font-weight: 600;">${lotsCount} lotes</span>
@@ -351,21 +373,93 @@ window.mapInterop = {
                         <span style="color: #888;">Superficie Total</span>
                         <span style="font-weight: 600;">${area.toFixed(2)} ha</span>
                     </div>
+                    <button style="width: 100%; border: none; background: #16A085; color: #fff; border-radius: 6px; padding: 7px 12px; font-size: 12px; font-weight: 600; cursor: pointer;"
+                            onclick="window.mapInterop.selectField('${fieldId}')">
+                        🔍 Ver Lotes del Campo
+                    </button>
                 </div>
             `;
             polygon.bindPopup(popupContent, { maxWidth: 240 });
 
             polygon.on('click', () => {
-                if (this.dotNetRef) {
-                    this.dotNetRef.invokeMethodAsync('OnFieldSelected', fieldId);
-                }
+                this.selectField(fieldId);
             });
 
+            polygon._fieldId = fieldId;
             this.fieldLayers[fieldId] = polygon;
             return true;
         } catch (e) {
             console.error('Error adding field polygon:', e);
             return false;
+        }
+    },
+
+    selectField: function (fieldId) {
+        if (!this.map) return;
+        this.selectedFieldId = fieldId;
+
+        // Highlight field outline
+        Object.keys(this.fieldLayers).forEach(fId => {
+            const fLayer = this.fieldLayers[fId];
+            if (fId === fieldId) {
+                if (!this.map.hasLayer(fLayer)) fLayer.addTo(this.map);
+                fLayer.setStyle({ weight: 4, fillOpacity: 0.15, color: '#16A085' });
+                this.map.fitBounds(fLayer.getBounds(), { padding: [60, 60], maxZoom: 15 });
+            } else {
+                if (this.viewMode === 'interactive') {
+                    fLayer.setStyle({ weight: 1.5, fillOpacity: 0.1, color: '#7F8C8D' });
+                }
+            }
+        });
+
+        // Show lots belonging to this field
+        Object.keys(this.lotLayers).forEach(lId => {
+            const lLayer = this.lotLayers[lId];
+            if (fieldId && lLayer._fieldId === fieldId) {
+                if (!this.map.hasLayer(lLayer)) lLayer.addTo(this.map);
+                lLayer.setStyle({ weight: 2.5, fillOpacity: 0.55 });
+            } else {
+                if (this.viewMode === 'interactive' || this.viewMode === 'fields') {
+                    if (this.map.hasLayer(lLayer)) this.map.removeLayer(lLayer);
+                }
+            }
+        });
+
+        if (this.dotNetRef) {
+            this.dotNetRef.invokeMethodAsync('OnFieldSelected', fieldId);
+        }
+    },
+
+    setGisViewMode: function (mode) {
+        if (!this.map) return;
+        this.viewMode = mode;
+        this.selectedFieldId = null;
+
+        if (mode === 'fields') {
+            Object.values(this.fieldLayers).forEach(layer => {
+                if (!this.map.hasLayer(layer)) layer.addTo(this.map);
+                layer.setStyle({ weight: 2.5, fillOpacity: 0.35, color: '#16A085' });
+            });
+            Object.values(this.lotLayers).forEach(layer => {
+                if (this.map.hasLayer(layer)) this.map.removeLayer(layer);
+            });
+        } else if (mode === 'lots') {
+            Object.values(this.fieldLayers).forEach(layer => {
+                if (this.map.hasLayer(layer)) this.map.removeLayer(layer);
+            });
+            Object.values(this.lotLayers).forEach(layer => {
+                if (!this.map.hasLayer(layer)) layer.addTo(this.map);
+                layer.setStyle({ weight: 2, fillOpacity: 0.35 });
+            });
+        } else {
+            // 'interactive'
+            Object.values(this.fieldLayers).forEach(layer => {
+                if (!this.map.hasLayer(layer)) layer.addTo(this.map);
+                layer.setStyle({ weight: 2, fillOpacity: 0.25, color: '#16A085' });
+            });
+            Object.values(this.lotLayers).forEach(layer => {
+                if (this.map.hasLayer(layer)) this.map.removeLayer(layer);
+            });
         }
     },
 
