@@ -738,7 +738,10 @@
         try
         {
             var dto = new LotDto(Guid.Empty, _newLotFieldId, _newLotName, "Active", _drawnWkt, "", _drawnArea, (decimal)_drawnArea);
-            var response = await Http.PostAsJsonAsync("api/lots", dto);
+            var postUrl = CampaignState.CurrentCampaign != null && CampaignState.CurrentCampaign.Id != Guid.Empty
+                ? $"api/lots?campaignId={CampaignState.CurrentCampaign.Id}"
+                : "api/lots";
+            var response = await Http.PostAsJsonAsync(postUrl, dto);
             
             if (response.IsSuccessStatusCode)
             {
@@ -1307,7 +1310,11 @@
                     0
                 );
 
-                var response = await Http.PostAsJsonAsync("api/lots", createDto, AppJsonSerializerContext.Default.LotDto);
+                var postUrl = CampaignState.CurrentCampaign != null && CampaignState.CurrentCampaign.Id != Guid.Empty
+                    ? $"api/lots?campaignId={CampaignState.CurrentCampaign.Id}"
+                    : "api/lots";
+
+                var response = await Http.PostAsJsonAsync(postUrl, createDto, AppJsonSerializerContext.Default.LotDto);
                 if (response.IsSuccessStatusCode)
                 {
                     Message.Success($"Lote '{_newLotName}' creado y vinculado exitosamente.");
@@ -1353,6 +1360,19 @@
 
                 if (response.IsSuccessStatusCode)
                 {
+                    // If active campaign context exists, ensure entry in CampaignLot is created/updated
+                    if (CampaignState.CurrentCampaign != null && CampaignState.CurrentCampaign.Id != Guid.Empty)
+                    {
+                        try
+                        {
+                            var activeCampaignId = CampaignState.CurrentCampaign.Id;
+                            await Http.PostAsJsonAsync($"api/campaigns/{activeCampaignId}/lots",
+                                new CampaignLotDto(Guid.Empty, activeCampaignId, lot.Id, lot.FieldId, null, null, 0, (decimal)lot.Area, null),
+                                AppJsonSerializerContext.Default.CampaignLotDto);
+                        }
+                        catch { }
+                    }
+
                     Message.Success($"Geometría vinculada a '{lot.Name}'.");
                     _showLinkModal = false;
                     _importLinkWkt = null;

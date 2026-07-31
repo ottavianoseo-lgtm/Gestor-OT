@@ -55,7 +55,7 @@ public class LotsController : ControllerBase
     }
 
     [HttpPost]
-    public async Task<ActionResult<LotDto>> CreateLot(LotDto dto)
+    public async Task<ActionResult<LotDto>> CreateLot(LotDto dto, [FromQuery] Guid? campaignId)
     {
         Geometry? geometry = null;
         double areaHa = 0;
@@ -86,6 +86,23 @@ public class LotsController : ControllerBase
         };
 
         _context.Lots.Add(lot);
+
+        if (campaignId.HasValue && campaignId.Value != Guid.Empty)
+        {
+            var campaignExists = await _context.Campaigns.AnyAsync(c => c.Id == campaignId.Value);
+            if (campaignExists)
+            {
+                var productiveArea = cadastralArea > 0 ? cadastralArea : (decimal)areaHa;
+                _context.CampaignLots.Add(new CampaignLot
+                {
+                    Id = Guid.NewGuid(),
+                    CampaignId = campaignId.Value,
+                    LotId = lot.Id,
+                    ProductiveArea = productiveArea
+                });
+            }
+        }
+
         await _context.SaveChangesAsync();
 
         return CreatedAtAction(nameof(GetLot), new { id = lot.Id },
