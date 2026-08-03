@@ -423,6 +423,48 @@
     </div>
 </Modal>
 
+<Modal Title="⚠️ Advertencia de Superposición Espacial"
+       Visible="_showOverlapModal"
+       OnCancel="() => { _showOverlapModal = false; _pendingOverrideOverlap = false; }"
+       Footer="@null"
+       Width="520">
+    @if (_overlapWarningResult != null)
+    {
+        <div style="display: grid; gap: 14px; padding: 6px 0;">
+            <div style="background: rgba(231, 76, 60, 0.1); border: 1px solid rgba(231, 76, 60, 0.3); border-radius: 8px; padding: 14px; color: #fff;">
+                <div style="font-weight: 600; color: #E74C3C; font-size: 15px; margin-bottom: 6px; display: flex; align-items: center; gap: 8px;">
+                    <Icon Type="warning" Theme="IconThemeType.Outline" />
+                    @if (_overlapWarningResult.IsExactDuplicate)
+                    {
+                        <span>¡Polígono Duplicado Detectado!</span>
+                    }
+                    else
+                    {
+                        <span>Superposición Espacial Detectada</span>
+                    }
+                </div>
+                <div style="font-size: 13px; color: rgba(255,255,255,0.9); line-height: 1.5;">
+                    @_overlapWarningResult.Message
+                </div>
+            </div>
+
+            <div style="font-size: 12px; color: rgba(255,255,255,0.7); background: rgba(255,255,255,0.03); border-radius: 6px; padding: 10px;">
+                <div><strong>Lote colisionante:</strong> @(_overlapWarningResult.ExistingLotName ?? "Desconocido")</div>
+                <div><strong>Porcentaje de solapamiento:</strong> @_overlapWarningResult.OverlapPercentage%</div>
+            </div>
+
+            <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 10px;">
+                <Button OnClick="() => { _showOverlapModal = false; _pendingOverrideOverlap = false; }">
+                    Cancelar
+                </Button>
+                <Button Type="@ButtonType.Primary" Danger OnClick="ForceCreateWithOverlap">
+                    Crear de todos modos
+                </Button>
+            </div>
+        </div>
+    }
+</Modal>
+
 <style>
     .gis-container {
         position: relative;
@@ -702,6 +744,9 @@
     private bool _showLinkModal;
     private bool _importLoading;
     private bool _savingGeometry;
+    private LotOverlapCheckResultDto? _overlapWarningResult;
+    private bool _showOverlapModal;
+    private bool _pendingOverrideOverlap;
     private string? _drawnWkt;
     private double _drawnArea;
     private Guid _linkingLotId;
@@ -821,6 +866,8 @@
         public double NorthEastLng { get; set; }
     }
 
+    private bool _isDisposed;
+
     protected override void OnInitialized()
     {
         CampaignState.OnChange += OnCampaignChanged;
@@ -829,13 +876,21 @@
 
     private void OnCampaignChanged()
     {
-        InvokeAsync(async () => { await ReloadMap(); StateHasChanged(); });
+        if (_isDisposed) return;
+        InvokeAsync(async () => {
+            if (!_isDisposed)
+            {
+                await ReloadMap();
+                StateHasChanged();
+            }
+        });
     }
 
     private DotNetObjectReference<Mapa>? _dotNetRef;
 
     public void Dispose()
     {
+        _isDisposed = true;
         CampaignState.OnChange -= OnCampaignChanged;
         TenantState.OnChange -= OnCampaignChanged;
         _dotNetRef?.Dispose();
@@ -875,13 +930,13 @@
 
             _allLots = await lotsTask ?? new();
             _allFields = await fieldsTask ?? new();
-            _orphanLots = _allLots.Where(l => string.IsNullOrEmpty(l.WktGeometry)).ToList();
+            _orphanLots = _allLots.Where(l => l != null && string.IsNullOrEmpty(l.WktGeometry)).ToList();
 
             Guid? parsedLotId = null;
             if (!string.IsNullOrEmpty(lotId) && Guid.TryParse(lotId, out var parsed))
             {
                 parsedLotId = parsed;
-                var orphan = _orphanLots.FirstOrDefault(l => l.Id == parsed);
+                var orphan = _orphanLots.FirstOrDefault(l => l != null && l.Id == parsed);
                 if (orphan != null)
                 {
                     _linkingLotId = orphan.Id;
@@ -897,7 +952,7 @@
 
                 foreach (var feature in featureCollection.Features)
                 {
-                    if (feature.Geometry?.Coordinates != null && feature.Properties != null)
+                    if (feature != null && feature.Geometry?.Coordinates != null && feature.Properties != null)
                     {
                         var lotId = feature.Properties.TryGetValue("id", out var id) ? id?.ToString() ?? "" : "";
                         var lotName = feature.Properties.TryGetValue("name", out var name) ? name?.ToString() ?? "" : "";
@@ -930,7 +985,7 @@
                     }
                     else if (parsedLotId.HasValue)
                     {
-                        var lot = _allLots.FirstOrDefault(l => l.Id == parsedLotId.Value);
+                        var lot = _allLots.FirstOrDefault(l => l != null && l.Id == parsedLotId.Value);
                         if (lot != null)
                         {
                             _selectedLot = lot;
@@ -956,7 +1011,7 @@
                     await JS.InvokeVoidAsync("mapInterop.clearFields");
                     foreach (var feature in fieldsFeatureCollection.Features)
                     {
-                        if (feature.Geometry?.Coordinates != null && feature.Properties != null)
+                        if (feature != null && feature.Geometry?.Coordinates != null && feature.Properties != null)
                         {
                             var fId = feature.Properties.TryGetValue("id", out var id) ? id?.ToString() ?? "" : "";
                             var fName = feature.Properties.TryGetValue("name", out var name) ? name?.ToString() ?? "" : "";
@@ -1276,6 +1331,14 @@
 
     private bool _linkModeCombine = true;
 
+    private async Task ForceCreateWithOverlap()
+    {
+        _showOverlapModal = false;
+        _pendingOverrideOverlap = true;
+        await SaveImportedGeometry();
+        _pendingOverrideOverlap = false;
+    }
+
     private async Task SaveImportedGeometry()
     {
         if (string.IsNullOrEmpty(_importLinkWkt)) return;
@@ -1300,6 +1363,26 @@
                     return;
                 }
 
+                if (!_pendingOverrideOverlap)
+                {
+                    try
+                    {
+                        var checkReq = new CheckLotOverlapRequestDto(_importLinkWkt, _newLotFieldId);
+                        var checkResp = await Http.PostAsJsonAsync("api/lots/check-overlap", checkReq, AppJsonSerializerContext.Default.CheckLotOverlapRequestDto);
+                        if (checkResp.IsSuccessStatusCode)
+                        {
+                            var overlapCheck = await checkResp.Content.ReadFromJsonAsync<LotOverlapCheckResultDto>(AppJsonSerializerContext.Default.LotOverlapCheckResultDto);
+                            if (overlapCheck != null && overlapCheck.HasOverlap)
+                            {
+                                _overlapWarningResult = overlapCheck;
+                                _showOverlapModal = true;
+                                return;
+                            }
+                        }
+                    }
+                    catch { }
+                }
+
                 var createDto = new LotDto(
                     Guid.Empty,
                     _newLotFieldId,
@@ -1311,9 +1394,15 @@
                     0
                 );
 
-                var postUrl = CampaignState.CurrentCampaign != null && CampaignState.CurrentCampaign.Id != Guid.Empty
-                    ? $"api/lots?campaignId={CampaignState.CurrentCampaign.Id}"
-                    : "api/lots";
+                var queryParams = _pendingOverrideOverlap ? "overrideOverlap=true" : "";
+                if (CampaignState.CurrentCampaign != null && CampaignState.CurrentCampaign.Id != Guid.Empty)
+                {
+                    queryParams = string.IsNullOrEmpty(queryParams) 
+                        ? $"campaignId={CampaignState.CurrentCampaign.Id}" 
+                        : $"{queryParams}&campaignId={CampaignState.CurrentCampaign.Id}";
+                }
+
+                var postUrl = string.IsNullOrEmpty(queryParams) ? "api/lots" : $"api/lots?{queryParams}";
 
                 var response = await Http.PostAsJsonAsync(postUrl, createDto, AppJsonSerializerContext.Default.LotDto);
                 if (response.IsSuccessStatusCode)
@@ -1323,7 +1412,21 @@
                     _importLinkWkt = null;
                     _newLotName = "";
                     _newLotFieldId = Guid.Empty;
+                    _pendingOverrideOverlap = false;
                     await ReloadMap(savedBounds);
+                }
+                else if (response.StatusCode == System.Net.HttpStatusCode.Conflict)
+                {
+                    var overlapResult = await response.Content.ReadFromJsonAsync<LotOverlapCheckResultDto>(AppJsonSerializerContext.Default.LotOverlapCheckResultDto);
+                    if (overlapResult != null)
+                    {
+                        _overlapWarningResult = overlapResult;
+                        _showOverlapModal = true;
+                    }
+                    else
+                    {
+                        Message.Error("El lote ingresado se superpone con otro lote existente.");
+                    }
                 }
                 else
                 {

@@ -117,6 +117,8 @@ namespace GestorOT.Shared;
 [JsonSerializable(typeof(LaborOverrideDto))]
 [JsonSerializable(typeof(List<LaborOverrideDto>))]
 [JsonSerializable(typeof(BulkValidationRequest))]
+[JsonSerializable(typeof(CheckLotOverlapRequestDto))]
+[JsonSerializable(typeof(LotOverlapCheckResultDto))]
 [JsonSourceGenerationOptions(
     PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,
     WriteIndented = false,

@@ -54,9 +54,25 @@ public class LotsController : ControllerBase
         return await _queryService.GetCampaignsByLotAsync(id, ct);
     }
 
-    [HttpPost]
-    public async Task<ActionResult<LotDto>> CreateLot(LotDto dto, [FromQuery] Guid? campaignId, CancellationToken ct = default)
+    [HttpPost("check-overlap")]
+    public async Task<ActionResult<LotOverlapCheckResultDto>> CheckOverlap([FromBody] CheckLotOverlapRequestDto req, CancellationToken ct)
     {
+        var result = await _queryService.CheckLotOverlapAsync(req.WktGeometry, req.FieldId, req.ExcludeLotId, ct);
+        return Ok(result);
+    }
+
+    [HttpPost]
+    public async Task<ActionResult<LotDto>> CreateLot(LotDto dto, [FromQuery] Guid? campaignId, [FromQuery] bool overrideOverlap = false, CancellationToken ct = default)
+    {
+        if (!overrideOverlap && !string.IsNullOrEmpty(dto.WktGeometry) && dto.FieldId != Guid.Empty)
+        {
+            var overlapResult = await _queryService.CheckLotOverlapAsync(dto.WktGeometry, dto.FieldId, null, ct);
+            if (overlapResult.HasOverlap)
+            {
+                return Conflict(overlapResult);
+            }
+        }
+
         Geometry? geometry = null;
         double areaHa = 0;
         var cadastralArea = dto.CadastralArea;

@@ -13,4 +13,5 @@ public interface ILotQueryService
     Task<double> CalculateNetNewAreaAsync(string newWkt, List<Guid> existingLotIds, CancellationToken ct = default);
     Task<List<SurfaceHistoryDto>> GetSurfaceHistoryAsync(Guid lotId, CancellationToken ct = default);
     Task<List<CampaignLotDto>> GetCampaignsByLotAsync(Guid lotId, CancellationToken ct = default);
+    Task<LotOverlapCheckResultDto> CheckLotOverlapAsync(string wkt, Guid fieldId, Guid? excludeLotId = null, CancellationToken ct = default);
 }

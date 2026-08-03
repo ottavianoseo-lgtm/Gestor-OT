@@ -144,13 +144,29 @@ public class LotQueryService : ILotQueryService
     {
         if (string.IsNullOrEmpty(wkt)) return 0;
         
-        var result = await _context.Database
-            .SqlQueryRaw<double>(
-                @"SELECT COALESCE(ST_Area(ST_GeomFromText({0}, 4326)::geography) / 10000.0, 0) AS ""Value""",
-                wkt)
-            .FirstOrDefaultAsync(ct);
-            
-        return Math.Round(result, 4);
+        try
+        {
+            var result = await _context.Database
+                .SqlQueryRaw<double>(
+                    @"SELECT COALESCE(ST_Area(ST_GeomFromText({0}, 4326)::geography) / 10000.0, 0) AS ""Value""",
+                    wkt)
+                .FirstOrDefaultAsync(ct);
+                
+            return Math.Round(result, 4);
+        }
+        catch
+        {
+            try
+            {
+                var reader = new WKTReader();
+                var geom = reader.Read(wkt);
+                return geom != null ? Math.Round(geom.Area * 10000.0, 4) : 0;
+            }
+            catch
+            {
+                return 0;
+            }
+        }
     }
 
     public async Task<double> CalculateNonOverlappingAreaAsync(List<Guid> lotIds, CancellationToken ct = default)
@@ -313,4 +329,103 @@ public class LotQueryService : ILotQueryService
             return new GeoJsonGeometry("Polygon", new double[][][] { ring });
         }
     }
+
+    public async Task<LotOverlapCheckResultDto> CheckLotOverlapAsync(string wkt, Guid fieldId, Guid? excludeLotId = null, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(wkt) || fieldId == Guid.Empty)
+        {
+            return new LotOverlapCheckResultDto(false, false, 0);
+        }
+
+        try
+        {
+            var reader = new WKTReader();
+            var newGeom = reader.Read(wkt);
+            if (newGeom == null || newGeom.IsEmpty)
+            {
+                return new LotOverlapCheckResultDto(false, false, 0);
+            }
+
+            var query = _context.Lots
+                .AsNoTracking()
+                .Where(l => l.FieldId == fieldId && l.Geometry != null && !l.Geometry.IsEmpty);
+
+            if (excludeLotId.HasValue && excludeLotId.Value != Guid.Empty)
+            {
+                query = query.Where(l => l.Id != excludeLotId.Value);
+            }
+
+            var existingLots = await query
+                .Select(l => new { l.Id, l.Name, l.Geometry })
+                .ToListAsync(ct);
+
+            if (existingLots.Count == 0)
+            {
+                return new LotOverlapCheckResultDto(false, false, 0);
+            }
+
+            LotOverlapCheckResultDto? highestOverlapResult = null;
+
+            foreach (var existing in existingLots)
+            {
+                var existingGeom = existing.Geometry!;
+                if (!newGeom.Intersects(existingGeom) && !newGeom.Overlaps(existingGeom))
+                {
+                    continue;
+                }
+
+                var intersection = newGeom.Intersection(existingGeom);
+                if (intersection == null || intersection.IsEmpty)
+                {
+                    continue;
+                }
+
+                bool isExactDuplicate = newGeom.EqualsTopologically(existingGeom) || newGeom.EqualsExact(existingGeom);
+
+                double overlapPct = 0;
+                if (isExactDuplicate)
+                {
+                    overlapPct = 100.0;
+                }
+                else if (newGeom.Area > 0)
+                {
+                    overlapPct = Math.Min(100.0, Math.Round((intersection.Area / newGeom.Area) * 100.0, 2));
+                    if (overlapPct >= 98.0)
+                    {
+                        isExactDuplicate = true;
+                    }
+                }
+                else
+                {
+                    overlapPct = 100.0;
+                }
+
+                if (overlapPct > 1.0 || isExactDuplicate)
+                {
+                    var result = new LotOverlapCheckResultDto(
+                        HasOverlap: true,
+                        IsExactDuplicate: isExactDuplicate,
+                        OverlapPercentage: overlapPct,
+                        ExistingLotId: existing.Id,
+                        ExistingLotName: existing.Name,
+                        Message: isExactDuplicate
+                            ? $"El polígono ingresado es un duplicado del lote '{existing.Name}'."
+                            : $"El polígono ingresado se superpone en un {overlapPct:0.#}% con el lote '{existing.Name}'."
+                    );
+
+                    if (highestOverlapResult == null || result.OverlapPercentage > highestOverlapResult.OverlapPercentage)
+                    {
+                        highestOverlapResult = result;
+                    }
+                }
+            }
+
+            return highestOverlapResult ?? new LotOverlapCheckResultDto(false, false, 0);
+        }
+        catch
+        {
+            return new LotOverlapCheckResultDto(false, false, 0);
+        }
+    }
 }
+

@@ -122,3 +122,25 @@ public class LotAreaResult
     public Guid Id { get; set; }
     public double AreaHa { get; set; }
 }
+
+public record CheckLotOverlapRequestDto(
+    string WktGeometry,
+    Guid FieldId,
+    Guid? ExcludeLotId = null
+)
+{
+    public CheckLotOverlapRequestDto() : this(string.Empty, Guid.Empty, null) { }
+}
+
+public record LotOverlapCheckResultDto(
+    bool HasOverlap,
+    bool IsExactDuplicate,
+    double OverlapPercentage,
+    Guid? ExistingLotId = null,
+    string? ExistingLotName = null,
+    string? Message = null
+)
+{
+    public LotOverlapCheckResultDto() : this(false, false, 0, null, null, null) { }
+}
+

@@ -639,7 +639,7 @@
                 {
                     foreach (var feature in geojson.Features)
                     {
-                        if (feature.Geometry?.Coordinates != null)
+                        if (feature != null && feature.Geometry?.Coordinates != null)
                         {
                             var leafletCoords = ParseDashboardLeafletCoords(feature.Geometry.Coordinates);
                             var coordsJson = JsonSerializer.Serialize(leafletCoords);
