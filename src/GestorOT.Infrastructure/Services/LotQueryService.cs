@@ -120,7 +120,9 @@ public class LotQueryService : ILotQueryService
                 compositeGeometry = NetTopologySuite.Operation.Union.UnaryUnionOp.Union(validGeometries);
             }
 
-            var totalCadastralArea = field.Lots.Sum(l => l.CadastralArea);
+            var fieldLotIds = field.Lots.Select(l => l.Id).ToList();
+            var realNonOverlappingArea = await CalculateNonOverlappingAreaAsync(fieldLotIds, ct);
+            var areaToUse = realNonOverlappingArea > 0 ? realNonOverlappingArea : (double)field.Lots.Sum(l => l.CadastralArea);
 
             features.Add(new GeoJsonFeature(
                 "Feature",
@@ -129,7 +131,7 @@ public class LotQueryService : ILotQueryService
                     ["id"] = field.Id.ToString(),
                     ["name"] = field.Name,
                     ["lotsCount"] = field.Lots.Count,
-                    ["area"] = (double)totalCadastralArea
+                    ["area"] = areaToUse
                 },
                 ParseGeometry(compositeGeometry)
             ));
@@ -149,6 +151,74 @@ public class LotQueryService : ILotQueryService
             .FirstOrDefaultAsync(ct);
             
         return Math.Round(result, 4);
+    }
+
+    public async Task<double> CalculateNonOverlappingAreaAsync(List<Guid> lotIds, CancellationToken ct = default)
+    {
+        if (lotIds == null || lotIds.Count == 0) return 0;
+
+        try
+        {
+            var lotGeoms = await _context.Lots
+                .AsNoTracking()
+                .Where(l => lotIds.Contains(l.Id) && l.Geometry != null && !l.Geometry.IsEmpty)
+                .Select(l => l.Geometry!)
+                .ToListAsync(ct);
+
+            if (lotGeoms.Count == 0)
+            {
+                var fallbackLots = await _context.Lots
+                    .AsNoTracking()
+                    .Where(l => lotIds.Contains(l.Id))
+                    .SumAsync(l => (double)l.CadastralArea, ct);
+                return Math.Round(fallbackLots, 4);
+            }
+
+            var union = lotGeoms.Count == 1 ? lotGeoms[0] : NetTopologySuite.Operation.Union.UnaryUnionOp.Union(lotGeoms);
+            if (union == null || union.IsEmpty) return 0;
+
+            var writer = new WKTWriter();
+            var unionWkt = writer.Write(union);
+            return await CalculateAreaFromWktAsync(unionWkt, ct);
+        }
+        catch
+        {
+            return 0;
+        }
+    }
+
+    public async Task<double> CalculateNetNewAreaAsync(string newWkt, List<Guid> existingLotIds, CancellationToken ct = default)
+    {
+        if (string.IsNullOrEmpty(newWkt)) return 0;
+
+        var reader = new WKTReader();
+        var newGeom = reader.Read(newWkt);
+        if (newGeom == null || newGeom.IsEmpty) return 0;
+
+        if (existingLotIds == null || existingLotIds.Count == 0)
+        {
+            return await CalculateAreaFromWktAsync(newWkt, ct);
+        }
+
+        var existingGeoms = await _context.Lots
+            .AsNoTracking()
+            .Where(l => existingLotIds.Contains(l.Id) && l.Geometry != null && !l.Geometry.IsEmpty)
+            .Select(l => l.Geometry!)
+            .ToListAsync(ct);
+
+        if (existingGeoms.Count == 0)
+        {
+            return await CalculateAreaFromWktAsync(newWkt, ct);
+        }
+
+        var unionExisting = existingGeoms.Count == 1 ? existingGeoms[0] : NetTopologySuite.Operation.Union.UnaryUnionOp.Union(existingGeoms);
+        var netGeom = newGeom.Difference(unionExisting);
+
+        if (netGeom == null || netGeom.IsEmpty) return 0;
+
+        var writer = new WKTWriter();
+        var netWkt = writer.Write(netGeom);
+        return await CalculateAreaFromWktAsync(netWkt, ct);
     }
 
     public async Task<List<SurfaceHistoryDto>> GetSurfaceHistoryAsync(Guid lotId, CancellationToken ct = default)

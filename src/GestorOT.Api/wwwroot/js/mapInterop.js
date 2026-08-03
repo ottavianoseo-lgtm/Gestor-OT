@@ -312,7 +312,10 @@ window.mapInterop = {
         if (!this.map.hasLayer(layer)) {
             layer.addTo(this.map);
         }
-        this.map.fitBounds(layer.getBounds(), { padding: [80, 80], maxZoom: 16 });
+        const bounds = layer.getBounds();
+        if (bounds && bounds.isValid()) {
+            this.map.fitBounds(bounds, { padding: [80, 80], maxZoom: 16 });
+        }
         this.highlightLot(lotId);
         layer.openPopup();
         return true;
@@ -325,8 +328,12 @@ window.mapInterop = {
         if (layers.length === 0) return false;
 
         const group = L.featureGroup(layers);
-        this.map.fitBounds(group.getBounds(), { padding: [50, 50] });
-        return true;
+        const bounds = group.getBounds();
+        if (bounds && bounds.isValid()) {
+            this.map.fitBounds(bounds, { padding: [50, 50] });
+            return true;
+        }
+        return false;
     },
 
     clearLots: function () {
@@ -583,29 +590,48 @@ window.mapInterop = {
             }
 
             features.forEach(function (feature) {
-                if (!feature.geometry) return;
+                if (!feature || !feature.geometry || !feature.geometry.coordinates) return;
 
-                var name = (feature.properties && (feature.properties.name || feature.properties.Name || feature.properties.NOMBRE || feature.properties.nombre || feature.properties.lote)) || '';
+                var name = (feature.properties && (feature.properties.name || feature.properties.Name || feature.properties.NOMBRE || feature.properties.nombre || feature.properties.lote || feature.properties.Lote || feature.properties.LOTE)) || '';
 
                 if (feature.geometry.type === 'Polygon') {
-                    var coords = feature.geometry.coordinates[0];
-                    var wktCoords = coords.map(function (c) {
-                        return c[0].toFixed(8) + ' ' + c[1].toFixed(8);
+                    var coords = feature.geometry.coordinates && feature.geometry.coordinates[0];
+                    if (!coords || !Array.isArray(coords) || coords.length < 3) return;
+                    var wktCoords = [];
+                    coords.forEach(function (c) {
+                        if (Array.isArray(c) && c.length >= 2 && !isNaN(c[0]) && !isNaN(c[1])) {
+                            wktCoords.push(c[0].toFixed(8) + ' ' + c[1].toFixed(8));
+                        }
                     });
-                    var wkt = 'POLYGON ((' + wktCoords.join(', ') + '))';
-                    results.push({ wkt: wkt, name: name });
+                    if (wktCoords.length >= 3) {
+                        if (wktCoords[0] !== wktCoords[wktCoords.length - 1]) {
+                            wktCoords.push(wktCoords[0]);
+                        }
+                        var wkt = 'POLYGON ((' + wktCoords.join(', ') + '))';
+                        results.push({ wkt: wkt, name: name });
+                    }
                 } else if (feature.geometry.type === 'MultiPolygon') {
                     var polyStrings = [];
                     var polygons = feature.geometry.coordinates;
-                    polygons.forEach(function (poly) {
-                        var outerRing = poly[0];
-                        if (outerRing && outerRing.length >= 3) {
-                            var wktCoords = outerRing.map(function (c) {
-                                return c[0].toFixed(8) + ' ' + c[1].toFixed(8);
-                            });
-                            polyStrings.push('((' + wktCoords.join(', ') + '))');
-                        }
-                    });
+                    if (Array.isArray(polygons)) {
+                        polygons.forEach(function (poly) {
+                            var outerRing = poly && poly[0];
+                            if (outerRing && Array.isArray(outerRing) && outerRing.length >= 3) {
+                                var wktCoords = [];
+                                outerRing.forEach(function (c) {
+                                    if (Array.isArray(c) && c.length >= 2 && !isNaN(c[0]) && !isNaN(c[1])) {
+                                        wktCoords.push(c[0].toFixed(8) + ' ' + c[1].toFixed(8));
+                                    }
+                                });
+                                if (wktCoords.length >= 3) {
+                                    if (wktCoords[0] !== wktCoords[wktCoords.length - 1]) {
+                                        wktCoords.push(wktCoords[0]);
+                                    }
+                                    polyStrings.push('((' + wktCoords.join(', ') + '))');
+                                }
+                            }
+                        });
+                    }
 
                     if (polyStrings.length > 0) {
                         var wkt = 'MULTIPOLYGON (' + polyStrings.join(', ') + ')';
@@ -729,12 +755,29 @@ window.mapInterop = {
 
             polygon.bindPopup('<strong>' + (name || 'Polígono importado') + '</strong>');
             this.drawnItems.addLayer(polygon);
-            this.map.fitBounds(polygon.getBounds(), { padding: [50, 50] });
+            var bounds = polygon.getBounds();
+            if (bounds && bounds.isValid()) {
+                this.map.fitBounds(bounds, { padding: [50, 50], maxZoom: 16 });
+            }
             return true;
         } catch (e) {
             console.error('Error adding imported polygon:', e);
             return false;
         }
+    },
+
+    fitImportedBounds: function () {
+        if (!this.map || !this.drawnItems) return false;
+        try {
+            var bounds = this.drawnItems.getBounds();
+            if (bounds && bounds.isValid()) {
+                this.map.fitBounds(bounds, { padding: [50, 50], maxZoom: 16 });
+                return true;
+            }
+        } catch (e) {
+            console.error('Error fitting imported bounds:', e);
+        }
+        return false;
     },
 
     getCurrentBounds: function () {

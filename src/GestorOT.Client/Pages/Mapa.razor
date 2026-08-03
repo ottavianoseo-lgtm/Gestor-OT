@@ -1242,6 +1242,7 @@
                 {
                     await JS.InvokeAsync<bool>("mapInterop.addImportedPolygon", result.Wkt, result.Name);
                 }
+                await JS.InvokeAsync<bool>("mapInterop.fitImportedBounds");
                 Message.Success($"{parsed.Count} polígono(s) importado(s).");
             }
             else

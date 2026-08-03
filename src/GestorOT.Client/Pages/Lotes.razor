@@ -860,11 +860,14 @@
                 response = await Http.PutAsJsonAsync($"api/lots/{_editingId}",
                     dto, AppJsonSerializerContext.Default.LotDto);
             }
+            else
+            {
                 var postUrl = CampaignState.CurrentCampaign != null && CampaignState.CurrentCampaign.Id != Guid.Empty
                     ? $"api/lots?campaignId={CampaignState.CurrentCampaign.Id}"
                     : "api/lots";
                 response = await Http.PostAsJsonAsync(postUrl,
                     dto, AppJsonSerializerContext.Default.LotDto);
+            }
 
             if (response.IsSuccessStatusCode)
             {

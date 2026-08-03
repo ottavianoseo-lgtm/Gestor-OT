@@ -55,7 +55,7 @@ public class LotsController : ControllerBase
     }
 
     [HttpPost]
-    public async Task<ActionResult<LotDto>> CreateLot(LotDto dto, [FromQuery] Guid? campaignId)
+    public async Task<ActionResult<LotDto>> CreateLot(LotDto dto, [FromQuery] Guid? campaignId, CancellationToken ct = default)
     {
         Geometry? geometry = null;
         double areaHa = 0;
@@ -71,7 +71,13 @@ public class LotsController : ControllerBase
             areaHa = await _queryService.CalculateAreaFromWktAsync(dto.WktGeometry);
             if (cadastralArea == 0)
             {
-                cadastralArea = (decimal)areaHa;
+                var existingLotIds = await _context.Lots
+                    .Where(l => l.FieldId == dto.FieldId)
+                    .Select(l => l.Id)
+                    .ToListAsync(ct);
+
+                var netArea = await _queryService.CalculateNetNewAreaAsync(dto.WktGeometry, existingLotIds, ct);
+                cadastralArea = netArea > 0 ? (decimal)netArea : (decimal)areaHa;
             }
         }
 
@@ -158,11 +164,17 @@ public class LotsController : ControllerBase
 
                 if (campaignField != null)
                 {
-                    var totalHa = await _context.CampaignLots
+                    var lotIdsInCamp = await _context.CampaignLots
                         .Where(cl => cl.CampaignId == campId && cl.Lot!.FieldId == lot.FieldId)
-                        .SumAsync(cl => cl.ProductiveArea);
+                        .Select(cl => cl.LotId)
+                        .ToListAsync();
 
-                    campaignField.AllocatedHectares = totalHa;
+                    var nonOverlapArea = await _queryService.CalculateNonOverlappingAreaAsync(lotIdsInCamp);
+                    campaignField.AllocatedHectares = nonOverlapArea > 0
+                        ? (decimal)nonOverlapArea
+                        : await _context.CampaignLots
+                            .Where(cl => cl.CampaignId == campId && cl.Lot!.FieldId == lot.FieldId)
+                            .SumAsync(cl => cl.ProductiveArea);
                 }
             }
         }

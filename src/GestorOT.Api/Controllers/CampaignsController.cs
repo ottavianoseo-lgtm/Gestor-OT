@@ -14,12 +14,14 @@ public class CampaignsController : ControllerBase
 {
     private readonly IApplicationDbContext _context;
     private readonly ICampaignManagerService _campaignManager;
+    private readonly ILotQueryService _lotQueryService;
     private readonly ILogger<CampaignsController> _logger;
 
-    public CampaignsController(IApplicationDbContext context, ICampaignManagerService campaignManager, ILogger<CampaignsController> logger)
+    public CampaignsController(IApplicationDbContext context, ICampaignManagerService campaignManager, ILotQueryService lotQueryService, ILogger<CampaignsController> logger)
     {
         _context = context;
         _campaignManager = campaignManager;
+        _lotQueryService = lotQueryService;
         _logger = logger;
     }
 
@@ -388,11 +390,30 @@ public class CampaignsController : ControllerBase
 
         if (campaignField == null) return;
 
-        var totalHa = await _context.CampaignLots
+        var lotIds = await _context.CampaignLots
             .Where(cl => cl.CampaignId == campaignId && cl.Lot!.FieldId == fieldId)
-            .SumAsync(cl => cl.ProductiveArea);
+            .Select(cl => cl.LotId)
+            .ToListAsync();
 
-        campaignField.AllocatedHectares = totalHa;
+        if (lotIds.Count == 0)
+        {
+            campaignField.AllocatedHectares = 0;
+        }
+        else
+        {
+            var nonOverlapArea = await _lotQueryService.CalculateNonOverlappingAreaAsync(lotIds);
+            if (nonOverlapArea > 0)
+            {
+                campaignField.AllocatedHectares = (decimal)nonOverlapArea;
+            }
+            else
+            {
+                campaignField.AllocatedHectares = await _context.CampaignLots
+                    .Where(cl => cl.CampaignId == campaignId && cl.Lot!.FieldId == fieldId)
+                    .SumAsync(cl => cl.ProductiveArea);
+            }
+        }
+
         await _context.SaveChangesAsync();
     }
 

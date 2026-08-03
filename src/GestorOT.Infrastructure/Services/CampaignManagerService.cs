@@ -9,10 +9,12 @@ namespace GestorOT.Infrastructure.Services;
 public class CampaignManagerService : ICampaignManagerService
 {
     private readonly IApplicationDbContext _context;
+    private readonly ILotQueryService _lotQueryService;
 
-    public CampaignManagerService(IApplicationDbContext context)
+    public CampaignManagerService(IApplicationDbContext context, ILotQueryService lotQueryService)
     {
         _context = context;
+        _lotQueryService = lotQueryService;
     }
 
     public async Task<int> ImportLotsFromPreviousCampaignAsync(
@@ -191,11 +193,30 @@ public class CampaignManagerService : ICampaignManagerService
 
         if (campaignField == null) return;
 
-        var totalHa = await _context.CampaignLots
+        var lotIds = await _context.CampaignLots
             .Where(cl => cl.CampaignId == campaignId && cl.Lot!.FieldId == fieldId)
-            .SumAsync(cl => cl.ProductiveArea, ct);
+            .Select(cl => cl.LotId)
+            .ToListAsync(ct);
 
-        campaignField.AllocatedHectares = totalHa;
+        if (lotIds.Count == 0)
+        {
+            campaignField.AllocatedHectares = 0;
+        }
+        else
+        {
+            var nonOverlapArea = await _lotQueryService.CalculateNonOverlappingAreaAsync(lotIds, ct);
+            if (nonOverlapArea > 0)
+            {
+                campaignField.AllocatedHectares = (decimal)nonOverlapArea;
+            }
+            else
+            {
+                campaignField.AllocatedHectares = await _context.CampaignLots
+                    .Where(cl => cl.CampaignId == campaignId && cl.Lot!.FieldId == fieldId)
+                    .SumAsync(cl => cl.ProductiveArea, ct);
+            }
+        }
+
         await _context.SaveChangesAsync(ct);
     }
 }
