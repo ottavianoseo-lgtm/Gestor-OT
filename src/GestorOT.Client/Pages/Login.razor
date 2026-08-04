@@ -1,0 +1,97 @@
+@page "/login"
+@layout GestorOT.Client.Layout.AuthLayout
+@using GestorOT.Shared
+@using GestorOT.Shared.Dtos
+@inject HttpClient Http
+@inject NavigationManager Navigation
+@inject GestorOT.Client.Services.TenantState TenantState
+@inject GestorOT.Client.Services.AuthState AuthState
+@inject AntDesign.IMessageService Message
+
+<div style="min-height: 80vh; display: flex; align-items: center; justify-content: center; padding: 20px;">
+    <div style="background: rgba(30, 30, 46, 0.85); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 16px; padding: 36px; width: 420px; max-width: 100%; box-shadow: 0 20px 40px rgba(0,0,0,0.5);">
+        
+        <div style="text-align: center; margin-bottom: 28px;">
+            <div style="width: 56px; height: 56px; border-radius: 14px; background: linear-gradient(135deg, #2ECC71, #27AE60); display: inline-flex; align-items: center; justify-content: center; margin-bottom: 12px; box-shadow: 0 8px 20px rgba(46, 204, 113, 0.3);">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2">
+                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                    <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                </svg>
+            </div>
+            <h1 style="color: #ffffff; font-size: 22px; font-weight: 700; margin: 0 0 6px 0;">Iniciar Sesión</h1>
+            <p style="color: rgba(255, 255, 255, 0.5); font-size: 13px; margin: 0;">GestorOT - Plataforma Multi-Empresa</p>
+        </div>
+
+        <EditForm Model="_model" OnValidSubmit="HandleLogin">
+            <DataAnnotationsValidator />
+
+            @if (!string.IsNullOrEmpty(_errorMessage))
+            {
+                <div style="background: rgba(231, 76, 60, 0.15); border: 1px solid rgba(231, 76, 60, 0.3); border-radius: 8px; padding: 12px; margin-bottom: 18px; color: #E74C3C; font-size: 13px; text-align: center;">
+                    @_errorMessage
+                </div>
+            }
+
+            <div style="margin-bottom: 18px;">
+                <label style="display: block; color: rgba(255,255,255,0.7); font-size: 12px; font-weight: 600; margin-bottom: 6px;">Email de Usuario</label>
+                <InputText @bind-Value="_model.Email" class="search-input" style="width: 100%; box-sizing: border-box; padding: 10px 14px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.15); border-radius: 8px; color: #ffffff;" placeholder="usuario@empresa.com" />
+            </div>
+
+            <div style="margin-bottom: 24px;">
+                <label style="display: block; color: rgba(255,255,255,0.7); font-size: 12px; font-weight: 600; margin-bottom: 6px;">Contraseña</label>
+                <InputText @bind-Value="_model.Password" type="password" class="search-input" style="width: 100%; box-sizing: border-box; padding: 10px 14px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.15); border-radius: 8px; color: #ffffff;" placeholder="••••••••" />
+            </div>
+
+            <button type="submit" disabled="@_loading" class="btn-admin btn-admin-primary" style="width: 100%; padding: 12px; justify-content: center; font-size: 14px; font-weight: 600; background: linear-gradient(135deg, #2ECC71, #27AE60); border: none; border-radius: 8px; color: #ffffff; cursor: pointer;">
+                @if (_loading)
+                {
+                    <span>Iniciando sesión...</span>
+                }
+                else
+                {
+                    <span>Ingresar</span>
+                }
+            </button>
+        </EditForm>
+    </div>
+</div>
+
+@code {
+    private LoginRequestDto _model = new();
+    private bool _loading = false;
+    private string? _errorMessage;
+
+    private async Task HandleLogin()
+    {
+        _loading = true;
+        _errorMessage = null;
+
+        try
+        {
+            var response = await Http.PostAsJsonAsync("api/auth/login", _model, AppJsonSerializerContext.Default.LoginRequestDto);
+            if (response.IsSuccessStatusCode)
+            {
+                var result = await response.Content.ReadFromJsonAsync<LoginResponseDto>(AppJsonSerializerContext.Default.LoginResponseDto);
+                if (result != null && result.Success && result.User != null)
+                {
+                    AuthState.SetUser(result.User);
+                    TenantState.SetTenant(new TenantDto(result.User.TenantId, result.User.TenantName, null, null, DateTime.UtcNow));
+                    Message.Success($"Bienvenido {result.User.DisplayName}");
+                    Navigation.NavigateTo("/");
+                    return;
+                }
+            }
+
+            var errResult = await response.Content.ReadFromJsonAsync<LoginResponseDto>(AppJsonSerializerContext.Default.LoginResponseDto);
+            _errorMessage = errResult?.Message ?? "Credenciales inválidas.";
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Error al iniciar sesión: {ex.Message}";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+}

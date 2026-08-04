@@ -57,6 +57,10 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
         {
             if (_httpContextAccessor?.HttpContext != null)
             {
+                var claimTenant = _httpContextAccessor.HttpContext.User?.FindFirst("tenant_id")?.Value;
+                if (Guid.TryParse(claimTenant, out var userTenantId) && userTenantId != Guid.Empty)
+                    return userTenantId;
+
                 var tenantHeader = _httpContextAccessor.HttpContext.Request.Headers["X-Tenant-ID"].FirstOrDefault();
                 if (Guid.TryParse(tenantHeader, out var tenantId))
                     return tenantId;

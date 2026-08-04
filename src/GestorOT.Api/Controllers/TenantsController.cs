@@ -59,5 +59,12 @@ public class TenantsController : ControllerBase
         await _erpSyncService.SyncLaborTypesAsync(id);
         return Ok(new { Message = "Sincronización de labores completada." });
     }
+
+    [HttpPost("ensure-admins")]
+    public async Task<IActionResult> EnsureAdminsExist()
+    {
+        var count = await _tenantService.EnsureAdminsExistAsync();
+        return Ok(new { Message = $"Se verificaron las empresas y se crearon {count} usuarios administradores iniciales." });
+    }
 }
 

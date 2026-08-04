@@ -19,6 +19,10 @@ public class UserFormDto
     public string Role { get; set; } = "Agronomist";
 
     public bool IsActive { get; set; } = true;
+    public Guid TenantId { get; set; }
+
+    [StringLength(100, ErrorMessage = "La contraseña no puede exceder 100 caracteres.")]
+    public string? Password { get; set; }
 }
 
 public class ProductFormDto

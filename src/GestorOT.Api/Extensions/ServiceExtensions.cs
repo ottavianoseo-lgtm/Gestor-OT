@@ -18,6 +18,7 @@ public static class ServiceExtensions
         services.AddScoped<ICampaignContextService, CampaignContextService>();
         services.AddScoped<ITenantService, TenantService>();
         services.AddScoped<IWorkOrderService, WorkOrderService>();
+        services.AddScoped<IAuthService, AuthService>();
     }
 
     public static void AddInfrastructureServices(this IServiceCollection services, IConfiguration configuration)

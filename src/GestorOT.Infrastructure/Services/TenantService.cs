@@ -47,6 +47,24 @@ public class TenantService : ITenantService
         };
 
         _context.Tenants.Add(tenant);
+        
+        // Automatically create an initial Admin user for the new tenant
+        var cleanTenantName = new string(name.Where(char.IsLetterOrDigit).ToArray()).ToLowerInvariant();
+        if (string.IsNullOrEmpty(cleanTenantName)) cleanTenantName = "empresa";
+        var adminEmail = $"admin@{cleanTenantName}.com";
+
+        var adminUser = new UserProfile
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenant.Id,
+            DisplayName = $"Admin {name}",
+            Email = adminEmail,
+            Role = "Admin",
+            IsActive = true,
+            CreatedAt = DateTime.UtcNow
+        };
+
+        _context.UserProfiles.Add(adminUser);
         await _context.SaveChangesAsync();
     }
 
@@ -62,5 +80,46 @@ public class TenantService : ITenantService
         tenant.GestorMaxDatabaseId = gestorMaxDatabaseId?.Trim();
 
         await _context.SaveChangesAsync();
+    }
+
+    public async Task<int> EnsureAdminsExistAsync()
+    {
+        var tenants = await _context.Tenants.IgnoreQueryFilters().ToListAsync();
+        var countCreated = 0;
+
+        foreach (var tenant in tenants)
+        {
+            var hasAdmin = await _context.UserProfiles
+                .IgnoreQueryFilters()
+                .AnyAsync(u => u.TenantId == tenant.Id && (u.Role == "Admin" || u.Role == "TenantAdmin"));
+
+            if (!hasAdmin)
+            {
+                var cleanTenantName = new string(tenant.Name.Where(char.IsLetterOrDigit).ToArray()).ToLowerInvariant();
+                if (string.IsNullOrEmpty(cleanTenantName)) cleanTenantName = "empresa";
+                var adminEmail = $"admin@{cleanTenantName}.com";
+
+                var adminUser = new UserProfile
+                {
+                    Id = Guid.NewGuid(),
+                    TenantId = tenant.Id,
+                    DisplayName = $"Admin {tenant.Name}",
+                    Email = adminEmail,
+                    Role = "Admin",
+                    IsActive = true,
+                    CreatedAt = DateTime.UtcNow
+                };
+
+                _context.UserProfiles.Add(adminUser);
+                countCreated++;
+            }
+        }
+
+        if (countCreated > 0)
+        {
+            await _context.SaveChangesAsync();
+        }
+
+        return countCreated;
     }
 }

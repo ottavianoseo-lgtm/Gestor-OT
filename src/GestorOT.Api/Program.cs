@@ -25,6 +25,7 @@ builder.Services.AddAntDesign();
 builder.Services.AddScoped<TenantState>();
 builder.Services.AddScoped<CampaignState>();
 builder.Services.AddScoped<LoadingService>();
+builder.Services.AddScoped<AuthState>();
 builder.Services.AddHttpClient();
 
 // ERP Background Sync Worker
@@ -40,6 +41,39 @@ builder.Services.ConfigureHttpJsonOptions(options =>
 {
     options.SerializerOptions.TypeInfoResolverChain.Insert(0, GestorOT.Shared.AppJsonSerializerContext.Default);
 });
+
+var jwtSecretKey = builder.Configuration["Jwt:SecretKey"] ?? "GestorOT_SuperSecretKey_MultiTenancy_JWT_Token_2026!#$";
+
+builder.Services.AddAuthentication(options =>
+{
+    options.DefaultAuthenticateScheme = Microsoft.AspNetCore.Authentication.JwtBearer.JwtBearerDefaults.AuthenticationScheme;
+    options.DefaultChallengeScheme = Microsoft.AspNetCore.Authentication.JwtBearer.JwtBearerDefaults.AuthenticationScheme;
+})
+.AddJwtBearer(options =>
+{
+    options.RequireHttpsMetadata = false;
+    options.SaveToken = true;
+    options.TokenValidationParameters = new Microsoft.IdentityModel.Tokens.TokenValidationParameters
+    {
+        ValidateIssuerSigningKey = true,
+        IssuerSigningKey = new Microsoft.IdentityModel.Tokens.SymmetricSecurityKey(System.Text.Encoding.UTF8.GetBytes(jwtSecretKey)),
+        ValidateIssuer = false,
+        ValidateAudience = false,
+        ClockSkew = TimeSpan.Zero
+    };
+    options.Events = new Microsoft.AspNetCore.Authentication.JwtBearer.JwtBearerEvents
+    {
+        OnMessageReceived = context =>
+        {
+            if (context.Request.Cookies.TryGetValue("GestorOT_SessionToken", out var token) && !string.IsNullOrEmpty(token))
+            {
+                context.Token = token;
+            }
+            return Task.CompletedTask;
+        }
+    };
+});
+builder.Services.AddAuthorization();
 
 var app = builder.Build();
 
@@ -60,6 +94,8 @@ else
 app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true);
 app.UseStaticFiles();
 app.UseRouting();
+app.UseAuthentication();
+app.UseAuthorization();
 app.UseWhen(context => !context.Request.Path.StartsWithSegments("/api"), appBuilder =>
 {
     appBuilder.UseAntiforgery();

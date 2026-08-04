@@ -6,10 +6,13 @@ public record UserProfileDto(
     string DisplayName,
     string Role,
     bool IsActive,
-    DateTime CreatedAt
+    DateTime CreatedAt,
+    Guid TenantId = default,
+    string? TenantName = null,
+    string? Password = null
 )
 {
-    public UserProfileDto() : this(Guid.Empty, string.Empty, string.Empty, "Agronomist", true, DateTime.MinValue) { }
+    public UserProfileDto() : this(Guid.Empty, string.Empty, string.Empty, "Agronomist", true, DateTime.MinValue, Guid.Empty, null, null) { }
 }
 
 public record TankMixRuleDto(

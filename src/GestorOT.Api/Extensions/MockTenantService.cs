@@ -85,4 +85,5 @@ public class MockTenantService : ITenantService
 
     public Task CreateTenantAsync(string name, string? gestorMaxApiKey, string? gestorMaxDatabaseId) => Task.CompletedTask;
     public Task UpdateTenantAsync(Guid id, string name, string? gestorMaxApiKey, string? gestorMaxDatabaseId) => Task.CompletedTask;
+    public Task<int> EnsureAdminsExistAsync() => Task.FromResult(0);
 }

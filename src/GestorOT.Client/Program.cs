@@ -6,6 +6,7 @@ var builder = WebAssemblyHostBuilder.CreateDefault(args);
 builder.Services.AddScoped<TenantState>();
 builder.Services.AddScoped<CampaignState>();
 builder.Services.AddScoped<LoadingService>();
+builder.Services.AddScoped<AuthState>();
 
 builder.Services.AddScoped<DashboardState>();
 builder.Services.AddScoped<CatalogCache>();

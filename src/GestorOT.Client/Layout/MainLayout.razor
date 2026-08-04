@@ -5,8 +5,10 @@
 @inject GestorOT.Client.Services.TenantState TenantState
 @inject GestorOT.Client.Services.CampaignState CampaignState
 @inject GestorOT.Client.Services.LoadingService Loading
+@inject GestorOT.Client.Services.AuthState AuthState
 @inject HttpClient Http
 @using System.Net.Http.Json
+@using GestorOT.Shared
 
 @if (Loading.IsLoading)
 {
@@ -155,6 +157,20 @@ else if (!string.IsNullOrEmpty(Loading.SuccessMessage))
                             <Icon Type="tags" Theme="IconThemeType.Outline" />
                             <span>Estados de OT</span>
                         </MenuItem>
+                        @if (AuthState.IsAuthenticated)
+                        {
+                            <MenuItem Key="logout" OnClick="LogoutAsync" Style="@MenuItemStyle">
+                                <Icon Type="logout" Theme="IconThemeType.Outline" />
+                                <span>Cerrar Sesión (@(AuthState.User?.DisplayName ?? "Usuario"))</span>
+                            </MenuItem>
+                        }
+                        else
+                        {
+                            <MenuItem Key="20" RouterLink="/login" Style="@MenuItemStyle">
+                                <Icon Type="login" Theme="IconThemeType.Outline" />
+                                <span>Iniciar Sesión</span>
+                            </MenuItem>
+                        }
                     </ChildContent>
                 </SubMenu>
             </Menu>
@@ -185,6 +201,7 @@ else if (!string.IsNullOrEmpty(Loading.SuccessMessage))
         TenantState.OnChange += StateHasChanged;
         CampaignState.OnChange += StateHasChanged;
         Loading.OnChange += StateHasChanged;
+        AuthState.OnChange += StateHasChanged;
         
         Nav.LocationChanged += OnLocationChanged;
         UpdateSelectedKey(Nav.Uri);
@@ -226,8 +243,50 @@ else if (!string.IsNullOrEmpty(Loading.SuccessMessage))
     {
         if (firstRender)
         {
+            await CheckAuthAndRedirectAsync();
             await LoadUnassignedCount();
         }
+    }
+
+    private async Task CheckAuthAndRedirectAsync()
+    {
+        var relativePath = Nav.ToBaseRelativePath(Nav.Uri).TrimStart('/').ToLowerInvariant();
+        if (relativePath.StartsWith("login") || relativePath.StartsWith("public/"))
+        {
+            return;
+        }
+
+        try
+        {
+            var user = await Http.GetFromJsonAsync<GestorOT.Shared.Dtos.AuthUserInfoDto>("api/auth/me", AppJsonSerializerContext.Default.AuthUserInfoDto);
+            if (user != null)
+            {
+                AuthState.SetUser(user);
+            }
+            else
+            {
+                AuthState.ClearUser();
+                Nav.NavigateTo("/login");
+            }
+        }
+        catch
+        {
+            AuthState.ClearUser();
+            Nav.NavigateTo("/login");
+        }
+    }
+
+    private async Task LogoutAsync()
+    {
+        try
+        {
+            await Http.PostAsync("api/auth/logout", null);
+        }
+        catch { }
+
+        AuthState.ClearUser();
+        TenantState.Clear();
+        Nav.NavigateTo("/login");
     }
 
     private async Task LoadUnassignedCount()
@@ -249,6 +308,7 @@ else if (!string.IsNullOrEmpty(Loading.SuccessMessage))
         TenantState.OnChange -= StateHasChanged;
         CampaignState.OnChange -= StateHasChanged;
         Loading.OnChange -= StateHasChanged;
+        AuthState.OnChange -= StateHasChanged;
         Nav.LocationChanged -= OnLocationChanged;
     }
 }

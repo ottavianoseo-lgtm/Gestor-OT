@@ -18,6 +18,14 @@ public class CurrentTenantService : ICurrentTenantService
             var httpContext = _httpContextAccessor.HttpContext;
             if (httpContext != null)
             {
+                // First try from authenticated user claims
+                var claimTenant = httpContext.User?.FindFirst("tenant_id")?.Value;
+                if (Guid.TryParse(claimTenant, out var userTenantId) && userTenantId != Guid.Empty)
+                {
+                    return userTenantId;
+                }
+
+                // Fallback to X-Tenant-ID header for legacy or initialization requests
                 var tenantHeader = httpContext.Request.Headers["X-Tenant-ID"].FirstOrDefault();
                 if (Guid.TryParse(tenantHeader, out var tenantId))
                     return tenantId;

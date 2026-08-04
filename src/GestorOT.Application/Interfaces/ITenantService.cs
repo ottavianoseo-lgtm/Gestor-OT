@@ -11,4 +11,5 @@ public interface ITenantService
     Task<TenantInfo?> GetTenantByIdAsync(Guid id);
     Task CreateTenantAsync(string name, string? gestorMaxApiKey, string? gestorMaxDatabaseId);
     Task UpdateTenantAsync(Guid id, string name, string? gestorMaxApiKey, string? gestorMaxDatabaseId);
+    Task<int> EnsureAdminsExistAsync();
 }

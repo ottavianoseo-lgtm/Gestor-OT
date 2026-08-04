@@ -3,6 +3,7 @@
 @layout GestorOT.Client.Layout.AdminDashboardLayout
 @using Microsoft.AspNetCore.Components.QuickGrid
 @using GestorOT.Domain.Enums
+@using GestorOT.Shared.Dtos
 @inject HttpClient Http
 @inject PersistentComponentState PersistentState
 
@@ -11,12 +12,18 @@
         <h1 class="page-title">Gestión de Usuarios</h1>
         <span class="page-subtitle">@_users.Count usuarios registrados</span>
     </div>
-    <button class="btn-admin btn-admin-primary" @onclick="OpenCreateModal">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/>
-        </svg>
-        Nuevo Usuario
-    </button>
+    <div style="display: flex; gap: 8px;">
+        <button class="btn-admin btn-admin-ghost" title="Genera un usuario Admin por defecto en empresas que no tengan uno" @onclick="EnsureAdmins">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+            Generar Admins Faltantes
+        </button>
+        <button class="btn-admin btn-admin-primary" @onclick="OpenCreateModal">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/>
+            </svg>
+            Nuevo Usuario
+        </button>
+    </div>
 </div>
 
 <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px;">
@@ -29,7 +36,7 @@
         <div class="stat-card-label">Activos</div>
     </div>
     <div class="stat-card">
-        <div class="stat-card-value">@_users.Count(u => u.Role == "Admin")</div>
+        <div class="stat-card-value">@_users.Count(u => u.Role == "Admin" || u.Role == "TenantAdmin")</div>
         <div class="stat-card-label">Administradores</div>
     </div>
     <div class="stat-card">
@@ -86,6 +93,7 @@
                     </div>
                 </div>
             </TemplateColumn>
+            <PropertyColumn Property="@(u => u.TenantName ?? "General")" Title="Empresa" Sortable="true" />
             <TemplateColumn Title="Rol" Sortable="true" SortBy="@(GridSort<UserProfileDto>.ByAscending(u => u.Role))">
                 <span class="badge badge-@(context.Role.ToLower())">@context.Role</span>
             </TemplateColumn>
@@ -136,6 +144,17 @@
                 <DataAnnotationsValidator />
 
                 <div style="margin-bottom: 14px;">
+                    <label style="display: block; color: rgba(255,255,255,0.5); font-size: 12px; margin-bottom: 4px;">Empresa / Tenant</label>
+                    <InputSelect @bind-Value="_formModel.TenantId" class="search-input" style="width: 100%; box-sizing: border-box; padding-left: 14px;">
+                        <option value="@Guid.Empty">-- Seleccionar Empresa --</option>
+                        @foreach (var t in _tenants)
+                        {
+                            <option value="@t.Id">@t.Name</option>
+                        }
+                    </InputSelect>
+                </div>
+
+                <div style="margin-bottom: 14px;">
                     <label style="display: block; color: rgba(255,255,255,0.5); font-size: 12px; margin-bottom: 4px;">Nombre</label>
                     <InputText @bind-Value="_formModel.DisplayName" class="search-input" style="width: 100%; box-sizing: border-box; padding-left: 14px;" />
                     <ValidationMessage For="() => _formModel.DisplayName" />
@@ -147,8 +166,6 @@
                     <ValidationMessage For="() => _formModel.Email" />
                 </div>
 
-
-...
                 <div style="margin-bottom: 14px;">
                     <label style="display: block; color: rgba(255,255,255,0.5); font-size: 12px; margin-bottom: 4px;">Rol</label>
                     <InputSelect @bind-Value="_formModel.Role" class="search-input" style="width: 100%; box-sizing: border-box; padding-left: 14px;">
@@ -158,6 +175,14 @@
                         }
                     </InputSelect>
                     <ValidationMessage For="() => _formModel.Role" />
+                </div>
+
+                <div style="margin-bottom: 14px;">
+                    <label style="display: block; color: rgba(255,255,255,0.5); font-size: 12px; margin-bottom: 4px;">
+                        Contraseña @(_editingUser != null ? "(Dejar en blanco para mantener la actual)" : "(Opcional, defecto: admin123)")
+                    </label>
+                    <InputText @bind-Value="_formModel.Password" type="password" class="search-input" style="width: 100%; box-sizing: border-box; padding-left: 14px;" placeholder="••••••••" />
+                    <ValidationMessage For="() => _formModel.Password" />
                 </div>
 
                 <div style="margin-bottom: 20px;">
@@ -220,6 +245,7 @@
 
 @code {
     private List<UserProfileDto> _users = new();
+    private List<TenantDto> _tenants = new();
     private bool _loading = true;
     private string? _error;
 
@@ -255,6 +281,7 @@
             _roleFilter = savedRole ?? "";
         }
 
+        await LoadTenants();
         await LoadUsers();
     }
 
@@ -265,6 +292,15 @@
         return Task.CompletedTask;
     }
 
+    private async Task LoadTenants()
+    {
+        try
+        {
+            _tenants = await Http.GetFromJsonAsync("api/tenants", GestorOT.Shared.AppJsonSerializerContext.Default.ListTenantDto) ?? new();
+        }
+        catch { }
+    }
+
     private async Task LoadUsers()
     {
         _loading = true;
@@ -273,7 +309,7 @@
         {
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
             _users = await Http.GetFromJsonAsync("api/userprofiles",
-                AppJsonSerializerContext.Default.ListUserProfileDto, cts.Token) ?? new();
+                GestorOT.Shared.AppJsonSerializerContext.Default.ListUserProfileDto, cts.Token) ?? new();
         }
         catch (Exception ex)
         {
@@ -286,13 +322,35 @@
         }
     }
 
+    private async Task EnsureAdmins()
+    {
+        _error = null;
+        try
+        {
+            var response = await Http.PostAsync("api/tenants/ensure-admins", null);
+            if (response.IsSuccessStatusCode)
+            {
+                await LoadUsers();
+            }
+            else
+            {
+                _error = "Error al verificar usuarios administradores.";
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = $"Error: {ex.Message}";
+        }
+    }
+
     private void OpenCreateModal()
     {
         _editingUser = null;
         _formModel = new GestorOT.Shared.Validation.UserFormDto
         {
-            Role = "Agronomist",
-            IsActive = true
+            Role = "Admin",
+            IsActive = true,
+            TenantId = _tenants.FirstOrDefault()?.Id ?? Guid.Empty
         };
         _modalVisible = true;
     }
@@ -305,7 +363,8 @@
             DisplayName = user.DisplayName,
             Email = user.Email,
             Role = user.Role,
-            IsActive = user.IsActive
+            IsActive = user.IsActive,
+            TenantId = user.TenantId
         };
         _modalVisible = true;
     }
@@ -326,18 +385,21 @@
                 _formModel.DisplayName,
                 _formModel.Role,
                 _formModel.IsActive,
-                _editingUser?.CreatedAt ?? DateTime.UtcNow
+                _editingUser?.CreatedAt ?? DateTime.UtcNow,
+                _formModel.TenantId,
+                null,
+                _formModel.Password
             );
 
             if (_editingUser != null)
             {
                 await Http.PutAsJsonAsync($"api/userprofiles/{_editingUser.Id}", dto,
-                    AppJsonSerializerContext.Default.UserProfileDto);
+                    GestorOT.Shared.AppJsonSerializerContext.Default.UserProfileDto);
             }
             else
             {
                 await Http.PostAsJsonAsync("api/userprofiles", dto,
-                    AppJsonSerializerContext.Default.UserProfileDto);
+                    GestorOT.Shared.AppJsonSerializerContext.Default.UserProfileDto);
             }
 
             CloseModal();
