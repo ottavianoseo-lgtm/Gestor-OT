@@ -40,7 +40,8 @@ public class FieldsController : ControllerBase
                 f.Lots.Select(l => new LotSummaryDto(
                     l.Id,
                     l.Name,
-                    l.Status
+                    l.Status,
+                    l.CadastralArea
                 )).ToList()
             ))
             .ToListAsync();
@@ -62,7 +63,8 @@ public class FieldsController : ControllerBase
                 f.Lots.Select(l => new LotSummaryDto(
                     l.Id,
                     l.Name,
-                    l.Status
+                    l.Status,
+                    l.CadastralArea
                 )).ToList()
             ))
             .FirstOrDefaultAsync();

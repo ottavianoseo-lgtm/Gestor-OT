@@ -13,8 +13,9 @@ public record FieldDto(
 public record LotSummaryDto(
     Guid Id,
     string Name,
-    string Status
+    string Status,
+    decimal CadastralArea = 0
 )
 {
-    public LotSummaryDto() : this(Guid.Empty, string.Empty, "Active") { }
+    public LotSummaryDto() : this(Guid.Empty, string.Empty, "Active", 0) { }
 }
