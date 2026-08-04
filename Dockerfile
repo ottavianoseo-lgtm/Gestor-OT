@@ -4,11 +4,7 @@ USER app
 WORKDIR /app
 
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
-RUN apt-get update && apt-get install -y python3 --no-install-recommends && rm -rf /var/lib/apt/lists/*
 WORKDIR /src
-
-# Instalar herramientas de WASM
-RUN dotnet workload install wasm-tools
 
 COPY ["src/GestorOT.Api/GestorOT.Api.csproj", "src/GestorOT.Api/"]
 COPY ["src/GestorOT.Client/GestorOT.Client.csproj", "src/GestorOT.Client/"]
@@ -21,12 +17,9 @@ RUN dotnet restore "src/GestorOT.Api/GestorOT.Api.csproj"
 COPY . .
 
 WORKDIR "/src/src/GestorOT.Api"
-RUN dotnet build "GestorOT.Api.csproj" -c Release -o /app/build
-
-FROM build AS publish
 RUN dotnet publish "GestorOT.Api.csproj" -c Release -o /app/publish /p:UseAppHost=false
 
 FROM base AS final
 WORKDIR /app
-COPY --chown=app --from=publish /app/publish .
+COPY --chown=app --from=build /app/publish .
 ENTRYPOINT ["dotnet", "GestorOT.Api.dll"]

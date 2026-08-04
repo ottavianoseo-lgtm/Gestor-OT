@@ -11,9 +11,7 @@
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)' == 'Release'">
-    <RunAOTCompilation>true</RunAOTCompilation>
-    <WasmStripILAfterAOT>true</WasmStripILAfterAOT>
-    <WasmEnableSIMD>true</WasmEnableSIMD>
+    <RunAOTCompilation>false</RunAOTCompilation>
     <PublishTrimmed>true</PublishTrimmed>
     <TrimMode>link</TrimMode>
   </PropertyGroup>
