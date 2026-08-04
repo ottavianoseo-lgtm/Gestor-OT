@@ -1,0 +1,282 @@
+@using GestorOT.Shared.Dtos
+@using GestorOT.Shared
+@using System.Net.Http.Json
+@using AntDesign
+@inject HttpClient Http
+@inject IMessageService Message
+
+<Modal Title="@($"Gestión de Lote — {(Lot?.Name ?? "")}")"
+       Visible="Visible"
+       OnCancel="HandleClose"
+       Footer="null"
+       Width="720">
+    @if (_loading)
+    {
+        <div style="text-align: center; padding: 40px;">
+            <Icon Type="loading" Theme="IconThemeType.Outline" Style="font-size: 28px; color: #3498DB;" />
+            <div style="margin-top: 10px; color: rgba(255,255,255,0.6); font-size: 13px;">Cargando historial y detalle del lote...</div>
+        </div>
+    }
+    else if (Lot != null)
+    {
+        <!-- Header Info Bar -->
+        <div style="display: flex; align-items: center; justify-content: space-between; background: rgba(255,255,255,0.04); padding: 14px 18px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.08); margin-bottom: 20px;">
+            <div>
+                <div style="font-size: 18px; font-weight: 700; color: #fff; display: flex; align-items: center; gap: 8px;">
+                    <Icon Type="environment" Theme="IconThemeType.Outline" Style="color: #3498DB;" />
+                    @Lot.Name
+                </div>
+                <div style="font-size: 12px; color: rgba(255,255,255,0.5); margin-top: 2px;">
+                    Campo: <strong style="color: rgba(255,255,255,0.85);">@(Lot.FieldName ?? "Sin campo asignado")</strong>
+                </div>
+            </div>
+            <div style="display: flex; align-items: center; gap: 14px;">
+                <div style="text-align: right;">
+                    <div style="font-size: 17px; font-weight: 800; color: #2ECC71;">
+                        @((Lot.CadastralArea > 0 ? (double)Lot.CadastralArea : Lot.Area).ToString("N1")) Ha
+                    </div>
+                    <div style="font-size: 10px; color: rgba(255,255,255,0.4); text-transform: uppercase;">Superficie</div>
+                </div>
+                <Tag Style="@(Lot.Status == "Active" ? "background: #2ECC7120; color: #2ECC71; border-color: #2ECC7140; font-size: 12px; padding: 4px 12px; border-radius: 12px;" : "background: #E74C3C20; color: #E74C3C; border-color: #E74C3C40; font-size: 12px; padding: 4px 12px; border-radius: 12px;")">
+                    @(Lot.Status == "Active" ? "Activo" : Lot.Status)
+                </Tag>
+                <Button Type="@(_isEditing ? ButtonType.Default : ButtonType.Primary)" Size="@ButtonSize.Small" OnClick="ToggleEditMode">
+                    <Icon Type="@(_isEditing ? "close" : "edit")" Theme="IconThemeType.Outline" />
+                    @(_isEditing ? "Cancelar Edición" : "Editar Lote")
+                </Button>
+            </div>
+        </div>
+
+        @if (_isEditing)
+        {
+            <!-- Edit Form Panel -->
+            <div style="background: rgba(52, 152, 219, 0.08); border: 1px solid rgba(52, 152, 219, 0.25); border-radius: 10px; padding: 18px; margin-bottom: 20px;">
+                <h4 style="color: #3498DB; font-size: 14px; font-weight: 700; margin: 0 0 14px; display: flex; align-items: center; gap: 6px;">
+                    <Icon Type="setting" Theme="IconThemeType.Outline" /> Edición del Lote
+                </h4>
+                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-bottom: 14px;">
+                    <div>
+                        <label style="display: block; font-size: 11px; color: rgba(255,255,255,0.5); margin-bottom: 4px;">Nombre del Lote</label>
+                        <Input @bind-Value="_editName" Placeholder="Ej: Lote Norte 1" />
+                    </div>
+                    <div>
+                        <label style="display: block; font-size: 11px; color: rgba(255,255,255,0.5); margin-bottom: 4px;">Estado</label>
+                        <Select TItem="string" TItemValue="string" @bind-Value="_editStatus">
+                            <SelectOptions>
+                                <SelectOption TItem="string" TItemValue="string" Value="@("Active")" Label="Activo" />
+                                <SelectOption TItem="string" TItemValue="string" Value="@("Inactive")" Label="Inactivo" />
+                            </SelectOptions>
+                        </Select>
+                    </div>
+                    <div>
+                        <label style="display: block; font-size: 11px; color: rgba(255,255,255,0.5); margin-bottom: 4px;">Hectáreas (Catastral)</label>
+                        <AntDesign.InputNumber TValue="decimal" @bind-Value="_editCadastralArea" Min="0m" Step="0.1m" Style="width: 100%;" />
+                    </div>
+                </div>
+                <div style="display: flex; justify-content: flex-end; gap: 8px;">
+                    <Button OnClick="ToggleEditMode" Size="@ButtonSize.Small">Cancelar</Button>
+                    <Button Type="@ButtonType.Primary" Size="@ButtonSize.Small" OnClick="SaveLot" Loading="_saving" Style="background: #2ECC71; border-color: #2ECC71;">
+                        <Icon Type="save" Theme="IconThemeType.Outline" /> Guardar Cambios
+                    </Button>
+                </div>
+            </div>
+        }
+
+        <!-- Section: Last Labor -->
+        var lastLabor = _labors.FirstOrDefault();
+        <div style="margin-bottom: 20px;">
+            <div style="font-size: 12px; font-weight: 700; color: rgba(255,255,255,0.8); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; display: flex; align-items: center; gap: 6px;">
+                <Icon Type="star" Theme="IconThemeType.Fill" Style="color: #F1C40F;" />
+                <span>Última Labor Realizada</span>
+            </div>
+            @if (lastLabor != null)
+            {
+                <div style="background: linear-gradient(135deg, rgba(46, 204, 113, 0.08), rgba(52, 152, 219, 0.08)); border: 1px solid rgba(46, 204, 113, 0.25); border-radius: 10px; padding: 14px 16px;">
+                    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <span style="font-size: 15px; font-weight: 700; color: #fff;">
+                                @(lastLabor.LaborTypeName ?? "Labor Agrícola")
+                            </span>
+                            @if (!string.IsNullOrEmpty(lastLabor.OTNumber))
+                            {
+                                <Tag Style="background: rgba(255,255,255,0.1); color: #fff; border: none; font-size: 11px;">
+                                    OT: @lastLabor.OTNumber
+                                </Tag>
+                            }
+                        </div>
+                        <Tag Style="background: #2ECC7120; color: #2ECC71; border-color: #2ECC7140; font-weight: 600;">
+                            @(lastLabor.Status == "Completed" || lastLabor.Status == "Executed" ? "Ejecutada" : lastLabor.Status)
+                        </Tag>
+                    </div>
+                    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; font-size: 12px; color: rgba(255,255,255,0.7); margin-top: 8px;">
+                        <div>
+                            📅 <strong>Fecha:</strong> @(lastLabor.ExecutionDate?.ToString("dd/MM/yyyy") ?? lastLabor.EstimatedDate?.ToString("dd/MM/yyyy") ?? lastLabor.CreatedAt.ToString("dd/MM/yyyy"))
+                        </div>
+                        <div>
+                            👤 <strong>Responsable:</strong> @(lastLabor.AssignedTo ?? "No asignado")
+                        </div>
+                        <div>
+                            📐 <strong>Superficie Trabajada:</strong> @lastLabor.Hectares.ToString("N1") Ha
+                        </div>
+                    </div>
+                    @if (lastLabor.Supplies != null && lastLabor.Supplies.Any())
+                    {
+                        <div style="margin-top: 10px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.06); font-size: 11px; color: rgba(255,255,255,0.5);">
+                            📦 <strong>Insumos utilizados:</strong> @string.Join(", ", lastLabor.Supplies.Select(s => $"{s.SupplyName} ({(s.RealDose ?? s.PlannedDose).ToString("N2")} {s.SupplyUnit ?? s.UnitOfMeasure})"))
+                        </div>
+                    }
+                </div>
+            }
+            else
+            {
+                <div style="padding: 14px; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); border-radius: 8px; color: rgba(255,255,255,0.4); font-size: 12px; text-align: center;">
+                    Sin labores registradas para este lote.
+                </div>
+            }
+        </div>
+
+        <!-- Section: Activity History -->
+        <div>
+            <div style="font-size: 12px; font-weight: 700; color: rgba(255,255,255,0.8); margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.5px; display: flex; align-items: center; justify-content: space-between;">
+                <span>📜 Historial de Actividades (@_labors.Count)</span>
+            </div>
+            @if (!_labors.Any())
+            {
+                <div style="padding: 20px; color: rgba(255,255,255,0.4); font-size: 12px; text-align: center; background: rgba(255,255,255,0.02); border-radius: 8px;">
+                    No hay actividades previas registradas en este lote.
+                </div>
+            }
+            else
+            {
+                <div style="max-height: 220px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-right: 4px;">
+                    @foreach (var labor in _labors)
+                    {
+                        <div style="display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; background: rgba(255,255,255,0.03); border-radius: 8px; border: 1px solid rgba(255,255,255,0.05);">
+                            <div style="display: flex; flex-direction: column; gap: 2px;">
+                                <div style="font-size: 13px; font-weight: 600; color: rgba(255,255,255,0.9);">
+                                    @(labor.LaborTypeName ?? "Labor")
+                                    @if (!string.IsNullOrEmpty(labor.OTNumber))
+                                    {
+                                        <span style="font-weight: 400; font-size: 11px; color: rgba(255,255,255,0.4); margin-left: 6px;">#@labor.OTNumber</span>
+                                    }
+                                </div>
+                                <div style="font-size: 11px; color: rgba(255,255,255,0.4);">
+                                    @(labor.ExecutionDate?.ToString("dd/MM/yyyy") ?? labor.CreatedAt.ToString("dd/MM/yyyy")) · @labor.Hectares.ToString("N1") Ha · Responsable: @(labor.AssignedTo ?? "N/A")
+                                </div>
+                            </div>
+                            <Tag Style="font-size: 10px;">@labor.Status</Tag>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    }
+</Modal>
+
+@code {
+    [Parameter] public bool Visible { get; set; }
+    [Parameter] public LotDto? Lot { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public EventCallback<LotDto> OnLotUpdated { get; set; }
+
+    private bool _loading;
+    private bool _isEditing;
+    private bool _saving;
+
+    private string _editName = "";
+    private string _editStatus = "Active";
+    private decimal _editCadastralArea = 0;
+    private List<LaborDto> _labors = new();
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (Visible && Lot != null)
+        {
+            _editName = Lot.Name;
+            _editStatus = Lot.Status ?? "Active";
+            _editCadastralArea = Lot.CadastralArea > 0 ? Lot.CadastralArea : (decimal)Lot.Area;
+            await LoadLabors();
+        }
+    }
+
+    private async Task LoadLabors()
+    {
+        if (Lot == null) return;
+        _loading = true;
+        try
+        {
+            _labors = await Http.GetFromJsonAsync($"api/labors/by-lot/{Lot.Id}",
+                AppJsonSerializerContext.Default.ListLaborDto) ?? new();
+        }
+        catch
+        {
+            _labors = new();
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task HandleClose()
+    {
+        _isEditing = false;
+        await OnClose.InvokeAsync();
+    }
+
+    private void ToggleEditMode()
+    {
+        _isEditing = !_isEditing;
+        if (_isEditing && Lot != null)
+        {
+            _editName = Lot.Name;
+            _editStatus = Lot.Status ?? "Active";
+            _editCadastralArea = Lot.CadastralArea > 0 ? Lot.CadastralArea : (decimal)Lot.Area;
+        }
+    }
+
+    private async Task SaveLot()
+    {
+        if (Lot == null) return;
+        if (string.IsNullOrWhiteSpace(_editName))
+        {
+            Message.Warning("El nombre del lote es obligatorio.");
+            return;
+        }
+
+        _saving = true;
+        try
+        {
+            var updated = Lot with
+            {
+                Name = _editName,
+                Status = _editStatus,
+                CadastralArea = _editCadastralArea
+            };
+
+            var response = await Http.PutAsJsonAsync($"api/lots/{Lot.Id}", updated,
+                AppJsonSerializerContext.Default.LotDto);
+
+            if (response.IsSuccessStatusCode)
+            {
+                Message.Success("Lote actualizado correctamente.");
+                _isEditing = false;
+                await OnLotUpdated.InvokeAsync(updated);
+            }
+            else
+            {
+                var err = await response.Content.ReadAsStringAsync();
+                Message.Error($"Error al guardar el lote: {err}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Message.Error($"Error: {ex.Message}");
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+}

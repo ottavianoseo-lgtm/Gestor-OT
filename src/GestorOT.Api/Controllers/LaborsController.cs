@@ -45,6 +45,26 @@ public class LaborsController : ControllerBase
         return labors.Select(MapToDto).ToList();
     }
 
+    [HttpGet("by-lot/{lotId:guid}")]
+    public async Task<ActionResult<List<LaborDto>>> GetByLot(Guid lotId)
+    {
+        var labors = await _context.Labors
+            .AsNoTracking()
+            .AsSplitQuery()
+            .Include(l => l.Lot).ThenInclude(l => l.Field)
+            .Include(l => l.WorkOrder)
+            .Include(l => l.Type)
+            .Include(l => l.Contact)
+            .Include(l => l.Supplies).ThenInclude(s => s.Supply)
+            .Include(l => l.SourceStrategy)
+            .Include(l => l.CampaignLot)
+            .Where(l => l.LotId == lotId)
+            .OrderByDescending(l => l.ExecutionDate ?? l.EstimatedDate ?? l.CreatedAt)
+            .ToListAsync();
+
+        return labors.Select(MapToDto).ToList();
+    }
+
     [HttpGet("{id:guid}")]
     public async Task<ActionResult<LaborDto>> GetLabor(Guid id)
     {

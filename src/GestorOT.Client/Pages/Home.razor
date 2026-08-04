@@ -34,13 +34,46 @@
 
         <div class="widgets-container">
             <div class="widgets-column">
-                <div class="widget-glass widget-hero">
+                <div class="widget-glass widget-hero" style="cursor: pointer;" @onclick="OpenLotListModal" title="Haga clic para buscar y gestionar lotes">
                     <div class="hero-icon">
                         <Icon Type="appstore" Theme="IconThemeType.Fill" Style="font-size: 28px; color: #2ECC71;" />
                     </div>
                     <div class="hero-value">@_stats.LotsCount</div>
                     <div class="hero-label">Total Lotes</div>
-                    <div class="hero-sub">@_stats.ActiveLotsCount Activos</div>
+                    <div class="hero-sub" style="display: flex; align-items: center; justify-content: center; gap: 4px;">
+                        <span>@_stats.ActiveLotsCount Activos</span>
+                        <Icon Type="right" Theme="IconThemeType.Outline" Style="font-size: 10px;" />
+                    </div>
+                </div>
+
+                <div class="widget-glass widget-lots-selector">
+                    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
+                        <span class="stats-title" style="margin: 0;">Gestionar Lotes</span>
+                        <Tag Style="background: #3498DB20; color: #3498DB; border-color: #3498DB40; border-radius: 10px; font-size: 10px;">
+                            @_allLots.Count en total
+                        </Tag>
+                    </div>
+                    <Select TItem="LotDto" TItemValue="Guid?" DataSource="_allLots" @bind-Value="_selectedLotId" OnSelectedItemChanged="OnLotSelectedFromDropdown"
+                            LabelName="@nameof(LotDto.Name)" ValueName="@nameof(LotDto.Id)" Placeholder="🔍 Seleccionar un lote..."
+                            Style="width: 100%; border-radius: 8px;" EnableSearch="true">
+                    </Select>
+                    @if (_allLots.Any())
+                    {
+                        <div style="margin-top: 10px; max-height: 140px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px;">
+                            @foreach (var lot in _allLots.Take(4))
+                            {
+                                <div class="lot-quick-item" @onclick="() => OpenLotModal(lot)" style="display: flex; align-items: center; justify-content: space-between; padding: 6px 10px; background: rgba(255,255,255,0.03); border-radius: 6px; cursor: pointer; transition: background 0.2s;" title="Clic para ver detalle y editar">
+                                    <div style="display: flex; align-items: center; gap: 6px;">
+                                        <Icon Type="environment" Theme="IconThemeType.Outline" Style="color: #3498DB; font-size: 12px;" />
+                                        <span style="font-size: 12px; color: #fff; font-weight: 500;">@lot.Name</span>
+                                    </div>
+                                    <span style="font-size: 10px; color: rgba(255,255,255,0.4);">
+                                        @((lot.CadastralArea > 0 ? lot.CadastralArea : (decimal)lot.Area).ToString("N0")) Ha →
+                                    </span>
+                                </div>
+                            }
+                        </div>
+                    }
                 </div>
 
                 <div class="widget-glass widget-stats">
@@ -117,6 +150,8 @@
         </div>
     </div>
 </div>
+
+<LotDetailModal Visible="_lotModalVisible" Lot="_selectedLot" OnClose="CloseLotModal" OnLotUpdated="OnLotUpdated" />
 
 <style>
     .dashboard-immersive {
@@ -545,6 +580,11 @@
 @code {
     private DashboardStatsDto _stats = new();
     private List<RecentWorkOrderDto> _recentOrders = new();
+    private List<LotDto> _allLots = new();
+    private Guid? _selectedLotId;
+    private LotDto? _selectedLot;
+    private bool _lotModalVisible = false;
+
     private bool _isConnected = false;
     private string _lastSync = "Cargando...";
     private string? _errorMessage;
@@ -561,11 +601,22 @@
             _recentOrders = DashboardState.RecentOrders!;
             _isConnected = true;
             _lastSync = DashboardState.LastSync?.ToString("HH:mm:ss") ?? "Reciente";
+            _ = LoadLotsOnly();
         }
         else
         {
             await LoadData();
         }
+    }
+
+    private async Task LoadLotsOnly()
+    {
+        try
+        {
+            _allLots = await Http.GetFromJsonAsync("api/lots", AppJsonSerializerContext.Default.ListLotDto) ?? new();
+            StateHasChanged();
+        }
+        catch { }
     }
 
     private bool _isFetching = false;
@@ -591,11 +642,14 @@
                 AppJsonSerializerContext.Default.ListRecentWorkOrderDto, cts.Token);
             var geoJsonTask = Http.GetFromJsonAsync("api/lots/geojson",
                 AppJsonSerializerContext.Default.GeoJsonFeatureCollection, cts.Token);
+            var lotsTask = Http.GetFromJsonAsync("api/lots",
+                AppJsonSerializerContext.Default.ListLotDto, cts.Token);
 
-            await Task.WhenAll(statsTask, ordersTask, geoJsonTask);
+            await Task.WhenAll(statsTask, ordersTask, geoJsonTask, lotsTask);
 
             _stats = statsTask.Result ?? new();
             _recentOrders = ordersTask.Result ?? new();
+            _allLots = lotsTask.Result ?? new();
             var geoJson = geoJsonTask.Result;
 
             DashboardState.SetData(_stats, _recentOrders, geoJson);
@@ -621,6 +675,54 @@
             _isFetching = false;
             StateHasChanged();
         }
+    }
+
+    private void OnLotSelectedFromDropdown(LotDto? lot)
+    {
+        if (lot != null)
+        {
+            OpenLotModal(lot);
+        }
+    }
+
+    private void OpenLotListModal()
+    {
+        if (_allLots.Any())
+        {
+            OpenLotModal(_allLots.First());
+        }
+        else
+        {
+            Message.Info("No hay lotes registrados actualmente.");
+        }
+    }
+
+    private void OpenLotModal(LotDto lot)
+    {
+        _selectedLot = lot;
+        _selectedLotId = lot.Id;
+        _lotModalVisible = true;
+        StateHasChanged();
+    }
+
+    private void CloseLotModal()
+    {
+        _lotModalVisible = false;
+        _selectedLot = null;
+        _selectedLotId = null;
+    }
+
+    private void OnLotUpdated(LotDto updated)
+    {
+        _selectedLot = updated;
+        var idx = _allLots.FindIndex(l => l.Id == updated.Id);
+        if (idx >= 0)
+        {
+            _allLots[idx] = updated;
+        }
+
+        DashboardState.Clear();
+        _ = LoadData();
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
