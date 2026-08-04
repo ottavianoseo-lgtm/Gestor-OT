@@ -124,20 +124,28 @@
                                                 <span class="tank-mix-badge">@currentSupply.TankMixOrder</span>
                                             }
                                             <span style="color: #fff; font-weight: 500; font-size: 14px;">@(currentSupply.SupplyName ?? "Insumo")</span>
+                                            @if (!string.IsNullOrWhiteSpace(currentSupply.SupplyUnit ?? currentSupply.UnitOfMeasure))
+                                            {
+                                                <Tag Style="background: rgba(52, 152, 219, 0.2); color: #3498DB; border-color: rgba(52, 152, 219, 0.4); font-size: 11px; font-weight: 600; margin-left: 6px;">
+                                                    @(currentSupply.SupplyUnit ?? currentSupply.UnitOfMeasure)
+                                                </Tag>
+                                            }
                                         </div>
                                         <div style="color: rgba(255,255,255,0.5); font-size: 12px; margin-top: 2px;">
-                                            Planificado: @currentSupply.PlannedDose.ToString("N2") @currentSupply.UnitOfMeasure
+                                            Planificado: @currentSupply.PlannedDose.ToString("N2") @(currentSupply.SupplyUnit ?? currentSupply.UnitOfMeasure)
                                         </div>
                                     </div>
                                     <div class="supply-input">
-                                        <label style="color: rgba(255,255,255,0.6); font-size: 11px; display: block; margin-bottom: 2px;">Dosis Real</label>
+                                        <label style="color: rgba(255,255,255,0.6); font-size: 11px; display: block; margin-bottom: 2px;">
+                                            Dosis Real @(!string.IsNullOrEmpty(currentSupply.SupplyUnit ?? currentSupply.UnitOfMeasure) ? $"({currentSupply.SupplyUnit ?? currentSupply.UnitOfMeasure}/ha)" : "")
+                                        </label>
                                         <AntDesign.InputNumber TValue="decimal"
                                                    Value="@GetRealDose(laborId, supplyId, currentSupply.PlannedDose)"
                                                    ValueChanged="@((decimal v) => SetRealDose(laborId, supplyId, v))"
                                                    Min="0" Step="0.01m"
                                                    Style="width: 120px;"
                                                     Disabled="@(isRealized || _isReadOnly)" />
-                                        <span style="color: rgba(255,255,255,0.5); font-size: 11px; margin-left: 4px;">@currentSupply.UnitOfMeasure</span>
+                                        <span style="color: #2ECC71; font-weight: 600; font-size: 11px; margin-left: 4px;">@(currentSupply.SupplyUnit ?? currentSupply.UnitOfMeasure)</span>
                                     </div>
                                 </div>
                             }

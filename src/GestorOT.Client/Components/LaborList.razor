@@ -103,7 +103,11 @@
 
                     <PropertyColumn Property="s => s.SupplyName" Title="Insumo" />
 
-                    <PropertyColumn Property="s => s.SupplyUnit" Title="Unidad" />
+                    <Column TData="string" Title="Unidad">
+                        <Tag Style="background: rgba(52, 152, 219, 0.2); color: #3498DB; border-color: rgba(52, 152, 219, 0.4); font-weight: 600; font-size: 11px;">
+                            @(string.IsNullOrWhiteSpace(context.SupplyUnit) ? (string.IsNullOrWhiteSpace(context.UnitOfMeasure) ? "—" : context.UnitOfMeasure) : context.SupplyUnit)
+                        </Tag>
+                    </Column>
 
                     <Column TData="decimal" Title="Ha. Plan.">
                         <span class="planned-cell">@((context.PlannedHectares > 0 ? context.PlannedHectares : laborRow.Data.Hectares).ToString("N2"))</span>
