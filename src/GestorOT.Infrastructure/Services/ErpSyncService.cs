@@ -2,6 +2,7 @@ using GestorOT.Application.Interfaces;
 using GestorOT.Application.Services;
 using GestorOT.Domain.Entities;
 using GestorOT.Domain.Enums;
+using GestorOT.Shared.Dtos;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using System.Net.Http.Headers;
@@ -264,6 +265,379 @@ public class ErpSyncService : IErpSyncService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error syncing Contacts.");
+        }
+    }
+
+    public async Task<List<ErpCompanyDto>> GetEmpresasAsync(Guid? overrideTenantId = null, CancellationToken ct = default)
+    {
+        var tenantId = overrideTenantId ?? _currentTenantService.TenantId;
+        var result = new List<ErpCompanyDto>();
+        try
+        {
+            var (client, databaseId) = await GetErpClientAndDatabaseIdAsync(tenantId, ct);
+            if (client != null && !string.IsNullOrEmpty(databaseId))
+            {
+                var url = $"{BaseUrl}/v3/GestorG4/ListEmpresas?databaseId={databaseId}";
+                var response = await client.GetAsync(url, ct);
+                if (response.IsSuccessStatusCode)
+                {
+                    var items = await response.Content.ReadFromJsonAsync<List<GenericErpItemResponse>>(ct);
+                    if (items != null && items.Any())
+                    {
+                        result = items.Select(i => new ErpCompanyDto(i.GetCode(), i.GetDescription())).ToList();
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Could not fetch ListEmpresas from GestorMax.");
+        }
+
+        if (!result.Any())
+        {
+            result.Add(new ErpCompanyDto(1, "Empresa 1 (Default)"));
+        }
+        return result;
+    }
+
+    public async Task<List<ErpVoucherTypeDto>> GetComprobantesAsync(Guid? overrideTenantId = null, CancellationToken ct = default)
+    {
+        var tenantId = overrideTenantId ?? _currentTenantService.TenantId;
+        var result = new List<ErpVoucherTypeDto>();
+        try
+        {
+            var (client, databaseId) = await GetErpClientAndDatabaseIdAsync(tenantId, ct);
+            if (client != null && !string.IsNullOrEmpty(databaseId))
+            {
+                var url = $"{BaseUrl}/v3/GestorG4/ListComprobantes?databaseId={databaseId}";
+                var response = await client.GetAsync(url, ct);
+                if (response.IsSuccessStatusCode)
+                {
+                    var items = await response.Content.ReadFromJsonAsync<List<GenericErpItemResponse>>(ct);
+                    if (items != null && items.Any())
+                    {
+                        result = items.Select(i => new ErpVoucherTypeDto(i.GetCode(), i.GetDescription())).ToList();
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Could not fetch ListComprobantes from GestorMax.");
+        }
+
+        if (!result.Any())
+        {
+            result.Add(new ErpVoucherTypeDto(1, "Comprobante 1 - Imputación G4"));
+        }
+        return result;
+    }
+
+    public async Task<List<ErpCurrencyDto>> GetMonedasAsync(Guid? overrideTenantId = null, CancellationToken ct = default)
+    {
+        var tenantId = overrideTenantId ?? _currentTenantService.TenantId;
+        var result = new List<ErpCurrencyDto>();
+        try
+        {
+            var (client, databaseId) = await GetErpClientAndDatabaseIdAsync(tenantId, ct);
+            if (client != null && !string.IsNullOrEmpty(databaseId))
+            {
+                var url = $"{BaseUrl}/v3/GestorG4/ListMonedas?databaseId={databaseId}";
+                var response = await client.GetAsync(url, ct);
+                if (response.IsSuccessStatusCode)
+                {
+                    var items = await response.Content.ReadFromJsonAsync<List<GenericErpItemResponse>>(ct);
+                    if (items != null && items.Any())
+                    {
+                        result = items.Select(i => new ErpCurrencyDto(i.GetCode(), i.GetDescription(), "$")).ToList();
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Could not fetch ListMonedas from GestorMax.");
+        }
+
+        if (!result.Any())
+        {
+            result.Add(new ErpCurrencyDto(1, "Pesos (ARS)", "$"));
+            result.Add(new ErpCurrencyDto(2, "Dólares estadounidenses (USD)", "US$"));
+        }
+        return result;
+    }
+
+    private static readonly string[] AgricultureKeywords = [
+        "agri", "agricola", "agricultura", "cultivo", "siembra", "cosecha", "fumigacion", "fumigación",
+        "fertilizacion", "fertilización", "pulverizacion", "pulverización", "trigo", "maiz", "maíz",
+        "soja", "girasol", "cebada", "sorgo", "labor", "labores", "insumo", "insumos", "campo", "lote",
+        "grano", "granero", "agro"
+    ];
+
+    private static bool MatchesAgriculture(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return false;
+        string normalized = text.ToLowerInvariant()
+            .Replace('á', 'a').Replace('é', 'e').Replace('í', 'i')
+            .Replace('ó', 'o').Replace('ú', 'u').Replace('ñ', 'n');
+        return AgricultureKeywords.Any(k => normalized.Contains(k));
+    }
+
+    public async Task<List<ErpProfileDto>> GetPerfilesAsync(Guid? overrideTenantId = null, CancellationToken ct = default)
+    {
+        var tenantId = overrideTenantId ?? _currentTenantService.TenantId;
+        var result = new List<ErpProfileDto>();
+        try
+        {
+            var (client, databaseId) = await GetErpClientAndDatabaseIdAsync(tenantId, ct);
+            if (client != null && !string.IsNullOrEmpty(databaseId))
+            {
+                var url = $"{BaseUrl}/v3/GestorG4/ListPerfilesImputacion?databaseId={databaseId}&soloHabilitados=true";
+                var response = await client.GetAsync(url, ct);
+                if (response.IsSuccessStatusCode)
+                {
+                    var items = await response.Content.ReadFromJsonAsync<List<GenericErpItemResponse>>(ct);
+                    if (items != null && items.Any())
+                    {
+                        var allProfiles = items.Select(i => new ErpProfileDto(i.GetCode(), i.GetDescription())).ToList();
+                        var filtered = allProfiles.Where(p => MatchesAgriculture(p.Nombre)).ToList();
+                        result = filtered.Any() ? filtered : allProfiles;
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Could not fetch ListPerfilesImputacion from GestorMax.");
+        }
+
+        return result;
+    }
+
+    public async Task<List<ErpAccountDto>> GetCuentasAsync(Guid? overrideTenantId = null, CancellationToken ct = default)
+    {
+        var tenantId = overrideTenantId ?? _currentTenantService.TenantId;
+        var result = new List<ErpAccountDto>();
+        try
+        {
+            var (client, databaseId) = await GetErpClientAndDatabaseIdAsync(tenantId, ct);
+            if (client != null && !string.IsNullOrEmpty(databaseId))
+            {
+                // 1. Intento directo por ListPlanDeCuentasCuentas (solo imputables/habilitadas)
+                var url = $"{BaseUrl}/v3/GestorG4/ListPlanDeCuentasCuentas?databaseId={databaseId}&ocultarSumarias=true&soloHabilitados=true";
+                var response = await client.GetAsync(url, ct);
+                if (response.IsSuccessStatusCode)
+                {
+                    var items = await response.Content.ReadFromJsonAsync<List<GenericErpItemResponse>>(ct);
+                    if (items != null && items.Any())
+                    {
+                        result = items
+                            .Where(i => !string.IsNullOrWhiteSpace(i.GetDescription()) && i.GetDescription() != "Sin Descripción")
+                            .Select(i => new ErpAccountDto(i.GetCode(), i.CodigoCuenta ?? i.GetCode().ToString(), i.GetDescription()))
+                            .ToList();
+                    }
+                }
+
+                // 2. Si requiere codPlan explícito, listar planes y recuperar el plan principal
+                if (!result.Any())
+                {
+                    var plansUrl = $"{BaseUrl}/v3/GestorG4/ListPlanesDeCuentas?databaseId={databaseId}";
+                    var plansResp = await client.GetAsync(plansUrl, ct);
+                    if (plansResp.IsSuccessStatusCode)
+                    {
+                        var plans = await plansResp.Content.ReadFromJsonAsync<List<GenericErpItemResponse>>(ct);
+                        var mainPlan = plans?.FirstOrDefault();
+                        if (mainPlan != null)
+                        {
+                            var planCode = mainPlan.GetCode();
+                            var planCtaUrl = $"{BaseUrl}/v3/GestorG4/ListPlanDeCuentasCuentas?databaseId={databaseId}&codPlan={planCode}&ocultarSumarias=true&soloHabilitados=true";
+                            var planCtaResp = await client.GetAsync(planCtaUrl, ct);
+                            if (planCtaResp.IsSuccessStatusCode)
+                            {
+                                var planItems = await planCtaResp.Content.ReadFromJsonAsync<List<GenericErpItemResponse>>(ct);
+                                if (planItems != null && planItems.Any())
+                                {
+                                    result = planItems
+                                        .Where(i => !string.IsNullOrWhiteSpace(i.GetDescription()) && i.GetDescription() != "Sin Descripción")
+                                        .Select(i => new ErpAccountDto(i.GetCode(), i.CodigoCuenta ?? i.GetCode().ToString(), i.GetDescription()))
+                                        .ToList();
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Could not fetch ListPlanDeCuentasCuentas from GestorMax.");
+        }
+
+        return result.DistinctBy(c => c.CodCuenta).Take(500).ToList();
+    }
+
+    public async Task<List<ErpAccountDto>> GetCuentasGestionAsync(Guid? overrideTenantId = null, CancellationToken ct = default)
+    {
+        var tenantId = overrideTenantId ?? _currentTenantService.TenantId;
+        var result = new List<ErpAccountDto>();
+        try
+        {
+            var (client, databaseId) = await GetErpClientAndDatabaseIdAsync(tenantId, ct);
+            if (client != null && !string.IsNullOrEmpty(databaseId))
+            {
+                var url = $"{BaseUrl}/v3/GestorG4/ListCuentasPlanGestionLucius?databaseId={databaseId}&ocultarSumarias=true&soloHabilitados=true";
+                var response = await client.GetAsync(url, ct);
+                if (response.IsSuccessStatusCode)
+                {
+                    var items = await response.Content.ReadFromJsonAsync<List<GenericErpItemResponse>>(ct);
+                    if (items != null && items.Any())
+                    {
+                        result = items
+                            .Where(i => !string.IsNullOrWhiteSpace(i.GetDescription()) && i.GetDescription() != "Sin Descripción")
+                            .Select(i => new ErpAccountDto(i.GetCode(), i.CodigoCuenta ?? i.GetCode().ToString(), i.GetDescription()))
+                            .ToList();
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Could not fetch ListCuentasPlanGestionLucius from GestorMax.");
+        }
+
+        if (!result.Any())
+        {
+            return await GetCuentasAsync(overrideTenantId, ct);
+        }
+
+        return result.DistinctBy(c => c.CodCuenta).Take(500).ToList();
+    }
+
+    public async Task<List<ErpAccountDto>> GetCuentasCentroAsync(Guid? overrideTenantId = null, CancellationToken ct = default)
+    {
+        var tenantId = overrideTenantId ?? _currentTenantService.TenantId;
+        var result = new List<ErpAccountDto>();
+        try
+        {
+            var (client, databaseId) = await GetErpClientAndDatabaseIdAsync(tenantId, ct);
+            if (client != null && !string.IsNullOrEmpty(databaseId))
+            {
+                var url = $"{BaseUrl}/v3/GestorG4/ListCuentasPlanCentrosLucius?databaseId={databaseId}&ocultarSumarias=true&soloHabilitados=true";
+                var response = await client.GetAsync(url, ct);
+                if (response.IsSuccessStatusCode)
+                {
+                    var items = await response.Content.ReadFromJsonAsync<List<GenericErpItemResponse>>(ct);
+                    if (items != null && items.Any())
+                    {
+                        result = items
+                            .Where(i => !string.IsNullOrWhiteSpace(i.GetDescription()) && i.GetDescription() != "Sin Descripción")
+                            .Select(i => new ErpAccountDto(i.GetCode(), i.CodigoCuenta ?? i.GetCode().ToString(), i.GetDescription()))
+                            .ToList();
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Could not fetch ListCuentasPlanCentrosLucius from GestorMax.");
+        }
+
+        if (!result.Any())
+        {
+            return await GetCuentasAsync(overrideTenantId, ct);
+        }
+
+        return result.DistinctBy(c => c.CodCuenta).Take(500).ToList();
+    }
+
+    public Task<List<ErpAccountDto>> GetCuentasContabilidadAsync(Guid? overrideTenantId = null, CancellationToken ct = default)
+    {
+        return GetCuentasAsync(overrideTenantId, ct);
+    }
+
+    public async Task<List<ErpPersonItemDto>> GetPersonasAsync(Guid? overrideTenantId = null, CancellationToken ct = default)
+    {
+        var tenantId = overrideTenantId ?? _currentTenantService.TenantId;
+        var result = new List<ErpPersonItemDto>();
+        try
+        {
+            var (client, databaseId) = await GetErpClientAndDatabaseIdAsync(tenantId, ct);
+            if (client != null && !string.IsNullOrEmpty(databaseId))
+            {
+                var url = $"{BaseUrl}/v3/GestorG4/ListPersonas?databaseId={databaseId}";
+                var response = await client.GetAsync(url, ct);
+                if (response.IsSuccessStatusCode)
+                {
+                    var items = await response.Content.ReadFromJsonAsync<List<GenericErpItemResponse>>(ct);
+                    if (items != null && items.Any())
+                    {
+                        result = items.Select(i => new ErpPersonItemDto(i.GetCode(), i.GetDescription())).ToList();
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Could not fetch ListPersonas from GestorMax.");
+        }
+
+        return result;
+    }
+
+    private async Task<(HttpClient? Client, string? DatabaseId)> GetErpClientAndDatabaseIdAsync(Guid tenantId, CancellationToken ct)
+    {
+        if (tenantId == Guid.Empty) return (null, null);
+
+        var tenant = await _context.Tenants.FindAsync(new object[] { tenantId }, ct);
+        if (tenant == null || string.IsNullOrEmpty(tenant.GestorMaxApiKeyEncrypted) || string.IsNullOrWhiteSpace(tenant.GestorMaxDatabaseId))
+            return (null, null);
+
+        string apiKey = _encryptionService.Decrypt(tenant.GestorMaxApiKeyEncrypted);
+        if (apiKey == "ERROR_DECRYPTING") return (null, null);
+
+        var client = _httpClientFactory.CreateClient();
+        client.DefaultRequestHeaders.Add("X-Api-Key", apiKey.Trim());
+        client.DefaultRequestHeaders.Accept.Clear();
+        client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+        client.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0");
+
+        return (client, tenant.GestorMaxDatabaseId.Trim());
+    }
+
+    private record GenericErpItemResponse(
+        [property: JsonPropertyName("codEmpresa")] object? CodEmpresa,
+        [property: JsonPropertyName("codComprobante")] object? CodComprobante,
+        [property: JsonPropertyName("codMoneda")] object? CodMoneda,
+        [property: JsonPropertyName("codPerfilImputacion")] object? CodPerfilImputacion,
+        [property: JsonPropertyName("codPerfil")] object? CodPerfil,
+        [property: JsonPropertyName("codActividadPerfilImputacion")] object? CodPerfilActividad,
+        [property: JsonPropertyName("codPlan")] object? CodPlan,
+        [property: JsonPropertyName("codCuenta")] object? CodCuenta,
+        [property: JsonPropertyName("codPersona")] object? CodPersona,
+        [property: JsonPropertyName("codigo")] object? Codigo,
+        [property: JsonPropertyName("codigoCuenta")] string? CodigoCuenta,
+        [property: JsonPropertyName("empresa")] string? Empresa,
+        [property: JsonPropertyName("persona")] string? Persona,
+        [property: JsonPropertyName("comprobante")] string? Comprobante,
+        [property: JsonPropertyName("moneda")] string? Moneda,
+        [property: JsonPropertyName("perfilImputacion")] string? PerfilImputacion,
+        [property: JsonPropertyName("actividadPerfilImputacion")] string? ActividadPerfil,
+        [property: JsonPropertyName("plan")] string? Plan,
+        [property: JsonPropertyName("cuenta")] string? Cuenta,
+        [property: JsonPropertyName("descripcion")] string? Descripcion,
+        [property: JsonPropertyName("nombre")] string? Nombre)
+    {
+        public long GetCode()
+        {
+            var raw = CodEmpresa ?? CodComprobante ?? CodMoneda ?? CodPerfilImputacion ?? CodPerfil ?? CodPerfilActividad ?? CodCuenta ?? CodPlan ?? CodPersona ?? Codigo;
+            if (raw != null && long.TryParse(raw.ToString(), out var val)) return val;
+            return 1;
+        }
+
+        public string GetDescription()
+        {
+            return Persona ?? Empresa ?? Comprobante ?? Moneda ?? PerfilImputacion ?? ActividadPerfil ?? Cuenta ?? Plan ?? Descripcion ?? Nombre ?? "Sin Descripción";
         }
     }
 

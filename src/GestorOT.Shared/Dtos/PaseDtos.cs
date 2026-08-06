@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace GestorOT.Shared.Dtos;
 
 public record PaseLoteDto
@@ -10,6 +12,7 @@ public record PaseLoteDto
     public string Estado { get; set; } = string.Empty;
     public List<PaseImputacionDto> Pases { get; set; } = new();
 
+    [JsonConstructor]
     public PaseLoteDto() { }
     public PaseLoteDto(
         Guid id,
@@ -67,6 +70,7 @@ public record PaseImputacionDto
     public long? CodCuentaHaberAuxiliar { get; set; }
     public string? Notas { get; set; }
 
+    [JsonConstructor]
     public PaseImputacionDto() { }
     public PaseImputacionDto(
         Guid id,
@@ -147,6 +151,7 @@ public record GenerarLoteRequestDto
     public List<Guid>? LaborIds { get; set; }
     public string? Descripcion { get; set; }
 
+    [JsonConstructor]
     public GenerarLoteRequestDto() { }
     public GenerarLoteRequestDto(List<Guid>? workOrderIds, List<Guid>? laborIds, string? descripcion)
     {
@@ -164,6 +169,7 @@ public record PaseLoteResult
     public bool Success { get; set; } = true;
     public string? Error { get; set; }
 
+    [JsonConstructor]
     public PaseLoteResult() { }
     public PaseLoteResult(Guid loteId, int totalPases, List<string> warnings, bool success = true, string? error = null)
     {
@@ -185,6 +191,7 @@ public record PendingImputacionItemDto
     public decimal Area { get; set; }
     public string Status { get; set; } = string.Empty;
 
+    [JsonConstructor]
     public PendingImputacionItemDto() { }
     public PendingImputacionItemDto(Guid id, string type, string identifier, DateTime date, string details, decimal area, string status)
     {
@@ -228,6 +235,7 @@ public record AccountConfigurationDto
     public long? CodCuentaDebeAuxiliar { get; set; }
     public long? CodCuentaHaberAuxiliar { get; set; }
 
+    [JsonConstructor]
     public AccountConfigurationDto() { }
     public AccountConfigurationDto(
         Guid id,

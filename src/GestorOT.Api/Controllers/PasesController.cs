@@ -10,15 +10,18 @@ public class PasesController : ControllerBase
 {
     private readonly IPaseBuilderService _paseBuilderService;
     private readonly IPaseXlsxExportService _exportService;
+    private readonly IErpSyncService _erpSyncService;
     private readonly IApplicationDbContext _context;
 
     public PasesController(
         IPaseBuilderService paseBuilderService,
         IPaseXlsxExportService exportService,
+        IErpSyncService erpSyncService,
         IApplicationDbContext context)
     {
         _paseBuilderService = paseBuilderService;
         _exportService = exportService;
+        _erpSyncService = erpSyncService;
         _context = context;
     }
 
@@ -88,4 +91,77 @@ public class PasesController : ControllerBase
         await _paseBuilderService.SaveAccountConfigurationAsync(tenantId, dto, ct);
         return Ok();
     }
+
+    [HttpGet("erp/empresas")]
+    public async Task<ActionResult<List<ErpCompanyDto>>> GetErpEmpresas(CancellationToken ct)
+    {
+        var tenantId = _context.CurrentTenantId;
+        var list = await _erpSyncService.GetEmpresasAsync(tenantId, ct);
+        return Ok(list);
+    }
+
+    [HttpGet("erp/comprobantes")]
+    public async Task<ActionResult<List<ErpVoucherTypeDto>>> GetErpComprobantes(CancellationToken ct)
+    {
+        var tenantId = _context.CurrentTenantId;
+        var list = await _erpSyncService.GetComprobantesAsync(tenantId, ct);
+        return Ok(list);
+    }
+
+    [HttpGet("erp/monedas")]
+    public async Task<ActionResult<List<ErpCurrencyDto>>> GetErpMonedas(CancellationToken ct)
+    {
+        var tenantId = _context.CurrentTenantId;
+        var list = await _erpSyncService.GetMonedasAsync(tenantId, ct);
+        return Ok(list);
+    }
+
+    [HttpGet("erp/perfiles")]
+    public async Task<ActionResult<List<ErpProfileDto>>> GetErpPerfiles(CancellationToken ct)
+    {
+        var tenantId = _context.CurrentTenantId;
+        var list = await _erpSyncService.GetPerfilesAsync(tenantId, ct);
+        return Ok(list);
+    }
+
+    [HttpGet("erp/cuentas")]
+    public async Task<ActionResult<List<ErpAccountDto>>> GetErpCuentas(CancellationToken ct)
+    {
+        var tenantId = _context.CurrentTenantId;
+        var list = await _erpSyncService.GetCuentasAsync(tenantId, ct);
+        return Ok(list);
+    }
+
+    [HttpGet("erp/cuentas/gestion")]
+    public async Task<ActionResult<List<ErpAccountDto>>> GetErpCuentasGestion(CancellationToken ct)
+    {
+        var tenantId = _context.CurrentTenantId;
+        var list = await _erpSyncService.GetCuentasGestionAsync(tenantId, ct);
+        return Ok(list);
+    }
+
+    [HttpGet("erp/cuentas/centro")]
+    public async Task<ActionResult<List<ErpAccountDto>>> GetErpCuentasCentro(CancellationToken ct)
+    {
+        var tenantId = _context.CurrentTenantId;
+        var list = await _erpSyncService.GetCuentasCentroAsync(tenantId, ct);
+        return Ok(list);
+    }
+
+    [HttpGet("erp/cuentas/contabilidad")]
+    public async Task<ActionResult<List<ErpAccountDto>>> GetErpCuentasContabilidad(CancellationToken ct)
+    {
+        var tenantId = _context.CurrentTenantId;
+        var list = await _erpSyncService.GetCuentasContabilidadAsync(tenantId, ct);
+        return Ok(list);
+    }
+
+    [HttpGet("erp/personas")]
+    public async Task<ActionResult<List<ErpPersonItemDto>>> GetErpPersonas(CancellationToken ct)
+    {
+        var tenantId = _context.CurrentTenantId;
+        var list = await _erpSyncService.GetPersonasAsync(tenantId, ct);
+        return Ok(list);
+    }
 }
+

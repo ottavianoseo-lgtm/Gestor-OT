@@ -11,7 +11,7 @@
        OnOk="SaveConfiguration"
        OkText="@("Guardar Configuración")"
        ConfirmLoading="_saving"
-       Width="680">
+       Width="760">
 
     <Form Model="_model" Layout="@FormLayout.Vertical">
         <Row Gutter="16">
@@ -19,7 +19,7 @@
                 <FormItem Label="Tipo de Labor">
                     <Select TItemValue="Guid?" TItem="LaborTypeDto" @bind-Value="_model.LaborTypeId"
                             Placeholder="General / Defecto (Sin tipo)"
-                            AllowClear
+                            AllowClear Loading="@_loadingBasicCatalogs"
                             DataSource="@_laborTypes"
                             LabelName="@nameof(LaborTypeDto.Name)"
                             ValueName="@nameof(LaborTypeDto.Id)" />
@@ -32,28 +32,55 @@
             </Col>
         </Row>
 
+        <Divider Text="Configuración del Lote Contable (GestorMax)" Style="color: rgba(255,255,255,0.6);" />
+
         <Row Gutter="16">
             <Col Span="12">
-                <FormItem Label="Código Empresa (CodEmpresa)">
-                    <AntDesign.InputNumber TValue="long?" @bind-Value="_model.CodEmpresa" Style="width: 100%;" Placeholder="Ej: 1" />
+                <FormItem Label="Empresa ERP (CodEmpresa)">
+                    <Select TItemValue="long?" TItem="ErpCompanyDto" @bind-Value="_model.CodEmpresa"
+                            Placeholder="Seleccionar Empresa"
+                            AllowClear EnableSearch Loading="@_loadingBasicCatalogs"
+                            DataSource="@_empresas"
+                            LabelName="@nameof(ErpCompanyDto.Nombre)"
+                            ValueName="@nameof(ErpCompanyDto.CodEmpresa)" />
                 </FormItem>
             </Col>
             <Col Span="12">
-                <FormItem Label="Código Comprobante G4 (CodComprobante)">
-                    <AntDesign.InputNumber TValue="long?" @bind-Value="_model.CodComprobante" Style="width: 100%;" Placeholder="Ej: 1001" />
+                <FormItem Label="Comprobante ERP (CodComprobante)">
+                    <Select TItemValue="long?" TItem="ErpVoucherTypeDto" @bind-Value="_model.CodComprobante"
+                            Placeholder="Seleccionar Comprobante G4"
+                            AllowClear EnableSearch Loading="@_loadingBasicCatalogs"
+                            DataSource="@_comprobantes"
+                            LabelName="@nameof(ErpVoucherTypeDto.Nombre)"
+                            ValueName="@nameof(ErpVoucherTypeDto.CodComprobante)" />
                 </FormItem>
             </Col>
         </Row>
 
         <Row Gutter="16">
-            <Col Span="12">
+            <Col Span="8">
                 <FormItem Label="Punto de Venta">
                     <AntDesign.InputNumber TValue="int" @bind-Value="_model.PuntoVenta" Style="width: 100%;" />
                 </FormItem>
             </Col>
-            <Col Span="12">
-                <FormItem Label="Código Moneda (CodMoneda)">
-                    <AntDesign.InputNumber TValue="long?" @bind-Value="_model.CodMoneda" Style="width: 100%;" Placeholder="Ej: 1 (Pesos)" />
+            <Col Span="8">
+                <FormItem Label="Moneda ERP (CodMoneda)">
+                    <Select TItemValue="long?" TItem="ErpCurrencyDto" @bind-Value="_model.CodMoneda"
+                            Placeholder="Seleccionar Moneda"
+                            AllowClear EnableSearch Loading="@_loadingBasicCatalogs"
+                            DataSource="@_monedas"
+                            LabelName="@nameof(ErpCurrencyDto.Nombre)"
+                            ValueName="@nameof(ErpCurrencyDto.CodMoneda)" />
+                </FormItem>
+            </Col>
+            <Col Span="8">
+                <FormItem Label="Responsable por Defecto">
+                    <Select TItemValue="long?" TItem="ErpPersonItemDto" @bind-Value="_model.CodPersona"
+                            Placeholder="Seleccionar Responsable"
+                            AllowClear EnableSearch Loading="@_loadingBasicCatalogs"
+                            DataSource="@_personas"
+                            LabelName="@nameof(ErpPersonItemDto.Nombre)"
+                            ValueName="@nameof(ErpPersonItemDto.CodPersona)" />
                 </FormItem>
             </Col>
         </Row>
@@ -63,12 +90,26 @@
         <Row Gutter="16">
             <Col Span="12">
                 <FormItem Label="Cod Perfil Imputación Debe">
-                    <AntDesign.InputNumber TValue="long?" @bind-Value="_model.CodPerfilDebe" Style="width: 100%;" Placeholder="Ej: 501" />
+                    <Select TItemValue="long?" TItem="ErpProfileDto" Value="@_model.CodPerfilDebe"
+                            ValueChanged="OnPerfilDebeChanged"
+                            Disabled="@(_model.CodCuentaDebeGestion.HasValue)"
+                            Placeholder="Seleccionar Perfil Debe"
+                            AllowClear EnableSearch Loading="@_loadingBasicCatalogs"
+                            DataSource="@_perfiles"
+                            LabelName="@nameof(ErpProfileDto.Nombre)"
+                            ValueName="@nameof(ErpProfileDto.CodPerfil)" />
                 </FormItem>
             </Col>
             <Col Span="12">
                 <FormItem Label="Cod Perfil Imputación Haber">
-                    <AntDesign.InputNumber TValue="long?" @bind-Value="_model.CodPerfilHaber" Style="width: 100%;" Placeholder="Ej: 502" />
+                    <Select TItemValue="long?" TItem="ErpProfileDto" Value="@_model.CodPerfilHaber"
+                            ValueChanged="OnPerfilHaberChanged"
+                            Disabled="@(_model.CodCuentaHaberGestion.HasValue)"
+                            Placeholder="Seleccionar Perfil Haber"
+                            AllowClear EnableSearch Loading="@_loadingBasicCatalogs"
+                            DataSource="@_perfiles"
+                            LabelName="@nameof(ErpProfileDto.Nombre)"
+                            ValueName="@nameof(ErpProfileDto.CodPerfil)" />
                 </FormItem>
             </Col>
         </Row>
@@ -77,39 +118,83 @@
 
         <Row Gutter="16">
             <Col Span="12">
-                <FormItem Label="Cuenta Debe Gestión">
-                    <AntDesign.InputNumber TValue="long?" @bind-Value="_model.CodCuentaDebeGestion" Style="width: 100%;" />
+                <FormItem Label="Cuenta Debe Gestión (Plan de Gestión)">
+                    <Select TItemValue="long?" TItem="ErpAccountDto" Value="@_model.CodCuentaDebeGestion"
+                            ValueChanged="OnCuentaDebeGestionChanged"
+                            Disabled="@(_model.CodPerfilDebe.HasValue)"
+                            Placeholder="Buscar Cuenta Debe Gestión..."
+                            AllowClear EnableSearch OnSearch="OnSearchAccountsGestion"
+                            Loading="@_loadingCuentasGestion"
+                            DataSource="@_filteredCuentasGestion"
+                            LabelName="@nameof(ErpAccountDto.DisplayName)"
+                            ValueName="@nameof(ErpAccountDto.CodCuenta)" />
                 </FormItem>
             </Col>
             <Col Span="12">
-                <FormItem Label="Cuenta Haber Gestión">
-                    <AntDesign.InputNumber TValue="long?" @bind-Value="_model.CodCuentaHaberGestion" Style="width: 100%;" />
+                <FormItem Label="Cuenta Haber Gestión (Plan de Gestión)">
+                    <Select TItemValue="long?" TItem="ErpAccountDto" Value="@_model.CodCuentaHaberGestion"
+                            ValueChanged="OnCuentaHaberGestionChanged"
+                            Disabled="@(_model.CodPerfilHaber.HasValue)"
+                            Placeholder="Buscar Cuenta Haber Gestión..."
+                            AllowClear EnableSearch OnSearch="OnSearchAccountsGestion"
+                            Loading="@_loadingCuentasGestion"
+                            DataSource="@_filteredCuentasGestion"
+                            LabelName="@nameof(ErpAccountDto.DisplayName)"
+                            ValueName="@nameof(ErpAccountDto.CodCuenta)" />
                 </FormItem>
             </Col>
         </Row>
 
         <Row Gutter="16">
             <Col Span="12">
-                <FormItem Label="Cuenta Debe Centro Costo">
-                    <AntDesign.InputNumber TValue="long?" @bind-Value="_model.CodCuentaDebeCentro" Style="width: 100%;" />
+                <FormItem Label="Cuenta Debe Centro Costo (Plan de Centro)">
+                    <Select TItemValue="long?" TItem="ErpAccountDto" Value="@_model.CodCuentaDebeCentro"
+                            ValueChanged="v => { _model.CodCuentaDebeCentro = v; FilterCuentasCentro(); }"
+                            Placeholder="Buscar Cuenta Debe Centro..."
+                            AllowClear EnableSearch OnSearch="OnSearchAccountsCentro"
+                            Loading="@_loadingCuentasCentro"
+                            DataSource="@_filteredCuentasCentro"
+                            LabelName="@nameof(ErpAccountDto.DisplayName)"
+                            ValueName="@nameof(ErpAccountDto.CodCuenta)" />
                 </FormItem>
             </Col>
             <Col Span="12">
-                <FormItem Label="Cuenta Haber Centro Costo">
-                    <AntDesign.InputNumber TValue="long?" @bind-Value="_model.CodCuentaHaberCentro" Style="width: 100%;" />
+                <FormItem Label="Cuenta Haber Centro Costo (Plan de Centro)">
+                    <Select TItemValue="long?" TItem="ErpAccountDto" Value="@_model.CodCuentaHaberCentro"
+                            ValueChanged="v => { _model.CodCuentaHaberCentro = v; FilterCuentasCentro(); }"
+                            Placeholder="Buscar Cuenta Haber Centro..."
+                            AllowClear EnableSearch OnSearch="OnSearchAccountsCentro"
+                            Loading="@_loadingCuentasCentro"
+                            DataSource="@_filteredCuentasCentro"
+                            LabelName="@nameof(ErpAccountDto.DisplayName)"
+                            ValueName="@nameof(ErpAccountDto.CodCuenta)" />
                 </FormItem>
             </Col>
         </Row>
 
         <Row Gutter="16">
             <Col Span="12">
-                <FormItem Label="Cuenta Debe Contabilidad">
-                    <AntDesign.InputNumber TValue="long?" @bind-Value="_model.CodCuentaDebeContabilidad" Style="width: 100%;" />
+                <FormItem Label="Cuenta Debe Contabilidad (Plan Contabilidad)">
+                    <Select TItemValue="long?" TItem="ErpAccountDto" Value="@_model.CodCuentaDebeContabilidad"
+                            ValueChanged="v => { _model.CodCuentaDebeContabilidad = v; FilterCuentasContabilidad(); }"
+                            Placeholder="Buscar Cuenta Debe Contabilidad..."
+                            AllowClear EnableSearch OnSearch="OnSearchAccountsContabilidad"
+                            Loading="@_loadingCuentasContabilidad"
+                            DataSource="@_filteredCuentasContabilidad"
+                            LabelName="@nameof(ErpAccountDto.DisplayName)"
+                            ValueName="@nameof(ErpAccountDto.CodCuenta)" />
                 </FormItem>
             </Col>
             <Col Span="12">
-                <FormItem Label="Cuenta Haber Contabilidad">
-                    <AntDesign.InputNumber TValue="long?" @bind-Value="_model.CodCuentaHaberContabilidad" Style="width: 100%;" />
+                <FormItem Label="Cuenta Haber Contabilidad (Plan Contabilidad)">
+                    <Select TItemValue="long?" TItem="ErpAccountDto" Value="@_model.CodCuentaHaberContabilidad"
+                            ValueChanged="v => { _model.CodCuentaHaberContabilidad = v; FilterCuentasContabilidad(); }"
+                            Placeholder="Buscar Cuenta Haber Contabilidad..."
+                            AllowClear EnableSearch OnSearch="OnSearchAccountsContabilidad"
+                            Loading="@_loadingCuentasContabilidad"
+                            DataSource="@_filteredCuentasContabilidad"
+                            LabelName="@nameof(ErpAccountDto.DisplayName)"
+                            ValueName="@nameof(ErpAccountDto.CodCuenta)" />
                 </FormItem>
             </Col>
         </Row>
@@ -133,21 +218,32 @@
 
     private ConfigModel _model = new();
     private List<LaborTypeDto> _laborTypes = new();
+    private List<ErpCompanyDto> _empresas = new();
+    private List<ErpVoucherTypeDto> _comprobantes = new();
+    private List<ErpCurrencyDto> _monedas = new();
+    private List<ErpPersonItemDto> _personas = new();
+    private List<ErpProfileDto> _perfiles = new();
+
+    private List<ErpAccountDto> _allCuentasGestion = new();
+    private List<ErpAccountDto> _filteredCuentasGestion = new();
+    private string _accountSearchTextGestion = string.Empty;
+
+    private List<ErpAccountDto> _allCuentasCentro = new();
+    private List<ErpAccountDto> _filteredCuentasCentro = new();
+    private string _accountSearchTextCentro = string.Empty;
+
+    private List<ErpAccountDto> _allCuentasContabilidad = new();
+    private List<ErpAccountDto> _filteredCuentasContabilidad = new();
+    private string _accountSearchTextContabilidad = string.Empty;
+
+    private bool _catalogsLoaded;
+    private bool _loadingBasicCatalogs;
+    private bool _loadingCuentasGestion;
+    private bool _loadingCuentasCentro;
+    private bool _loadingCuentasContabilidad;
     private bool _saving;
 
-    protected override async Task OnInitializedAsync()
-    {
-        try
-        {
-            _laborTypes = await CatalogCache.GetLaborTypesAsync();
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Error al cargar tipos de labor: {ex.Message}");
-        }
-    }
-
-    protected override void OnParametersSet()
+    protected override async Task OnParametersSetAsync()
     {
         if (Configuration != null)
         {
@@ -176,7 +272,209 @@
                 CodCuentaDebeContabilidad = Configuration.CodCuentaDebeContabilidad,
                 CodCuentaHaberContabilidad = Configuration.CodCuentaHaberContabilidad
             };
+
+            FilterCuentas();
         }
+
+        if (Visible && !_catalogsLoaded)
+        {
+            await LoadCatalogsLazyAsync();
+        }
+    }
+
+    private async Task LoadCatalogsLazyAsync()
+    {
+        _catalogsLoaded = true;
+
+        _loadingBasicCatalogs = true;
+        StateHasChanged();
+
+        try
+        {
+            var laborTask = CatalogCache.GetLaborTypesAsync();
+            var empTask = Http.GetFromJsonAsync<List<ErpCompanyDto>>("api/pases/erp/empresas");
+            var compTask = Http.GetFromJsonAsync<List<ErpVoucherTypeDto>>("api/pases/erp/comprobantes");
+            var monTask = Http.GetFromJsonAsync<List<ErpCurrencyDto>>("api/pases/erp/monedas");
+            var persTask = Http.GetFromJsonAsync<List<ErpPersonItemDto>>("api/pases/erp/personas");
+            var perfTask = Http.GetFromJsonAsync<List<ErpProfileDto>>("api/pases/erp/perfiles");
+
+            _laborTypes = await laborTask ?? new();
+            _empresas = await empTask ?? new();
+            _comprobantes = await compTask ?? new();
+            _monedas = await monTask ?? new();
+            _personas = await persTask ?? new();
+            _perfiles = await perfTask ?? new();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error al cargar catálogos básicos ERP: {ex.Message}");
+        }
+        finally
+        {
+            _loadingBasicCatalogs = false;
+            StateHasChanged();
+        }
+
+        _loadingCuentasGestion = true;
+        _loadingCuentasCentro = true;
+        _loadingCuentasContabilidad = true;
+        StateHasChanged();
+
+        var gTask = Task.Run(async () => {
+            try { return await Http.GetFromJsonAsync<List<ErpAccountDto>>("api/pases/erp/cuentas/gestion") ?? new(); }
+            catch { return new List<ErpAccountDto>(); }
+        });
+
+        var cTask = Task.Run(async () => {
+            try { return await Http.GetFromJsonAsync<List<ErpAccountDto>>("api/pases/erp/cuentas/centro") ?? new(); }
+            catch { return new List<ErpAccountDto>(); }
+        });
+
+        var ctTask = Task.Run(async () => {
+            try { return await Http.GetFromJsonAsync<List<ErpAccountDto>>("api/pases/erp/cuentas/contabilidad") ?? new(); }
+            catch { return new List<ErpAccountDto>(); }
+        });
+
+        _allCuentasGestion = await gTask;
+        _loadingCuentasGestion = false;
+        FilterCuentasGestion();
+        StateHasChanged();
+
+        _allCuentasCentro = await cTask;
+        _loadingCuentasCentro = false;
+        FilterCuentasCentro();
+        StateHasChanged();
+
+        _allCuentasContabilidad = await ctTask;
+        _loadingCuentasContabilidad = false;
+        FilterCuentasContabilidad();
+        StateHasChanged();
+    }
+
+    private void OnSearchAccountsGestion(string text) { _accountSearchTextGestion = text ?? string.Empty; FilterCuentasGestion(); }
+    private void OnSearchAccountsCentro(string text) { _accountSearchTextCentro = text ?? string.Empty; FilterCuentasCentro(); }
+    private void OnSearchAccountsContabilidad(string text) { _accountSearchTextContabilidad = text ?? string.Empty; FilterCuentasContabilidad(); }
+
+    private void FilterCuentas()
+    {
+        FilterCuentasGestion();
+        FilterCuentasCentro();
+        FilterCuentasContabilidad();
+    }
+
+    private void FilterCuentasGestion()
+    {
+        IEnumerable<ErpAccountDto> matches;
+        if (string.IsNullOrWhiteSpace(_accountSearchTextGestion))
+        {
+            matches = _allCuentasGestion.Take(100);
+        }
+        else
+        {
+            var query = _accountSearchTextGestion.Trim().ToLowerInvariant();
+            matches = _allCuentasGestion
+                .Where(c => (c.Nombre != null && c.Nombre.ToLowerInvariant().Contains(query)) ||
+                            (c.CodigoCuenta != null && c.CodigoCuenta.ToLowerInvariant().Contains(query)) ||
+                            c.CodCuenta.ToString().Contains(query))
+                .Take(100);
+        }
+
+        var selectedIds = new HashSet<long>();
+        if (_model.CodCuentaDebeGestion.HasValue) selectedIds.Add(_model.CodCuentaDebeGestion.Value);
+        if (_model.CodCuentaHaberGestion.HasValue) selectedIds.Add(_model.CodCuentaHaberGestion.Value);
+
+        var selectedAccounts = _allCuentasGestion.Where(c => selectedIds.Contains(c.CodCuenta));
+        _filteredCuentasGestion = selectedAccounts.Concat(matches).DistinctBy(c => c.CodCuenta).ToList();
+    }
+
+    private void FilterCuentasCentro()
+    {
+        IEnumerable<ErpAccountDto> matches;
+        if (string.IsNullOrWhiteSpace(_accountSearchTextCentro))
+        {
+            matches = _allCuentasCentro.Take(100);
+        }
+        else
+        {
+            var query = _accountSearchTextCentro.Trim().ToLowerInvariant();
+            matches = _allCuentasCentro
+                .Where(c => (c.Nombre != null && c.Nombre.ToLowerInvariant().Contains(query)) ||
+                            (c.CodigoCuenta != null && c.CodigoCuenta.ToLowerInvariant().Contains(query)) ||
+                            c.CodCuenta.ToString().Contains(query))
+                .Take(100);
+        }
+
+        var selectedIds = new HashSet<long>();
+        if (_model.CodCuentaDebeCentro.HasValue) selectedIds.Add(_model.CodCuentaDebeCentro.Value);
+        if (_model.CodCuentaHaberCentro.HasValue) selectedIds.Add(_model.CodCuentaHaberCentro.Value);
+
+        var selectedAccounts = _allCuentasCentro.Where(c => selectedIds.Contains(c.CodCuenta));
+        _filteredCuentasCentro = selectedAccounts.Concat(matches).DistinctBy(c => c.CodCuenta).ToList();
+    }
+
+    private void FilterCuentasContabilidad()
+    {
+        IEnumerable<ErpAccountDto> matches;
+        if (string.IsNullOrWhiteSpace(_accountSearchTextContabilidad))
+        {
+            matches = _allCuentasContabilidad.Take(100);
+        }
+        else
+        {
+            var query = _accountSearchTextContabilidad.Trim().ToLowerInvariant();
+            matches = _allCuentasContabilidad
+                .Where(c => (c.Nombre != null && c.Nombre.ToLowerInvariant().Contains(query)) ||
+                            (c.CodigoCuenta != null && c.CodigoCuenta.ToLowerInvariant().Contains(query)) ||
+                            c.CodCuenta.ToString().Contains(query))
+                .Take(100);
+        }
+
+        var selectedIds = new HashSet<long>();
+        if (_model.CodCuentaDebeContabilidad.HasValue) selectedIds.Add(_model.CodCuentaDebeContabilidad.Value);
+        if (_model.CodCuentaHaberContabilidad.HasValue) selectedIds.Add(_model.CodCuentaHaberContabilidad.Value);
+
+        var selectedAccounts = _allCuentasContabilidad.Where(c => selectedIds.Contains(c.CodCuenta));
+        _filteredCuentasContabilidad = selectedAccounts.Concat(matches).DistinctBy(c => c.CodCuenta).ToList();
+    }
+
+    private void OnPerfilDebeChanged(long? val)
+    {
+        _model.CodPerfilDebe = val;
+        if (val.HasValue && val.Value != 0)
+        {
+            _model.CodCuentaDebeGestion = null;
+        }
+        FilterCuentasGestion();
+    }
+
+    private void OnCuentaDebeGestionChanged(long? val)
+    {
+        _model.CodCuentaDebeGestion = val;
+        if (val.HasValue && val.Value != 0)
+        {
+            _model.CodPerfilDebe = null;
+        }
+        FilterCuentasGestion();
+    }
+
+    private void OnPerfilHaberChanged(long? val)
+    {
+        _model.CodPerfilHaber = val;
+        if (val.HasValue && val.Value != 0)
+        {
+            _model.CodCuentaHaberGestion = null;
+        }
+        FilterCuentasGestion();
+    }
+
+    private void OnCuentaHaberGestionChanged(long? val)
+    {
+        _model.CodCuentaHaberGestion = val;
+        if (val.HasValue && val.Value != 0)
+        {
+            _model.CodPerfilHaber = null;
+        }
+        FilterCuentasGestion();
     }
 
     private async Task SaveConfiguration()
