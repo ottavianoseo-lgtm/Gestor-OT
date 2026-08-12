@@ -50,17 +50,15 @@ public class AuthService : IAuthService
         {
             if (user == null)
             {
-                var firstTenant = await _context.Tenants.IgnoreQueryFilters().FirstOrDefaultAsync(ct);
-                var tenantId = firstTenant?.Id ?? Guid.NewGuid();
-
+                // SuperAdmin se crea con TenantId = Guid.Empty para indicar acceso global (sin tenant)
                 CreatePasswordHash(request.Password, out var h, out var s);
                 user = new UserProfile
                 {
                     Id = Guid.NewGuid(),
-                    TenantId = tenantId,
+                    TenantId = Guid.Empty,
                     DisplayName = "Super Admin",
                     Email = request.Email.Trim(),
-                    Role = "Admin",
+                    Role = "SuperAdmin",
                     PasswordHash = h,
                     PasswordSalt = s,
                     IsActive = true,
@@ -77,7 +75,9 @@ public class AuthService : IAuthService
                     CreatePasswordHash(request.Password, out var newHash, out var newSalt);
                     user.PasswordHash = newHash;
                     user.PasswordSalt = newSalt;
-                    user.Role = "Admin";
+                    user.Role = "SuperAdmin";
+                    // Aseguramos que el SuperAdmin tenga TenantId = Guid.Empty (acceso global)
+                    user.TenantId = Guid.Empty;
                     await _context.SaveChangesAsync(ct);
                 }
             }
@@ -112,11 +112,19 @@ public class AuthService : IAuthService
             }
         }
 
-        var tenant = await _context.Tenants
-            .IgnoreQueryFilters()
-            .FirstOrDefaultAsync(t => t.Id == user.TenantId, ct);
-
-        var tenantName = tenant?.Name ?? "Empresa";
+        string tenantName;
+        if (user.TenantId == Guid.Empty)
+        {
+            // SuperAdmin: sin tenant fijo
+            tenantName = "Global";
+        }
+        else
+        {
+            var tenant = await _context.Tenants
+                .IgnoreQueryFilters()
+                .FirstOrDefaultAsync(t => t.Id == user.TenantId, ct);
+            tenantName = tenant?.Name ?? "Empresa";
+        }
 
         var userInfo = new AuthUserInfoDto(
             user.Id,

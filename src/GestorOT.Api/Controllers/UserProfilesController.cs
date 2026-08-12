@@ -56,7 +56,16 @@ public class UserProfilesController : ControllerBase
     [HttpPost]
     public async Task<ActionResult<UserProfileDto>> CreateUser(UserProfileDto dto)
     {
-        var tenantId = dto.TenantId != Guid.Empty ? dto.TenantId : _context.CurrentTenantId;
+        // SuperAdmin no tiene tenant. Para otros roles, si no se especifica tenant, se usa el del contexto.
+        Guid tenantId;
+        if (dto.Role == "SuperAdmin")
+        {
+            tenantId = Guid.Empty;
+        }
+        else
+        {
+            tenantId = dto.TenantId != Guid.Empty ? dto.TenantId : _context.CurrentTenantId;
+        }
 
         var user = new UserProfile
         {

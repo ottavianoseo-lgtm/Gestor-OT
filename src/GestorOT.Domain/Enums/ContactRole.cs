@@ -11,7 +11,9 @@ public enum ContactRole
     [Display(Name = "Agrónomo")]
     Agronomist = 2,
     [Display(Name = "Administrador")]
-    Admin = 3
+    Admin = 3,
+    [Display(Name = "Super Administrador")]
+    SuperAdmin = 99
 }
 
 public static class ContactRoleExtensions

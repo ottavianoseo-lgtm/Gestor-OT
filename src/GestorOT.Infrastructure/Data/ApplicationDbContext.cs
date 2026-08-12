@@ -57,13 +57,17 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
         {
             if (_httpContextAccessor?.HttpContext != null)
             {
-                var claimTenant = _httpContextAccessor.HttpContext.User?.FindFirst("tenant_id")?.Value;
-                if (Guid.TryParse(claimTenant, out var userTenantId) && userTenantId != Guid.Empty)
-                    return userTenantId;
-
+                // 1° Header X-Tenant-ID: permite que el frontend cambie el tenant activo
+                // independientemente del tenant fijo en el JWT.
                 var tenantHeader = _httpContextAccessor.HttpContext.Request.Headers["X-Tenant-ID"].FirstOrDefault();
-                if (Guid.TryParse(tenantHeader, out var tenantId))
-                    return tenantId;
+                if (Guid.TryParse(tenantHeader, out var headerTenantId) && headerTenantId != Guid.Empty)
+                    return headerTenantId;
+
+                // 2° Claim "tenant_id" del JWT: fallback para usuarios sin header explícito.
+                // Guid.Empty en el claim indica SuperAdmin (acceso global, sin filtro de tenant).
+                var claimTenant = _httpContextAccessor.HttpContext.User?.FindFirst("tenant_id")?.Value;
+                if (Guid.TryParse(claimTenant, out var userTenantId))
+                    return userTenantId; // Puede ser Guid.Empty para SuperAdmin
             }
             return Guid.Empty;
         }

@@ -145,13 +145,23 @@
 
                 <div style="margin-bottom: 14px;">
                     <label style="display: block; color: rgba(255,255,255,0.5); font-size: 12px; margin-bottom: 4px;">Empresa / Tenant</label>
-                    <InputSelect @bind-Value="_formModel.TenantId" class="search-input" style="width: 100%; box-sizing: border-box; padding-left: 14px;">
-                        <option value="@Guid.Empty">-- Seleccionar Empresa --</option>
-                        @foreach (var t in _tenants)
-                        {
-                            <option value="@t.Id">@t.Name</option>
-                        }
-                    </InputSelect>
+                    @if (_formModel.Role == "SuperAdmin")
+                    {
+                        <div style="display: flex; align-items: center; gap: 8px; background: rgba(155,89,182,0.1); border: 1px solid rgba(155,89,182,0.3); border-radius: 8px; padding: 10px 14px; color: rgba(255,255,255,0.6); font-size: 13px;">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9B59B6" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                            <span>Acceso Global — sin empresa asignada</span>
+                        </div>
+                    }
+                    else
+                    {
+                        <InputSelect @bind-Value="_formModel.TenantId" class="search-input" style="width: 100%; box-sizing: border-box; padding-left: 14px;">
+                            <option value="@Guid.Empty">-- Seleccionar Empresa --</option>
+                            @foreach (var t in _tenants)
+                            {
+                                <option value="@t.Id">@t.Name</option>
+                            }
+                        </InputSelect>
+                    }
                 </div>
 
                 <div style="margin-bottom: 14px;">
@@ -168,7 +178,8 @@
 
                 <div style="margin-bottom: 14px;">
                     <label style="display: block; color: rgba(255,255,255,0.5); font-size: 12px; margin-bottom: 4px;">Rol</label>
-                    <InputSelect @bind-Value="_formModel.Role" class="search-input" style="width: 100%; box-sizing: border-box; padding-left: 14px;">
+                    <InputSelect @bind-Value="_formModel.Role" class="search-input" style="width: 100%; box-sizing: border-box; padding-left: 14px;"
+                                 @oninput="OnRoleChanged">
                         @foreach (ContactRole role in Enum.GetValues(typeof(ContactRole)))
                         {
                             <option value="@role.ToString()">@role.GetDisplayName()</option>
@@ -433,12 +444,24 @@
 
     private string GetAvatarColor(string role) => role switch
     {
+        "SuperAdmin" => "#9B59B6, #8e44ad",
         "Admin" => "#E74C3C, #c0392b",
         "TenantAdmin" => "#E67E22, #d35400",
         "Agronomist" => "#2ECC71, #27ae60",
         "Contractor" => "#3498DB, #2980b9",
         _ => "#95a5a6, #7f8c8d"
     };
+
+    private void OnRoleChanged(ChangeEventArgs e)
+    {
+        var newRole = e.Value?.ToString() ?? "";
+        _formModel.Role = newRole;
+        // Si el nuevo rol es SuperAdmin, limpiar el tenant
+        if (newRole == "SuperAdmin")
+        {
+            _formModel.TenantId = Guid.Empty;
+        }
+    }
 
     public void Dispose()
     {
