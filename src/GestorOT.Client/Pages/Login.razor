@@ -75,7 +75,14 @@
                 if (result != null && result.Success && result.User != null)
                 {
                     AuthState.SetUser(result.User);
-                    TenantState.SetTenant(new TenantDto(result.User.TenantId, result.User.TenantName, null, null, DateTime.UtcNow));
+                    if (result.User.Role == "SuperAdmin")
+                    {
+                        TenantState.SetGlobal();
+                    }
+                    else
+                    {
+                        TenantState.SetTenant(new TenantDto(result.User.TenantId, result.User.TenantName, null, null, DateTime.UtcNow));
+                    }
                     Message.Success($"Bienvenido {result.User.DisplayName}");
                     Navigation.NavigateTo("/");
                     return;

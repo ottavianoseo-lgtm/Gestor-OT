@@ -1,27 +1,47 @@
 @inject HttpClient Http
 @inject GestorOT.Client.Services.TenantState TenantState
+@inject GestorOT.Client.Services.AuthState AuthState
+@inject NavigationManager Nav
 @using GestorOT.Shared
 @using GestorOT.Shared.Dtos
 @using AntDesign
 @implements IDisposable
 
-@if (ShowBadge && TenantState.IsSelected)
+@if (ShowBadge)
 {
-    <div class="tenant-badge" @onclick="OpenSelector" style="cursor: @(_tenants.Count > 1 ? "pointer" : "default")">
-        <div style="width: 28px; height: 28px; border-radius: 7px; background: linear-gradient(135deg, #E74C3C, #C0392B); display: flex; align-items: center; justify-content: center; font-weight: 700; color: #fff; font-size: 12px; flex-shrink: 0;">
-            @TenantState.CurrentTenant!.Name[0]
+    var isSuperAdmin = AuthState.User?.Role == "SuperAdmin";
+    var canSwitch = isSuperAdmin && _tenants.Count > 0;
+    var displayName = TenantState.CurrentTenant?.Name ?? (isSuperAdmin ? "Acceso Global" : "Empresa");
+    var initialLetter = !string.IsNullOrEmpty(displayName) ? displayName[0].ToString().ToUpper() : "G";
+
+    <div class="tenant-badge" @onclick="OpenSelector" style="cursor: @(canSwitch ? "pointer" : "default")">
+        <div style="width: 28px; height: 28px; border-radius: 7px; background: linear-gradient(135deg, @(isSuperAdmin && TenantState.IsGlobalMode ? "#9B59B6, #8E44AD" : "#E74C3C, #C0392B")); display: flex; align-items: center; justify-content: center; font-weight: 700; color: #fff; font-size: 12px; flex-shrink: 0;">
+            @if (isSuperAdmin && TenantState.IsGlobalMode)
+            {
+                <Icon Type="global" Theme="IconThemeType.Outline" Style="font-size: 14px;" />
+            }
+            else
+            {
+                <span>@initialLetter</span>
+            }
         </div>
         <div style="flex: 1; min-width: 0;">
-            <div style="color: rgba(255,255,255,0.7); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">@TenantState.CurrentTenant.Name</div>
+            <div style="color: rgba(255,255,255,0.85); font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                @displayName
+            </div>
+            @if (isSuperAdmin)
+            {
+                <div style="color: rgba(255,255,255,0.4); font-size: 10px;">SuperAdmin</div>
+            }
         </div>
-        @if (_tenants.Count > 1)
+        @if (canSwitch)
         {
-            <Icon Type="swap" Theme="IconThemeType.Outline" Style="color: rgba(255,255,255,0.3); font-size: 12px;" />
+            <Icon Type="swap" Theme="IconThemeType.Outline" Style="color: rgba(255,255,255,0.4); font-size: 12px;" />
         }
     </div>
 }
 
-@if (!TenantState.IsSelected || _selectorVisible)
+@if (_selectorVisible || (ShouldForceSelection && !_loading))
 {
     <div class="tenant-overlay" @onclick="CloseSelector">
         <div class="tenant-card" @onclick:stopPropagation="true">
@@ -40,6 +60,24 @@
             else
             {
                 <div class="tenant-list">
+                    @if (AuthState.User?.Role == "SuperAdmin")
+                    {
+                        var isGlobalSelected = TenantState.IsGlobalMode;
+                        <div class="tenant-item @(isGlobalSelected ? "tenant-item-selected" : "")" @onclick="SelectGlobal">
+                            <div style="width: 40px; height: 40px; border-radius: 10px; background: linear-gradient(135deg, #9B59B6, #8E44AD); display: flex; align-items: center; justify-content: center; font-weight: 700; color: #fff; font-size: 18px;">
+                                <Icon Type="global" Theme="IconThemeType.Outline" />
+                            </div>
+                            <div style="flex: 1;">
+                                <div style="color: #fff; font-weight: 600; font-size: 14px;">Todas las Empresas (Global)</div>
+                                <div style="color: rgba(255,255,255,0.4); font-size: 11px;">Acceso administrativo global sin filtro</div>
+                            </div>
+                            @if (isGlobalSelected)
+                            {
+                                <Icon Type="check" Theme="IconThemeType.Outline" Style="color: #2ECC71; font-size: 16px;" />
+                            }
+                        </div>
+                    }
+
                     @foreach (var tenant in _tenants)
                     {
                         var isSelected = TenantState.CurrentTenant?.Id == tenant.Id;
@@ -64,12 +102,9 @@
                 </div>
             }
             
-            @if (TenantState.IsSelected && _selectorVisible)
-            {
-                <div style="margin-top: 24px; text-align: center;">
-                    <Button Type="@ButtonType.Link" OnClick="CloseSelector" Style="color: rgba(255,255,255,0.5);">Cancelar</Button>
-                </div>
-            }
+            <div style="margin-top: 24px; text-align: center;">
+                <Button Type="@ButtonType.Link" OnClick="CloseSelector" Style="color: rgba(255,255,255,0.5);">Cerrar</Button>
+            </div>
         </div>
     </div>
 }
@@ -91,8 +126,10 @@
         border: 1px solid rgba(255,255,255,0.1);
         border-radius: 20px;
         padding: 32px;
-        width: 400px;
+        width: 420px;
         max-width: 90vw;
+        max-height: 85vh;
+        overflow-y: auto;
     }
 
     .tenant-list {
@@ -149,9 +186,21 @@
     private bool _loading = true;
     private bool _selectorVisible = false;
 
+    private bool ShouldForceSelection
+    {
+        get
+        {
+            // Solo forzar selección si el usuario NO es SuperAdmin y aún no tiene tenant asignado
+            if (AuthState.User == null) return false;
+            if (AuthState.User.Role == "SuperAdmin") return false;
+            return !TenantState.IsSelected;
+        }
+    }
+
     protected override async Task OnInitializedAsync()
     {
         TenantState.OnChange += StateHasChanged;
+        AuthState.OnChange += StateHasChanged;
         await LoadTenants();
     }
 
@@ -166,9 +215,12 @@
             
             TenantState.AvailableTenants = _tenants;
 
-            if (_tenants.Count == 1 && !TenantState.IsSelected)
+            if (AuthState.User?.Role != "SuperAdmin")
             {
-                TenantState.SetTenant(_tenants[0]);
+                if (_tenants.Count == 1 && (!TenantState.IsSelected || TenantState.CurrentTenant?.Id != _tenants[0].Id))
+                {
+                    TenantState.SetTenant(_tenants[0]);
+                }
             }
         }
         catch
@@ -187,9 +239,15 @@
         _selectorVisible = false;
     }
 
+    private void SelectGlobal()
+    {
+        TenantState.SetGlobal();
+        _selectorVisible = false;
+    }
+
     private void OpenSelector()
     {
-        if (_tenants.Count > 1)
+        if (AuthState.User?.Role == "SuperAdmin" || _tenants.Count > 1)
         {
             _selectorVisible = true;
         }
@@ -197,14 +255,12 @@
 
     private void CloseSelector()
     {
-        if (TenantState.IsSelected)
-        {
-            _selectorVisible = false;
-        }
+        _selectorVisible = false;
     }
 
     public void Dispose()
     {
         TenantState.OnChange -= StateHasChanged;
+        AuthState.OnChange -= StateHasChanged;
     }
 }

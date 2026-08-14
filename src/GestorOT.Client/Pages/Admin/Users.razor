@@ -5,6 +5,8 @@
 @using GestorOT.Domain.Enums
 @using GestorOT.Shared.Dtos
 @inject HttpClient Http
+@inject GestorOT.Client.Services.AuthState AuthState
+@inject GestorOT.Client.Services.TenantState TenantState
 @inject PersistentComponentState PersistentState
 
 <div class="page-header">
@@ -13,10 +15,13 @@
         <span class="page-subtitle">@_users.Count usuarios registrados</span>
     </div>
     <div style="display: flex; gap: 8px;">
-        <button class="btn-admin btn-admin-ghost" title="Genera un usuario Admin por defecto en empresas que no tengan uno" @onclick="EnsureAdmins">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-            Generar Admins Faltantes
-        </button>
+        @if (AuthState.User?.Role == "SuperAdmin")
+        {
+            <button class="btn-admin btn-admin-ghost" title="Genera un usuario Admin por defecto en empresas que no tengan uno" @onclick="EnsureAdmins">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                Generar Admins Faltantes
+            </button>
+        }
         <button class="btn-admin btn-admin-primary" @onclick="OpenCreateModal">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/>
@@ -36,7 +41,7 @@
         <div class="stat-card-label">Activos</div>
     </div>
     <div class="stat-card">
-        <div class="stat-card-value">@_users.Count(u => u.Role == "Admin" || u.Role == "TenantAdmin")</div>
+        <div class="stat-card-value">@_users.Count(u => u.Role == "Admin" || u.Role == "SuperAdmin")</div>
         <div class="stat-card-label">Administradores</div>
     </div>
     <div class="stat-card">
@@ -46,16 +51,28 @@
 </div>
 
 <div class="glass-card">
-    <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px;">
-        <div class="search-wrapper">
+    <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px; flex-wrap: wrap;">
+        <div class="search-wrapper" style="flex: 1; min-width: 200px;">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
             <input class="search-input" type="text" placeholder="Buscar por nombre o email..."
                    @bind="_searchText" @bind:event="oninput" />
         </div>
+        @if (AuthState.User?.Role == "SuperAdmin" && _tenants.Count > 1)
+        {
+            <select class="search-input" style="width: 200px; padding-left: 14px;"
+                    @bind="_tenantFilter">
+                <option value="">Todas las Empresas</option>
+                <option value="@Guid.Empty.ToString()">Global (SuperAdmin)</option>
+                @foreach (var t in _tenants)
+                {
+                    <option value="@t.Id.ToString()">@t.Name</option>
+                }
+            </select>
+        }
         <select class="search-input" style="width: 180px; padding-left: 14px;"
                 @bind="_roleFilter">
             <option value="">Todos los roles</option>
-            @foreach (ContactRole role in Enum.GetValues(typeof(ContactRole)))
+            @foreach (ContactRole role in AvailableRoles)
             {
                 <option value="@role.ToString()">@role.GetDisplayName()</option>
             }
@@ -116,12 +133,15 @@
             <PropertyColumn Property="@(u => u.CreatedAt)" Title="Registrado" Format="dd/MM/yyyy" Sortable="true" />
             <TemplateColumn Title="Acciones">
                 <div style="display: flex; gap: 4px;">
-                    <button class="btn-icon" title="Editar" @onclick="() => OpenEditModal(context)">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                    </button>
-                    <button class="btn-icon btn-icon-danger" title="Eliminar" @onclick="() => ConfirmDelete(context)">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                    </button>
+                    @if (CanEditUser(context))
+                    {
+                        <button class="btn-icon" title="Editar" @onclick="() => OpenEditModal(context)">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                        </button>
+                        <button class="btn-icon btn-icon-danger" title="Eliminar" @onclick="() => ConfirmDelete(context)">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                        </button>
+                    }
                 </div>
             </TemplateColumn>
         </QuickGrid>
@@ -152,7 +172,7 @@
                             <span>Acceso Global — sin empresa asignada</span>
                         </div>
                     }
-                    else
+                    else if (AuthState.User?.Role == "SuperAdmin")
                     {
                         <InputSelect @bind-Value="_formModel.TenantId" class="search-input" style="width: 100%; box-sizing: border-box; padding-left: 14px;">
                             <option value="@Guid.Empty">-- Seleccionar Empresa --</option>
@@ -161,6 +181,12 @@
                                 <option value="@t.Id">@t.Name</option>
                             }
                         </InputSelect>
+                    }
+                    else
+                    {
+                        <div style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 10px 14px; color: #fff; font-size: 13px;">
+                            @(TenantState.CurrentTenant?.Name ?? "Mi Empresa")
+                        </div>
                     }
                 </div>
 
@@ -180,7 +206,7 @@
                     <label style="display: block; color: rgba(255,255,255,0.5); font-size: 12px; margin-bottom: 4px;">Rol</label>
                     <InputSelect @bind-Value="_formModel.Role" class="search-input" style="width: 100%; box-sizing: border-box; padding-left: 14px;"
                                  @oninput="OnRoleChanged">
-                        @foreach (ContactRole role in Enum.GetValues(typeof(ContactRole)))
+                        @foreach (ContactRole role in AvailableRoles)
                         {
                             <option value="@role.ToString()">@role.GetDisplayName()</option>
                         }
@@ -262,6 +288,7 @@
 
     private string _searchText = "";
     private string _roleFilter = "";
+    private string _tenantFilter = "";
     private PaginationState _pagination = new PaginationState { ItemsPerPage = 10 };
 
     private bool _modalVisible;
@@ -271,12 +298,33 @@
 
     private PersistingComponentStateSubscription _persistingSubscription;
 
+    private IEnumerable<ContactRole> AvailableRoles
+    {
+        get
+        {
+            var isSuperAdmin = AuthState.User?.Role == "SuperAdmin";
+            foreach (ContactRole role in Enum.GetValues(typeof(ContactRole)))
+            {
+                if (role == ContactRole.SuperAdmin && !isSuperAdmin) continue;
+                yield return role;
+            }
+        }
+    }
+
+    private bool CanEditUser(UserProfileDto user)
+    {
+        if (AuthState.User?.Role == "SuperAdmin") return true;
+        if (user.Role == "SuperAdmin" || user.TenantId == Guid.Empty) return false;
+        return true;
+    }
+
     private IQueryable<UserProfileDto> FilteredUsers => _users
         .Where(u =>
             (string.IsNullOrEmpty(_searchText) ||
              u.DisplayName.Contains(_searchText, StringComparison.OrdinalIgnoreCase) ||
              u.Email.Contains(_searchText, StringComparison.OrdinalIgnoreCase)) &&
-            (string.IsNullOrEmpty(_roleFilter) || u.Role == _roleFilter))
+            (string.IsNullOrEmpty(_roleFilter) || u.Role == _roleFilter) &&
+            (string.IsNullOrEmpty(_tenantFilter) || u.TenantId.ToString() == _tenantFilter))
         .AsQueryable();
 
     protected override async Task OnInitializedAsync()
@@ -357,11 +405,15 @@
     private void OpenCreateModal()
     {
         _editingUser = null;
+        var defaultTenantId = AuthState.User?.Role == "SuperAdmin"
+            ? (TenantState.IsSelected ? TenantState.CurrentTenant!.Id : (_tenants.FirstOrDefault()?.Id ?? Guid.Empty))
+            : (AuthState.User?.TenantId ?? Guid.Empty);
+
         _formModel = new GestorOT.Shared.Validation.UserFormDto
         {
             Role = "Admin",
             IsActive = true,
-            TenantId = _tenants.FirstOrDefault()?.Id ?? Guid.Empty
+            TenantId = defaultTenantId
         };
         _modalVisible = true;
     }
@@ -390,6 +442,10 @@
     {
         try
         {
+            var tenantId = AuthState.User?.Role == "SuperAdmin"
+                ? _formModel.TenantId
+                : (AuthState.User?.TenantId ?? Guid.Empty);
+
             var dto = new UserProfileDto(
                 _editingUser?.Id ?? Guid.Empty,
                 _formModel.Email,
@@ -397,7 +453,7 @@
                 _formModel.Role,
                 _formModel.IsActive,
                 _editingUser?.CreatedAt ?? DateTime.UtcNow,
-                _formModel.TenantId,
+                tenantId,
                 null,
                 _formModel.Password
             );

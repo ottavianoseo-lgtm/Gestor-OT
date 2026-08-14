@@ -11,9 +11,9 @@ public class TenantHttpHandler : DelegatingHandler
 
     protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
-        if (_tenantState.CurrentTenant != null)
+        request.Headers.Remove("X-Tenant-ID");
+        if (_tenantState.CurrentTenant != null && _tenantState.CurrentTenant.Id != Guid.Empty)
         {
-            request.Headers.Remove("X-Tenant-ID");
             request.Headers.Add("X-Tenant-ID", _tenantState.CurrentTenant.Id.ToString());
         }
 

@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using GestorOT.Application.Interfaces;
 using GestorOT.Domain.Entities;
 using Microsoft.AspNetCore.Http;
@@ -57,17 +58,29 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
         {
             if (_httpContextAccessor?.HttpContext != null)
             {
-                // 1° Header X-Tenant-ID: permite que el frontend cambie el tenant activo
-                // independientemente del tenant fijo en el JWT.
-                var tenantHeader = _httpContextAccessor.HttpContext.Request.Headers["X-Tenant-ID"].FirstOrDefault();
-                if (Guid.TryParse(tenantHeader, out var headerTenantId) && headerTenantId != Guid.Empty)
-                    return headerTenantId;
+                var user = _httpContextAccessor.HttpContext.User;
+                var isSuperAdmin = user?.IsInRole("SuperAdmin") == true 
+                                   || user?.FindFirst(ClaimTypes.Role)?.Value == "SuperAdmin";
 
-                // 2° Claim "tenant_id" del JWT: fallback para usuarios sin header explícito.
-                // Guid.Empty en el claim indica SuperAdmin (acceso global, sin filtro de tenant).
-                var claimTenant = _httpContextAccessor.HttpContext.User?.FindFirst("tenant_id")?.Value;
-                if (Guid.TryParse(claimTenant, out var userTenantId))
-                    return userTenantId; // Puede ser Guid.Empty para SuperAdmin
+                if (isSuperAdmin)
+                {
+                    // SuperAdmin: puede especificar un tenant dinámicamente mediante X-Tenant-ID o operar en Global (Guid.Empty)
+                    var tenantHeader = _httpContextAccessor.HttpContext.Request.Headers["X-Tenant-ID"].FirstOrDefault();
+                    if (Guid.TryParse(tenantHeader, out var headerTenantId))
+                        return headerTenantId;
+
+                    return Guid.Empty;
+                }
+
+                // Usuarios normales / administradores de tenant: SIEMPRE anclados a su tenant del JWT
+                var claimTenant = user?.FindFirst("tenant_id")?.Value;
+                if (Guid.TryParse(claimTenant, out var userTenantId) && userTenantId != Guid.Empty)
+                    return userTenantId;
+
+                // Fallback para peticiones sin autenticación (ej. endpoints públicos de inicio o compartidos)
+                var fallbackHeader = _httpContextAccessor.HttpContext.Request.Headers["X-Tenant-ID"].FirstOrDefault();
+                if (Guid.TryParse(fallbackHeader, out var fallbackTenantId))
+                    return fallbackTenantId;
             }
             return Guid.Empty;
         }

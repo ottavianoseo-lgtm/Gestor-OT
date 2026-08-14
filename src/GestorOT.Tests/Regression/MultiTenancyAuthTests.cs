@@ -111,6 +111,139 @@ public class MultiTenancyAuthTests
     }
 
     [Fact]
+    public void CurrentTenantService_NonSuperAdmin_CannotOverrideTenantWithHeader()
+    {
+        var tenantId = Guid.NewGuid();
+        var attackerTenantId = Guid.NewGuid();
+
+        var claims = new[]
+        {
+            new Claim("tenant_id", tenantId.ToString()),
+            new Claim(ClaimTypes.Role, "Admin")
+        };
+        var identity = new ClaimsIdentity(claims, "TestAuth");
+        var principal = new ClaimsPrincipal(identity);
+
+        var httpContext = new DefaultHttpContext { User = principal };
+        httpContext.Request.Headers["X-Tenant-ID"] = attackerTenantId.ToString();
+
+        var accessor = new HttpContextAccessor { HttpContext = httpContext };
+        var tenantService = new CurrentTenantService(accessor);
+
+        // Debería devolver siempre tenantId del JWT y no attackerTenantId
+        Assert.Equal(tenantId, tenantService.TenantId);
+    }
+
+    [Fact]
+    public void CurrentTenantService_SuperAdmin_CanOperateGloballyOrWithHeader()
+    {
+        var selectedTenantId = Guid.NewGuid();
+
+        var claims = new[]
+        {
+            new Claim("tenant_id", Guid.Empty.ToString()),
+            new Claim(ClaimTypes.Role, "SuperAdmin")
+        };
+        var identity = new ClaimsIdentity(claims, "TestAuth");
+        var principal = new ClaimsPrincipal(identity);
+
+        // Sin header: opera en modo Global (Guid.Empty)
+        var httpContextGlobal = new DefaultHttpContext { User = principal };
+        var accessorGlobal = new HttpContextAccessor { HttpContext = httpContextGlobal };
+        var tenantServiceGlobal = new CurrentTenantService(accessorGlobal);
+        Assert.Equal(Guid.Empty, tenantServiceGlobal.TenantId);
+
+        // Con header: adopta el tenant seleccionado
+        var httpContextSelected = new DefaultHttpContext { User = principal };
+        httpContextSelected.Request.Headers["X-Tenant-ID"] = selectedTenantId.ToString();
+        var accessorSelected = new HttpContextAccessor { HttpContext = httpContextSelected };
+        var tenantServiceSelected = new CurrentTenantService(accessorSelected);
+        Assert.Equal(selectedTenantId, tenantServiceSelected.TenantId);
+    }
+
+    [Fact]
+    public async Task ApplicationDbContext_NonSuperAdmin_CannotOverrideTenantFilterWithHeader()
+    {
+        var tenantA = Guid.NewGuid();
+        var tenantB = Guid.NewGuid();
+
+        var claims = new[]
+        {
+            new Claim("tenant_id", tenantA.ToString()),
+            new Claim(ClaimTypes.Role, "Admin")
+        };
+        var identity = new ClaimsIdentity(claims, "TestAuth");
+        var principal = new ClaimsPrincipal(identity);
+
+        var httpContext = new DefaultHttpContext { User = principal };
+        httpContext.Request.Headers["X-Tenant-ID"] = tenantB.ToString(); // Intento de spoofing
+
+        var accessor = new HttpContextAccessor { HttpContext = httpContext };
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
+            .Options;
+
+        using var context = new ApplicationDbContext(options, accessor);
+
+        // Sembrar datos para Tenant A y Tenant B
+        context.Fields.Add(new Field { Id = Guid.NewGuid(), TenantId = tenantA, Name = "Campo Tenant A" });
+        context.Fields.Add(new Field { Id = Guid.NewGuid(), TenantId = tenantB, Name = "Campo Tenant B" });
+        await context.SaveChangesAsync();
+
+        var visibleFields = await context.Fields.ToListAsync();
+
+        // El usuario solo debe ver los campos de Tenant A
+        Assert.Single(visibleFields);
+        Assert.Equal("Campo Tenant A", visibleFields[0].Name);
+        Assert.Equal(tenantA, visibleFields[0].TenantId);
+    }
+
+    [Fact]
+    public async Task ApplicationDbContext_SuperAdmin_CanQueryAllOrSpecificTenant()
+    {
+        var tenantA = Guid.NewGuid();
+        var tenantB = Guid.NewGuid();
+
+        var claims = new[]
+        {
+            new Claim("tenant_id", Guid.Empty.ToString()),
+            new Claim(ClaimTypes.Role, "SuperAdmin")
+        };
+        var identity = new ClaimsIdentity(claims, "TestAuth");
+        var principal = new ClaimsPrincipal(identity);
+
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
+            .Options;
+
+        // 1. SuperAdmin en modo Global (sin header)
+        var httpContextGlobal = new DefaultHttpContext { User = principal };
+        var accessorGlobal = new HttpContextAccessor { HttpContext = httpContextGlobal };
+
+        using (var context = new ApplicationDbContext(options, accessorGlobal))
+        {
+            context.Fields.Add(new Field { Id = Guid.NewGuid(), TenantId = tenantA, Name = "Campo Tenant A" });
+            context.Fields.Add(new Field { Id = Guid.NewGuid(), TenantId = tenantB, Name = "Campo Tenant B" });
+            await context.SaveChangesAsync();
+
+            var allFields = await context.Fields.ToListAsync();
+            Assert.Equal(2, allFields.Count);
+        }
+
+        // 2. SuperAdmin con header para Tenant B
+        var httpContextSelected = new DefaultHttpContext { User = principal };
+        httpContextSelected.Request.Headers["X-Tenant-ID"] = tenantB.ToString();
+        var accessorSelected = new HttpContextAccessor { HttpContext = httpContextSelected };
+
+        using (var context = new ApplicationDbContext(options, accessorSelected))
+        {
+            var tenantBFields = await context.Fields.ToListAsync();
+            Assert.Single(tenantBFields);
+            Assert.Equal("Campo Tenant B", tenantBFields[0].Name);
+        }
+    }
+
+    [Fact]
     public async Task CreateTenant_AutomaticallyCreatesAdminUser()
     {
         var context = CreateContext();
@@ -131,6 +264,6 @@ public class MultiTenancyAuthTests
 
         Assert.NotNull(adminUser);
         Assert.Equal("Admin", adminUser.Role);
-        Assert.True(adminUser.Email.Contains("agropecuarianorte"));
+        Assert.Contains("agropecuarianorte", adminUser.Email);
     }
 }
