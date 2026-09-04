@@ -1,0 +1,166 @@
+@page "/admin/activities"
+@using GestorOT.Shared.Dtos
+@using System.Net.Http.Json
+@using AntDesign
+@inject HttpClient Http
+@inject IMessageService Message
+@inject GestorOT.Client.Services.TenantState TenantState
+
+<PageTitle>Actividades ERP - Admin</PageTitle>
+
+<div class="page-header">
+    <div>
+        <h2 class="page-title">Actividades y Cultivos (ERP)</h2>
+        <span class="page-subtitle">Gestiona las actividades disponibles traídas del ERP. Desactiva las que tu empresa no utilice para mantener limpios los selectores.</span>
+    </div>
+    <Button Type="@ButtonType.Primary" Icon="sync" OnClick="SyncFromErp" Loading="_syncing"
+            Style="background: #E74C3C; border-color: #E74C3C; border-radius: 8px; font-weight: 600;">
+        Sincronizar Actividades
+    </Button>
+</div>
+
+<div class="glass-card">
+    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 16px;">
+        <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+            <Input Placeholder="Buscar por nombre o código ERP..." @bind-Value="_search" OnInput="OnSearch" AllowClear 
+                   PrefixIcon="search" Style="width: 320px; border-radius: 8px;" />
+            <RadioGroup @bind-Value="_statusFilter" ButtonStyle="@RadioButtonStyle.Solid">
+                <Radio Value="@("all")">Todas (@_activities.Count)</Radio>
+                <Radio Value="@("active")">Activas (@_activities.Count(a => a.IsActive))</Radio>
+                <Radio Value="@("inactive")">Inactivas (@_activities.Count(a => !a.IsActive))</Radio>
+            </RadioGroup>
+        </div>
+    </div>
+
+    <Table TItem="ErpActivityDto" DataSource="FilteredActivities" Loading="_loading" Size="TableSize.Small">
+        <PropertyColumn Property="a => a.ExternalErpId" Title="Código ERP" Width="130" />
+        <PropertyColumn Property="a => a.Name" Title="Nombre de la Actividad / Cultivo" Sortable />
+        <Column TData="bool" Title="Estado" Width="130">
+            @if (context.IsActive)
+            {
+                <Tag Color="@AntDesign.TagColor.Green"><Icon Type="check-circle" /> Activa</Tag>
+            }
+            else
+            {
+                <Tag Color="@AntDesign.TagColor.Default"><Icon Type="close-circle" /> Inactiva</Tag>
+            }
+        </Column>
+        <ActionColumn Title="Acciones" Width="130" Align="ColumnAlign.Right">
+            @if (!context.IsActive)
+            {
+                <Button Type="@ButtonType.Primary" Size="@ButtonSize.Small" Ghost 
+                        OnClick="() => ToggleActive(context)" Loading="_processingId == context.Id">
+                    Activar
+                </Button>
+            }
+            else
+            {
+                <Button Type="@ButtonType.Default" Danger Size="@ButtonSize.Small" Ghost
+                        OnClick="() => ToggleActive(context)" Loading="_processingId == context.Id">
+                    Desactivar
+                </Button>
+            }
+        </ActionColumn>
+    </Table>
+</div>
+
+@code {
+    private List<ErpActivityDto> _activities = new();
+    private bool _loading = true;
+    private bool _syncing;
+    private string _search = "";
+    private string _statusFilter = "all";
+    private Guid? _processingId;
+
+    private IEnumerable<ErpActivityDto> FilteredActivities => 
+        _activities
+            .Where(a => _statusFilter switch
+            {
+                "active" => a.IsActive,
+                "inactive" => !a.IsActive,
+                _ => true
+            })
+            .Where(a => string.IsNullOrWhiteSpace(_search) || 
+                        a.Name.Contains(_search, StringComparison.OrdinalIgnoreCase) || 
+                        a.ExternalErpId?.Contains(_search, StringComparison.OrdinalIgnoreCase) == true);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        _loading = true;
+        try
+        {
+            // includeInactive = true to show all activities in this management view
+            _activities = await Http.GetFromJsonAsync<List<ErpActivityDto>>("api/catalogs/activities?includeInactive=true") ?? new();
+        }
+        catch (Exception)
+        {
+            Message.Error("Error al cargar las actividades.");
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task SyncFromErp()
+    {
+        _syncing = true;
+        try
+        {
+            var tenantId = TenantState.CurrentTenant?.Id;
+            var response = await Http.PostAsync($"api/sync/activities?tenantId={tenantId}", null);
+            if (response.IsSuccessStatusCode)
+            {
+                Message.Success("Sincronización de actividades completada.");
+                await LoadData();
+            }
+            else
+            {
+                Message.Error("Error en la sincronización.");
+            }
+        }
+        catch
+        {
+            Message.Error("Error de conexión con el servidor.");
+        }
+        finally
+        {
+            _syncing = false;
+        }
+    }
+
+    private async Task ToggleActive(ErpActivityDto activity)
+    {
+        _processingId = activity.Id;
+        try
+        {
+            var response = await Http.PutAsync($"api/catalogs/activities/{activity.Id}/toggle-active", null);
+            if (response.IsSuccessStatusCode)
+            {
+                var newStatus = !activity.IsActive;
+                Message.Success($"Actividad '{activity.Name}' {(newStatus ? "activada" : "desactivada")}.");
+                await LoadData();
+            }
+            else
+            {
+                var err = await response.Content.ReadAsStringAsync();
+                Message.Error(string.IsNullOrWhiteSpace(err) ? "No se pudo actualizar el estado." : err);
+            }
+        }
+        catch
+        {
+            Message.Error("Error de red al actualizar la actividad.");
+        }
+        finally
+        {
+            _processingId = null;
+        }
+    }
+
+    private void OnSearch() => StateHasChanged();
+}

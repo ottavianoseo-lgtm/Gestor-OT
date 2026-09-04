@@ -37,3 +37,8 @@ msbuild.wrn
 .vs/
 .env
     
+# Salida de build / runtime (no versionar)
+build_output.txt
+app_stdout.log
+app_stderr.log
+*.log

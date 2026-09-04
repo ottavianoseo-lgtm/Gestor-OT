@@ -46,6 +46,34 @@ public class SyncController : ControllerBase
         }
     }
 
+    [HttpPost("activities")]
+    public async Task<IActionResult> SyncActivities([FromQuery] Guid? tenantId)
+    {
+        try
+        {
+            if (tenantId.HasValue)
+            {
+                await _erpSyncService.SyncActivitiesAsync(tenantId.Value);
+            }
+            else
+            {
+                var tenants = await _context.Tenants
+                    .Where(t => !string.IsNullOrEmpty(t.GestorMaxApiKeyEncrypted) && !string.IsNullOrEmpty(t.GestorMaxDatabaseId))
+                    .ToListAsync();
+
+                foreach (var tenant in tenants)
+                {
+                    await _erpSyncService.SyncActivitiesAsync(tenant.Id);
+                }
+            }
+            return Ok(new { Message = "Sincronización de actividades completada." });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { Error = ex.Message });
+        }
+    }
+
     [HttpPost("erp/{tenantId:guid}")]
     public async Task<IActionResult> TriggerSync(Guid tenantId)
     {

@@ -4,4 +4,5 @@ public class ErpActivity : TenantEntity, IExternalErpEntity
 {
     public string Name { get; set; } = string.Empty;
     public string? ExternalErpId { get; set; }
+    public bool IsActive { get; set; } = true;
 }

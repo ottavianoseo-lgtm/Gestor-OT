@@ -77,7 +77,7 @@ builder.Services.AddAuthorization();
 
 var app = builder.Build();
 
-// Auto-migrate on startup in Development / Staging only (#migrations-pipe)
+// Auto-migrate on startup
 await app.ApplyMigrationsAsync();
 
 app.UseMiddleware<GlobalExceptionMiddleware>();

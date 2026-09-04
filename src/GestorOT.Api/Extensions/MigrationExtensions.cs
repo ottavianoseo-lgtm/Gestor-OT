@@ -6,17 +6,11 @@ namespace GestorOT.Api.Extensions;
 public static class MigrationExtensions
 {
     /// <summary>
-    /// Applies pending EF Core migrations at startup.
-    /// Only runs in Development and Staging environments.
-    /// In Production the application starts normally and migrations must be applied
-    /// via the external script (see docs/migrations.md).
+    /// Applies pending EF Core migrations at startup in all environments.
     /// Throws and halts startup if the database is unreachable or migration fails.
     /// </summary>
     public static async Task ApplyMigrationsAsync(this WebApplication app)
     {
-        if (!app.Environment.IsDevelopment() && !app.Environment.IsStaging())
-            return;
-
         var logger = app.Services.GetRequiredService<ILogger<ApplicationDbContext>>();
 
         await using var scope = app.Services.CreateAsyncScope();

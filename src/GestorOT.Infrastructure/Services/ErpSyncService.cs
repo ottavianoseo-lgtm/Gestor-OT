@@ -41,8 +41,73 @@ public class ErpSyncService : IErpSyncService
 
     public async Task SyncActivitiesAsync(Guid? overrideTenantId = null, CancellationToken ct = default)
     {
-        // Manual management as requested by user
-        await Task.CompletedTask;
+        var tenantId = overrideTenantId ?? _currentTenantService.TenantId;
+        if (tenantId == Guid.Empty) return;
+
+        try
+        {
+            var (client, databaseId) = await GetErpClientAndDatabaseIdAsync(tenantId, ct);
+            if (client == null || string.IsNullOrEmpty(databaseId)) return;
+
+            var url = $"{BaseUrl}/v3/GestorG4/ListActividades?databaseId={databaseId}&soloHabilitados=true";
+            var response = await client.GetAsync(url, ct);
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning("GestorMax ListActividades returned {StatusCode} for Tenant {TenantId}", response.StatusCode, tenantId);
+                return;
+            }
+
+            var items = await response.Content.ReadFromJsonAsync<List<GenericErpItemResponse>>(ct);
+            if (items == null || !items.Any()) return;
+
+            foreach (var item in items)
+            {
+                var name = item.GetDescription()?.Trim();
+                if (string.IsNullOrWhiteSpace(name) || name == "Sin Descripción") continue;
+
+                var externalId = item.GetCode().ToString();
+
+                var existing = await _context.ErpActivities
+                    .IgnoreQueryFilters()
+                    .FirstOrDefaultAsync(a => a.TenantId == tenantId && a.ExternalErpId == externalId, ct);
+
+                if (existing == null)
+                {
+                    // Si no se encuentra por ExternalErpId, buscamos por nombre dentro del mismo tenant
+                    existing = await _context.ErpActivities
+                        .IgnoreQueryFilters()
+                        .FirstOrDefaultAsync(a => a.TenantId == tenantId && a.Name.ToLower() == name.ToLower(), ct);
+
+                    if (existing != null)
+                    {
+                        existing.ExternalErpId = externalId;
+                        existing.Name = name;
+                    }
+                    else
+                    {
+                        _context.ErpActivities.Add(new ErpActivity
+                        {
+                            Id = Guid.NewGuid(),
+                            TenantId = tenantId,
+                            ExternalErpId = externalId,
+                            Name = name,
+                            IsActive = true
+                        });
+                    }
+                }
+                else
+                {
+                    existing.Name = name;
+                }
+            }
+
+            await _context.SaveChangesAsync(ct);
+            _logger.LogInformation("Sincronización de Actividades finalizada para el Tenant {TenantId}.", tenantId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error syncing Activities for Tenant {TenantId}.", tenantId);
+        }
     }
 
     public async Task SyncCatalogAsync(Guid? overrideTenantId = null, CancellationToken ct = default)
@@ -612,6 +677,7 @@ public class ErpSyncService : IErpSyncService
         [property: JsonPropertyName("codPerfilImputacion")] object? CodPerfilImputacion,
         [property: JsonPropertyName("codPerfil")] object? CodPerfil,
         [property: JsonPropertyName("codActividadPerfilImputacion")] object? CodPerfilActividad,
+        [property: JsonPropertyName("codActividad")] object? CodActividad,
         [property: JsonPropertyName("codPlan")] object? CodPlan,
         [property: JsonPropertyName("codCuenta")] object? CodCuenta,
         [property: JsonPropertyName("codPersona")] object? CodPersona,
@@ -623,6 +689,7 @@ public class ErpSyncService : IErpSyncService
         [property: JsonPropertyName("moneda")] string? Moneda,
         [property: JsonPropertyName("perfilImputacion")] string? PerfilImputacion,
         [property: JsonPropertyName("actividadPerfilImputacion")] string? ActividadPerfil,
+        [property: JsonPropertyName("actividad")] string? Actividad,
         [property: JsonPropertyName("plan")] string? Plan,
         [property: JsonPropertyName("cuenta")] string? Cuenta,
         [property: JsonPropertyName("descripcion")] string? Descripcion,
@@ -630,14 +697,14 @@ public class ErpSyncService : IErpSyncService
     {
         public long GetCode()
         {
-            var raw = CodEmpresa ?? CodComprobante ?? CodMoneda ?? CodPerfilImputacion ?? CodPerfil ?? CodPerfilActividad ?? CodCuenta ?? CodPlan ?? CodPersona ?? Codigo;
+            var raw = CodEmpresa ?? CodComprobante ?? CodMoneda ?? CodPerfilImputacion ?? CodPerfil ?? CodPerfilActividad ?? CodActividad ?? CodCuenta ?? CodPlan ?? CodPersona ?? Codigo;
             if (raw != null && long.TryParse(raw.ToString(), out var val)) return val;
             return 1;
         }
 
         public string GetDescription()
         {
-            return Persona ?? Empresa ?? Comprobante ?? Moneda ?? PerfilImputacion ?? ActividadPerfil ?? Cuenta ?? Plan ?? Descripcion ?? Nombre ?? "Sin Descripción";
+            return Persona ?? Empresa ?? Comprobante ?? Moneda ?? PerfilImputacion ?? ActividadPerfil ?? Actividad ?? Cuenta ?? Plan ?? Descripcion ?? Nombre ?? "Sin Descripción";
         }
     }
 
