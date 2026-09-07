@@ -235,13 +235,19 @@ public class LaborExcelImportService : ILaborExcelImportService
 
                     var campaignLot = campaignLots.FirstOrDefault(cl => cl.Id == parsedLabor.CampaignLotId.Value);
 
-                    var laborMode = string.Equals(parsedLabor.Mode, "Realized", StringComparison.OrdinalIgnoreCase) 
-                        ? LaborMode.Realized 
-                        : LaborMode.Planned;
+                    // Deducir modo por la fecha: si es pasada o igual a hoy, es Realizada; si es a futuro, Planeada
+                    bool isRealized = false;
+                    if (parsedLabor.Date.HasValue)
+                    {
+                        isRealized = parsedLabor.Date.Value.Date <= DateTime.UtcNow.Date;
+                    }
+                    else
+                    {
+                        isRealized = string.Equals(parsedLabor.Mode, "Realized", StringComparison.OrdinalIgnoreCase);
+                    }
 
-                    var laborStatus = laborMode == LaborMode.Realized 
-                        ? LaborStatus.Realized 
-                        : LaborStatus.Planned;
+                    var laborMode = isRealized ? LaborMode.Realized : LaborMode.Planned;
+                    var laborStatus = isRealized ? LaborStatus.Realized : LaborStatus.Planned;
 
                     var labor = new Labor
                     {
@@ -258,7 +264,7 @@ public class LaborExcelImportService : ILaborExcelImportService
                         Rate = 1,
                         RateUnit = "ha",
                         PlannedDose = 1,
-                        RealizedDose = laborMode == LaborMode.Realized ? 1 : null,
+                        RealizedDose = isRealized ? 1 : null,
                         Mode = laborMode,
                         Status = laborStatus,
                         Priority = LaborPriority.Regular,
@@ -286,11 +292,11 @@ public class LaborExcelImportService : ILaborExcelImportService
                             LaborId = labor.Id,
                             SupplyId = supplyId,
                             PlannedHectares = labor.Hectares,
-                            RealHectares = laborMode == LaborMode.Realized ? labor.Hectares : null,
+                            RealHectares = isRealized ? labor.Hectares : null,
                             PlannedDose = plannedDose,
-                            RealDose = laborMode == LaborMode.Realized ? plannedDose : null,
+                            RealDose = isRealized ? plannedDose : null,
                             PlannedTotal = totalQty,
-                            RealTotal = laborMode == LaborMode.Realized ? totalQty : null,
+                            RealTotal = isRealized ? totalQty : null,
                             UnitOfMeasure = !string.IsNullOrWhiteSpace(sup.Unit) ? sup.Unit : "unidad",
                             TankMixOrder = mixOrder++
                         };
@@ -599,10 +605,23 @@ public class LaborExcelImportService : ILaborExcelImportService
                 string contractor = cfg.ColContratista > 0 ? row.Cell(cfg.ColContratista).GetString().Trim() : string.Empty;
                 string modoStr = cfg.ColModo > 0 ? row.Cell(cfg.ColModo).GetString().Trim() : string.Empty;
 
-                string mode = (string.Equals(modoStr, "r", StringComparison.OrdinalIgnoreCase) ||
-                               modoStr.StartsWith("realiz", StringComparison.OrdinalIgnoreCase))
-                    ? "Realized"
-                    : "Planned";
+                // Deducir modo por la fecha: si es pasada o igual a hoy, es Realizada; si es a futuro, Planeada
+                bool isRealized = false;
+                if (date.HasValue)
+                {
+                    isRealized = date.Value.Date <= DateTime.UtcNow.Date;
+                }
+                else if (!string.IsNullOrWhiteSpace(modoStr))
+                {
+                    isRealized = string.Equals(modoStr, "r", StringComparison.OrdinalIgnoreCase) ||
+                                 modoStr.StartsWith("realiz", StringComparison.OrdinalIgnoreCase);
+                }
+                else
+                {
+                    isRealized = true;
+                }
+
+                string mode = isRealized ? "Realized" : "Planned";
 
                 // Match Lot in campaign
                 Guid? lotId = null;
@@ -658,15 +677,21 @@ public class LaborExcelImportService : ILaborExcelImportService
                 if (currentLabor == null)
                 {
                     // Orphaned supply line, try to synthesize a labor if lot is present
-                    string lotName = cfg.ColLote > 0 ? row.Cell(cfg.ColLote).GetString().Trim() : string.Empty;
+                    string orphanLot = cfg.ColLote > 0 ? row.Cell(cfg.ColLote).GetString().Trim() : string.Empty;
+                    DateTime? orphanDate = cfg.ColFecha > 0 ? ParseDateCell(row.Cell(cfg.ColFecha)) : null;
+                    bool orphanRealized = !orphanDate.HasValue || orphanDate.Value.Date <= DateTime.UtcNow.Date;
+                    string orphanMode = orphanRealized ? "Realized" : "Planned";
+
                     currentLabor = new LaborImportParsedLaborDto
                     {
                         RowIndex = r,
-                        Date = cfg.ColFecha > 0 ? ParseDateCell(row.Cell(cfg.ColFecha)) : null,
+                        Date = orphanDate,
                         FieldName = cfg.ColEstablecimiento > 0 ? row.Cell(cfg.ColEstablecimiento).GetString().Trim() : string.Empty,
-                        LotName = lotName,
+                        LotName = orphanLot,
                         Hectares = cfg.ColSuperficie > 0 ? ParseDecimalCell(row.Cell(cfg.ColSuperficie)) : 0,
                         LaborTypeName = "Labor General",
+                        Mode = orphanMode,
+                        Status = orphanMode,
                         Supplies = new List<LaborImportParsedItemDto>()
                     };
                 }

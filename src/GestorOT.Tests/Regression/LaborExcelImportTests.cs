@@ -45,13 +45,13 @@ public class LaborExcelImportTests
 
         var rows = new object[][]
         {
-            // Labor 1
-            new object[] { "2026-10-10", "Establecimiento Norte", "Lote 1", 50, "Labor", "Pulverización", 1, "ha", "Propio", "Realizada", "Barbecho" },
-            new object[] { "2026-10-10", "Establecimiento Norte", "Lote 1", 50, "Herbicida", "Glifosato 66%", 2.5, "litros", "Propio", "Realizada", "" },
-            new object[] { "2026-10-10", "Establecimiento Norte", "Lote 1", 50, "Coadyuvante", "Aceite Mineral", 0.5, "litros", "Propio", "Realizada", "" },
-            // Labor 2
-            new object[] { "2026-10-12", "Establecimiento Norte", "Lote 2", 80, "Labor", "Fertilización", 1, "ha", "Don Carlos", "Planeada", "Voleo" },
-            new object[] { "2026-10-12", "Establecimiento Norte", "Lote 2", 80, "Fertilizante", "Urea Granulada", 120, "kg", "Don Carlos", "Planeada", "" }
+            // Labor 1 (Past date -> Realized)
+            new object[] { "2026-01-10", "Establecimiento Norte", "Lote 1", 50, "Labor", "Pulverización", 1, "ha", "Propio", "", "Barbecho" },
+            new object[] { "2026-01-10", "Establecimiento Norte", "Lote 1", 50, "Herbicida", "Glifosato 66%", 2.5, "litros", "Propio", "", "" },
+            new object[] { "2026-01-10", "Establecimiento Norte", "Lote 1", 50, "Coadyuvante", "Aceite Mineral", 0.5, "litros", "Propio", "", "" },
+            // Labor 2 (Future date -> Planned)
+            new object[] { "2026-12-12", "Establecimiento Norte", "Lote 2", 80, "Labor", "Fertilización", 1, "ha", "Don Carlos", "", "Voleo" },
+            new object[] { "2026-12-12", "Establecimiento Norte", "Lote 2", 80, "Fertilizante", "Urea Granulada", 120, "kg", "Don Carlos", "", "" }
         };
 
         for (int r = 0; r < rows.Length; r++)
@@ -206,8 +206,22 @@ public class LaborExcelImportTests
             Assert.Equal(1, result.NewSuppliesCreated); // Aceite Mineral was created
 
             // Verify in DB
-            var dbLabors = await context.Labors.Include(l => l.Supplies).ToListAsync();
+            var dbLabors = await context.Labors.Include(l => l.Supplies).OrderBy(l => l.Hectares).ToListAsync();
             Assert.Equal(2, dbLabors.Count);
+
+            // Labor 1 (Past date -> Realized)
+            var l1 = dbLabors[0];
+            Assert.Equal(LaborMode.Realized, l1.Mode);
+            Assert.Equal(LaborStatus.Realized, l1.Status);
+            Assert.Equal(1, l1.RealizedDose);
+            Assert.All(l1.Supplies, s => Assert.NotNull(s.RealDose));
+
+            // Labor 2 (Future date -> Planned)
+            var l2 = dbLabors[1];
+            Assert.Equal(LaborMode.Planned, l2.Mode);
+            Assert.Equal(LaborStatus.Planned, l2.Status);
+            Assert.Null(l2.RealizedDose);
+            Assert.All(l2.Supplies, s => Assert.Null(s.RealDose));
 
             var dbAliases = await context.SupplyAliases.ToListAsync();
             Assert.NotEmpty(dbAliases);
