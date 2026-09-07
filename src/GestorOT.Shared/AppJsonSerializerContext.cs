@@ -127,6 +127,15 @@ namespace GestorOT.Shared;
 [JsonSerializable(typeof(List<LotImportRowDto>))]
 [JsonSerializable(typeof(LotImportSummaryDto))]
 [JsonSerializable(typeof(LotImportResultDto))]
+[JsonSerializable(typeof(LaborImportSupplyMappingDto))]
+[JsonSerializable(typeof(List<LaborImportSupplyMappingDto>))]
+[JsonSerializable(typeof(LaborImportParsedItemDto))]
+[JsonSerializable(typeof(List<LaborImportParsedItemDto>))]
+[JsonSerializable(typeof(LaborImportParsedLaborDto))]
+[JsonSerializable(typeof(List<LaborImportParsedLaborDto>))]
+[JsonSerializable(typeof(LaborImportPreviewDto))]
+[JsonSerializable(typeof(LaborImportExecuteRequestDto))]
+[JsonSerializable(typeof(LaborImportResultDto))]
 [JsonSourceGenerationOptions(
     PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,
     WriteIndented = false,

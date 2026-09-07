@@ -51,6 +51,7 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
     public DbSet<PaseLote> PasesLote => Set<PaseLote>();
     public DbSet<PaseImputacion> PasesImputacion => Set<PaseImputacion>();
     public DbSet<AccountConfiguration> AccountConfigurations => Set<AccountConfiguration>();
+    public DbSet<SupplyAlias> SupplyAliases => Set<SupplyAlias>();
 
     public Guid CurrentTenantId
     {
@@ -238,6 +239,11 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
         });
 
         modelBuilder.Entity<AccountConfiguration>(entity =>
+        {
+            entity.HasQueryFilter(e => CurrentTenantId == Guid.Empty || e.TenantId == CurrentTenantId);
+        });
+
+        modelBuilder.Entity<SupplyAlias>(entity =>
         {
             entity.HasQueryFilter(e => CurrentTenantId == Guid.Empty || e.TenantId == CurrentTenantId);
         });

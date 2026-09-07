@@ -54,6 +54,10 @@
                 <Icon Type="calendar" Theme="IconThemeType.Outline" Style="font-size: 11px;" /> @CampaignState.CurrentCampaign.Name
             </Tag>
         }
+        <Button OnClick="() => _importModalVisible = true"
+                Style="background: rgba(46, 204, 113, 0.15); border-color: #2ECC71; color: #2ECC71; border-radius: 8px; font-weight: 600;">
+            <Icon Type="file-excel" Theme="IconThemeType.Outline" /> Importar Labores
+        </Button>
         <Button Type="@ButtonType.Primary" OnClick="() => _quickLaborSelectorVisible = true"
                 Style="background: #2ECC71; border-color: #2ECC71; border-radius: 8px; font-weight: 600;">
             <Icon Type="plus" Theme="IconThemeType.Outline" /> Labor Rápida
@@ -215,6 +219,11 @@ else
     </div>
 </Modal>
 
+<LaborImportModal @bind-Visible="_importModalVisible"
+                  CampaignId="@(CampaignState.CurrentCampaign?.Id ?? Guid.Empty)"
+                  CampaignName="@(CampaignState.CurrentCampaign?.Name ?? string.Empty)"
+                  OnLaborsImported="LoadData" />
+
 <!-- Removed redundant execute modal -->
 
 <style>
@@ -364,6 +373,7 @@ else
     private string? _quickStatusFilter;
 
     private bool _quickLaborSelectorVisible;
+    private bool _importModalVisible;
     private bool _strategyWizardVisible;
     private bool _drawerVisible;
     private Guid _editingLaborId = Guid.Empty;
