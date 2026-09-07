@@ -46,6 +46,7 @@ public class CatalogsController : ControllerBase
         }
 
         return await _context.ErpActivities
+            .IgnoreQueryFilters()
             .AsNoTracking()
             .Where(a => a.TenantId == Guid.Empty && (includeInactive || a.IsActive))
             .OrderBy(a => a.Name)
@@ -57,7 +58,9 @@ public class CatalogsController : ControllerBase
     [HttpPut("activities/{id:guid}/toggle-active")]
     public async Task<IActionResult> ToggleActivityActive(Guid id, CancellationToken ct)
     {
-        var activity = await _context.ErpActivities.FirstOrDefaultAsync(a => a.Id == id, ct);
+        var activity = await _context.ErpActivities
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(a => (a.TenantId == _context.CurrentTenantId || a.TenantId == Guid.Empty) && a.Id == id, ct);
         if (activity == null) return NotFound("Actividad no encontrada.");
 
         if (activity.TenantId == Guid.Empty && _context.CurrentTenantId != Guid.Empty)

@@ -185,7 +185,7 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
 
         modelBuilder.Entity<ErpActivity>(entity =>
         {
-            entity.HasQueryFilter(e => e.TenantId == Guid.Empty || CurrentTenantId == Guid.Empty || e.TenantId == CurrentTenantId);
+            entity.HasQueryFilter(e => CurrentTenantId == Guid.Empty || e.TenantId == CurrentTenantId);
         });
 
         modelBuilder.Entity<ErpConcept>(entity =>

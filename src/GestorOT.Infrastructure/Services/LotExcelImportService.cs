@@ -33,6 +33,14 @@ public class LotExcelImportService : ILotExcelImportService
         var existingFields = await _context.Fields.AsNoTracking().ToListAsync(ct);
         var existingLots = await _context.Lots.AsNoTracking().ToListAsync(ct);
         var existingActivities = await _context.ErpActivities.AsNoTracking().ToListAsync(ct);
+        if (!existingActivities.Any() && _context.CurrentTenantId != Guid.Empty)
+        {
+            existingActivities = await _context.ErpActivities
+                .IgnoreQueryFilters()
+                .AsNoTracking()
+                .Where(a => a.TenantId == Guid.Empty)
+                .ToListAsync(ct);
+        }
 
         var summary = new LotImportSummaryDto();
         var seenFields = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -175,6 +183,13 @@ public class LotExcelImportService : ILotExcelImportService
         var existingFields = await _context.Fields.ToListAsync(ct);
         var existingLots = await _context.Lots.ToListAsync(ct);
         var existingActivities = await _context.ErpActivities.ToListAsync(ct);
+        if (!existingActivities.Any() && _context.CurrentTenantId != Guid.Empty)
+        {
+            existingActivities = await _context.ErpActivities
+                .IgnoreQueryFilters()
+                .Where(a => a.TenantId == Guid.Empty)
+                .ToListAsync(ct);
+        }
         var existingCampFields = await _context.CampaignFields.Where(cf => cf.CampaignId == campaignId).ToListAsync(ct);
         var existingCampLots = await _context.CampaignLots.Include(cl => cl.Rotations).Where(cl => cl.CampaignId == campaignId).ToListAsync(ct);
 
@@ -334,6 +349,7 @@ public class LotExcelImportService : ILotExcelImportService
                             activity = new ErpActivity
                             {
                                 Id = Guid.NewGuid(),
+                                TenantId = _context.CurrentTenantId,
                                 Name = cropStr.Trim(),
                                 IsActive = true
                             };
