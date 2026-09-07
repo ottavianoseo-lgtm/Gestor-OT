@@ -82,6 +82,7 @@ public static class ServiceExtensions
             services.AddScoped<IErpSyncService, ErpSyncService>();
             services.AddScoped<IPaseBuilderService, PaseBuilderService>();
             services.AddScoped<IPaseXlsxExportService, PaseXlsxExportService>();
+            services.AddScoped<ILotExcelImportService, LotExcelImportService>();
             services.AddHttpClient();
 #pragma warning disable EXTEXP0018
             services.AddHybridCache();

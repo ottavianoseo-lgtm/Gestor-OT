@@ -29,6 +29,10 @@
                 <Checkbox @bind-Checked="_filterByCampaign" Style="margin-left: 8px; color: rgba(255,255,255,0.7); font-size: 12px;">Ver solo mis lotes</Checkbox>
             </div>
         }
+        <Button Type="@ButtonType.Default" OnClick="OpenImportModal"
+                Style="background: rgba(46, 204, 113, 0.15); border-color: #2ECC71; color: #2ECC71; border-radius: 8px; font-weight: 600;">
+            <Icon Type="file-excel" Theme="IconThemeType.Outline" /> Importar Excel
+        </Button>
         <Button Type="@ButtonType.Primary" OnClick="OpenCreateModal"
                 Style="background: #E74C3C; border-color: #E74C3C; border-radius: 8px; font-weight: 600;">
             <Icon Type="plus" Theme="IconThemeType.Outline" /> Nuevo Lote
@@ -396,6 +400,12 @@
     }
 </Drawer>
 
+<GestorOT.Client.Components.LotImportModal 
+    @bind-Visible="_importModalVisible"
+    CampaignId="@(CampaignState.CurrentCampaign?.Id ?? Guid.Empty)"
+    CampaignName="@(CampaignState.CurrentCampaign?.Name ?? string.Empty)"
+    OnImportCompleted="HandleImportCompleted" />
+
 @code {
     private List<LotDto> _lots = new();
     private List<FieldDto> _availableFields = new();
@@ -406,6 +416,7 @@
     private bool _filterByCampaign = true;
     private string? _errorMessage;
     private bool _modalVisible;
+    private bool _importModalVisible;
     private bool _isEditing;
     private bool _saving;
     private Guid _editingId;
@@ -953,5 +964,21 @@
         {
             Message.Error($"Error al eliminar el lote: {ex.Message}");
         }
+    }
+
+    private void OpenImportModal()
+    {
+        if (!CampaignState.IsSelected)
+        {
+            Message.Warning("Debés seleccionar una campaña activa en la barra superior para importar lotes y rotaciones.");
+            return;
+        }
+        _importModalVisible = true;
+    }
+
+    private async Task HandleImportCompleted()
+    {
+        await LoadData();
+        StateHasChanged();
     }
 }

@@ -123,6 +123,10 @@ namespace GestorOT.Shared;
 [JsonSerializable(typeof(LoginResponseDto))]
 [JsonSerializable(typeof(AuthUserInfoDto))]
 [JsonSerializable(typeof(SetPasswordRequestDto))]
+[JsonSerializable(typeof(LotImportRowDto))]
+[JsonSerializable(typeof(List<LotImportRowDto>))]
+[JsonSerializable(typeof(LotImportSummaryDto))]
+[JsonSerializable(typeof(LotImportResultDto))]
 [JsonSourceGenerationOptions(
     PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,
     WriteIndented = false,

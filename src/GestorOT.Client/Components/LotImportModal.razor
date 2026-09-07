@@ -1,0 +1,454 @@
+@using GestorOT.Shared
+@using GestorOT.Shared.Dtos
+@using System.Net.Http.Json
+@using AntDesign
+@inject HttpClient Http
+@inject IMessageService Message
+@inject IJSRuntime Js
+
+<Modal Visible="@Visible"
+       Title="@("Importación Masiva de Campos, Lotes y Rotaciones")"
+       OnCancel="HandleClose"
+       Footer="@null"
+       Width="1000"
+       Style="top: 24px;">
+
+    @if (CampaignId == Guid.Empty)
+    {
+        <Alert Type="@AlertType.Warning"
+               Message="No hay ninguna campaña seleccionada"
+               Description="Para realizar la importación masiva de campos, lotes y sus rotaciones de cultivo, primero debés seleccionar una campaña activa en la barra superior."
+               ShowIcon="true"
+               Style="margin: 16px 0;" />
+        <div style="text-align: right; margin-top: 16px;">
+            <Button OnClick="HandleClose">Cerrar</Button>
+        </div>
+    }
+    else if (_step == 1)
+    {
+        <!-- STEP 1: CARGA DE ARCHIVO -->
+        <div style="margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; background: rgba(46, 204, 113, 0.08); padding: 12px 16px; border-radius: 8px; border: 1px solid rgba(46, 204, 113, 0.25);">
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <Icon Type="calendar" Theme="IconThemeType.Outline" Style="color: #2ECC71; font-size: 18px;" />
+                <div>
+                    <span style="font-size: 12px; color: rgba(255,255,255,0.6);">Campaña de destino:</span>
+                    <strong style="display: block; color: #fff; font-size: 14px;">@CampaignName</strong>
+                </div>
+            </div>
+            <Button Type="@ButtonType.Link" OnClick="DownloadTemplate" Style="color: #2ECC71; font-weight: 600;">
+                <Icon Type="download" /> Descargar Plantilla Excel Modelo
+            </Button>
+        </div>
+
+        <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 20px; margin-bottom: 20px;">
+            <h4 style="color: #fff; margin-bottom: 8px; font-size: 15px;">Formato del archivo Excel (.xlsx)</h4>
+            <p style="color: rgba(255,255,255,0.7); font-size: 13px; margin-bottom: 12px;">
+                El libro debe contener las columnas: <strong>Campo</strong>, <strong>Lote</strong>, <strong>Superficie Declarada (ha)</strong>, 
+                <strong>Cultivo Actual</strong>, <strong>Fecha Desde</strong>, <strong>Fecha Hasta</strong> y <strong>Notas</strong>.
+            </p>
+            <ul style="color: rgba(255,255,255,0.6); font-size: 12px; padding-left: 20px; margin: 0;">
+                <li>Los campos y lotes existentes se reutilizan por nombre sin duplicarse.</li>
+                <li>Si no se especifican fechas de inicio o fin, se asignarán por defecto las fechas de la campaña.</li>
+                <li>Los cultivos que no figuren en el catálogo se darán de alta automáticamente como actividades activas.</li>
+            </ul>
+        </div>
+
+        @if (!string.IsNullOrEmpty(_errorMessage))
+        {
+            <Alert Type="@AlertType.Error" Message="@_errorMessage" ShowIcon="true" Style="margin-bottom: 16px;" />
+        }
+
+        <div style="border: 2px dashed rgba(255,255,255,0.2); border-radius: 12px; padding: 40px 20px; text-align: center; background: rgba(0,0,0,0.15); transition: all 0.3s; margin-bottom: 20px;">
+            <Icon Type="inbox" Style="font-size: 48px; color: #2ECC71; margin-bottom: 16px;" />
+            <p style="color: #fff; font-size: 16px; font-weight: 600; margin-bottom: 8px;">
+                Seleccioná o arrastrá el archivo Excel de importación
+            </p>
+            <p style="color: rgba(255,255,255,0.5); font-size: 13px; margin-bottom: 20px;">
+                Formatos soportados: .xlsx (hasta 15 MB)
+            </p>
+            <div style="display: inline-block;">
+                <InputFile OnChange="HandleFileSelected" accept=".xlsx,.xls" id="excelLotFileInput" style="display: none;" />
+                <label for="excelLotFileInput" class="ant-btn ant-btn-primary" style="background: #2ECC71; border-color: #2ECC71; font-weight: 600; cursor: pointer; padding: 6px 20px; border-radius: 8px; display: inline-flex; align-items: center; gap: 8px;">
+                    <Icon Type="upload" /> Explorar Archivo
+                </label>
+            </div>
+            @if (_isProcessing)
+            {
+                <div style="margin-top: 20px;">
+                    <Spin Tip="Analizando planilla y validando entidades..." />
+                </div>
+            }
+        </div>
+
+        <div style="text-align: right;">
+            <Button OnClick="HandleClose">Cancelar</Button>
+        </div>
+    }
+    else if (_step == 2 && _summary != null)
+    {
+        <!-- STEP 2: VISTA PREVIA Y DIAGNÓSTICO -->
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+            <div>
+                <h3 style="color: #fff; margin: 0; font-size: 18px;">Vista Previa de Importación</h3>
+                <span style="color: rgba(255,255,255,0.6); font-size: 13px;">Archivo: <strong>@_selectedFileName</strong> &bull; Campaña: <strong>@CampaignName</strong></span>
+            </div>
+            <Button Size="@ButtonSize.Small" OnClick="ResetImport" Style="border-radius: 6px;">
+                <Icon Type="rollback" /> Cambiar Archivo
+            </Button>
+        </div>
+
+        <!-- Metric Cards -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 16px;">
+            <div style="background: rgba(255,255,255,0.03); padding: 14px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.08); text-align: center;">
+                <div style="color: rgba(255,255,255,0.5); font-size: 11px; text-transform: uppercase;">Total Filas</div>
+                <div style="font-size: 22px; font-weight: 700; color: #fff;">@_summary.TotalRows</div>
+            </div>
+            <div style="background: rgba(255,255,255,0.03); padding: 14px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.08); text-align: center;">
+                <div style="color: rgba(255,255,255,0.5); font-size: 11px; text-transform: uppercase;">Superficie Total</div>
+                <div style="font-size: 22px; font-weight: 700; color: #2ECC71;">@_summary.TotalHectares.ToString("N2") ha</div>
+            </div>
+            <div style="background: rgba(255,255,255,0.03); padding: 14px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.08); text-align: center;">
+                <div style="color: rgba(255,255,255,0.5); font-size: 11px; text-transform: uppercase;">Campos</div>
+                <div style="font-size: 22px; font-weight: 700; color: #3498DB;">
+                    @(_summary.NewFieldsCount + _summary.ExistingFieldsCount)
+                    <span style="font-size: 12px; color: #2ECC71; margin-left: 4px;">(+@_summary.NewFieldsCount nuevos)</span>
+                </div>
+            </div>
+            <div style="background: rgba(255,255,255,0.03); padding: 14px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.08); text-align: center;">
+                <div style="color: rgba(255,255,255,0.5); font-size: 11px; text-transform: uppercase;">Lotes</div>
+                <div style="font-size: 22px; font-weight: 700; color: #E67E22;">
+                    @(_summary.NewLotsCount + _summary.ExistingLotsCount)
+                    <span style="font-size: 12px; color: #2ECC71; margin-left: 4px;">(+@_summary.NewLotsCount nuevos)</span>
+                </div>
+            </div>
+        </div>
+
+        @if (_summary.NewCropsToCreate.Count > 0)
+        {
+            <Alert Type="@AlertType.Info" ShowIcon="true" Style="margin-bottom: 12px;">
+                <MessageTemplate>
+                    Se agregarán <strong>@_summary.NewCropsToCreate.Count</strong> nuevos cultivos al catálogo de actividades:
+                    <span style="font-weight: 600; color: #2ECC71;">@string.Join(", ", _summary.NewCropsToCreate)</span>
+                </MessageTemplate>
+            </Alert>
+        }
+
+        @if (_summary.ErrorRows > 0)
+        {
+            <Alert Type="@AlertType.Error" ShowIcon="true" Style="margin-bottom: 12px;"
+                   Message="@($"Atención: Hay {_summary.ErrorRows} fila(s) con errores. Debés corregir el archivo antes de importar.")" />
+        }
+        else if (_summary.WarningRows > 0)
+        {
+            var warningItems = _summary.Rows.Where(r => r.Status == "Warning").Take(3).Select(r => $"Fila #{r.RowNumber} ({r.FieldName} - {r.LotName})");
+            <Alert Type="@AlertType.Warning" ShowIcon="true" Style="margin-bottom: 12px;">
+                <MessageTemplate>
+                    <strong>@_summary.WarningRows fila(s) con fechas ajustadas:</strong> @string.Join(", ", warningItems).
+                    Se les asignó automáticamente la fecha de inicio/fin de la campaña.
+                </MessageTemplate>
+            </Alert>
+        }
+
+        @if (!string.IsNullOrEmpty(_errorMessage))
+        {
+            <Alert Type="@AlertType.Error" Message="@_errorMessage" ShowIcon="true" Style="margin-bottom: 12px;" />
+        }
+
+        <!-- Data Preview Table -->
+        <Table TItem="LotImportRowDto" DataSource="@_summary.Rows" Size="@TableSize.Small" ScrollY="320px" PageSize="100" HidePagination="true" RowKey="r => r.RowNumber">
+            <PropertyColumn Property="c => c.RowNumber" Title="#" Width="50" />
+            <PropertyColumn Property="c => c.FieldName" Title="Campo">
+                <span>@context.FieldName</span>
+                @if (context.IsFieldNew)
+                {
+                    <Tag Color="@("blue")" Style="margin-left: 6px; font-size: 10px;">Nuevo</Tag>
+                }
+            </PropertyColumn>
+            <PropertyColumn Property="c => c.LotName" Title="Lote">
+                <span>@context.LotName</span>
+                @if (context.IsLotNew)
+                {
+                    <Tag Color="@("orange")" Style="margin-left: 6px; font-size: 10px;">Nuevo</Tag>
+                }
+            </PropertyColumn>
+            <PropertyColumn Property="c => c.DeclaredAreaHa" Title="Superficie">
+                <span style="font-weight: 600; color: #2ECC71;">@context.DeclaredAreaHa.ToString("N2") ha</span>
+            </PropertyColumn>
+            <PropertyColumn Property="c => c.CropName" Title="Cultivo Actual">
+                @if (!string.IsNullOrEmpty(context.CropName))
+                {
+                    <span style="color: #fff;">@context.CropName</span>
+                    @if (context.IsCropNew)
+                    {
+                        <Tag Color="@("purple")" Style="margin-left: 6px; font-size: 10px;">Nuevo Cultivo</Tag>
+                    }
+                }
+                else
+                {
+                    <span style="color: rgba(255,255,255,0.3);">-</span>
+                }
+            </PropertyColumn>
+            <PropertyColumn Property="c => c.StartDate" Title="Período">
+                @if (context.Status == "Warning")
+                {
+                    <Tooltip Title="@(context.ValidationMessage ?? "Fecha inferida automáticamente")">
+                        <span style="font-size: 11px; color: #f39c12; font-weight: 600; cursor: help;">
+                            <Icon Type="warning" Theme="IconThemeType.Outline" Style="margin-right: 2px;" />
+                            @(context.StartDate?.ToString("dd/MM/yy") ?? "-") al @(context.EndDate?.ToString("dd/MM/yy") ?? "-")
+                        </span>
+                    </Tooltip>
+                }
+                else
+                {
+                    <span style="font-size: 11px; color: rgba(255,255,255,0.8);">
+                        @(context.StartDate?.ToString("dd/MM/yy") ?? "-") al @(context.EndDate?.ToString("dd/MM/yy") ?? "-")
+                    </span>
+                }
+            </PropertyColumn>
+            <PropertyColumn Property="c => c.Status" Title="Diagnóstico">
+                @if (context.Status == "Valid")
+                {
+                    <Tag Color="@("green")">Válido</Tag>
+                }
+                else if (context.Status == "Warning")
+                {
+                    <Tooltip Title="@(context.ValidationMessage ?? "Fecha asignada automáticamente")">
+                        <Tag Color="@("gold")" Style="cursor: help;">
+                            <Icon Type="warning" Theme="IconThemeType.Outline" Style="margin-right: 3px;" /> Aviso
+                        </Tag>
+                    </Tooltip>
+                }
+                else
+                {
+                    <Tooltip Title="@(context.ValidationMessage ?? "Error en la fila")">
+                        <Tag Color="@("red")" Style="cursor: help;">
+                            <Icon Type="close-circle" Theme="IconThemeType.Outline" Style="margin-right: 3px;" /> Error
+                        </Tag>
+                    </Tooltip>
+                }
+            </PropertyColumn>
+        </Table>
+
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 20px; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 16px;">
+            <Button OnClick="ResetImport">Cancelar y Subir Otro</Button>
+            <Button Type="@ButtonType.Primary"
+                    OnClick="ExecuteImport"
+                    Loading="_isProcessing"
+                    Disabled="@(_summary.ErrorRows > 0 || _isProcessing)"
+                    Style="background: #2ECC71; border-color: #2ECC71; font-weight: 600; padding: 0 24px;">
+                <Icon Type="check" /> Confirmar e Importar @_summary.TotalRows Lotes
+            </Button>
+        </div>
+    }
+    else if (_step == 3 && _result != null)
+    {
+        <!-- STEP 3: RESULTADO EXITOSO -->
+        <div style="text-align: center; padding: 30px 20px;">
+            <Icon Type="check-circle" Theme="IconThemeType.Fill" Style="font-size: 56px; color: #2ECC71; margin-bottom: 16px;" />
+            <h2 style="color: #fff; font-size: 22px; margin-bottom: 8px;">¡Importación Masiva Completada!</h2>
+            <p style="color: rgba(255,255,255,0.7); font-size: 14px; max-width: 600px; margin: 0 auto 24px auto;">
+                @_result.Message
+            </p>
+
+            <div style="display: inline-grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 30px; text-align: center; max-width: 650px;">
+                <div style="background: rgba(255,255,255,0.03); padding: 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.08);">
+                    <div style="color: rgba(255,255,255,0.5); font-size: 11px;">Campos Creados</div>
+                    <div style="color: #3498DB; font-size: 18px; font-weight: 700;">@_result.FieldsCreated</div>
+                </div>
+                <div style="background: rgba(255,255,255,0.03); padding: 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.08);">
+                    <div style="color: rgba(255,255,255,0.5); font-size: 11px;">Lotes Creados</div>
+                    <div style="color: #E67E22; font-size: 18px; font-weight: 700;">@_result.LotsCreated</div>
+                </div>
+                <div style="background: rgba(255,255,255,0.03); padding: 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.08);">
+                    <div style="color: rgba(255,255,255,0.5); font-size: 11px;">Lotes en Campaña</div>
+                    <div style="color: #2ECC71; font-size: 18px; font-weight: 700;">@_result.CampaignLotsLinked</div>
+                </div>
+                <div style="background: rgba(255,255,255,0.03); padding: 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.08);">
+                    <div style="color: rgba(255,255,255,0.5); font-size: 11px;">Rotaciones</div>
+                    <div style="color: #9B59B6; font-size: 18px; font-weight: 700;">@_result.RotationsCreated</div>
+                </div>
+            </div>
+
+            <div>
+                <Button Type="@ButtonType.Primary" OnClick="FinishAndClose" Style="background: #2ECC71; border-color: #2ECC71; font-weight: 600; padding: 0 32px; border-radius: 8px;">
+                    Ver Lotes en la Campaña
+                </Button>
+            </div>
+        </div>
+    }
+
+</Modal>
+
+@code {
+    [Parameter] public bool Visible { get; set; }
+    [Parameter] public EventCallback<bool> VisibleChanged { get; set; }
+    [Parameter] public Guid CampaignId { get; set; }
+    [Parameter] public string CampaignName { get; set; } = string.Empty;
+    [Parameter] public EventCallback OnImportCompleted { get; set; }
+
+    private int _step = 1;
+    private bool _isProcessing = false;
+    private string? _errorMessage;
+    private string _selectedFileName = string.Empty;
+    private byte[]? _fileBytes;
+    private LotImportSummaryDto? _summary;
+    private LotImportResultDto? _result;
+
+    protected override void OnParametersSet()
+    {
+        if (!Visible)
+        {
+            ResetImport();
+        }
+    }
+
+    private void ResetImport()
+    {
+        _step = 1;
+        _isProcessing = false;
+        _errorMessage = null;
+        _selectedFileName = string.Empty;
+        _fileBytes = null;
+        _summary = null;
+        _result = null;
+    }
+
+    private async Task HandleClose()
+    {
+        Visible = false;
+        await VisibleChanged.InvokeAsync(false);
+        ResetImport();
+    }
+
+    private async Task DownloadTemplate()
+    {
+        try
+        {
+            await Js.InvokeVoidAsync("open", "api/campaigns/import/template", "_blank");
+        }
+        catch (Exception ex)
+        {
+            Message.Error($"Error al descargar la plantilla: {ex.Message}");
+        }
+    }
+
+    private async Task HandleFileSelected(InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+        if (file == null) return;
+
+        _errorMessage = null;
+        _isProcessing = true;
+        StateHasChanged();
+
+        try
+        {
+            var maxSize = 15 * 1024 * 1024; // 15MB
+            if (file.Size > maxSize)
+            {
+                _errorMessage = "El archivo supera el límite de 15 MB.";
+                _isProcessing = false;
+                return;
+            }
+
+            _selectedFileName = file.Name;
+            using var ms = new MemoryStream();
+            await file.OpenReadStream(maxSize).CopyToAsync(ms);
+            _fileBytes = ms.ToArray();
+
+            // Send to Preview API
+            using var content = new MultipartFormDataContent();
+            var fileContent = new ByteArrayContent(_fileBytes);
+            fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+            content.Add(fileContent, "file", _selectedFileName);
+
+            var response = await Http.PostAsync($"api/campaigns/{CampaignId}/import/preview", content);
+
+            if (response.IsSuccessStatusCode)
+            {
+                _summary = await response.Content.ReadFromJsonAsync<LotImportSummaryDto>(
+                    AppJsonSerializerContext.Default.LotImportSummaryDto);
+
+                if (_summary != null)
+                {
+                    _step = 2;
+                }
+                else
+                {
+                    _errorMessage = "No se pudieron obtener los datos de la vista previa.";
+                }
+            }
+            else
+            {
+                var errorText = await response.Content.ReadAsStringAsync();
+                _errorMessage = string.IsNullOrWhiteSpace(errorText) ? "Error al procesar el archivo Excel." : errorText;
+            }
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Ocurrió un error: {ex.Message}";
+        }
+        finally
+        {
+            _isProcessing = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task ExecuteImport()
+    {
+        if (_fileBytes == null || _summary == null) return;
+
+        _errorMessage = null;
+        _isProcessing = true;
+        StateHasChanged();
+
+        try
+        {
+            using var content = new MultipartFormDataContent();
+            var fileContent = new ByteArrayContent(_fileBytes);
+            fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+            content.Add(fileContent, "file", _selectedFileName);
+
+            var response = await Http.PostAsync($"api/campaigns/{CampaignId}/import/execute", content);
+
+            if (response.IsSuccessStatusCode)
+            {
+                _result = await response.Content.ReadFromJsonAsync<LotImportResultDto>(
+                    AppJsonSerializerContext.Default.LotImportResultDto);
+
+                if (_result != null && _result.Success)
+                {
+                    _step = 3;
+                    Message.Success("¡Importación completada con éxito!");
+                }
+                else
+                {
+                    _errorMessage = _result?.Message ?? "No se pudo confirmar la importación.";
+                }
+            }
+            else
+            {
+                var errorText = await response.Content.ReadAsStringAsync();
+                _errorMessage = string.IsNullOrWhiteSpace(errorText) ? "Error al guardar los datos importados." : errorText;
+            }
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Ocurrió un error al importar: {ex.Message}";
+        }
+        finally
+        {
+            _isProcessing = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task FinishAndClose()
+    {
+        Visible = false;
+        await VisibleChanged.InvokeAsync(false);
+        ResetImport();
+        await OnImportCompleted.InvokeAsync();
+    }
+}
