@@ -214,4 +214,44 @@ public class LotExcelImportTests
             Assert.Equal(0, summary.ErrorRows);
         }
     }
+
+    [Fact]
+    public async Task ExecuteAsync_WithDuplicateActivitiesInDatabase_SucceedsWithoutArgumentException()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var tenantId = Guid.NewGuid();
+        var campaignId = Guid.NewGuid();
+
+        using (var context = CreateContext(dbName, tenantId))
+        {
+            context.Campaigns.Add(new Campaign
+            {
+                Id = campaignId,
+                TenantId = tenantId,
+                Name = "Campaña Test",
+                StartDate = new DateOnly(2026, 7, 1),
+                EndDate = new DateOnly(2027, 6, 30),
+                Status = "Active"
+            });
+
+            // Simulate duplicate activities from ERP sync (e.g. "Soja 2º" and "soja 2º")
+            context.ErpActivities.Add(new ErpActivity { Id = Guid.NewGuid(), Name = "Soja 2º", IsActive = false });
+            context.ErpActivities.Add(new ErpActivity { Id = Guid.NewGuid(), Name = "soja 2º", IsActive = true });
+            context.ErpActivities.Add(new ErpActivity { Id = Guid.NewGuid(), Name = "Maíz tardío", IsActive = true });
+
+            await context.SaveChangesAsync();
+        }
+
+        using (var context = CreateContext(dbName, tenantId))
+        {
+            var service = new LotExcelImportService(context, NullLogger<LotExcelImportService>.Instance);
+            using var fileStream = CreateSampleExcelStream();
+
+            var result = await service.ExecuteAsync(campaignId, fileStream);
+
+            Assert.NotNull(result);
+            Assert.True(result.CampaignLotsLinked > 0);
+        }
+    }
 }
+

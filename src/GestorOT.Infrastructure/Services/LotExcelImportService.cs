@@ -26,7 +26,7 @@ public class LotExcelImportService : ILotExcelImportService
         if (campaign == null)
             throw new InvalidOperationException("La campaña especificada no existe.");
 
-        using var workbook = new XLWorkbook(fileStream);
+        using var workbook = OpenWorkbookSafely(fileStream);
         var worksheet = FindDataWorksheet(workbook);
         var (headers, headerRow) = FindHeaderColumns(worksheet);
 
@@ -167,7 +167,7 @@ public class LotExcelImportService : ILotExcelImportService
         if (campaign.Status == "Locked")
             throw new InvalidOperationException("No se pueden importar lotes en una campaña bloqueada.");
 
-        using var workbook = new XLWorkbook(fileStream);
+        using var workbook = OpenWorkbookSafely(fileStream);
         var worksheet = FindDataWorksheet(workbook);
         var (headers, headerRow) = FindHeaderColumns(worksheet);
 
@@ -178,11 +178,42 @@ public class LotExcelImportService : ILotExcelImportService
         var existingCampFields = await _context.CampaignFields.Where(cf => cf.CampaignId == campaignId).ToListAsync(ct);
         var existingCampLots = await _context.CampaignLots.Include(cl => cl.Rotations).Where(cl => cl.CampaignId == campaignId).ToListAsync(ct);
 
-        var fieldMap = existingFields.ToDictionary(f => f.Name.Trim().ToLowerInvariant(), f => f);
-        var lotMap = existingLots.ToDictionary(l => (l.FieldId, l.Name.Trim().ToLowerInvariant()), l => l);
-        var activityMap = existingActivities.ToDictionary(a => a.Name.Trim().ToLowerInvariant(), a => a);
-        var campFieldMap = existingCampFields.ToDictionary(cf => cf.FieldId, cf => cf);
-        var campLotMap = existingCampLots.ToDictionary(cl => cl.LotId, cl => cl);
+        var fieldMap = new Dictionary<string, Field>(StringComparer.OrdinalIgnoreCase);
+        foreach (var f in existingFields)
+        {
+            if (!string.IsNullOrWhiteSpace(f.Name))
+                fieldMap[f.Name.Trim().ToLowerInvariant()] = f;
+        }
+
+        var lotMap = new Dictionary<(Guid FieldId, string Name), Lot>();
+        foreach (var l in existingLots)
+        {
+            if (!string.IsNullOrWhiteSpace(l.Name))
+                lotMap[(l.FieldId, l.Name.Trim().ToLowerInvariant())] = l;
+        }
+
+        var activityMap = new Dictionary<string, ErpActivity>(StringComparer.OrdinalIgnoreCase);
+        foreach (var a in existingActivities)
+        {
+            if (!string.IsNullOrWhiteSpace(a.Name))
+            {
+                var key = a.Name.Trim().ToLowerInvariant();
+                if (!activityMap.ContainsKey(key) || a.IsActive)
+                    activityMap[key] = a;
+            }
+        }
+
+        var campFieldMap = new Dictionary<Guid, CampaignField>();
+        foreach (var cf in existingCampFields)
+        {
+            campFieldMap[cf.FieldId] = cf;
+        }
+
+        var campLotMap = new Dictionary<Guid, CampaignLot>();
+        foreach (var cl in existingCampLots)
+        {
+            campLotMap[cl.LotId] = cl;
+        }
 
         var result = new LotImportResultDto();
         var affectedCampFields = new HashSet<CampaignField>();
@@ -610,4 +641,46 @@ public class LotExcelImportService : ILotExcelImportService
         public int ColFechaHasta { get; set; }
         public int ColNotas { get; set; }
     }
+
+    private static XLWorkbook OpenWorkbookSafely(Stream fileStream)
+    {
+        var ms = new MemoryStream();
+        fileStream.CopyTo(ms);
+        ms.Position = 0;
+
+        try
+        {
+            return new XLWorkbook(ms);
+        }
+        catch (Exception)
+        {
+            ms.Position = 0;
+            using (var doc = DocumentFormat.OpenXml.Packaging.SpreadsheetDocument.Open(ms, true))
+            {
+                var wbPart = doc.WorkbookPart;
+                if (wbPart != null)
+                {
+                    var pivotCacheParts = wbPart.PivotTableCacheDefinitionParts.ToList();
+                    foreach (var p in pivotCacheParts)
+                    {
+                        wbPart.DeletePart(p);
+                    }
+
+                    foreach (var wsPart in wbPart.WorksheetParts)
+                    {
+                        var ptParts = wsPart.PivotTableParts.ToList();
+                        foreach (var pt in ptParts)
+                        {
+                            wsPart.DeletePart(pt);
+                        }
+                    }
+                    wbPart.Workbook.Save();
+                }
+            }
+
+            ms.Position = 0;
+            return new XLWorkbook(ms);
+        }
+    }
 }
+
