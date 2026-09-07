@@ -123,7 +123,7 @@ public class ErpSyncService : IErpSyncService
             string apiKey = _encryptionService.Decrypt(tenant.GestorMaxApiKeyEncrypted);
             if (apiKey == "ERROR_DECRYPTING" || string.IsNullOrWhiteSpace(tenant.GestorMaxDatabaseId)) return;
 
-            var url = $"{BaseUrl}/v3/GestorG4/ListConceptos?databaseId={tenant.GestorMaxDatabaseId.Trim()}&soloFisicos=true";
+            var url = $"{BaseUrl}/v3/GestorG4/ListConceptos?databaseId={tenant.GestorMaxDatabaseId.Trim()}";
             var client = _httpClientFactory.CreateClient();
             client.DefaultRequestHeaders.Add("X-Api-Key", apiKey.Trim());
             client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
@@ -192,38 +192,47 @@ public class ErpSyncService : IErpSyncService
                         laborType.ExternalErpId = externalId;
                     }
                 }
-                // 3. Sync stock to Inventories (Insumos) - Auto-create all INSUMOS
-                else if (grupo == "INSUMOS")
-                {
-                    var inventory = await _context.Inventories
-                        .IgnoreQueryFilters()
-                        .Where(i => i.TenantId == tenantId && (i.ExternalErpId == externalId || i.ItemName == item.Descripcion))
-                        .FirstOrDefaultAsync(ct);
 
-                    if (inventory == null)
+                // 3. Sync to Inventories - Auto-create/update all concepts from ListConceptos without filtering by INSUMOS
+                var inventory = await _context.Inventories
+                    .IgnoreQueryFilters()
+                    .Where(i => i.TenantId == tenantId && (i.ExternalErpId == externalId || i.ItemName == item.Descripcion))
+                    .FirstOrDefaultAsync(ct);
+
+                var category = !string.IsNullOrWhiteSpace(subGrupo) ? subGrupo : (!string.IsNullOrWhiteSpace(grupo) ? grupo : "General");
+
+                if (inventory == null)
+                {
+                    inventory = new Inventory
                     {
-                        inventory = new Inventory
-                        {
-                            Id = Guid.NewGuid(),
-                            TenantId = tenantId,
-                            ExternalErpId = externalId,
-                            ItemName = item.Descripcion,
-                            CurrentStock = item.Cantidad,
-                            Unit = item.UnidadA ?? "u",
-                            UnitB = item.UnidadB ?? "u",
-                            GrupoConcepto = grupo,
-                            SubGrupoConcepto = subGrupo
-                        };
-                        _context.Inventories.Add(inventory);
-                    }
-                    else
+                        Id = Guid.NewGuid(),
+                        TenantId = tenantId,
+                        ExternalErpId = externalId,
+                        Category = category,
+                        ItemName = item.Descripcion,
+                        CurrentStock = item.Cantidad,
+                        UnitA = item.UnidadA ?? "u",
+                        UnitB = item.UnidadB ?? "u",
+                        Unit = item.UnidadA ?? "u",
+                        GrupoConcepto = grupo,
+                        SubGrupoConcepto = subGrupo
+                    };
+                    _context.Inventories.Add(inventory);
+                }
+                else
+                {
+                    inventory.CurrentStock = item.Cantidad;
+                    inventory.ItemName = item.Descripcion;
+                    inventory.ExternalErpId = externalId;
+                    if (string.IsNullOrWhiteSpace(inventory.Category) || inventory.Category == "General")
                     {
-                        inventory.CurrentStock = item.Cantidad;
-                        inventory.ItemName = item.Descripcion;
-                        inventory.ExternalErpId = externalId;
-                        inventory.GrupoConcepto = grupo;
-                        inventory.SubGrupoConcepto = subGrupo;
+                        inventory.Category = category;
                     }
+                    inventory.UnitA = item.UnidadA ?? inventory.UnitA;
+                    inventory.UnitB = item.UnidadB ?? inventory.UnitB;
+                    inventory.Unit = item.UnidadA ?? inventory.Unit;
+                    inventory.GrupoConcepto = grupo;
+                    inventory.SubGrupoConcepto = subGrupo;
                 }
             }
             await _context.SaveChangesAsync(ct);

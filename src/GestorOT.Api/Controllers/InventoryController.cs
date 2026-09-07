@@ -21,23 +21,23 @@ public class InventoryController : ControllerBase
     public async Task<ActionResult<List<InventoryDto>>> GetInventory(
         [FromQuery] string? search, 
         [FromQuery] int page = 1, 
-        [FromQuery] int pageSize = 100)
+        [FromQuery] int pageSize = 5000)
     {
-        var validSubGroups = new[] { "ADITIVO", "CURASEMILLA", "FERTILIZANTE", "FUNGICIDA", "HERBICIDA", "INOCULANTE", "INOCULANTES Y CURASEMILLAS", "INSERCTICIDA", "RESERVAS FORRAJERAS", "SEMILLA", "SILO BOLSA Y OTROS" };
-
-        var query = _context.Inventories.AsNoTracking()
-            .Where(i => i.GrupoConcepto == "INSUMOS" && validSubGroups.Contains(i.SubGrupoConcepto));
+        var query = _context.Inventories.AsNoTracking();
 
         if (!string.IsNullOrEmpty(search))
         {
             query = query.Where(i => i.ItemName.Contains(search) || i.Category.Contains(search));
         }
 
+        if (pageSize > 0)
+        {
+            query = query.Skip((page - 1) * pageSize).Take(pageSize);
+        }
+
         var items = await query
             .OrderBy(i => i.Category)
             .ThenBy(i => i.ItemName)
-            .Skip((page - 1) * pageSize)
-            .Take(pageSize)
             .Select(i => new InventoryDto(
                 i.Id, i.Category, i.ItemName, i.CurrentStock, i.ReorderLevel,
                 i.UnitA ?? "", i.UnitB ?? "", i.ConversionFactor,
