@@ -181,11 +181,15 @@ public class LaborExcelImportTests
             var inv1 = new Inventory { Id = Guid.NewGuid(), TenantId = tenantId, ItemName = "Glifosato 66%", Category = "Herbicida", Unit = "litros" };
             var inv2 = new Inventory { Id = Guid.NewGuid(), TenantId = tenantId, ItemName = "Urea Granulada", Category = "Fertilizante", Unit = "kg" };
 
+            var lt1 = new LaborType { Id = Guid.NewGuid(), TenantId = tenantId, Name = "Pulverización", ExternalErpId = "ERP-1" };
+            var lt2 = new LaborType { Id = Guid.NewGuid(), TenantId = tenantId, Name = "Fertilización", ExternalErpId = "ERP-2" };
+
             context.Campaigns.Add(campaign);
             context.Fields.Add(field);
             context.Lots.AddRange(lot1, lot2);
             context.CampaignLots.AddRange(cl1, cl2);
             context.Inventories.AddRange(inv1, inv2);
+            context.LaborTypes.AddRange(lt1, lt2);
             await context.SaveChangesAsync();
         }
 
@@ -197,7 +201,7 @@ public class LaborExcelImportTests
 
             // Execute import with preview mappings
             stream.Position = 0;
-            var result = await service.ExecuteAsync(campaignId, stream, preview.SupplyMappings);
+            var result = await service.ExecuteAsync(campaignId, stream, preview.SupplyMappings, preview.LaborTypeMappings);
 
             Assert.NotNull(result);
             Assert.True(result.Success);
@@ -286,11 +290,15 @@ public class LaborExcelImportTests
                 Role = ContactRole.Contractor
             };
 
+            var lt1 = new LaborType { Id = Guid.NewGuid(), TenantId = tenantId, Name = "Pulverización", ExternalErpId = "ERP-1" };
+            var lt2 = new LaborType { Id = Guid.NewGuid(), TenantId = tenantId, Name = "Fertilización", ExternalErpId = "ERP-2" };
+
             context.Campaigns.Add(campaign);
             context.Fields.Add(field);
             context.Lots.AddRange(lot1, lot2);
             context.CampaignLots.AddRange(cl1, cl2);
             context.Contacts.Add(contact);
+            context.LaborTypes.AddRange(lt1, lt2);
             await context.SaveChangesAsync();
         }
 
@@ -316,7 +324,7 @@ public class LaborExcelImportTests
 
             // Execute import
             stream.Position = 0;
-            var result = await service.ExecuteAsync(campaignId, stream, preview.SupplyMappings);
+            var result = await service.ExecuteAsync(campaignId, stream, preview.SupplyMappings, preview.LaborTypeMappings);
             Assert.True(result.Success);
 
             // Check database
@@ -440,5 +448,249 @@ public class LaborExcelImportTests
             // Ensure no duplicate loose labor types were created
             var allLaborTypes = await verifyContext.LaborTypes.ToListAsync();
             Assert.Single(allLaborTypes);
+    }
+
+    [Fact]
+    public async Task LaborExcelImport_LearnsLaborTypeAlias_AndNextImportMatchesWithHighConfidenceAndIsFromAlias()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var tenantId = Guid.NewGuid();
+        var campaignId = Guid.NewGuid();
+        var lotId = Guid.NewGuid();
+        var campaignLotId = Guid.NewGuid();
+        var erpLaborTypeId = Guid.NewGuid();
+
+        using (var context = CreateContext(dbName, tenantId))
+        {
+            context.Campaigns.Add(new Campaign { Id = campaignId, Name = "2026/2027", TenantId = tenantId });
+            context.Lots.Add(new Lot { Id = lotId, Name = "Lote 1", TenantId = tenantId });
+            context.CampaignLots.Add(new CampaignLot { Id = campaignLotId, CampaignId = campaignId, LotId = lotId, TenantId = tenantId });
+
+            // ERP LaborType in UPPERCASE
+            context.LaborTypes.Add(new LaborType
+            {
+                Id = erpLaborTypeId,
+                TenantId = tenantId,
+                Name = "DISCO DOBLE",
+                ExternalErpId = "ERP-DISCO-01"
+            });
+
+            await context.SaveChangesAsync();
+        }
+
+        // Helper to generate stream with "disco doble c/rolo" (lowercase, extra details)
+        Stream CreateDiscoExcelStream()
+        {
+            var ms = new MemoryStream();
+            using var wb = new XLWorkbook();
+            var ws = wb.Worksheets.Add("Labores e Insumos");
+            string[] headers = ["Fecha", "Establecimiento", "Lote", "Superficie (ha)", "Tipo", "Labor o Insumo", "Dosis", "Unidad", "Contratista", "Modo", "Notas"];
+            for (int i = 0; i < headers.Length; i++) ws.Cell(1, i + 1).Value = headers[i];
+
+            ws.Cell(2, 1).Value = "2026-05-10";
+            ws.Cell(2, 2).Value = "Campo Norte";
+            ws.Cell(2, 3).Value = "Lote 1";
+            ws.Cell(2, 4).Value = 50;
+            ws.Cell(2, 5).Value = "Labor";
+            ws.Cell(2, 6).Value = "disco doble c/rolo";
+            ws.Cell(2, 7).Value = 1;
+            ws.Cell(2, 8).Value = "ha";
+            ws.Cell(2, 9).Value = "Propio";
+            ws.Cell(2, 10).Value = "r";
+            ws.Cell(2, 11).Value = "";
+
+            wb.SaveAs(ms);
+            ms.Position = 0;
+            return ms;
+        }
+
+        // Run 1: User links "disco doble c/rolo" to ERP "DISCO DOBLE"
+        using (var context = CreateContext(dbName, tenantId))
+        {
+            var service = new LaborExcelImportService(context, NullLogger<LaborExcelImportService>.Instance);
+            using var stream1 = CreateDiscoExcelStream();
+            var preview1 = await service.PreviewAsync(campaignId, stream1);
+
+            Assert.Single(preview1.LaborTypeMappings);
+            var map = preview1.LaborTypeMappings[0];
+            Assert.Equal("disco doble c/rolo", map.RawName);
+            Assert.False(map.IsFromAlias);
+
+            // User maps it to ERP concept
+            map.MatchedLaborTypeId = erpLaborTypeId;
+            map.MatchedLaborTypeName = "DISCO DOBLE";
+            map.Action = "Match";
+
+            stream1.Position = 0;
+            var result1 = await service.ExecuteAsync(campaignId, stream1, preview1.SupplyMappings, preview1.LaborTypeMappings);
+
+            Assert.True(result1.Success);
+            Assert.Equal(1, result1.LaborsCreated);
+            Assert.Equal(1, result1.AliasesLearned);
+            Assert.Equal(0, result1.NewLaborTypesCreated);
+
+            // Verify LaborTypeAlias was saved in DB
+            var dbAliases = await context.LaborTypeAliases.ToListAsync();
+            Assert.Single(dbAliases);
+            Assert.Equal("disco doble c/rolo", dbAliases[0].RawName);
+            Assert.Equal(erpLaborTypeId, dbAliases[0].LaborTypeId);
+
+            // Ensure no ad-hoc LaborType was added to LaborTypes table
+            var allTypes = await context.LaborTypes.ToListAsync();
+            Assert.Single(allTypes);
+            Assert.Equal("DISCO DOBLE", allTypes[0].Name);
+        }
+
+        // Run 2: Re-previewing the same raw name now matches via Alias with Confidence 1.0!
+        using (var context = CreateContext(dbName, tenantId))
+        {
+            var service = new LaborExcelImportService(context, NullLogger<LaborExcelImportService>.Instance);
+            using var stream2 = CreateDiscoExcelStream();
+            var preview2 = await service.PreviewAsync(campaignId, stream2);
+
+            Assert.Single(preview2.LaborTypeMappings);
+            var map2 = preview2.LaborTypeMappings[0];
+            Assert.Equal("disco doble c/rolo", map2.RawName);
+            Assert.True(map2.IsFromAlias);
+            Assert.Equal(1.0, map2.Confidence);
+            Assert.Equal(erpLaborTypeId, map2.MatchedLaborTypeId);
+            Assert.Equal("DISCO DOBLE", map2.MatchedLaborTypeName);
         }
     }
+
+    [Fact]
+    public async Task LaborExcelImport_UnmatchedLaborType_DoesNotCreateLaborTypeInDatabase()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var tenantId = Guid.NewGuid();
+        var campaignId = Guid.NewGuid();
+        var lotId = Guid.NewGuid();
+        var campaignLotId = Guid.NewGuid();
+
+        using (var context = CreateContext(dbName, tenantId))
+        {
+            context.Campaigns.Add(new Campaign { Id = campaignId, Name = "2026/2027", TenantId = tenantId });
+            context.Lots.Add(new Lot { Id = lotId, Name = "Lote 1", TenantId = tenantId });
+            context.CampaignLots.Add(new CampaignLot { Id = campaignLotId, CampaignId = campaignId, LotId = lotId, TenantId = tenantId });
+            await context.SaveChangesAsync();
+        }
+
+        using var ms = new MemoryStream();
+        using (var wb = new XLWorkbook())
+        {
+            var ws = wb.Worksheets.Add("Labores e Insumos");
+            string[] headers = ["Fecha", "Establecimiento", "Lote", "Superficie (ha)", "Tipo", "Labor o Insumo", "Dosis", "Unidad", "Contratista", "Modo", "Notas"];
+            for (int i = 0; i < headers.Length; i++) ws.Cell(1, i + 1).Value = headers[i];
+
+            ws.Cell(2, 1).Value = "2026-05-10";
+            ws.Cell(2, 2).Value = "Campo Norte";
+            ws.Cell(2, 3).Value = "Lote 1";
+            ws.Cell(2, 4).Value = 50;
+            ws.Cell(2, 5).Value = "Labor";
+            ws.Cell(2, 6).Value = "Desmalezado Químico Raro";
+            ws.Cell(2, 7).Value = 1;
+            ws.Cell(2, 8).Value = "ha";
+            ws.Cell(2, 9).Value = "Propio";
+            ws.Cell(2, 10).Value = "r";
+            ws.Cell(2, 11).Value = "";
+
+            wb.SaveAs(ms);
+        }
+
+        using (var context = CreateContext(dbName, tenantId))
+        {
+            var service = new LaborExcelImportService(context, NullLogger<LaborExcelImportService>.Instance);
+            ms.Position = 0;
+            var preview = await service.PreviewAsync(campaignId, ms);
+
+            Assert.Single(preview.LaborTypeMappings);
+            Assert.Null(preview.LaborTypeMappings[0].MatchedLaborTypeId);
+
+            // Execute without assigning ERP concept
+            ms.Position = 0;
+            var result = await service.ExecuteAsync(campaignId, ms, preview.SupplyMappings, preview.LaborTypeMappings);
+
+            // The labor cannot be created and should be reported in Errors
+            Assert.False(result.Success);
+            Assert.Equal(0, result.LaborsCreated);
+            Assert.Equal(0, result.NewLaborTypesCreated);
+            Assert.NotEmpty(result.Errors);
+            Assert.Contains("ERP", result.Errors[0]);
+
+            // Ensure absolutely NO LaborType was persisted
+            var dbLaborTypes = await context.LaborTypes.ToListAsync();
+            Assert.Empty(dbLaborTypes);
+
+            var dbLabors = await context.Labors.ToListAsync();
+            Assert.Empty(dbLabors);
+        }
+    }
+
+    [Fact]
+    public async Task LaborExcelImport_ReimportSameExcel_UpdatesExistingLaborsAndSuppliesInsteadOfDuplicating()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var tenantId = Guid.NewGuid();
+        var campaignId = Guid.NewGuid();
+
+        using (var context = CreateContext(dbName, tenantId))
+        {
+            var campaign = new Campaign { Id = campaignId, TenantId = tenantId, Name = "2026-2027", IsActive = true };
+            var field = new Field { Id = Guid.NewGuid(), TenantId = tenantId, Name = "Establecimiento Norte" };
+            var lot1 = new Lot { Id = Guid.NewGuid(), TenantId = tenantId, FieldId = field.Id, Name = "Lote 1" };
+            var lot2 = new Lot { Id = Guid.NewGuid(), TenantId = tenantId, FieldId = field.Id, Name = "Lote 2" };
+
+            var cl1 = new CampaignLot { Id = Guid.NewGuid(), TenantId = tenantId, CampaignId = campaignId, LotId = lot1.Id };
+            var cl2 = new CampaignLot { Id = Guid.NewGuid(), TenantId = tenantId, CampaignId = campaignId, LotId = lot2.Id };
+
+            var inv1 = new Inventory { Id = Guid.NewGuid(), TenantId = tenantId, ItemName = "Glifosato 66%", Category = "Herbicida", Unit = "litros" };
+            var inv2 = new Inventory { Id = Guid.NewGuid(), TenantId = tenantId, ItemName = "Urea Granulada", Category = "Fertilizante", Unit = "kg" };
+
+            var lt1 = new LaborType { Id = Guid.NewGuid(), TenantId = tenantId, Name = "Pulverización", ExternalErpId = "ERP-1" };
+            var lt2 = new LaborType { Id = Guid.NewGuid(), TenantId = tenantId, Name = "Fertilización", ExternalErpId = "ERP-2" };
+
+            context.Campaigns.Add(campaign);
+            context.Fields.Add(field);
+            context.Lots.AddRange(lot1, lot2);
+            context.CampaignLots.AddRange(cl1, cl2);
+            context.Inventories.AddRange(inv1, inv2);
+            context.LaborTypes.AddRange(lt1, lt2);
+            await context.SaveChangesAsync();
+        }
+
+        using (var context = CreateContext(dbName, tenantId))
+        {
+            var service = new LaborExcelImportService(context, NullLogger<LaborExcelImportService>.Instance);
+            using var stream = CreateSampleStandardExcelStream();
+            var preview = await service.PreviewAsync(campaignId, stream);
+
+            // First import
+            stream.Position = 0;
+            var result1 = await service.ExecuteAsync(campaignId, stream, preview.SupplyMappings, preview.LaborTypeMappings);
+
+            Assert.True(result1.Success);
+            Assert.Equal(2, result1.LaborsCreated);
+            Assert.Equal(0, result1.LaborsUpdated);
+
+            var dbLaborsCount = await context.Labors.CountAsync();
+            Assert.Equal(2, dbLaborsCount);
+
+            // Second import of the EXACT SAME FILE
+            stream.Position = 0;
+            var result2 = await service.ExecuteAsync(campaignId, stream, preview.SupplyMappings, preview.LaborTypeMappings);
+
+            Assert.True(result2.Success);
+            Assert.Equal(0, result2.LaborsCreated); // No new duplicates!
+            Assert.Equal(2, result2.LaborsUpdated); // Existing labors updated
+
+            // Count in DB must still be 2, NOT 4
+            var dbLaborsAfter = await context.Labors.Include(l => l.Supplies).ToListAsync();
+            Assert.Equal(2, dbLaborsAfter.Count);
+
+            // Verify supplies were cleanly replaced and not duplicated
+            var l1 = dbLaborsAfter.FirstOrDefault(l => l.Hectares == 50);
+            Assert.NotNull(l1);
+            Assert.Equal(2, l1.Supplies.Count);
+        }
+    }
+}

@@ -251,7 +251,7 @@
                 <ChildContent>
                     <div style="margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center;">
                         <span style="font-size: 13px; color: rgba(255,255,255,0.7);">
-                            Verificá cómo machea cada Tipo de Labor de la planilla con tu catálogo. Podés confirmar las sugerencias, asignar otro tipo de labor existente o dar de alta uno nuevo.
+                            Verificá cómo machea cada Tipo de Labor de la planilla con el catálogo oficial del ERP. Podés confirmar las sugerencias o seleccionar el concepto correspondiente. El sistema memorizará la asociación automáticamente.
                         </span>
                         <div style="display: flex; gap: 8px;">
                             <Button Size="@ButtonSize.Small" OnClick="AcceptAllHighConfidenceLaborTypes" Style="border-radius: 6px; font-size: 12px;">
@@ -266,8 +266,8 @@
                                 <tr style="border-bottom: 1px solid rgba(255,255,255,0.1); text-align: left;">
                                     <th style="padding: 10px 12px; color: rgba(255,255,255,0.8);">Labor en Excel</th>
                                     <th style="padding: 10px 12px; color: rgba(255,255,255,0.8); width: 120px;">Ocurrencias</th>
-                                    <th style="padding: 10px 12px; color: rgba(255,255,255,0.8); width: 150px;">Certeza / Semáforo</th>
-                                    <th style="padding: 10px 12px; color: rgba(255,255,255,0.8);">Tipo de Labor en Gestor-OT</th>
+                                    <th style="padding: 10px 12px; color: rgba(255,255,255,0.8); width: 160px;">Certeza / Semáforo</th>
+                                    <th style="padding: 10px 12px; color: rgba(255,255,255,0.8);">Concepto ERP en Gestor-OT</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -281,7 +281,11 @@
                                             <span>@map.Occurrences labores</span>
                                         </td>
                                         <td style="padding: 10px 12px;">
-                                            @if (map.Confidence >= 0.95)
+                                            @if (map.IsFromAlias)
+                                            {
+                                                <Tag Color="@("cyan")"><Icon Type="star" /> Alias Memorizado</Tag>
+                                            }
+                                            else if (map.Confidence >= 0.95)
                                             {
                                                 <Tag Color="@("green")"><Icon Type="check" /> Exacto (@((int)(map.Confidence * 100))%)</Tag>
                                             }
@@ -295,33 +299,17 @@
                                             }
                                         </td>
                                         <td style="padding: 10px 12px;">
-                                            <div style="display: flex; gap: 8px; align-items: center;">
-                                                <RadioGroup TValue="string" Value="@map.Action" Size="@InputSize.Small" OnChange="@(val => OnLaborTypeActionChanged(map, val))">
-                                                    <Radio RadioButton Value="@("Match")">Asignar Existente</Radio>
-                                                    <Radio RadioButton Value="@("CreateNew")">+ Crear Nuevo</Radio>
-                                                </RadioGroup>
+                                            <div>
+                                                <Select TItem="LaborTypeDto" TItemValue="Guid?"
+                                                        @bind-Value="map.MatchedLaborTypeId"
+                                                        DataSource="@_laborTypesList"
+                                                        LabelName="@nameof(LaborTypeDto.Name)"
+                                                        ValueName="@nameof(LaborTypeDto.Id)"
+                                                        Placeholder="Seleccionar concepto del ERP..."
+                                                        EnableSearch="true"
+                                                        Style="width: 100%;"
+                                                        OnSelectedItemChanged="@(item => OnLaborTypeSelected(map, item))" />
                                             </div>
-
-                                            @if (map.Action == "Match")
-                                            {
-                                                <div style="margin-top: 6px;">
-                                                    <Select TItem="LaborTypeDto" TItemValue="Guid?"
-                                                            @bind-Value="map.MatchedLaborTypeId"
-                                                            DataSource="@_laborTypesList"
-                                                            LabelName="@nameof(LaborTypeDto.Name)"
-                                                            ValueName="@nameof(LaborTypeDto.Id)"
-                                                            Placeholder="Seleccionar tipo de labor del catálogo..."
-                                                            EnableSearch="true"
-                                                            Style="width: 100%;"
-                                                            OnSelectedItemChanged="@(item => OnLaborTypeSelected(map, item))" />
-                                                </div>
-                                            }
-                                            else if (map.Action == "CreateNew")
-                                            {
-                                                <div style="margin-top: 6px;">
-                                                    <Input @bind-Value="map.NewTypeName" Placeholder="Nombre del tipo de labor" Size="@InputSize.Small" />
-                                                </div>
-                                            }
                                         </td>
                                     </tr>
                                 }
@@ -462,11 +450,18 @@
                 Las labores y sus recetas de insumos se importaron y asociaron correctamente a los lotes en la campaña <strong>@CampaignName</strong>.
             </p>
 
-            <div style="display: grid; grid-template-columns: repeat(@(_result.NewLaborTypesCreated > 0 ? 5 : 4), 1fr); gap: 12px; max-width: 750px; margin: 0 auto 24px auto;">
+            <div style="display: grid; grid-template-columns: repeat(@(_result.LaborsUpdated > 0 ? 5 : 4), 1fr); gap: 12px; max-width: 750px; margin: 0 auto 24px auto;">
                 <div style="background: rgba(255,255,255,0.05); padding: 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1);">
                     <div style="font-size: 22px; font-weight: 700; color: #2ECC71;">@_result.LaborsCreated</div>
                     <div style="font-size: 11px; color: rgba(255,255,255,0.6);">Labores Creadas</div>
                 </div>
+                @if (_result.LaborsUpdated > 0)
+                {
+                    <div style="background: rgba(255,255,255,0.05); padding: 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1);">
+                        <div style="font-size: 22px; font-weight: 700; color: #1ABC9C;">@_result.LaborsUpdated</div>
+                        <div style="font-size: 11px; color: rgba(255,255,255,0.6);">Labores Actualizadas</div>
+                    </div>
+                }
                 <div style="background: rgba(255,255,255,0.05); padding: 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1);">
                     <div style="font-size: 22px; font-weight: 700; color: #3498DB;">@_result.SuppliesCreated</div>
                     <div style="font-size: 11px; color: rgba(255,255,255,0.6);">Insumos Asignados</div>
@@ -475,13 +470,6 @@
                     <div style="font-size: 22px; font-weight: 700; color: #F39C12;">@_result.NewSuppliesCreated</div>
                     <div style="font-size: 11px; color: rgba(255,255,255,0.6);">Insumos Nuevos</div>
                 </div>
-                @if (_result.NewLaborTypesCreated > 0)
-                {
-                    <div style="background: rgba(255,255,255,0.05); padding: 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1);">
-                        <div style="font-size: 22px; font-weight: 700; color: #1ABC9C;">@_result.NewLaborTypesCreated</div>
-                        <div style="font-size: 11px; color: rgba(255,255,255,0.6);">Tipos Lab. Nuevos</div>
-                    </div>
-                }
                 <div style="background: rgba(255,255,255,0.05); padding: 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1);">
                     <div style="font-size: 22px; font-weight: 700; color: #9B59B6;">@_result.AliasesLearned</div>
                     <div style="font-size: 11px; color: rgba(255,255,255,0.6);">Alias Memorizados</div>
@@ -665,15 +653,6 @@
         Message.Success("Sugerencias de insumos confirmadas.");
     }
 
-    private void OnLaborTypeActionChanged(LaborImportTypeMappingDto map, object? val)
-    {
-        map.Action = val?.ToString() ?? "Match";
-        if (map.Action == "CreateNew")
-        {
-            map.NewTypeName ??= map.RawName;
-        }
-    }
-
     private void OnLaborTypeSelected(LaborImportTypeMappingDto map, LaborTypeDto? selected)
     {
         if (selected != null)
@@ -701,6 +680,13 @@
     private async Task ExecuteImport()
     {
         if (_fileBytes == null || _preview == null) return;
+
+        var unassignedLaborTypes = _preview.LaborTypeMappings.Where(m => !m.MatchedLaborTypeId.HasValue).ToList();
+        if (unassignedLaborTypes.Count > 0)
+        {
+            _errorMessage = $"Debés vincular cada labor de la planilla a un concepto del ERP. Sin asignar: {string.Join(", ", unassignedLaborTypes.Select(m => $"'{m.RawName}'"))}.";
+            return;
+        }
 
         _errorMessage = null;
         _isProcessing = true;

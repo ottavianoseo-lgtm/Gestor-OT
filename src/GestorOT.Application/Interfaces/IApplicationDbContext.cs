@@ -37,6 +37,7 @@ public interface IApplicationDbContext
     DbSet<PaseImputacion> PasesImputacion { get; }
     DbSet<AccountConfiguration> AccountConfigurations { get; }
     DbSet<SupplyAlias> SupplyAliases { get; }
+    DbSet<LaborTypeAlias> LaborTypeAliases { get; }
     DatabaseFacade Database { get; }
     Guid CurrentTenantId { get; }
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);

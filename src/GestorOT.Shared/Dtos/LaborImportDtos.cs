@@ -60,8 +60,9 @@ public record LaborImportTypeMappingDto
     public string? MatchedLaborTypeName { get; set; }
     public double Confidence { get; set; }
     public string ConfidenceLevel { get; set; } = "None"; // "High", "Medium", "None"
+    public bool IsFromAlias { get; set; }
     public int Occurrences { get; init; }
-    public string Action { get; set; } = "Match"; // "Match", "CreateNew"
+    public string Action { get; set; } = "Match";
     public string? NewTypeName { get; set; }
 }
 
@@ -91,6 +92,7 @@ public record LaborImportExecuteRequestDto
 public record LaborImportResultDto
 {
     public int LaborsCreated { get; init; }
+    public int LaborsUpdated { get; init; }
     public int SuppliesCreated { get; init; }
     public int NewSuppliesCreated { get; init; }
     public int NewLaborTypesCreated { get; init; }

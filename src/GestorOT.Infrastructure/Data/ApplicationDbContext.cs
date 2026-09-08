@@ -52,6 +52,7 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
     public DbSet<PaseImputacion> PasesImputacion => Set<PaseImputacion>();
     public DbSet<AccountConfiguration> AccountConfigurations => Set<AccountConfiguration>();
     public DbSet<SupplyAlias> SupplyAliases => Set<SupplyAlias>();
+    public DbSet<LaborTypeAlias> LaborTypeAliases => Set<LaborTypeAlias>();
 
     public Guid CurrentTenantId
     {
@@ -244,6 +245,11 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
         });
 
         modelBuilder.Entity<SupplyAlias>(entity =>
+        {
+            entity.HasQueryFilter(e => CurrentTenantId == Guid.Empty || e.TenantId == CurrentTenantId);
+        });
+
+        modelBuilder.Entity<LaborTypeAlias>(entity =>
         {
             entity.HasQueryFilter(e => CurrentTenantId == Guid.Empty || e.TenantId == CurrentTenantId);
         });
