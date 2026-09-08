@@ -2,6 +2,7 @@ using GestorOT.Application.Interfaces;
 using GestorOT.Application.Services;
 using GestorOT.Domain.Entities;
 using GestorOT.Domain.Enums;
+using GestorOT.Shared;
 using GestorOT.Shared.Dtos;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -136,6 +137,20 @@ public class ErpSyncService : IErpSyncService
             var erpStock = await response.Content.ReadFromJsonAsync<List<ErpConceptResponse>>(options, ct);
             if (erpStock == null) return;
 
+            HashSet<string>? allowedInventoryGroups = null;
+            if (!string.IsNullOrWhiteSpace(tenant.AllowedInventoryGroupsJson))
+            {
+                try
+                {
+                    var list = System.Text.Json.JsonSerializer.Deserialize<List<string>>(tenant.AllowedInventoryGroupsJson);
+                    if (list != null && list.Any())
+                    {
+                        allowedInventoryGroups = list.Select(x => x.Trim().ToUpperInvariant()).ToHashSet();
+                    }
+                }
+                catch { }
+            }
+
             foreach (var item in erpStock)
             {
                 if (string.IsNullOrEmpty(item.Descripcion)) continue;
@@ -178,61 +193,86 @@ public class ErpSyncService : IErpSyncService
                     concept.LastSyncDate = DateTime.UtcNow;
                 }
 
-                // 2. Sync stock to activated LaborTypes (if exists)
-                if (grupo == "LABOR" || grupo == "LABORES")
+                // 2. Sync to LaborTypes - Auto-create/update all labor concepts
+                if (grupo.Contains("LABOR", StringComparison.OrdinalIgnoreCase))
                 {
                     var laborType = await _context.LaborTypes
                         .IgnoreQueryFilters()
                         .Where(l => l.TenantId == tenantId && (l.ExternalErpId == externalId || l.Name == item.Descripcion))
                         .FirstOrDefaultAsync(ct);
 
-                    if (laborType != null)
+                    if (laborType == null)
+                    {
+                        laborType = new LaborType
+                        {
+                            Id = Guid.NewGuid(),
+                            TenantId = tenantId,
+                            Name = item.Descripcion,
+                            ExternalErpId = externalId,
+                            Description = !string.IsNullOrWhiteSpace(subGrupo) ? subGrupo : grupo
+                        };
+                        _context.LaborTypes.Add(laborType);
+                    }
+                    else
                     {
                         laborType.Name = item.Descripcion;
                         laborType.ExternalErpId = externalId;
+                        if (string.IsNullOrWhiteSpace(laborType.Description))
+                        {
+                            laborType.Description = !string.IsNullOrWhiteSpace(subGrupo) ? subGrupo : grupo;
+                        }
                     }
                 }
 
-                // 3. Sync to Inventories - Auto-create/update all concepts from ListConceptos without filtering by INSUMOS
-                var inventory = await _context.Inventories
-                    .IgnoreQueryFilters()
-                    .Where(i => i.TenantId == tenantId && (i.ExternalErpId == externalId || i.ItemName == item.Descripcion))
-                    .FirstOrDefaultAsync(ct);
+                // 3. Sync to Inventories (Insumos) - Only if matches tenant's allowed groups or default "INSUMO"
+                bool shouldSyncToInventory = allowedInventoryGroups != null
+                    ? allowedInventoryGroups.Contains(grupo)
+                    : (grupo.Contains("INSUMO", StringComparison.OrdinalIgnoreCase) || grupo.Contains("AGRO", StringComparison.OrdinalIgnoreCase));
 
-                var category = !string.IsNullOrWhiteSpace(subGrupo) ? subGrupo : (!string.IsNullOrWhiteSpace(grupo) ? grupo : "General");
+                if (shouldSyncToInventory)
+                {
+                    var inventory = await _context.Inventories
+                        .IgnoreQueryFilters()
+                        .Where(i => i.TenantId == tenantId && (i.ExternalErpId == externalId || i.ItemName == item.Descripcion))
+                        .FirstOrDefaultAsync(ct);
 
-                if (inventory == null)
-                {
-                    inventory = new Inventory
+                    var category = !string.IsNullOrWhiteSpace(subGrupo) ? subGrupo : (!string.IsNullOrWhiteSpace(grupo) ? grupo : "General");
+
+                    var effectiveUnit = UnitHelper.GetEffectiveSupplyUnit(item.UnidadA, item.UnidadB, null, "u");
+
+                    if (inventory == null)
                     {
-                        Id = Guid.NewGuid(),
-                        TenantId = tenantId,
-                        ExternalErpId = externalId,
-                        Category = category,
-                        ItemName = item.Descripcion,
-                        CurrentStock = item.Cantidad,
-                        UnitA = item.UnidadA ?? "u",
-                        UnitB = item.UnidadB ?? "u",
-                        Unit = item.UnidadA ?? "u",
-                        GrupoConcepto = grupo,
-                        SubGrupoConcepto = subGrupo
-                    };
-                    _context.Inventories.Add(inventory);
-                }
-                else
-                {
-                    inventory.CurrentStock = item.Cantidad;
-                    inventory.ItemName = item.Descripcion;
-                    inventory.ExternalErpId = externalId;
-                    if (string.IsNullOrWhiteSpace(inventory.Category) || inventory.Category == "General")
-                    {
-                        inventory.Category = category;
+                        inventory = new Inventory
+                        {
+                            Id = Guid.NewGuid(),
+                            TenantId = tenantId,
+                            ExternalErpId = externalId,
+                            Category = category,
+                            ItemName = item.Descripcion,
+                            CurrentStock = item.Cantidad,
+                            UnitA = UnitHelper.IsSurfaceUnit(item.UnidadA) ? effectiveUnit : (item.UnidadA ?? effectiveUnit),
+                            UnitB = item.UnidadB ?? "u",
+                            Unit = effectiveUnit,
+                            GrupoConcepto = grupo,
+                            SubGrupoConcepto = subGrupo
+                        };
+                        _context.Inventories.Add(inventory);
                     }
-                    inventory.UnitA = item.UnidadA ?? inventory.UnitA;
-                    inventory.UnitB = item.UnidadB ?? inventory.UnitB;
-                    inventory.Unit = item.UnidadA ?? inventory.Unit;
-                    inventory.GrupoConcepto = grupo;
-                    inventory.SubGrupoConcepto = subGrupo;
+                    else
+                    {
+                        inventory.CurrentStock = item.Cantidad;
+                        inventory.ItemName = item.Descripcion;
+                        inventory.ExternalErpId = externalId;
+                        if (string.IsNullOrWhiteSpace(inventory.Category) || inventory.Category == "General")
+                        {
+                            inventory.Category = category;
+                        }
+                        inventory.UnitA = UnitHelper.IsSurfaceUnit(item.UnidadA) ? effectiveUnit : (item.UnidadA ?? inventory.UnitA);
+                        inventory.UnitB = item.UnidadB ?? inventory.UnitB;
+                        inventory.Unit = effectiveUnit;
+                        inventory.GrupoConcepto = grupo;
+                        inventory.SubGrupoConcepto = subGrupo;
+                    }
                 }
             }
             await _context.SaveChangesAsync(ct);
@@ -241,6 +281,180 @@ public class ErpSyncService : IErpSyncService
         {
             _logger.LogError(ex, "Error syncing Catalog.");
         }
+    }
+
+    public async Task<List<ErpGroupSummaryDto>> GetErpInventoryGroupsAsync(Guid? tenantId = null, CancellationToken ct = default)
+    {
+        var tid = tenantId ?? _currentTenantService.TenantId;
+        if (tid == Guid.Empty) return new List<ErpGroupSummaryDto>();
+
+        var tenant = await _context.Tenants.FindAsync(new object[] { tid }, ct);
+        List<string> configuredAllowed = new();
+        if (!string.IsNullOrWhiteSpace(tenant?.AllowedInventoryGroupsJson))
+        {
+            try
+            {
+                configuredAllowed = System.Text.Json.JsonSerializer.Deserialize<List<string>>(tenant.AllowedInventoryGroupsJson) ?? new();
+            }
+            catch { }
+        }
+
+        // Check if ErpConcepts already has data for this tenant. If not, trigger SyncCatalogAsync once.
+        var hasConcepts = await _context.ErpConcepts.IgnoreQueryFilters().AnyAsync(c => c.TenantId == tid, ct);
+        if (!hasConcepts)
+        {
+            await SyncCatalogAsync(tid, ct);
+        }
+
+        var rawConcepts = await _context.ErpConcepts
+            .IgnoreQueryFilters()
+            .Where(c => c.TenantId == tid && !string.IsNullOrWhiteSpace(c.GrupoConcepto))
+            .Select(c => new { c.GrupoConcepto, c.Description })
+            .ToListAsync(ct);
+
+        var groups = rawConcepts
+            .GroupBy(c => c.GrupoConcepto!.Trim().ToUpperInvariant())
+            .Select(g => new
+            {
+                GroupName = g.Key,
+                Count = g.Count(),
+                SampleItems = g.Select(x => x.Description).Where(d => !string.IsNullOrWhiteSpace(d)).Distinct().Take(3).ToList()
+            })
+            .OrderByDescending(x => x.Count)
+            .ToList();
+
+        var result = new List<ErpGroupSummaryDto>();
+        foreach (var g in groups)
+        {
+            // Do not list Labores as inventory groups
+            if (g.GroupName.Contains("LABOR", StringComparison.OrdinalIgnoreCase)) continue;
+
+            bool isSelected;
+            if (configuredAllowed.Any())
+            {
+                isSelected = configuredAllowed.Any(a => string.Equals(a.Trim(), g.GroupName, StringComparison.OrdinalIgnoreCase));
+            }
+            else
+            {
+                // Default recommendation: true if group contains INSUMO or AGRO
+                isSelected = g.GroupName.Contains("INSUMO", StringComparison.OrdinalIgnoreCase) ||
+                             g.GroupName.Contains("AGRO", StringComparison.OrdinalIgnoreCase);
+            }
+
+            result.Add(new ErpGroupSummaryDto(g.GroupName, g.Count, g.SampleItems, isSelected));
+        }
+
+        return result;
+    }
+
+    public async Task<SyncInventoryGroupsResultDto> SyncInventoryWithGroupsAsync(Guid tenantId, List<string> selectedGroups, bool cleanUnselected = true, CancellationToken ct = default)
+    {
+        var tenant = await _context.Tenants.FindAsync(new object[] { tenantId }, ct);
+        if (tenant == null) throw new InvalidOperationException("Empresa / Tenant no encontrada.");
+
+        // Normalize selected groups
+        var cleanGroups = selectedGroups.Where(s => !string.IsNullOrWhiteSpace(s)).Select(s => s.Trim()).Distinct().ToList();
+        tenant.AllowedInventoryGroupsJson = System.Text.Json.JsonSerializer.Serialize(cleanGroups);
+        await _context.SaveChangesAsync(ct);
+
+        var normalizedSelected = cleanGroups.Select(s => s.ToUpperInvariant()).ToHashSet();
+
+        // 1. Ensure ErpConcepts are in sync from GestorMax if needed
+        var hasConcepts = await _context.ErpConcepts.IgnoreQueryFilters().AnyAsync(c => c.TenantId == tenantId, ct);
+        if (!hasConcepts)
+        {
+            await SyncCatalogAsync(tenantId, ct);
+        }
+
+        // 2. Fetch concepts belonging to selected groups
+        var conceptsToSync = await _context.ErpConcepts
+            .IgnoreQueryFilters()
+            .Where(c => c.TenantId == tenantId && c.GrupoConcepto != null)
+            .ToListAsync(ct);
+
+        var filteredConcepts = conceptsToSync
+            .Where(c => normalizedSelected.Contains(c.GrupoConcepto!.Trim().ToUpperInvariant()))
+            .ToList();
+
+        int syncedCount = 0;
+        foreach (var concept in filteredConcepts)
+        {
+            var externalId = concept.ExternalErpId;
+            var grupo = (concept.GrupoConcepto ?? "").Trim().ToUpperInvariant();
+            var subGrupo = (concept.SubGrupoConcepto ?? "").Trim().ToUpperInvariant();
+
+            var inventory = await _context.Inventories
+                .IgnoreQueryFilters()
+                .Where(i => i.TenantId == tenantId && (i.ExternalErpId == externalId || i.ItemName == concept.Description))
+                .FirstOrDefaultAsync(ct);
+
+            var category = !string.IsNullOrWhiteSpace(subGrupo) ? subGrupo : (!string.IsNullOrWhiteSpace(grupo) ? grupo : "General");
+
+            if (inventory == null)
+            {
+                inventory = new Inventory
+                {
+                    Id = Guid.NewGuid(),
+                    TenantId = tenantId,
+                    ExternalErpId = externalId,
+                    Category = category,
+                    ItemName = concept.Description,
+                    CurrentStock = concept.Stock,
+                    UnitA = concept.UnitA ?? "u",
+                    UnitB = concept.UnitB ?? "u",
+                    Unit = concept.UnitA ?? "u",
+                    GrupoConcepto = concept.GrupoConcepto,
+                    SubGrupoConcepto = concept.SubGrupoConcepto
+                };
+                _context.Inventories.Add(inventory);
+            }
+            else
+            {
+                inventory.CurrentStock = concept.Stock;
+                inventory.ItemName = concept.Description;
+                inventory.ExternalErpId = externalId;
+                if (string.IsNullOrWhiteSpace(inventory.Category) || inventory.Category == "General")
+                {
+                    inventory.Category = category;
+                }
+                inventory.UnitA = concept.UnitA ?? inventory.UnitA;
+                inventory.UnitB = concept.UnitB ?? inventory.UnitB;
+                inventory.Unit = concept.UnitA ?? inventory.Unit;
+                inventory.GrupoConcepto = concept.GrupoConcepto;
+                inventory.SubGrupoConcepto = concept.SubGrupoConcepto;
+            }
+            syncedCount++;
+        }
+
+        int cleanedCount = 0;
+        if (cleanUnselected)
+        {
+            // Find existing Inventories for this tenant whose GrupoConcepto is NOT in normalizedSelected
+            var existingInventories = await _context.Inventories
+                .IgnoreQueryFilters()
+                .Where(i => i.TenantId == tenantId)
+                .ToListAsync(ct);
+
+            var itemsToRemove = existingInventories
+                .Where(i => string.IsNullOrWhiteSpace(i.GrupoConcepto) || !normalizedSelected.Contains(i.GrupoConcepto.Trim().ToUpperInvariant()))
+                .ToList();
+
+            foreach (var item in itemsToRemove)
+            {
+                // Only remove if NOT used in any LaborSupply (to avoid FK integrity violation)
+                var isUsed = await _context.LaborSupplies.AnyAsync(s => s.SupplyId == item.Id, ct);
+                if (!isUsed)
+                {
+                    _context.Inventories.Remove(item);
+                    cleanedCount++;
+                }
+            }
+        }
+
+        await _context.SaveChangesAsync(ct);
+        _logger.LogInformation("SyncInventoryWithGroups: {Synced} insumos sincronizados, {Cleaned} eliminados para Tenant {TenantId}.", syncedCount, cleanedCount, tenantId);
+
+        return new SyncInventoryGroupsResultDto(true, syncedCount, cleanedCount, $"Sincronización completada: {syncedCount} insumos sincronizados, {cleanedCount} eliminados de grupos no seleccionados.");
     }
 
     public async Task SyncLaborTypesAsync(Guid? overrideTenantId = null, CancellationToken ct = default)

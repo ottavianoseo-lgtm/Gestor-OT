@@ -1,5 +1,6 @@
 using GestorOT.Application.Interfaces;
 using GestorOT.Application.Services;
+using GestorOT.Shared;
 using GestorOT.Shared.Dtos;
 using Microsoft.EntityFrameworkCore;
 
@@ -147,9 +148,9 @@ public class WorkOrderQueryService : IWorkOrderQueryService
                 s.RealTotal,
                 s.CalculatedDose,
                 s.CalculatedTotal,
-                s.UnitOfMeasure,
+                UnitHelper.CleanDoseUnit(s.UnitOfMeasure) ?? s.Supply?.GetEffectiveUnit() ?? s.UnitOfMeasure,
                 s.Supply?.ItemName,
-                s.Supply?.UnitA,
+                s.Supply?.GetEffectiveUnit() ?? UnitHelper.CleanDoseUnit(s.UnitOfMeasure),
                 s.TankMixOrder,
                 s.IsSubstitute
             )).ToList(),
@@ -203,7 +204,7 @@ public class WorkOrderQueryService : IWorkOrderQueryService
                 a.WorkOrderId, 
                 a.SupplyId, 
                 a.Supply?.ItemName, 
-                a.Supply?.UnitA,
+                a.Supply?.GetEffectiveUnit() ?? UnitHelper.CleanDoseUnit(a.Supply?.UnitA),
                 a.TotalCalculated, 
                 a.ApprovedWithdrawal, 
                 a.WithdrawalCenter, 

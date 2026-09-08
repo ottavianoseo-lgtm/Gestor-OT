@@ -23,5 +23,9 @@ public interface IErpSyncService
     Task<List<ErpAccountDto>> GetCuentasCentroAsync(Guid? tenantId = null, CancellationToken ct = default);
     Task<List<ErpAccountDto>> GetCuentasContabilidadAsync(Guid? tenantId = null, CancellationToken ct = default);
     Task<List<ErpPersonItemDto>> GetPersonasAsync(Guid? tenantId = null, CancellationToken ct = default);
+
+    // Selective inventory group sync
+    Task<List<ErpGroupSummaryDto>> GetErpInventoryGroupsAsync(Guid? tenantId = null, CancellationToken ct = default);
+    Task<SyncInventoryGroupsResultDto> SyncInventoryWithGroupsAsync(Guid tenantId, List<string> selectedGroups, bool cleanUnselected = true, CancellationToken ct = default);
 }
 

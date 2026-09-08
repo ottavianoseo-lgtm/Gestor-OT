@@ -17,7 +17,7 @@
         <span class="page-subtitle">@_items.Count insumos registrados</span>
     </div>
     <div style="display: flex; gap: 8px;">
-        <Button Icon="sync" OnClick="SyncFromErp" Loading="_syncing">Sincronizar con ERP</Button>
+        <Button Icon="sync" OnClick="OpenSyncModal" Loading="_loadingGroups || _syncingGroups">Sincronizar con ERP</Button>
         <Button Type="@ButtonType.Primary" OnClick="OpenCreateModal"
                 Style="background: #E74C3C; border-color: #E74C3C; border-radius: 8px; font-weight: 600;">
             <Icon Type="plus" Theme="IconThemeType.Outline" /> Nuevo Insumo
@@ -195,6 +195,84 @@
     </Form>
 </Modal>
 
+<Modal Title="Sincronización de Grupos ERP"
+       Visible="@_syncModalVisible"
+       OnOk="@ExecuteGroupSync"
+       OnCancel="@(() => _syncModalVisible = false)"
+       OkText="@("Sincronizar Grupos Seleccionados")"
+       CancelText="@("Cancelar")"
+       ConfirmLoading="@_syncingGroups"
+       Width="680">
+    <div>
+        <p style="color: rgba(255,255,255,0.7); margin-bottom: 14px; font-size: 13px;">
+            Selecciona los grupos de conceptos de tu ERP que corresponden a insumos de campo para incluirlos en el inventario. Los grupos desmarcados no se incorporarán.
+        </p>
+
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 8px;">
+            <div style="display: flex; gap: 6px;">
+                <Button Size="@ButtonSize.Small" OnClick="SelectRecommendedGroups">Solo Insumos Agro</Button>
+                <Button Size="@ButtonSize.Small" OnClick="SelectAllGroups">Marcar todos</Button>
+                <Button Size="@ButtonSize.Small" OnClick="DeselectAllGroups">Desmarcar todos</Button>
+            </div>
+            <span style="font-size: 12px; color: #3498DB; font-weight: 600;">
+                @_erpGroups.Count(g => g.IsSelected) de @_erpGroups.Count grupos seleccionados
+            </span>
+        </div>
+
+        @if (_loadingGroups)
+        {
+            <div style="text-align: center; padding: 40px; color: rgba(255,255,255,0.5);">
+                <Icon Type="loading" Theme="IconThemeType.Outline" Style="font-size: 28px; margin-bottom: 10px; color: #3498DB;" />
+                <div>Consultando catálogo del ERP...</div>
+            </div>
+        }
+        else if (!_erpGroups.Any())
+        {
+            <div style="text-align: center; padding: 25px; color: rgba(255,255,255,0.5);">
+                No se detectaron grupos en el catálogo ERP.
+            </div>
+        }
+        else
+        {
+            <div style="max-height: 360px; overflow-y: auto; padding-right: 4px; display: flex; flex-direction: column; gap: 8px;">
+                @foreach (var g in _erpGroups)
+                {
+                    <div class="group-select-card @(g.IsSelected ? "selected" : "")" @onclick="() => ToggleGroup(g)">
+                        <div style="display: flex; align-items: center; gap: 12px; flex: 1;">
+                            <Checkbox Checked="@g.IsSelected" CheckedChanged="() => ToggleGroup(g)" />
+                            <div style="flex: 1;">
+                                <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+                                    <span style="font-weight: 600; font-size: 13px; color: #fff;">@g.GroupName</span>
+                                    <Tag Style="background: #3498DB20; color: #3498DB; border: 1px solid #3498DB40; border-radius: 10px; font-size: 11px; padding: 0 8px;">
+                                        @g.ItemCount items
+                                    </Tag>
+                                </div>
+                                @if (g.SampleItems.Any())
+                                {
+                                    <div style="font-size: 11px; color: rgba(255,255,255,0.45); margin-top: 2px;">
+                                        Ej: @string.Join(", ", g.SampleItems)
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+
+            <div style="margin-top: 16px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.08);">
+                <Checkbox @bind-Checked="_cleanUnselected">
+                    <span style="font-size: 12px; color: rgba(255,255,255,0.85); font-weight: 500;">
+                        Limpiar del inventario insumos de grupos no seleccionados
+                    </span>
+                </Checkbox>
+                <div style="font-size: 11px; color: rgba(255,255,255,0.4); margin-left: 24px; margin-top: 2px;">
+                    Elimina del inventario conceptos ajenos (ej. Cafetería, Fletes) que no tengan órdenes de trabajo vinculadas.
+                </div>
+            </div>
+        }
+    </div>
+</Modal>
+
 <style>
     .kpi-card-sm {
         background: rgba(255,255,255,0.04);
@@ -214,6 +292,22 @@
         font-size: 12px;
         color: rgba(255,255,255,0.5);
     }
+    .group-select-card {
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 8px;
+        padding: 10px 14px;
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+    .group-select-card:hover {
+        background: rgba(255, 255, 255, 0.06);
+        border-color: rgba(255, 255, 255, 0.15);
+    }
+    .group-select-card.selected {
+        background: rgba(52, 152, 219, 0.08);
+        border-color: rgba(52, 152, 219, 0.4);
+    }
 </style>
 
 @code {
@@ -223,8 +317,20 @@
     private bool _modalVisible;
     private bool _isEditing;
     private bool _saving;
-    private bool _syncing;
+    private bool _syncModalVisible;
+    private bool _loadingGroups;
+    private bool _syncingGroups;
+    private bool _cleanUnselected = true;
+    private List<EditableErpGroup> _erpGroups = new();
     private Guid _editingId;
+
+    private class EditableErpGroup
+    {
+        public string GroupName { get; set; } = string.Empty;
+        public int ItemCount { get; set; }
+        public List<string> SampleItems { get; set; } = new();
+        public bool IsSelected { get; set; }
+    }
     private InvFormModel _formModel = new();
     private System.Timers.Timer? _debounceTimer;
     private Form<InvFormModel>? _form;
@@ -417,21 +523,89 @@
         }
     }
 
-    private async Task SyncFromErp()
+    private async Task OpenSyncModal()
     {
-        _syncing = true;
+        _syncModalVisible = true;
+        _loadingGroups = true;
         try
         {
-            var response = await Http.PostAsync($"api/sync/erp/{TenantState.CurrentTenant?.Id}", null);
+            var groups = await Http.GetFromJsonAsync<List<ErpGroupSummaryDto>>(
+                "api/inventory/erp-groups",
+                AppJsonSerializerContext.Default.ListErpGroupSummaryDto) ?? new();
+
+            _erpGroups = groups.Select(g => new EditableErpGroup
+            {
+                GroupName = g.GroupName,
+                ItemCount = g.ItemCount,
+                SampleItems = g.SampleItems,
+                IsSelected = g.IsSelected
+            }).ToList();
+        }
+        catch (Exception ex)
+        {
+            Message.Error($"Error al consultar grupos del ERP: {ex.Message}");
+        }
+        finally
+        {
+            _loadingGroups = false;
+        }
+    }
+
+    private void ToggleGroup(EditableErpGroup group)
+    {
+        group.IsSelected = !group.IsSelected;
+    }
+
+    private void SelectRecommendedGroups()
+    {
+        foreach (var g in _erpGroups)
+        {
+            g.IsSelected = g.GroupName.Contains("INSUMO", StringComparison.OrdinalIgnoreCase) ||
+                           g.GroupName.Contains("AGRO", StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    private void SelectAllGroups()
+    {
+        foreach (var g in _erpGroups) g.IsSelected = true;
+    }
+
+    private void DeselectAllGroups()
+    {
+        foreach (var g in _erpGroups) g.IsSelected = false;
+    }
+
+    private async Task ExecuteGroupSync()
+    {
+        var selected = _erpGroups.Where(g => g.IsSelected).Select(g => g.GroupName).ToList();
+        if (!selected.Any())
+        {
+            Message.Warning("Selecciona al menos un grupo para sincronizar.");
+            return;
+        }
+
+        _syncingGroups = true;
+        try
+        {
+            var req = new SyncInventoryGroupsRequestDto(selected, _cleanUnselected);
+            var response = await Http.PostAsJsonAsync(
+                "api/inventory/sync-groups",
+                req,
+                AppJsonSerializerContext.Default.SyncInventoryGroupsRequestDto);
+
             if (response.IsSuccessStatusCode)
             {
-                Message.Success("Sincronización de inventario (y datos ERP) completada.");
+                var res = await response.Content.ReadFromJsonAsync<SyncInventoryGroupsResultDto>(
+                    AppJsonSerializerContext.Default.SyncInventoryGroupsResultDto);
+
+                Message.Success(res?.Message ?? "Sincronización completada.");
+                _syncModalVisible = false;
                 await LoadData();
             }
             else
             {
                 var error = await response.Content.ReadAsStringAsync();
-                Message.Error($"Error sincronizando: {error}");
+                Message.Error($"Error al sincronizar: {error}");
             }
         }
         catch (Exception ex)
@@ -440,7 +614,7 @@
         }
         finally
         {
-            _syncing = false;
+            _syncingGroups = false;
         }
     }
 }

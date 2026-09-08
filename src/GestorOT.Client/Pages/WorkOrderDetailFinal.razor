@@ -141,7 +141,7 @@ else if (_order != null)
                             <Column TData="string" Title="Insumo">@context.SupplyName</Column>
 
                             <Column TData="string" Title="Unidad">
-                                <span style="color: rgba(255,255,255,0.6);">@(context.SupplyUnit ?? "—")</span>
+                                <span style="color: rgba(255,255,255,0.6);">@(UnitHelper.CleanDoseUnit(context.SupplyUnit) ?? context.SupplyUnit ?? "—")</span>
                             </Column>
 
                             <Column TData="decimal" Title="Planeado" Width="100">@context.TotalCalculated.ToString("N2")</Column>
@@ -281,7 +281,7 @@ else if (_order != null)
         OnClose="() => _breakdownDrawerVisible = false">
     @if (_breakdownSupply != null)
     {
-        <h4 style="color: #fff;">@_breakdownSupply.SupplyName (@_breakdownSupply.SupplyUnit)</h4>
+        <h4 style="color: #fff;">@_breakdownSupply.SupplyName (@(UnitHelper.CleanDoseUnit(_breakdownSupply.SupplyUnit) ?? _breakdownSupply.SupplyUnit ?? "u"))</h4>
         <p style="color: rgba(255,255,255,0.6);">
             Total planeado: @_breakdownPlannedTotal.ToString("N2") · Total real: @(_breakdownSupply.RealTotalUsed?.ToString("N2") ?? "—")
         </p>

@@ -1,4 +1,5 @@
 using GestorOT.Application.Services;
+using GestorOT.Shared;
 using QuestPDF.Fluent;
 using QuestPDF.Helpers;
 using QuestPDF.Infrastructure;
@@ -156,7 +157,7 @@ public class WorkOrderPdfExporterService : IWorkOrderPdfExporterService
                                 var realStr = a.RealTotalUsed.HasValue ? a.RealTotalUsed.Value.ToString("N2") : "—";
                                 t.Cell().Padding(3).AlignRight().Text(realStr);
                                 t.Cell().Padding(3).Text(a.WithdrawalCenter ?? "—");
-                                t.Cell().Padding(3).Text(a.SupplyUnit ?? "—");
+                                t.Cell().Padding(3).Text(UnitHelper.CleanDoseUnit(a.SupplyUnit) ?? a.SupplyUnit ?? "—");
                             }
                         });
                     }
@@ -208,7 +209,7 @@ public class WorkOrderPdfExporterService : IWorkOrderPdfExporterService
                                     t.Cell().Padding(3).AlignRight().Text((ha > 0 ? ha : labor.Hectares).ToString("N2"));
                                     t.Cell().Padding(3).AlignRight().Text(dose.ToString("N2"));
                                     t.Cell().Padding(3).AlignRight().Text(total.ToString("N2"));
-                                    t.Cell().Padding(3).Text(supply.SupplyUnit ?? "—");
+                                    t.Cell().Padding(3).Text(UnitHelper.CleanDoseUnit(supply.SupplyUnit) ?? supply.SupplyUnit ?? "—");
                                 }
                             }
                         });

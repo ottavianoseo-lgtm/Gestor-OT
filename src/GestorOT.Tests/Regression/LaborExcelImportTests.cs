@@ -259,4 +259,186 @@ public class LaborExcelImportTests
             Assert.True(preview.CanProceed);
         }
     }
-}
+
+    [Fact]
+    public async Task LaborExcelImport_MatchesContractorContact_AndSetsContactIdAndIsExternalBilling()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var tenantId = Guid.NewGuid();
+        var campaignId = Guid.NewGuid();
+        var contractorContactId = Guid.NewGuid();
+
+        using (var context = CreateContext(dbName, tenantId))
+        {
+            var campaign = new Campaign { Id = campaignId, TenantId = tenantId, Name = "2026-2027", IsActive = true };
+            var field = new Field { Id = Guid.NewGuid(), TenantId = tenantId, Name = "Establecimiento Norte" };
+            var lot1 = new Lot { Id = Guid.NewGuid(), TenantId = tenantId, FieldId = field.Id, Name = "Lote 1" };
+            var lot2 = new Lot { Id = Guid.NewGuid(), TenantId = tenantId, FieldId = field.Id, Name = "Lote 2" };
+
+            var cl1 = new CampaignLot { Id = Guid.NewGuid(), TenantId = tenantId, CampaignId = campaignId, LotId = lot1.Id };
+            var cl2 = new CampaignLot { Id = Guid.NewGuid(), TenantId = tenantId, CampaignId = campaignId, LotId = lot2.Id };
+
+            var contact = new Contact
+            {
+                Id = contractorContactId,
+                TenantId = tenantId,
+                FullName = "Don Carlos",
+                Role = ContactRole.Contractor
+            };
+
+            context.Campaigns.Add(campaign);
+            context.Fields.Add(field);
+            context.Lots.AddRange(lot1, lot2);
+            context.CampaignLots.AddRange(cl1, cl2);
+            context.Contacts.Add(contact);
+            await context.SaveChangesAsync();
+        }
+
+        using (var context = CreateContext(dbName, tenantId))
+        {
+            var service = new LaborExcelImportService(context, NullLogger<LaborExcelImportService>.Instance);
+            using var stream = CreateSampleStandardExcelStream();
+
+            var preview = await service.PreviewAsync(campaignId, stream);
+
+            Assert.Equal(2, preview.Labors.Count);
+
+            // Labor 1 ("Propio")
+            var laborPropio = preview.Labors[0];
+            Assert.Null(laborPropio.ContactId);
+            Assert.False(laborPropio.IsExternalBilling);
+
+            // Labor 2 ("Don Carlos" matching contact)
+            var laborCarlos = preview.Labors[1];
+            Assert.Equal(contractorContactId, laborCarlos.ContactId);
+            Assert.Equal("Don Carlos", laborCarlos.MatchedContactName);
+            Assert.True(laborCarlos.IsExternalBilling);
+
+            // Execute import
+            stream.Position = 0;
+            var result = await service.ExecuteAsync(campaignId, stream, preview.SupplyMappings);
+            Assert.True(result.Success);
+
+            // Check database
+            var dbLabors = await context.Labors.OrderBy(l => l.Hectares).ToListAsync();
+            Assert.Equal(2, dbLabors.Count);
+
+            // Labor 1 in DB
+            Assert.Null(dbLabors[0].ContactId);
+            Assert.False(dbLabors[0].IsExternalBilling);
+
+            // Labor 2 in DB
+            Assert.Equal(contractorContactId, dbLabors[1].ContactId);
+            Assert.True(dbLabors[1].IsExternalBilling);
+        }
+    }
+
+    [Fact]
+    public async Task LaborExcelImport_MatchesLaborType_AndLinksToExistingLaborTypeWithExternalErpId()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var tenantId = Guid.NewGuid();
+        var campaignId = Guid.NewGuid();
+        var lotId = Guid.NewGuid();
+        var campaignLotId = Guid.NewGuid();
+        var laborTypeId = Guid.NewGuid();
+
+        using (var context = CreateContext(dbName, tenantId))
+        {
+            context.Campaigns.Add(new Campaign { Id = campaignId, Name = "2026/2027", TenantId = tenantId });
+            context.Lots.Add(new Lot { Id = lotId, Name = "Lote 1", TenantId = tenantId });
+            context.CampaignLots.Add(new CampaignLot { Id = campaignLotId, CampaignId = campaignId, LotId = lotId, TenantId = tenantId });
+
+            // Add an existing LaborType with ExternalErpId from ERP
+            context.LaborTypes.Add(new LaborType
+            {
+                Id = laborTypeId,
+                TenantId = tenantId,
+                Name = "Fertilización al Voleo",
+                ExternalErpId = "1042",
+                Description = "LABORES POR HECTAREA"
+            });
+
+            await context.SaveChangesAsync();
+        }
+
+        // Create Excel with "Fertilizacion" as labor name (AMSA style)
+        using var stream = new MemoryStream();
+        using (var wb = new ClosedXML.Excel.XLWorkbook())
+        {
+            var ws = wb.Worksheets.Add("AMSA");
+            ws.Cell(1, 1).Value = "Fecha";
+            ws.Cell(1, 2).Value = "Establecimiento";
+            ws.Cell(1, 3).Value = "Lote";
+            ws.Cell(1, 4).Value = "Sup";
+            ws.Cell(1, 5).Value = "Produc/labor";
+            ws.Cell(1, 6).Value = "Dosis";
+            ws.Cell(1, 7).Value = "Tipo";
+            ws.Cell(1, 8).Value = "Unidad";
+            ws.Cell(1, 9).Value = "Total";
+            ws.Cell(1, 10).Value = "Contr/prove";
+            ws.Cell(1, 11).Value = "real/presup";
+
+            // Labor row
+            ws.Cell(2, 1).Value = new DateTime(2026, 8, 5);
+            ws.Cell(2, 2).Value = "Campo Norte";
+            ws.Cell(2, 3).Value = "Lote 1";
+            ws.Cell(2, 4).Value = 100;
+            ws.Cell(2, 5).Value = "Fertilizacion";
+            ws.Cell(2, 6).Value = 1;
+            ws.Cell(2, 7).Value = "Labor";
+            ws.Cell(2, 8).Value = "ha";
+            ws.Cell(2, 9).Value = 100;
+            ws.Cell(2, 10).Value = "Propio";
+            ws.Cell(2, 11).Value = "r";
+
+            // Supply row
+            ws.Cell(3, 1).Value = new DateTime(2026, 8, 5);
+            ws.Cell(3, 2).Value = "Campo Norte";
+            ws.Cell(3, 3).Value = "Lote 1";
+            ws.Cell(3, 4).Value = 100;
+            ws.Cell(3, 5).Value = "Urea";
+            ws.Cell(3, 6).Value = 100;
+            ws.Cell(3, 7).Value = "Fertilizante";
+            ws.Cell(3, 8).Value = "kg";
+            ws.Cell(3, 9).Value = 10000;
+            ws.Cell(3, 10).Value = "Propio";
+            ws.Cell(3, 11).Value = "r";
+
+            wb.SaveAs(stream);
+        }
+
+        using var verifyContext = CreateContext(dbName, tenantId);
+        var service = new LaborExcelImportService(verifyContext, NullLogger<LaborExcelImportService>.Instance);
+
+            // 1. Preview
+            stream.Position = 0;
+            var preview = await service.PreviewAsync(campaignId, stream);
+
+            Assert.Single(preview.LaborTypeMappings);
+            var laborTypeMap = preview.LaborTypeMappings[0];
+            Assert.Equal("Fertilizacion", laborTypeMap.RawName);
+            Assert.Equal(laborTypeId, laborTypeMap.MatchedLaborTypeId);
+            Assert.Equal("Fertilización al Voleo", laborTypeMap.MatchedLaborTypeName);
+            Assert.True(laborTypeMap.Confidence >= 0.70);
+
+            // 2. Execute
+            stream.Position = 0;
+            var result = await service.ExecuteAsync(campaignId, stream, preview.SupplyMappings, preview.LaborTypeMappings);
+
+            Assert.True(result.Success);
+            Assert.Equal(1, result.LaborsCreated);
+            Assert.Equal(0, result.NewLaborTypesCreated);
+
+            // 3. Verify in DB that the labor was created with the matched LaborTypeId
+            var createdLabor = await verifyContext.Labors.Include(l => l.Type).FirstOrDefaultAsync();
+            Assert.NotNull(createdLabor);
+            Assert.Equal(laborTypeId, createdLabor.LaborTypeId);
+            Assert.NotNull(createdLabor.Type);
+            Assert.Equal("1042", createdLabor.Type.ExternalErpId);
+
+            // Ensure no duplicate loose labor types were created
+            var allLaborTypes = await verifyContext.LaborTypes.ToListAsync();
+            Assert.Single(allLaborTypes);
+        }
+    }

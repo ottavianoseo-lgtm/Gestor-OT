@@ -55,11 +55,18 @@ public class LaborExcelImportService : ILaborExcelImportService
             .AsNoTracking()
             .ToListAsync(ct);
 
+        var existingContacts = await _context.Contacts
+            .AsNoTracking()
+            .ToListAsync(ct);
+
         // Parse grouped labors and supplies
-        var parsedLabors = ParseLaborsFromWorksheet(worksheet, columnConfig, campaignLots, existingLaborTypes);
+        var parsedLabors = ParseLaborsFromWorksheet(worksheet, columnConfig, campaignLots, existingLaborTypes, existingContacts);
 
         // Match supplies
         var (supplyMappings, unmatchedCount) = BuildSupplyMappings(parsedLabors, existingAliases, existingInventories);
+
+        // Match labor types
+        var (laborTypeMappings, unmatchedLaborTypesCount) = BuildLaborTypeMappings(parsedLabors, existingLaborTypes);
 
         // Link matched supplies back to parsed items for preview
         var mappingDict = new Dictionary<string, LaborImportSupplyMappingDto>(StringComparer.OrdinalIgnoreCase);
@@ -79,6 +86,21 @@ public class LaborExcelImportService : ILaborExcelImportService
             }
         }
 
+        // Link matched labor types back to parsed items for preview
+        var laborTypeMappingDict = new Dictionary<string, LaborImportTypeMappingDto>(StringComparer.OrdinalIgnoreCase);
+        foreach (var ltm in laborTypeMappings)
+        {
+            laborTypeMappingDict[ltm.RawName.Trim()] = ltm;
+        }
+        foreach (var labor in parsedLabors)
+        {
+            if (laborTypeMappingDict.TryGetValue(labor.LaborTypeName.Trim(), out var ltm) && ltm.MatchedLaborTypeId.HasValue)
+            {
+                labor.LaborTypeId = ltm.MatchedLaborTypeId;
+                labor.Warnings.Clear(); // Cleared if matched
+            }
+        }
+
         var diagnostics = new List<string>();
         int unknownLots = parsedLabors.Count(l => !l.LotId.HasValue);
         if (unknownLots > 0)
@@ -88,7 +110,12 @@ public class LaborExcelImportService : ILaborExcelImportService
 
         if (unmatchedCount > 0)
         {
-            diagnostics.Add($"Se detectaron {unmatchedCount} insumos sin coincidencia directa en inventario. Podés mapearlos o darlos de alta en la pestaña de Reconciliación.");
+            diagnostics.Add($"Se detectaron {unmatchedCount} insumos sin coincidencia directa en inventario. Podés mapearlos o darlos de alta en la pestaña de Reconciliación de Insumos.");
+        }
+
+        if (unmatchedLaborTypesCount > 0)
+        {
+            diagnostics.Add($"Se detectaron {unmatchedLaborTypesCount} tipos de labor sin coincidencia directa en el catálogo. Podés asignarlos o darlos de alta en la pestaña de Reconciliación de Labores.");
         }
 
         decimal totalHectares = parsedLabors.Sum(l => l.Hectares);
@@ -101,14 +128,22 @@ public class LaborExcelImportService : ILaborExcelImportService
             TotalHectares = totalHectares,
             UniqueSuppliesCount = supplyMappings.Count,
             UnmatchedSuppliesCount = unmatchedCount,
+            UniqueLaborTypesCount = laborTypeMappings.Count,
+            UnmatchedLaborTypesCount = unmatchedLaborTypesCount,
             Labors = parsedLabors,
             SupplyMappings = supplyMappings,
+            LaborTypeMappings = laborTypeMappings,
             Diagnostics = diagnostics,
             CanProceed = parsedLabors.Count > 0
         };
     }
 
-    public async Task<LaborImportResultDto> ExecuteAsync(Guid campaignId, Stream fileStream, List<LaborImportSupplyMappingDto> mappings, CancellationToken ct = default)
+    public async Task<LaborImportResultDto> ExecuteAsync(
+        Guid campaignId,
+        Stream fileStream,
+        List<LaborImportSupplyMappingDto> mappings,
+        List<LaborImportTypeMappingDto>? laborTypeMappings = null,
+        CancellationToken ct = default)
     {
         var campaign = await _context.Campaigns.FirstOrDefaultAsync(c => c.Id == campaignId, ct);
         if (campaign == null)
@@ -126,12 +161,14 @@ public class LaborExcelImportService : ILaborExcelImportService
         var existingLaborTypes = await _context.LaborTypes.ToListAsync(ct);
         var existingAliases = await _context.SupplyAliases.ToListAsync(ct);
         var existingInventories = await _context.Inventories.ToListAsync(ct);
+        var existingContacts = await _context.Contacts.ToListAsync(ct);
 
-        var parsedLabors = ParseLaborsFromWorksheet(worksheet, columnConfig, campaignLots, existingLaborTypes);
+        var parsedLabors = ParseLaborsFromWorksheet(worksheet, columnConfig, campaignLots, existingLaborTypes, existingContacts);
 
         int laborsCreated = 0;
         int suppliesCreated = 0;
         int newInventoriesCreated = 0;
+        int newLaborTypesCreated = 0;
         int aliasesLearned = 0;
         var errors = new List<string>();
 
@@ -202,13 +239,49 @@ public class LaborExcelImportService : ILaborExcelImportService
                     }
                 }
 
-                // 2. Process Labors & Supplies
+                // 2. Process Labor Type Mappings
                 var laborTypesByName = new Dictionary<string, LaborType>(StringComparer.OrdinalIgnoreCase);
                 foreach (var lt in existingLaborTypes)
                 {
                     laborTypesByName[NormalizeString(lt.Name)] = lt;
                 }
 
+                var resolvedLaborTypes = new Dictionary<string, Guid>(StringComparer.OrdinalIgnoreCase);
+                if (laborTypeMappings != null)
+                {
+                    foreach (var ltm in laborTypeMappings)
+                    {
+                        if (string.Equals(ltm.Action, "Match", StringComparison.OrdinalIgnoreCase) && ltm.MatchedLaborTypeId.HasValue)
+                        {
+                            resolvedLaborTypes[ltm.RawName.Trim()] = ltm.MatchedLaborTypeId.Value;
+                        }
+                        else if (string.Equals(ltm.Action, "CreateNew", StringComparison.OrdinalIgnoreCase) || !ltm.MatchedLaborTypeId.HasValue)
+                        {
+                            string typeName = !string.IsNullOrWhiteSpace(ltm.NewTypeName) ? ltm.NewTypeName.Trim() : ltm.RawName.Trim();
+                            string normName = NormalizeString(typeName);
+                            if (laborTypesByName.TryGetValue(normName, out var existingLt))
+                            {
+                                resolvedLaborTypes[ltm.RawName.Trim()] = existingLt.Id;
+                            }
+                            else
+                            {
+                                var newLt = new LaborType
+                                {
+                                    Id = Guid.NewGuid(),
+                                    TenantId = _context.CurrentTenantId,
+                                    Name = typeName,
+                                    Description = "Creado desde importación Excel"
+                                };
+                                _context.LaborTypes.Add(newLt);
+                                laborTypesByName[normName] = newLt;
+                                resolvedLaborTypes[ltm.RawName.Trim()] = newLt.Id;
+                                newLaborTypesCreated++;
+                            }
+                        }
+                    }
+                }
+
+                // 3. Process Labors & Supplies
                 foreach (var parsedLabor in parsedLabors)
                 {
                     if (!parsedLabor.LotId.HasValue || !parsedLabor.CampaignLotId.HasValue)
@@ -219,18 +292,33 @@ public class LaborExcelImportService : ILaborExcelImportService
 
                     // Resolve LaborType
                     string laborTypeName = !string.IsNullOrWhiteSpace(parsedLabor.LaborTypeName) ? parsedLabor.LaborTypeName.Trim() : "Labor General";
-                    string normLt = NormalizeString(laborTypeName);
-                    if (!laborTypesByName.TryGetValue(normLt, out var laborType))
+                    Guid targetLaborTypeId;
+
+                    if (resolvedLaborTypes.TryGetValue(laborTypeName, out var mappedLtId))
                     {
-                        laborType = new LaborType
+                        targetLaborTypeId = mappedLtId;
+                    }
+                    else
+                    {
+                        string normLt = NormalizeString(laborTypeName);
+                        if (laborTypesByName.TryGetValue(normLt, out var laborType))
                         {
-                            Id = Guid.NewGuid(),
-                            TenantId = _context.CurrentTenantId,
-                            Name = laborTypeName,
-                            Description = "Creado automáticamente desde importación Excel"
-                        };
-                        _context.LaborTypes.Add(laborType);
-                        laborTypesByName[normLt] = laborType;
+                            targetLaborTypeId = laborType.Id;
+                        }
+                        else
+                        {
+                            var laborTypeNew = new LaborType
+                            {
+                                Id = Guid.NewGuid(),
+                                TenantId = _context.CurrentTenantId,
+                                Name = laborTypeName,
+                                Description = "Creado automáticamente desde importación Excel"
+                            };
+                            _context.LaborTypes.Add(laborTypeNew);
+                            laborTypesByName[normLt] = laborTypeNew;
+                            targetLaborTypeId = laborTypeNew.Id;
+                            newLaborTypesCreated++;
+                        }
                     }
 
                     var campaignLot = campaignLots.FirstOrDefault(cl => cl.Id == parsedLabor.CampaignLotId.Value);
@@ -256,7 +344,9 @@ public class LaborExcelImportService : ILaborExcelImportService
                         LotId = parsedLabor.LotId.Value,
                         CampaignLotId = parsedLabor.CampaignLotId.Value,
                         ErpActivityId = campaignLot?.CropId, // Inherit Crop/Activity from campaign lot
-                        LaborTypeId = laborType.Id,
+                        LaborTypeId = targetLaborTypeId,
+                        ContactId = parsedLabor.ContactId,
+                        IsExternalBilling = parsedLabor.IsExternalBilling,
                         ExecutionDate = parsedLabor.Date,
                         EstimatedDate = parsedLabor.Date,
                         Hectares = parsedLabor.Hectares,
@@ -329,6 +419,7 @@ public class LaborExcelImportService : ILaborExcelImportService
             LaborsCreated = laborsCreated,
             SuppliesCreated = suppliesCreated,
             NewSuppliesCreated = newInventoriesCreated,
+            NewLaborTypesCreated = newLaborTypesCreated,
             AliasesLearned = aliasesLearned,
             Errors = errors,
             Success = laborsCreated > 0
@@ -551,7 +642,8 @@ public class LaborExcelImportService : ILaborExcelImportService
         IXLWorksheet ws,
         ColumnConfig cfg,
         List<CampaignLot> campaignLots,
-        List<LaborType> laborTypes)
+        List<LaborType> laborTypes,
+        List<Contact> contacts)
     {
         var result = new List<LaborImportParsedLaborDto>();
         LaborImportParsedLaborDto? currentLabor = null;
@@ -586,9 +678,9 @@ public class LaborExcelImportService : ILaborExcelImportService
             if (string.IsNullOrWhiteSpace(producLabor) && string.IsNullOrWhiteSpace(tipo))
                 continue;
 
-            bool isLaborRow = string.Equals(tipo, "Labor", StringComparison.OrdinalIgnoreCase) ||
-                             string.Equals(tipo, "Siembra", StringComparison.OrdinalIgnoreCase) ||
-                             tipo.IndexOf("Labor", StringComparison.OrdinalIgnoreCase) >= 0;
+            bool isLaborRow = tipo.Contains("Labor", StringComparison.OrdinalIgnoreCase) ||
+                             tipo.Contains("Siembra", StringComparison.OrdinalIgnoreCase) ||
+                             tipo.Contains("Cosecha", StringComparison.OrdinalIgnoreCase);
 
             if (isLaborRow)
             {
@@ -653,6 +745,8 @@ public class LaborExcelImportService : ILaborExcelImportService
                     laborTypeId = lt.Id;
                 }
 
+                var (contactId, matchedContactName, isExternalBilling) = MatchContact(contractor, contacts);
+
                 currentLabor = new LaborImportParsedLaborDto
                 {
                     RowIndex = r,
@@ -665,6 +759,9 @@ public class LaborExcelImportService : ILaborExcelImportService
                     LaborTypeName = producLabor,
                     LaborTypeId = laborTypeId,
                     Contractor = contractor,
+                    ContactId = contactId,
+                    MatchedContactName = matchedContactName,
+                    IsExternalBilling = isExternalBilling,
                     Mode = mode,
                     Status = mode,
                     Supplies = new List<LaborImportParsedItemDto>(),
@@ -682,6 +779,9 @@ public class LaborExcelImportService : ILaborExcelImportService
                     bool orphanRealized = !orphanDate.HasValue || orphanDate.Value.Date <= DateTime.UtcNow.Date;
                     string orphanMode = orphanRealized ? "Realized" : "Planned";
 
+                    string orphanContractor = cfg.ColContratista > 0 ? row.Cell(cfg.ColContratista).GetString().Trim() : string.Empty;
+                    var (orphanContactId, orphanMatchedName, orphanExternal) = MatchContact(orphanContractor, contacts);
+
                     currentLabor = new LaborImportParsedLaborDto
                     {
                         RowIndex = r,
@@ -690,6 +790,10 @@ public class LaborExcelImportService : ILaborExcelImportService
                         LotName = orphanLot,
                         Hectares = cfg.ColSuperficie > 0 ? ParseDecimalCell(row.Cell(cfg.ColSuperficie)) : 0,
                         LaborTypeName = "Labor General",
+                        Contractor = orphanContractor,
+                        ContactId = orphanContactId,
+                        MatchedContactName = orphanMatchedName,
+                        IsExternalBilling = orphanExternal,
                         Mode = orphanMode,
                         Status = orphanMode,
                         Supplies = new List<LaborImportParsedItemDto>()
@@ -862,6 +966,129 @@ public class LaborExcelImportService : ILaborExcelImportService
                       .ToList(), unmatchedCount);
     }
 
+    private (List<LaborImportTypeMappingDto> Mappings, int UnmatchedCount) BuildLaborTypeMappings(
+        List<LaborImportParsedLaborDto> labors,
+        List<LaborType> laborTypes)
+    {
+        var typesGrouped = labors
+            .Where(l => !string.IsNullOrWhiteSpace(l.LaborTypeName))
+            .GroupBy(l => l.LaborTypeName.Trim(), StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var typesByNorm = new Dictionary<string, LaborType>(StringComparer.OrdinalIgnoreCase);
+        foreach (var lt in laborTypes)
+        {
+            string norm = NormalizeString(lt.Name);
+            if (!string.IsNullOrWhiteSpace(norm) && !typesByNorm.ContainsKey(norm))
+            {
+                typesByNorm[norm] = lt;
+            }
+        }
+
+        var result = new List<LaborImportTypeMappingDto>();
+        int unmatchedCount = 0;
+
+        foreach (var group in typesGrouped)
+        {
+            string rawName = group.Key;
+            string normRaw = NormalizeString(rawName);
+            int occurrences = group.Count();
+
+            // Tier 1: Exact match on normalized name
+            if (typesByNorm.TryGetValue(normRaw, out var exactLt))
+            {
+                result.Add(new LaborImportTypeMappingDto
+                {
+                    RawName = rawName,
+                    NormalizedName = normRaw,
+                    MatchedLaborTypeId = exactLt.Id,
+                    MatchedLaborTypeName = exactLt.Name,
+                    Confidence = 1.0,
+                    ConfidenceLevel = "High",
+                    Occurrences = occurrences,
+                    Action = "Match"
+                });
+                continue;
+            }
+
+            // Tier 2: Substring / Contains match
+            var containsMatches = laborTypes
+                .Where(lt =>
+                {
+                    string n = NormalizeString(lt.Name);
+                    return !string.IsNullOrWhiteSpace(n) && (n.Contains(normRaw) || normRaw.Contains(n));
+                })
+                .ToList();
+
+            if (containsMatches.Count == 1)
+            {
+                var match = containsMatches[0];
+                result.Add(new LaborImportTypeMappingDto
+                {
+                    RawName = rawName,
+                    NormalizedName = normRaw,
+                    MatchedLaborTypeId = match.Id,
+                    MatchedLaborTypeName = match.Name,
+                    Confidence = 0.90,
+                    ConfidenceLevel = "High",
+                    Occurrences = occurrences,
+                    Action = "Match"
+                });
+                continue;
+            }
+
+            // Tier 3: Fuzzy similarity matching
+            double bestScore = 0;
+            LaborType? bestLt = null;
+
+            foreach (var lt in laborTypes)
+            {
+                double score = CalculateSimilarity(normRaw, NormalizeString(lt.Name));
+                if (score > bestScore)
+                {
+                    bestScore = score;
+                    bestLt = lt;
+                }
+            }
+
+            if (bestScore >= 0.60 && bestLt != null)
+            {
+                result.Add(new LaborImportTypeMappingDto
+                {
+                    RawName = rawName,
+                    NormalizedName = normRaw,
+                    MatchedLaborTypeId = bestLt.Id,
+                    MatchedLaborTypeName = bestLt.Name,
+                    Confidence = Math.Round(bestScore, 2),
+                    ConfidenceLevel = bestScore >= 0.80 ? "High" : "Medium",
+                    Occurrences = occurrences,
+                    Action = "Match"
+                });
+            }
+            else
+            {
+                unmatchedCount++;
+                result.Add(new LaborImportTypeMappingDto
+                {
+                    RawName = rawName,
+                    NormalizedName = normRaw,
+                    MatchedLaborTypeId = null,
+                    MatchedLaborTypeName = null,
+                    Confidence = 0,
+                    ConfidenceLevel = "None",
+                    Occurrences = occurrences,
+                    Action = "CreateNew",
+                    NewTypeName = rawName
+                });
+            }
+        }
+
+        // Sort: Non-matches first (so user sees them right away), then alphabetically
+        return (result.OrderBy(r => r.ConfidenceLevel == "None" ? 0 : (r.ConfidenceLevel == "Medium" ? 1 : 2))
+                      .ThenBy(r => r.RawName)
+                      .ToList(), unmatchedCount);
+    }
+
     #endregion
 
     #region String & Number Helpers
@@ -1014,6 +1241,68 @@ public class LaborExcelImportService : ILaborExcelImportService
             ms.Position = 0;
             return new XLWorkbook(ms);
         }
+    }
+
+    private static (Guid? ContactId, string? MatchedName, bool IsExternalBilling) MatchContact(
+        string? rawContractor,
+        List<Contact> contacts)
+    {
+        if (string.IsNullOrWhiteSpace(rawContractor))
+            return (null, null, false);
+
+        string raw = rawContractor.Trim();
+        string norm = NormalizeString(raw);
+
+        if (norm == "propio" || norm == "equipo propio" || norm == "personal propio" || norm == "propia")
+        {
+            var exactPropio = contacts.FirstOrDefault(c => NormalizeString(c.FullName) == norm);
+            if (exactPropio != null)
+                return (exactPropio.Id, exactPropio.FullName, false);
+
+            return (null, null, false);
+        }
+
+        // 1. Exact match on FullName or LegalName
+        var exact = contacts.FirstOrDefault(c =>
+            NormalizeString(c.FullName) == norm ||
+            (!string.IsNullOrWhiteSpace(c.LegalName) && NormalizeString(c.LegalName) == norm));
+
+        if (exact != null)
+        {
+            return (exact.Id, exact.FullName, exact.Role == ContactRole.Contractor);
+        }
+
+        // 2. Clean common prefixes: "contratista ", "cont. ", "empresa ", "servicios ", "serv. "
+        string stripped = Regex.Replace(norm, @"^(contratista|cont\.?|empresa|servicios|serv\.?)\s+", "", RegexOptions.IgnoreCase).Trim();
+        if (stripped != norm && !string.IsNullOrWhiteSpace(stripped))
+        {
+            var matchStripped = contacts.FirstOrDefault(c =>
+                NormalizeString(c.FullName) == stripped ||
+                (!string.IsNullOrWhiteSpace(c.LegalName) && NormalizeString(c.LegalName) == stripped));
+
+            if (matchStripped != null)
+            {
+                return (matchStripped.Id, matchStripped.FullName, matchStripped.Role == ContactRole.Contractor);
+            }
+        }
+
+        // 3. Substring matching (if string is long enough)
+        if (norm.Length >= 4)
+        {
+            var subMatch = contacts.FirstOrDefault(c =>
+            {
+                string cNorm = NormalizeString(c.FullName);
+                return cNorm.Contains(norm) || norm.Contains(cNorm);
+            });
+
+            if (subMatch != null)
+            {
+                return (subMatch.Id, subMatch.FullName, subMatch.Role == ContactRole.Contractor);
+            }
+        }
+
+        bool isContractor = norm.Contains("contrat") || norm.Contains("tercero") || (!norm.Contains("propio") && !string.IsNullOrWhiteSpace(norm));
+        return (null, null, isContractor);
     }
 
     #endregion

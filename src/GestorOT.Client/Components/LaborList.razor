@@ -104,29 +104,44 @@
                     <PropertyColumn Property="s => s.SupplyName" Title="Insumo" />
 
                     <Column TData="string" Title="Unidad">
+                        @{
+                            var cleanUnit = UnitHelper.CleanDoseUnit(context.SupplyUnit) ?? UnitHelper.CleanDoseUnit(context.UnitOfMeasure) ?? "—";
+                        }
                         <Tag Style="background: rgba(52, 152, 219, 0.2); color: #3498DB; border-color: rgba(52, 152, 219, 0.4); font-weight: 600; font-size: 11px;">
-                            @(string.IsNullOrWhiteSpace(context.SupplyUnit) ? (string.IsNullOrWhiteSpace(context.UnitOfMeasure) ? "—" : context.UnitOfMeasure) : context.SupplyUnit)
+                            @cleanUnit
                         </Tag>
                     </Column>
 
                     <Column TData="decimal" Title="Ha. Plan.">
-                        <span class="planned-cell">@((context.PlannedHectares > 0 ? context.PlannedHectares : laborRow.Data.Hectares).ToString("N2"))</span>
+                        <span class="planned-cell">@((context.PlannedHectares > 0 ? context.PlannedHectares : laborRow.Data.Hectares).ToString("N2")) ha</span>
                     </Column>
-                    <Column TData="decimal" Title="Coef. Plan.">
-                        <span class="planned-cell">@context.PlannedDose.ToString("N2")</span>
+                    <Column TData="decimal" Title="Dosis Plan.">
+                        @{
+                            var cleanUnit = UnitHelper.CleanDoseUnit(context.SupplyUnit) ?? UnitHelper.CleanDoseUnit(context.UnitOfMeasure) ?? "u";
+                        }
+                        <span class="planned-cell">@context.PlannedDose.ToString("N2") @UnitHelper.FormatDoseRate(cleanUnit)</span>
                     </Column>
                     <Column TData="decimal" Title="Total Plan.">
-                        <span class="planned-cell">@context.PlannedTotal.ToString("N2")</span>
+                        @{
+                            var cleanUnit = UnitHelper.CleanDoseUnit(context.SupplyUnit) ?? UnitHelper.CleanDoseUnit(context.UnitOfMeasure) ?? "u";
+                        }
+                        <span class="planned-cell" style="font-weight: 700; color: #2ECC71;">@context.PlannedTotal.ToString("N2") @cleanUnit</span>
                     </Column>
 
                     <Column TData="decimal?" Title="Ha. Real">
-                        <span class="real-cell">@(context.RealHectares?.ToString("N2") ?? "—")</span>
+                        <span class="real-cell">@(context.RealHectares.HasValue ? $"{context.RealHectares.Value:N2} ha" : "—")</span>
                     </Column>
-                    <Column TData="decimal?" Title="Coef. Real">
-                        <span class="real-cell">@(context.RealDose?.ToString("N2") ?? "—")</span>
+                    <Column TData="decimal?" Title="Dosis Real">
+                        @{
+                            var cleanUnit = UnitHelper.CleanDoseUnit(context.SupplyUnit) ?? UnitHelper.CleanDoseUnit(context.UnitOfMeasure) ?? "u";
+                        }
+                        <span class="real-cell">@(context.RealDose.HasValue ? $"{context.RealDose.Value:N2} {UnitHelper.FormatDoseRate(cleanUnit)}" : "—")</span>
                     </Column>
                     <Column TData="decimal?" Title="Total Real">
-                        <span class="real-cell">@(context.RealTotal?.ToString("N2") ?? "—")</span>
+                        @{
+                            var cleanUnit = UnitHelper.CleanDoseUnit(context.SupplyUnit) ?? UnitHelper.CleanDoseUnit(context.UnitOfMeasure) ?? "u";
+                        }
+                        <span class="real-cell" style="font-weight: 700; color: #3498DB;">@(context.RealTotal.HasValue ? $"{context.RealTotal.Value:N2} {cleanUnit}" : "—")</span>
                     </Column>
                 </Table>
             }

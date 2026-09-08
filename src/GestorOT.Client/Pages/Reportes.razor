@@ -6,73 +6,430 @@
 @inject HttpClient Http
 @inject IMessageService Message
 @inject GestorOT.Client.Services.CampaignState CampaignState
+@inject NavigationManager Nav
 @implements IDisposable
 
-<PageTitle>Reportes - GestorOT</PageTitle>
+<PageTitle>Reportes y Trazabilidad - GestorOT</PageTitle>
 
 <div class="page-header">
     <div>
-        <h2 class="page-title">Reportes de Desvíos e Insumos</h2>
-        <span class="page-subtitle">Plan vs Real por campaña</span>
+        <h2 class="page-title">Reportes y Trazabilidad</h2>
+        <span class="page-subtitle">Trazabilidad de labores e insumos por lote y campo • Campaña: @(CampaignState.CurrentCampaign?.Name ?? "—")</span>
     </div>
 </div>
 
 @if (!CampaignState.IsSelected)
 {
-    <Alert Message="Seleccione una campaña para ver reportes." Type="@AlertType.Warning" ShowIcon="true" Style="border-radius: 12px;" />
+    <Alert Message="Seleccione una campaña en la barra superior para visualizar los reportes." Type="@AlertType.Warning" ShowIcon="true" Style="border-radius: 12px;" />
 }
 else if (_loading)
 {
-    <div style="text-align: center; padding: 80px;"><Spin Size="AntDesign.SpinSize.Large" Tip="Cargando reporte..." /></div>
-}
-else if (_report != null)
-{
-    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px;">
-        <div class="kpi-card" style="border-left: 4px solid #3498DB;">
-            <div class="kpi-label">Órdenes de Trabajo</div>
-            <div class="kpi-value">@_report.TotalWorkOrders</div>
-        </div>
-        <div class="kpi-card" style="border-left: 4px solid #2ECC71;">
-            <div class="kpi-label">Labores Totales</div>
-            <div class="kpi-value">@_report.TotalLabors</div>
-        </div>
-        <div class="kpi-card" style="border-left: 4px solid #F1C40F;">
-            <div class="kpi-label">Labores Realizadas</div>
-            <div class="kpi-value">@_report.RealizedLabors</div>
-        </div>
-        <div class="kpi-card" style="border-left: 4px solid #9B59B6;">
-            <div class="kpi-label">Ha Plan. / Real.</div>
-            <div class="kpi-value">@_report.PlannedHectares.ToString("N0") / @_report.RealizedHectares.ToString("N0")</div>
-        </div>
+    <div style="text-align: center; padding: 80px;">
+        <Spin Size="AntDesign.SpinSize.Large" Tip="Cargando reportes y trazabilidad de campaña..." />
     </div>
+}
+else
+{
+    @if (_report != null)
+    {
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 20px;">
+            <div class="kpi-card" style="border-left: 4px solid #3498DB;">
+                <div class="kpi-label">Campos en Campaña</div>
+                <div class="kpi-value">@(_traceability?.Fields.Count ?? 0)</div>
+            </div>
+            <div class="kpi-card" style="border-left: 4px solid #2ECC71;">
+                <div class="kpi-label">Lotes Productivos</div>
+                <div class="kpi-value">@(_traceability?.Fields.Sum(f => f.LotsCount) ?? 0)</div>
+            </div>
+            <div class="kpi-card" style="border-left: 4px solid #F1C40F;">
+                <div class="kpi-label">Labores Realizadas</div>
+                <div class="kpi-value">@_report.RealizedLabors / @_report.TotalLabors</div>
+            </div>
+            <div class="kpi-card" style="border-left: 4px solid #9B59B6;">
+                <div class="kpi-label">Ha Plan. / Real.</div>
+                <div class="kpi-value">@_report.PlannedHectares.ToString("N0") / @_report.RealizedHectares.ToString("N0")</div>
+            </div>
+        </div>
+    }
 
-    <AntDesign.Tabs DefaultActiveKey="1" Type="@TabType.Card">
-        <TabPane Tab="Desvíos por OT" Key="1">
+    <AntDesign.Tabs @bind-ActiveKey="@_activeTabKey" Type="@TabType.Card">
+        
+        <!-- PESTAÑA 1: TRAZABILIDAD POR CAMPO -->
+        <TabPane Tab="Trazabilidad por Campo" Key="1">
             <div class="glass-card" style="margin-top: 16px;">
-                <Table TItem="WorkOrderDeviation" DataSource="@_report.WorkOrderDeviations" Size="TableSize.Small" HidePagination>
-                    <PropertyColumn Property="d => d.Description" Title="OT" Sortable />
-                    <PropertyColumn Property="d => d.TotalLabors" Title="Labores" Sortable />
-                    <PropertyColumn Property="d => d.RealizedLabors" Title="Realizadas" Sortable />
-                    <PropertyColumn Property="d => d.PlanHa" Title="Ha Plan." Sortable Format="N2" />
-                    <PropertyColumn Property="d => d.RealHa" Title="Ha Real." Sortable Format="N2" />
-                    <Column TData="decimal" Title="Desvío %" Sortable>
-                        @{
-                            var color = context.HaDeviationPercent > 0 ? "#ff4d4f" : (context.HaDeviationPercent < 0 ? "#52c41a" : "inherit");
+                @if (_traceability == null || !_traceability.Fields.Any())
+                {
+                    <div style="text-align: center; padding: 40px; color: rgba(255,255,255,0.4);">
+                        No hay campos ni lotes asociados a esta campaña.
+                    </div>
+                }
+                else
+                {
+                    <!-- Selector de Campo -->
+                    <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 20px; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 16px;">
+                        <div style="display: flex; align-items: center; gap: 12px;">
+                            <span style="font-weight: 600; font-size: 14px; color: rgba(255,255,255,0.85);">Campo:</span>
+                            <select class="custom-report-select" value="@_selectedFieldId" @onchange="OnFieldSelectChanged">
+                                @foreach (var f in _traceability.Fields)
+                                {
+                                    <option value="@f.FieldId">@f.FieldName</option>
+                                }
+                            </select>
+                        </div>
+
+                        @if (CurrentField != null)
+                        {
+                            <div style="display: flex; gap: 16px; font-size: 13px;">
+                                <span style="color: rgba(255,255,255,0.6);">Lotes: <strong style="color: #3498DB;">@CurrentField.LotsCount</strong></span>
+                                <span style="color: rgba(255,255,255,0.6);">Superficie Total: <strong style="color: #2ECC71;">@CurrentField.TotalArea.ToString("N1") ha</strong></span>
+                            </div>
                         }
-                        <span style="color: @color; font-weight: 600;">@(context.HaDeviationPercent > 0 ? "+" : "")@context.HaDeviationPercent.ToString("N1")%</span>
-                    </Column>
-                    <ActionColumn Title="" Width="80">
-                        <Button Size="@ButtonSize.Small" Type="@ButtonType.Link" OnClick="() => OpenWorkOrder(context.WorkOrderId)">
-                            <Icon Type="eye" /> Ver
-                        </Button>
-                    </ActionColumn>
-                </Table>
+                    </div>
+
+                    @if (CurrentField != null)
+                    {
+                        <!-- Consolidado de Labores e Insumos en el Campo -->
+                        <div style="margin-bottom: 24px;">
+                            <h4 style="color: #fff; font-size: 15px; margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
+                                <Icon Type="appstore" Theme="IconThemeType.Outline" Style="color: #3498DB;" />
+                                Consolidado de Labores e Insumos Aplicados en @CurrentField.FieldName
+                            </h4>
+
+                            <div class="report-grid-2col">
+                                <!-- Columna Labores Consolidadas -->
+                                <div class="sub-panel">
+                                    <div class="sub-panel-title">
+                                        <span>Labores Realizadas y Planificadas</span>
+                                        <Tag Color="@AntDesign.TagColor.Blue">@CurrentField.LaborTotals.Count tipos</Tag>
+                                    </div>
+                                    @if (!CurrentField.LaborTotals.Any())
+                                    {
+                                        <div class="empty-sub-panel">Sin labores registradas en este campo.</div>
+                                    }
+                                    else
+                                    {
+                                        <Table TItem="LaborTypeTotalSummaryDto" DataSource="@CurrentField.LaborTotals" Size="TableSize.Small" HidePagination>
+                                            <PropertyColumn Property="l => l.LaborTypeName" Title="Labor" Sortable>
+                                                <span style="font-weight: 600;">@context.LaborTypeName</span>
+                                            </PropertyColumn>
+                                            <PropertyColumn Property="l => l.TotalCount" Title="Pasadas" Sortable Align="ColumnAlign.Center">
+                                                <Badge Count="@context.TotalCount" Style="background-color: #52c41a;" />
+                                            </PropertyColumn>
+                                            <PropertyColumn Property="l => l.AccumulatedHectares" Title="Ha Acum." Sortable Format="N1" Align="ColumnAlign.Right">
+                                                <span style="color: #3498DB; font-weight: 600;">@context.AccumulatedHectares.ToString("N1") ha</span>
+                                            </PropertyColumn>
+                                        </Table>
+                                    }
+                                </div>
+
+                                <!-- Columna Insumos Consolidados -->
+                                <div class="sub-panel">
+                                    <div class="sub-panel-title">
+                                        <span>Insumos Totales Utilizados</span>
+                                        <Tag Color="@AntDesign.TagColor.Green">@CurrentField.SupplyTotals.Count insumos</Tag>
+                                    </div>
+                                    @if (!CurrentField.SupplyTotals.Any())
+                                    {
+                                        <div class="empty-sub-panel">Sin insumos registrados en este campo.</div>
+                                    }
+                                    else
+                                    {
+                                        <Table TItem="SupplyTotalSummaryDto" DataSource="@CurrentField.SupplyTotals" Size="TableSize.Small" HidePagination>
+                                            <PropertyColumn Property="s => s.SupplyName" Title="Insumo" Sortable>
+                                                <span style="font-weight: 600;">@context.SupplyName</span>
+                                            </PropertyColumn>
+                                            <PropertyColumn Property="s => s.TotalQuantity" Title="Total Utilizado" Sortable Format="N2" Align="ColumnAlign.Right">
+                                                <span style="color: #E67E22; font-weight: 600;">@context.TotalQuantity.ToString("N2") @context.Unit</span>
+                                            </PropertyColumn>
+                                            <PropertyColumn Property="s => s.ApplicationsCount" Title="Aplicaciones" Sortable Align="ColumnAlign.Center">
+                                                <span style="font-size: 11px; color: rgba(255,255,255,0.6);">@context.ApplicationsCount veces</span>
+                                            </PropertyColumn>
+                                        </Table>
+                                    }
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Desglose por Lote -->
+                        <div>
+                            <h4 style="color: #fff; font-size: 15px; margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
+                                <Icon Type="unordered-list" Theme="IconThemeType.Outline" Style="color: #2ECC71;" />
+                                Desglose por Lote en @CurrentField.FieldName
+                            </h4>
+
+                            <Table TItem="LotTraceabilityReportDto" DataSource="@CurrentField.LotsBreakdown" Size="TableSize.Small" HidePagination>
+                                <PropertyColumn Property="l => l.LotName" Title="Lote" Sortable>
+                                    <span style="font-weight: 600; font-size: 13px;">@context.LotName</span>
+                                    @if (!string.IsNullOrEmpty(context.CropName))
+                                    {
+                                        <Tag Style="margin-left: 6px; background: #2ECC7120; color: #2ECC71; border: 1px solid #2ECC7140; font-size: 10px;">
+                                            @context.CropName
+                                        </Tag>
+                                    }
+                                </PropertyColumn>
+                                <PropertyColumn Property="l => l.ProductiveArea" Title="Sup. Prod. (ha)" Sortable Format="N1" Align="ColumnAlign.Right" />
+                                <Column TData="int" Title="Labores" Align="ColumnAlign.Center">
+                                    <span style="font-weight: 600;">@context.Timeline.Count</span>
+                                </Column>
+                                <Column TData="int" Title="Insumos Distintos" Align="ColumnAlign.Center">
+                                    <span>@context.SupplyTotals.Count</span>
+                                </Column>
+                                <Column TData="string" Title="Insumos Principales">
+                                    @if (context.SupplyTotals.Any())
+                                    {
+                                        <span style="font-size: 11px; color: rgba(255,255,255,0.7);">
+                                            @string.Join(", ", context.SupplyTotals.Take(3).Select(s => $"{s.SupplyName} ({s.TotalQuantity:N1} {s.Unit})"))
+                                            @(context.SupplyTotals.Count > 3 ? "..." : "")
+                                        </span>
+                                    }
+                                    else
+                                    {
+                                        <span style="font-size: 11px; color: rgba(255,255,255,0.3);">Sin insumos</span>
+                                    }
+                                </Column>
+                                <ActionColumn Title="Acción" Width="140" Align="ColumnAlign.Right">
+                                    <Button Size="@ButtonSize.Small" Type="@ButtonType.Primary" Ghost OnClick="() => InspectLot(context.LotId)">
+                                        <Icon Type="zoom-in" /> Ver Lote
+                                    </Button>
+                                </ActionColumn>
+                            </Table>
+                        </div>
+                    }
+                }
             </div>
         </TabPane>
 
-        <TabPane Tab="Resumen de Insumos" Key="2">
+        <!-- PESTAÑA 2: TRAZABILIDAD POR LOTE -->
+        <TabPane Tab="Trazabilidad por Lote" Key="2">
             <div class="glass-card" style="margin-top: 16px;">
-                @if (_report.SupplySummary.Count == 0)
+                @if (_traceability == null || !_traceability.Fields.Any())
+                {
+                    <div style="text-align: center; padding: 40px; color: rgba(255,255,255,0.4);">
+                        No hay datos disponibles para esta campaña.
+                    </div>
+                }
+                else
+                {
+                    <!-- Selector de Lote -->
+                    <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 20px; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 16px;">
+                        <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                            <span style="font-weight: 600; font-size: 14px; color: rgba(255,255,255,0.85);">Lote:</span>
+                            <select class="custom-report-select" value="@_selectedLotId" @onchange="OnLotSelectChanged">
+                                @foreach (var l in AllLotsFlat)
+                                {
+                                    <option value="@l.LotId">@l.FieldName - @l.LotName</option>
+                                }
+                            </select>
+                        </div>
+
+                        @if (CurrentLot != null)
+                        {
+                            <div style="display: flex; gap: 14px; font-size: 13px; align-items: center; flex-wrap: wrap;">
+                                <span style="color: rgba(255,255,255,0.6);">Campo: <strong style="color: #fff;">@CurrentLot.FieldName</strong></span>
+                                <span style="color: rgba(255,255,255,0.6);">Superficie: <strong style="color: #2ECC71;">@((CurrentLot.ProductiveArea > 0 ? CurrentLot.ProductiveArea : CurrentLot.CadastralArea).ToString("N1")) ha</strong></span>
+                                @if (!string.IsNullOrEmpty(CurrentLot.CropName))
+                                {
+                                    <Tag Style="background: #2ECC7120; color: #2ECC71; border: 1px solid #2ECC7140;">
+                                        Cultivo: @CurrentLot.CropName
+                                    </Tag>
+                                }
+                            </div>
+                        }
+                    </div>
+
+                    @if (CurrentLot != null)
+                    {
+                        <!-- Resumen de Totales cuando se repiten labores o insumos -->
+                        <div style="margin-bottom: 24px;">
+                            <h4 style="color: #fff; font-size: 15px; margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
+                                <Icon Type="calculator" Theme="IconThemeType.Outline" Style="color: #E67E22;" />
+                                Resumen de Totales Acumulados en @CurrentLot.LotName
+                            </h4>
+
+                            <div class="report-grid-2col">
+                                <!-- Totales de Insumos Repetidos -->
+                                <div class="sub-panel">
+                                    <div class="sub-panel-title">
+                                        <span>Acumulado de Insumos Utilizados</span>
+                                        <span style="font-size: 11px; color: rgba(255,255,255,0.5);">Totales de la campaña</span>
+                                    </div>
+                                    @if (!CurrentLot.SupplyTotals.Any())
+                                    {
+                                        <div class="empty-sub-panel">No se registraron insumos en este lote.</div>
+                                    }
+                                    else
+                                    {
+                                        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 10px;">
+                                            @foreach (var s in CurrentLot.SupplyTotals)
+                                            {
+                                                <div class="accumulated-chip">
+                                                    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 4px;">
+                                                        <span style="font-weight: 600; font-size: 13px; color: #fff;">@s.SupplyName</span>
+                                                        <Badge Count="@s.ApplicationsCount" Style="background-color: #E67E22;" Title="@($"{s.ApplicationsCount} aplicaciones")" />
+                                                    </div>
+                                                    <div style="font-size: 16px; font-weight: 700; color: #E67E22;">
+                                                        @s.TotalQuantity.ToString("N2") <span style="font-size: 12px; color: rgba(255,255,255,0.6);">@s.Unit</span>
+                                                    </div>
+                                                    <div style="font-size: 11px; color: rgba(255,255,255,0.5); margin-top: 2px;">
+                                                        Dosis prom: <strong>@s.AverageDose.ToString("N2") @s.Unit/ha</strong>
+                                                    </div>
+                                                </div>
+                                            }
+                                        </div>
+                                    }
+                                </div>
+
+                                <!-- Totales de Labores Repetidas -->
+                                <div class="sub-panel">
+                                    <div class="sub-panel-title">
+                                        <span>Acumulado de Labores</span>
+                                        <span style="font-size: 11px; color: rgba(255,255,255,0.5);">Pasadas totales</span>
+                                    </div>
+                                    @if (!CurrentLot.LaborTotals.Any())
+                                    {
+                                        <div class="empty-sub-panel">No se registraron labores en este lote.</div>
+                                    }
+                                    else
+                                    {
+                                        <div style="display: flex; flex-direction: column; gap: 8px;">
+                                            @foreach (var l in CurrentLot.LaborTotals)
+                                            {
+                                                <div class="accumulated-chip" style="display: flex; justify-content: space-between; align-items: center;">
+                                                    <div>
+                                                        <div style="font-weight: 600; color: #fff;">@l.LaborTypeName</div>
+                                                        <div style="font-size: 11px; color: rgba(255,255,255,0.5);">
+                                                            Superficie acumulada: <strong style="color: #3498DB;">@l.AccumulatedHectares.ToString("N1") ha</strong>
+                                                        </div>
+                                                    </div>
+                                                    <div style="text-align: right;">
+                                                        <Tag Style="background: #3498DB20; color: #3498DB; border: 1px solid #3498DB40; font-weight: 700; font-size: 12px; padding: 2px 10px;">
+                                                            @l.TotalCount @(l.TotalCount == 1 ? "pasada" : "pasadas")
+                                                        </Tag>
+                                                    </div>
+                                                </div>
+                                            }
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Cronología de Labores (Línea de Tiempo) -->
+                        <div>
+                            <h4 style="color: #fff; font-size: 15px; margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
+                                <Icon Type="history" Theme="IconThemeType.Outline" Style="color: #3498DB;" />
+                                Cronología de Aplicaciones y Labores en la Campaña
+                            </h4>
+
+                            @if (!CurrentLot.Timeline.Any())
+                            {
+                                <div style="text-align: center; padding: 40px; color: rgba(255,255,255,0.4);">
+                                    No hay labores registradas para este lote en la campaña actual.
+                                </div>
+                            }
+                            else
+                            {
+                                <Table TItem="LotLaborTraceDto" DataSource="@CurrentLot.Timeline" Size="TableSize.Small" HidePagination>
+                                    <PropertyColumn Property="l => l.Date" Title="Fecha" Sortable Width="110">
+                                        <span style="font-weight: 600;">@(context.Date?.ToString("dd/MM/yyyy") ?? "—")</span>
+                                    </PropertyColumn>
+                                    <Column TData="string" Title="OT" Width="100">
+                                        @if (context.WorkOrderId.HasValue)
+                                        {
+                                            <Button Type="@ButtonType.Link" Size="@ButtonSize.Small" OnClick="() => OpenWorkOrder(context.WorkOrderId.Value)" Style="padding: 0;">
+                                                @(string.IsNullOrEmpty(context.OtNumber) ? "Ver OT" : context.OtNumber)
+                                            </Button>
+                                        }
+                                        else
+                                        {
+                                            <span style="color: rgba(255,255,255,0.4); font-size: 11px;">Suelta</span>
+                                        }
+                                    </Column>
+                                    <PropertyColumn Property="l => l.LaborTypeName" Title="Labor" Sortable>
+                                        <strong style="color: #fff;">@context.LaborTypeName</strong>
+                                    </PropertyColumn>
+                                    <PropertyColumn Property="l => l.Hectares" Title="Superficie" Sortable Format="N1" Width="100" Align="ColumnAlign.Right">
+                                        <span>@context.Hectares.ToString("N1") ha</span>
+                                    </PropertyColumn>
+                                    <Column TData="string" Title="Estado" Width="110">
+                                        @if (context.Status == "Realized" || context.Mode == "Realized")
+                                        {
+                                            <Tag Color="@AntDesign.TagColor.Green"><Icon Type="check" /> Realizada</Tag>
+                                        }
+                                        else
+                                        {
+                                            <Tag Color="@AntDesign.TagColor.Blue"><Icon Type="clock-circle" /> Planeada</Tag>
+                                        }
+                                    </Column>
+                                    <PropertyColumn Property="l => l.ContractorOrResponsible" Title="Responsable / Contratista">
+                                        <span style="font-size: 12px; color: rgba(255,255,255,0.7);">@(context.ContractorOrResponsible ?? "—")</span>
+                                    </PropertyColumn>
+                                    <Column TData="List<LotSupplyTraceDto>" Title="Insumos Aplicados en esta Labor">
+                                        @if (context.Supplies.Any())
+                                        {
+                                            <div style="display: flex; flex-direction: column; gap: 4px; padding: 2px 0;">
+                                                @foreach (var s in context.Supplies)
+                                                {
+                                                    <div style="font-size: 11px; display: flex; align-items: center; gap: 6px;">
+                                                        <span style="color: #fff; font-weight: 600;">@s.SupplyName:</span>
+                                                        <Tag Style="background: #E67E2215; color: #E67E22; border: 1px solid #E67E2235; font-size: 10px; margin: 0; padding: 0 4px;">
+                                                            @((s.RealDose ?? s.PlannedDose).ToString("N2")) @s.Unit/ha
+                                                        </Tag>
+                                                        <span style="color: rgba(255,255,255,0.6);">
+                                                            (Total: @((s.RealTotal ?? s.PlannedTotal).ToString("N2")) @s.Unit)
+                                                        </span>
+                                                    </div>
+                                                }
+                                            </div>
+                                        }
+                                        else
+                                        {
+                                            <span style="color: rgba(255,255,255,0.3); font-size: 11px;">Sin insumos</span>
+                                        }
+                                    </Column>
+                                </Table>
+                            }
+                        </div>
+                    }
+                }
+            </div>
+        </TabPane>
+
+        <!-- PESTAÑA 3: DESVÍOS POR OT -->
+        <TabPane Tab="Desvíos por OT" Key="3">
+            <div class="glass-card" style="margin-top: 16px;">
+                @if (_report == null || !_report.WorkOrderDeviations.Any())
+                {
+                    <div style="text-align: center; padding: 40px; color: rgba(255,255,255,0.3);">No hay órdenes de trabajo registradas.</div>
+                }
+                else
+                {
+                    <Table TItem="WorkOrderDeviation" DataSource="@_report.WorkOrderDeviations" Size="TableSize.Small" HidePagination>
+                        <PropertyColumn Property="d => d.Description" Title="OT" Sortable />
+                        <PropertyColumn Property="d => d.TotalLabors" Title="Labores" Sortable />
+                        <PropertyColumn Property="d => d.RealizedLabors" Title="Realizadas" Sortable />
+                        <PropertyColumn Property="d => d.PlanHa" Title="Ha Plan." Sortable Format="N2" />
+                        <PropertyColumn Property="d => d.RealHa" Title="Ha Real." Sortable Format="N2" />
+                        <Column TData="decimal" Title="Desvío %" Sortable>
+                            @{
+                                var color = context.HaDeviationPercent > 0 ? "#ff4d4f" : (context.HaDeviationPercent < 0 ? "#52c41a" : "inherit");
+                            }
+                            <span style="color: @color; font-weight: 600;">@(context.HaDeviationPercent > 0 ? "+" : "")@context.HaDeviationPercent.ToString("N1")%</span>
+                        </Column>
+                        <ActionColumn Title="" Width="80">
+                            <Button Size="@ButtonSize.Small" Type="@ButtonType.Link" OnClick="() => OpenWorkOrder(context.WorkOrderId)">
+                                <Icon Type="eye" /> Ver
+                            </Button>
+                        </ActionColumn>
+                    </Table>
+                }
+            </div>
+        </TabPane>
+
+        <!-- PESTAÑA 4: RESUMEN DE INSUMOS -->
+        <TabPane Tab="Resumen de Insumos" Key="4">
+            <div class="glass-card" style="margin-top: 16px;">
+                @if (_report == null || _report.SupplySummary.Count == 0)
                 {
                     <div style="text-align: center; padding: 40px; color: rgba(255,255,255,0.3);">No hay datos de insumos disponibles.</div>
                 }
@@ -100,18 +457,81 @@ else if (_report != null)
 }
 
 <style>
-    .kpi-card { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 20px; }
-    .kpi-label { font-size: 11px; color: rgba(255,255,255,0.4); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
-    .kpi-value { font-size: 24px; font-weight: 700; color: #fff; }
+    .kpi-card { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 18px; }
+    .kpi-label { font-size: 11px; color: rgba(255,255,255,0.45); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+    .kpi-value { font-size: 22px; font-weight: 700; color: #fff; }
+
+    .report-grid-2col {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+        gap: 16px;
+    }
+
+    .sub-panel {
+        background: rgba(255, 255, 255, 0.025);
+        border: 1px solid rgba(255, 255, 255, 0.07);
+        border-radius: 10px;
+        padding: 14px;
+        height: 100%;
+    }
+    .sub-panel-title {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 12px;
+        font-weight: 600;
+        font-size: 13px;
+        color: rgba(255,255,255,0.9);
+    }
+    .empty-sub-panel {
+        text-align: center;
+        padding: 24px 10px;
+        color: rgba(255,255,255,0.35);
+        font-size: 12px;
+    }
+    .accumulated-chip {
+        background: rgba(255, 255, 255, 0.035);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 8px;
+        padding: 10px 12px;
+    }
+
+    .custom-report-select {
+        background: #1e1e2d;
+        color: #fff;
+        border: 1px solid rgba(255,255,255,0.15);
+        border-radius: 8px;
+        padding: 6px 12px;
+        font-size: 13px;
+        outline: none;
+        min-width: 240px;
+    }
+    .custom-report-select:focus {
+        border-color: #3498DB;
+    }
+    .custom-report-select option {
+        background: #1e1e2d;
+        color: #fff;
+    }
 </style>
 
 @code {
-    [Inject] public NavigationManager Nav { get; set; } = default!;
-
-    private void OpenWorkOrder(Guid id) => Nav.NavigateTo($"/workorders/{id}");
-
+    private string _activeTabKey = "1";
     private CampaignDeviationReport? _report;
+    private CampaignTraceabilityReportDto? _traceability;
     private bool _loading;
+
+    private Guid _selectedFieldId;
+    private Guid _selectedLotId;
+
+    private FieldTraceabilityReportDto? CurrentField => 
+        _traceability?.Fields.FirstOrDefault(f => f.FieldId == _selectedFieldId) ?? _traceability?.Fields.FirstOrDefault();
+
+    private List<LotTraceabilityReportDto> AllLotsFlat => 
+        _traceability?.Fields.SelectMany(f => f.LotsBreakdown).OrderBy(l => l.FieldName).ThenBy(l => l.LotName).ToList() ?? new();
+
+    private LotTraceabilityReportDto? CurrentLot => 
+        AllLotsFlat.FirstOrDefault(l => l.LotId == _selectedLotId) ?? AllLotsFlat.FirstOrDefault();
 
     protected override async Task OnInitializedAsync()
     {
@@ -130,18 +550,88 @@ else if (_report != null)
         CampaignState.OnChange -= OnCampaignChanged;
     }
 
+    private void OpenWorkOrder(Guid id) => Nav.NavigateTo($"/workorders/{id}");
+
+    private void OnFieldSelectChanged(ChangeEventArgs e)
+    {
+        if (Guid.TryParse(e.Value?.ToString(), out var fieldId))
+        {
+            _selectedFieldId = fieldId;
+            var field = _traceability?.Fields.FirstOrDefault(f => f.FieldId == fieldId);
+            if (field != null && field.LotsBreakdown.Any())
+            {
+                _selectedLotId = field.LotsBreakdown.First().LotId;
+            }
+        }
+    }
+
+    private void OnLotSelectChanged(ChangeEventArgs e)
+    {
+        if (Guid.TryParse(e.Value?.ToString(), out var lotId))
+        {
+            _selectedLotId = lotId;
+            var lot = AllLotsFlat.FirstOrDefault(l => l.LotId == lotId);
+            if (lot != null)
+            {
+                _selectedFieldId = lot.FieldId;
+            }
+        }
+    }
+
+    private void InspectLot(Guid lotId)
+    {
+        _selectedLotId = lotId;
+        var lot = AllLotsFlat.FirstOrDefault(l => l.LotId == lotId);
+        if (lot != null)
+        {
+            _selectedFieldId = lot.FieldId;
+        }
+        _activeTabKey = "2"; // Switch to Lot Traceability tab
+        StateHasChanged();
+    }
+
     private async Task LoadReport()
     {
         if (!CampaignState.IsSelected) return;
         _loading = true;
         try
         {
-            _report = await Http.GetFromJsonAsync<CampaignDeviationReport>(
-                $"api/workorders/campaign-deviations/{CampaignState.CurrentCampaign!.Id}");
+            var campaignId = CampaignState.CurrentCampaign!.Id;
+
+            // Load both deviation report and complete campaign traceability
+            var devTask = Http.GetFromJsonAsync<CampaignDeviationReport>(
+                $"api/workorders/campaign-deviations/{campaignId}");
+
+            var traceTask = Http.GetFromJsonAsync<CampaignTraceabilityReportDto>(
+                $"api/reports/campaign-traceability/{campaignId}",
+                AppJsonSerializerContext.Default.CampaignTraceabilityReportDto);
+
+            await Task.WhenAll(devTask, traceTask);
+
+            _report = await devTask;
+            _traceability = await traceTask;
+
+            // Set default selections
+            if (_traceability != null && _traceability.Fields.Any())
+            {
+                if (_selectedFieldId == Guid.Empty || !_traceability.Fields.Any(f => f.FieldId == _selectedFieldId))
+                {
+                    _selectedFieldId = _traceability.Fields.First().FieldId;
+                }
+
+                if (_selectedLotId == Guid.Empty || !AllLotsFlat.Any(l => l.LotId == _selectedLotId))
+                {
+                    var firstLot = CurrentField?.LotsBreakdown.FirstOrDefault() ?? AllLotsFlat.FirstOrDefault();
+                    if (firstLot != null)
+                    {
+                        _selectedLotId = firstLot.LotId;
+                    }
+                }
+            }
         }
         catch (Exception ex)
         {
-            Message.Error($"Error al cargar reporte: {ex.Message}");
+            Message.Error($"Error al cargar reportes: {ex.Message}");
         }
         finally
         {

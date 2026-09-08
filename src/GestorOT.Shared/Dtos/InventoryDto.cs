@@ -14,4 +14,6 @@ public record InventoryDto(
 )
 {
     public InventoryDto() : this(Guid.Empty, string.Empty, string.Empty, 0, 0, "", "", 1, null, null) { }
+
+    public string GetEffectiveUnit() => UnitHelper.GetEffectiveSupplyUnit(UnitA, UnitB, UnitA);
 }

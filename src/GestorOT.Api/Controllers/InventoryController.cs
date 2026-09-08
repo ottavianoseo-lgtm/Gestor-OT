@@ -11,10 +11,17 @@ namespace GestorOT.Api.Controllers;
 public class InventoryController : ControllerBase
 {
     private readonly IApplicationDbContext _context;
+    private readonly IErpSyncService _erpSyncService;
+    private readonly ICurrentTenantService _currentTenantService;
 
-    public InventoryController(IApplicationDbContext context)
+    public InventoryController(
+        IApplicationDbContext context,
+        IErpSyncService erpSyncService,
+        ICurrentTenantService currentTenantService)
     {
         _context = context;
+        _erpSyncService = erpSyncService;
+        _currentTenantService = currentTenantService;
     }
 
     [HttpGet]
@@ -118,5 +125,31 @@ public class InventoryController : ControllerBase
         _context.Inventories.Remove(item);
         await _context.SaveChangesAsync();
         return NoContent();
+    }
+
+    [HttpGet("erp-groups")]
+    public async Task<ActionResult<List<ErpGroupSummaryDto>>> GetErpGroups(CancellationToken ct)
+    {
+        var groups = await _erpSyncService.GetErpInventoryGroupsAsync(_currentTenantService.TenantId, ct);
+        return Ok(groups);
+    }
+
+    [HttpPost("sync-groups")]
+    public async Task<ActionResult<SyncInventoryGroupsResultDto>> SyncGroups(
+        [FromBody] SyncInventoryGroupsRequestDto request, 
+        CancellationToken ct)
+    {
+        if (request.SelectedGroups == null || !request.SelectedGroups.Any())
+        {
+            return BadRequest("Debe seleccionar al menos un grupo para sincronizar.");
+        }
+
+        var result = await _erpSyncService.SyncInventoryWithGroupsAsync(
+            _currentTenantService.TenantId, 
+            request.SelectedGroups, 
+            request.CleanUnselected, 
+            ct);
+
+        return Ok(result);
     }
 }

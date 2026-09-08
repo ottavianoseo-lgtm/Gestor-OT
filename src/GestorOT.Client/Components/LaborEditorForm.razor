@@ -128,10 +128,10 @@
         </div>
 
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
-            <FormItem Label="Persona Responsable" Style="@(HasError("contact") ? "border: 1px solid #E74C3C; border-radius: 8px; padding: 8px;" : "")">
+            <FormItem Label="Responsable / Contratista (opcional)" Style="@(HasError("contact") ? "border: 1px solid #E74C3C; border-radius: 8px; padding: 8px;" : "")">
                 <div style="display: flex; align-items: center; gap: 16px;">
                     <Select TItemValue="Guid?" TItem="ContactDto" @bind-Value="_model.ContactId"
-                            Placeholder="Seleccionar responsable" EnableSearch Style="flex: 1;"
+                            Placeholder="Seleccionar responsable o contratista (opcional)" EnableSearch AllowClear Style="flex: 1;"
                             OnSelectedItemChanged="OnContactChanged">
                         @foreach (var contact in _contacts)
                         {
@@ -203,6 +203,9 @@
             @foreach (var supply in _model.Supplies)
             {
                 <div style="border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 15px; margin-bottom: 10px; background: rgba(255,255,255,0.02);">
+                    @{
+                        var effectiveSupplyUnit = UnitHelper.CleanDoseUnit(supply.SupplyUnit) ?? UnitHelper.CleanDoseUnit(supply.UnitOfMeasure) ?? "u";
+                    }
                     <div style="display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 50px; gap: 15px; align-items: end;">
                         <FormItem Label="Insumo" Style="margin-bottom: 0;">
                             <div style="display: flex; align-items: center; gap: 8px;">
@@ -212,15 +215,15 @@
                                         Style="width: 100%; color: var(--text-primary);">
                                     @foreach (var inv in _inventories)
                                     {
-                                        var unitText = !string.IsNullOrWhiteSpace(inv.UnitA) ? inv.UnitA : (!string.IsNullOrWhiteSpace(inv.UnitB) ? inv.UnitB : "");
+                                        var unitText = inv.GetEffectiveUnit();
                                         var optionLabel = string.IsNullOrEmpty(unitText) ? inv.ItemName : $"{inv.ItemName} ({unitText})";
                                         <SelectOption TItemValue="Guid" TItem="InventoryDto" Value="@inv.Id" Label="@optionLabel" />
                                     }
                                 </Select>
-                                @if (!string.IsNullOrWhiteSpace(supply.SupplyUnit ?? supply.UnitOfMeasure))
+                                @if (!string.IsNullOrWhiteSpace(effectiveSupplyUnit))
                                 {
                                     <Tag Style="background: rgba(52, 152, 219, 0.2); color: #3498DB; border-color: rgba(52, 152, 219, 0.4); font-weight: 700; border-radius: 6px; padding: 2px 8px; font-size: 12px;">
-                                        @(supply.SupplyUnit ?? supply.UnitOfMeasure)
+                                        @effectiveSupplyUnit
                                     </Tag>
                                 }
                             </div>
@@ -230,7 +233,7 @@
                                                    OnChange="@(v => { if (_model.Status == "Realized") { supply.RealHectares = v; supply.RealTotal = v * (supply.RealDose ?? supply.PlannedDose); } else { supply.PlannedHectares = v; supply.PlannedTotal = v * supply.PlannedDose; } })"
                                                    Min="0m" Step="0.1m" Style="width: 100%; color: var(--text-primary);" />
                         </FormItem>
-                        <FormItem Label="@(_model.Status == "Realized" ? $"Dosis Real {(!string.IsNullOrEmpty(supply.SupplyUnit ?? supply.UnitOfMeasure) ? $"({supply.SupplyUnit ?? supply.UnitOfMeasure}/ha)" : "")}" : $"Dosis Plan. {(!string.IsNullOrEmpty(supply.SupplyUnit ?? supply.UnitOfMeasure) ? $"({supply.SupplyUnit ?? supply.UnitOfMeasure}/ha)" : "")}")" Style="margin-bottom: 0;">
+                        <FormItem Label="@(_model.Status == "Realized" ? $"Dosis Real ({UnitHelper.FormatDoseRate(effectiveSupplyUnit)})" : $"Dosis Plan. ({UnitHelper.FormatDoseRate(effectiveSupplyUnit)})")" Style="margin-bottom: 0;">
                             <AntDesign.InputNumber TValue="decimal" Value="@(_model.Status == "Realized" ? (supply.RealDose ?? supply.PlannedDose) : supply.PlannedDose)" 
                                                    OnChange="@(v => { if (_model.Status == "Realized") { supply.RealDose = v; supply.RealTotal = v * (supply.RealHectares ?? supply.PlannedHectares); } else { supply.PlannedDose = v; supply.PlannedTotal = supply.PlannedHectares * v; } })"
                                                    Min="0m" Step="0.01m" Style="width: 100%; color: var(--text-primary);" />
@@ -243,7 +246,7 @@
                                     var total = dose * has;
                                 }
                                 <span style="color: #2ECC71; font-size: 14px; font-weight: 700;">@total.ToString("N2")</span>
-                                <span style="font-size: 11px; font-weight: 600; color: rgba(255,255,255,0.6); text-transform: uppercase;">@(supply.SupplyUnit ?? supply.UnitOfMeasure)</span>
+                                <span style="font-size: 11px; font-weight: 600; color: rgba(255,255,255,0.6); text-transform: uppercase;">@effectiveSupplyUnit</span>
                             </div>
                         </FormItem>
                         <Button Danger OnClick="() => RemoveSupply(supply)" Style="margin-bottom: 4px;">
@@ -501,9 +504,24 @@
         }
         else
         {
+            var defaultContactId = (Guid?)null;
+            var isExternalBilling = false;
+            if (WorkOrderId.HasValue && WorkOrderId.Value != Guid.Empty)
+            {
+                var parentOt = _workOrders.FirstOrDefault(w => w.Id == WorkOrderId.Value);
+                if (parentOt?.ContactId.HasValue == true)
+                {
+                    defaultContactId = parentOt.ContactId;
+                    var contactMatch = _contacts.FirstOrDefault(c => c.Id == defaultContactId);
+                    isExternalBilling = contactMatch?.Role == ContactRole.Contractor;
+                }
+            }
+
             _model = new LaborDto
             {
                 WorkOrderId = WorkOrderId,
+                ContactId = defaultContactId,
+                IsExternalBilling = isExternalBilling,
                 Status = InitialStatus ?? "Planned",
                 Mode = InitialStatus ?? "Planned",
                 EstimatedDate = DefaultDate ?? DateTime.Today,
@@ -643,12 +661,13 @@
             {
                 if (s.SupplyId != Guid.Empty && !_inventories.Any(i => i.Id == s.SupplyId))
                 {
+                    var cleanUnit = UnitHelper.CleanDoseUnit(s.SupplyUnit) ?? UnitHelper.CleanDoseUnit(s.UnitOfMeasure) ?? "u";
                     _inventories.Add(new InventoryDto(
                         s.SupplyId, 
                         "Cargado", 
                         s.SupplyName ?? "Insumo desconocido", 
                         0, 0, 
-                        null, s.SupplyUnit, 1, 
+                        cleanUnit, cleanUnit, 1, 
                         "INSUMOS", null
                     ));
                 }
@@ -742,6 +761,7 @@
 
     private void OnContactChanged(ContactDto contact)
     {
+        ClearError("contact");
         if (contact != null)
         {
             _model.IsExternalBilling = contact.Role == ContactRole.Contractor;
@@ -884,7 +904,7 @@
     {
         if (supply != null && _model.Supplies != null)
         {
-            var unit = !string.IsNullOrWhiteSpace(supply.UnitA) ? supply.UnitA : (!string.IsNullOrWhiteSpace(supply.UnitB) ? supply.UnitB : "un");
+            var unit = supply.GetEffectiveUnit();
             row.SupplyId = supply.Id;
             row.SupplyName = supply.ItemName;
             row.UnitOfMeasure = unit;
@@ -930,7 +950,8 @@
                 {
                     if (!_inventories.Any(i => i.Id == s.SupplyId))
                     {
-                        _inventories.Add(new InventoryDto(s.SupplyId, "Cargado", s.SupplyName ?? "Insumo", 0, 0, null, s.SupplyUnit, 1));
+                        var cleanUnit = UnitHelper.CleanDoseUnit(s.SupplyUnit) ?? UnitHelper.CleanDoseUnit(s.UnitOfMeasure) ?? "u";
+                        _inventories.Add(new InventoryDto(s.SupplyId, "Cargado", s.SupplyName ?? "Insumo", 0, 0, cleanUnit, cleanUnit, 1));
                     }
                 }
             }
@@ -946,7 +967,8 @@
             {
                 if (s.SupplyId != Guid.Empty && !results.Any(i => i.Id == s.SupplyId))
                 {
-                    results.Add(new InventoryDto(s.SupplyId, "Cargado", s.SupplyName ?? "Insumo", 0, 0, null, s.SupplyUnit, 1));
+                    var cleanUnit = UnitHelper.CleanDoseUnit(s.SupplyUnit) ?? UnitHelper.CleanDoseUnit(s.UnitOfMeasure) ?? "u";
+                    results.Add(new InventoryDto(s.SupplyId, "Cargado", s.SupplyName ?? "Insumo", 0, 0, cleanUnit, cleanUnit, 1));
                 }
             }
         }
@@ -1001,9 +1023,6 @@
         if (laborDate == null || laborDate == default)
             SetError("date", "La fecha es obligatoria.");
 
-        if (_model.ContactId == null || _model.ContactId == Guid.Empty)
-            SetError("contact", "El responsable es obligatorio.");
-
         // Validate supplies: if supply is added, dose must be valid
         if (_model.Supplies != null)
         {
@@ -1054,6 +1073,11 @@
                 _model.Mode = "Planned";
             }
             
+            if (_model.ContactId == Guid.Empty)
+            {
+                _model.ContactId = null;
+            }
+
             Console.WriteLine($"[LaborEditorForm] Submitting Labor: Id={LaborId}, WorkOrderId={_model.WorkOrderId}, LotId={_model.LotId}, Hectares={_model.Hectares}");
 
             HttpResponseMessage response;

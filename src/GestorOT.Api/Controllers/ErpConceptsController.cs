@@ -25,14 +25,7 @@ public class ErpConceptsController : ControllerBase
         if (!string.IsNullOrEmpty(group))
         {
             var g = group.ToUpper().Trim();
-            if (g == "LABOR" || g == "LABORES")
-            {
-                query = query.Where(c => c.GrupoConcepto == "LABOR" || c.GrupoConcepto == "LABORES");
-            }
-            else
-            {
-                query = query.Where(c => c.GrupoConcepto == g);
-            }
+            query = query.Where(c => c.GrupoConcepto != null && c.GrupoConcepto.ToUpper().Contains(g));
         }
 
         var concepts = await query.ToListAsync();
@@ -63,7 +56,7 @@ public class ErpConceptsController : ControllerBase
 
         var group = (concept.GrupoConcepto ?? "").ToUpper().Trim();
 
-        if (group == "LABOR" || group == "LABORES")
+        if (group.Contains("LABOR"))
         {
             var exists = await _context.LaborTypes.AnyAsync(l => l.ExternalErpId == concept.ExternalErpId);
             if (!exists)
@@ -77,7 +70,7 @@ public class ErpConceptsController : ControllerBase
                 });
             }
         }
-        else if (group == "INSUMOS")
+        else if (group.Contains("INSUMO"))
         {
             var exists = await _context.Inventories.AnyAsync(i => i.ExternalErpId == concept.ExternalErpId);
             if (!exists)
@@ -109,7 +102,7 @@ public class ErpConceptsController : ControllerBase
 
         var group = (concept.GrupoConcepto ?? "").ToUpper().Trim();
 
-        if (group == "LABOR" || group == "LABORES")
+        if (group.Contains("LABOR"))
         {
             var laborType = await _context.LaborTypes
                 .FirstOrDefaultAsync(l => l.ExternalErpId == concept.ExternalErpId);
@@ -123,7 +116,7 @@ public class ErpConceptsController : ControllerBase
                 _context.LaborTypes.Remove(laborType);
             }
         }
-        else if (group == "INSUMOS")
+        else if (group.Contains("INSUMO"))
         {
             var inventory = await _context.Inventories
                 .FirstOrDefaultAsync(i => i.ExternalErpId == concept.ExternalErpId);

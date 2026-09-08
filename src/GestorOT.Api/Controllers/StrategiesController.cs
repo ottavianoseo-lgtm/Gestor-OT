@@ -296,7 +296,7 @@ public class StrategiesController : ControllerBase
                                 SupplyId = s.SupplyId,
                                 PlannedDose = s.Dose,
                                 PlannedTotal = s.Dose * labor.Hectares,
-                                UnitOfMeasure = s.DoseUnit
+                                UnitOfMeasure = UnitHelper.CleanDoseUnit(s.DoseUnit) ?? s.DoseUnit
                             });
                         }
                     }

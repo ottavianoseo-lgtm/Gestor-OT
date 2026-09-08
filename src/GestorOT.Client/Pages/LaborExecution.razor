@@ -117,6 +117,12 @@
                                 var laborId = currentLabor.Id;
                                 var supplyId = currentSupply.Id;
                                 <div class="supply-row">
+                                    @{
+                                        var cleanUnit = UnitHelper.CleanDoseUnit(currentSupply.SupplyUnit) ?? UnitHelper.CleanDoseUnit(currentSupply.UnitOfMeasure) ?? "u";
+                                        var realDoseVal = GetRealDose(laborId, supplyId, currentSupply.PlannedDose);
+                                        var realHaVal = _realHectares.TryGetValue(laborId, out var hVal) ? hVal : currentLabor.Hectares;
+                                        var realTotVal = realDoseVal * realHaVal;
+                                    }
                                     <div class="supply-info">
                                         <div style="display: flex; align-items: center; gap: 8px;">
                                             @if (currentSupply.TankMixOrder > 0)
@@ -124,28 +130,28 @@
                                                 <span class="tank-mix-badge">@currentSupply.TankMixOrder</span>
                                             }
                                             <span style="color: #fff; font-weight: 500; font-size: 14px;">@(currentSupply.SupplyName ?? "Insumo")</span>
-                                            @if (!string.IsNullOrWhiteSpace(currentSupply.SupplyUnit ?? currentSupply.UnitOfMeasure))
+                                            @if (!string.IsNullOrWhiteSpace(cleanUnit))
                                             {
                                                 <Tag Style="background: rgba(52, 152, 219, 0.2); color: #3498DB; border-color: rgba(52, 152, 219, 0.4); font-size: 11px; font-weight: 600; margin-left: 6px;">
-                                                    @(currentSupply.SupplyUnit ?? currentSupply.UnitOfMeasure)
+                                                    @cleanUnit
                                                 </Tag>
                                             }
                                         </div>
                                         <div style="color: rgba(255,255,255,0.5); font-size: 12px; margin-top: 2px;">
-                                            Planificado: @currentSupply.PlannedDose.ToString("N2") @(currentSupply.SupplyUnit ?? currentSupply.UnitOfMeasure)
+                                            Planificado: @currentSupply.PlannedDose.ToString("N2") @UnitHelper.FormatDoseRate(cleanUnit) · Total a aplicar: <span style="color: #2ECC71; font-weight: 700;">@currentSupply.PlannedTotal.ToString("N2") @cleanUnit</span>
                                         </div>
                                     </div>
                                     <div class="supply-input">
                                         <label style="color: rgba(255,255,255,0.6); font-size: 11px; display: block; margin-bottom: 2px;">
-                                            Dosis Real @(!string.IsNullOrEmpty(currentSupply.SupplyUnit ?? currentSupply.UnitOfMeasure) ? $"({currentSupply.SupplyUnit ?? currentSupply.UnitOfMeasure}/ha)" : "")
+                                            Dosis Real (@UnitHelper.FormatDoseRate(cleanUnit))
                                         </label>
                                         <AntDesign.InputNumber TValue="decimal"
-                                                   Value="@GetRealDose(laborId, supplyId, currentSupply.PlannedDose)"
+                                                   Value="@realDoseVal"
                                                    ValueChanged="@((decimal v) => SetRealDose(laborId, supplyId, v))"
                                                    Min="0" Step="0.01m"
                                                    Style="width: 120px;"
                                                     Disabled="@(isRealized || _isReadOnly)" />
-                                        <span style="color: #2ECC71; font-weight: 600; font-size: 11px; margin-left: 4px;">@(currentSupply.SupplyUnit ?? currentSupply.UnitOfMeasure)</span>
+                                        <span style="color: #3498DB; font-weight: 600; font-size: 11px; margin-left: 6px;">Total: @realTotVal.ToString("N2") @cleanUnit</span>
                                     </div>
                                 </div>
                             }
@@ -507,17 +513,20 @@
                             Hectares = l.Hectares,
                             LotId = l.LotId,
                             LotName = l.LotName,
-                            Supplies = l.Supplies?.Select(s => new LaborSupplyDto
-                            {
-                                Id = s.Id,
-                                SupplyId = s.SupplyId,
-                                SupplyName = s.SupplyName,
-                                PlannedDose = s.PlannedDose,
-                                RealDose = s.RealDose,
-                                PlannedTotal = s.PlannedTotal,
-                                RealTotal = s.RealTotal,
-                                UnitOfMeasure = s.DoseUnit,
-                                SupplyUnit = s.SupplyUnit
+                            Supplies = l.Supplies?.Select(s => {
+                                var cleanUnit = UnitHelper.CleanDoseUnit(s.SupplyUnit) ?? UnitHelper.CleanDoseUnit(s.DoseUnit) ?? "u";
+                                return new LaborSupplyDto
+                                {
+                                    Id = s.Id,
+                                    SupplyId = s.SupplyId,
+                                    SupplyName = s.SupplyName,
+                                    PlannedDose = s.PlannedDose,
+                                    RealDose = s.RealDose,
+                                    PlannedTotal = s.PlannedTotal,
+                                    RealTotal = s.RealTotal,
+                                    UnitOfMeasure = cleanUnit,
+                                    SupplyUnit = cleanUnit
+                                };
                             }).ToList() ?? new()
                         }).ToList() ?? new();
                     }
@@ -677,9 +686,9 @@
         {
             var realHa = _realHectares.TryGetValue(labor.Id, out var h) ? h : labor.Hectares;
             
-            var realSupplies = labor.Supplies?.Select(s =>
-            {
+            var realSupplies = labor.Supplies?.Select(s => {
                 var realDose = GetRealDose(labor.Id, s.Id, s.PlannedDose);
+                var cleanUnit = UnitHelper.CleanDoseUnit(s.SupplyUnit) ?? UnitHelper.CleanDoseUnit(s.UnitOfMeasure) ?? "u";
                 return new LaborSupplyDto
                 {
                     Id = s.Id,
@@ -691,9 +700,9 @@
                     RealTotal = realDose * realHa,
                     PlannedHectares = labor.Hectares,
                     RealHectares = realHa,
-                    UnitOfMeasure = s.UnitOfMeasure,
+                    UnitOfMeasure = cleanUnit,
                     SupplyName = s.SupplyName,
-                    SupplyUnit = s.SupplyUnit,
+                    SupplyUnit = cleanUnit,
                     TankMixOrder = s.TankMixOrder,
                     IsSubstitute = s.IsSubstitute
                 };

@@ -233,7 +233,105 @@
                 </ChildContent>
             </TabPane>
 
-            <!-- TAB 2: LABORES DETECTADAS -->
+            <!-- TAB 2: RECONCILIACIÓN DE TIPOS DE LABOR -->
+            <TabPane Key="labor-types">
+                <TabTemplate>
+                    <span>
+                        <Icon Type="tool" /> Reconciliación de Labores (@_preview.LaborTypeMappings.Count)
+                        @if (_preview.UnmatchedLaborTypesCount > 0)
+                        {
+                            <Tag Color="@("orange")" Style="margin-left: 6px; font-size: 11px;">@_preview.UnmatchedLaborTypesCount a revisar</Tag>
+                        }
+                        else
+                        {
+                            <Icon Type="check-circle" Theme="IconThemeType.Fill" Style="color: #2ECC71; margin-left: 6px;" />
+                        }
+                    </span>
+                </TabTemplate>
+                <ChildContent>
+                    <div style="margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center;">
+                        <span style="font-size: 13px; color: rgba(255,255,255,0.7);">
+                            Verificá cómo machea cada Tipo de Labor de la planilla con tu catálogo. Podés confirmar las sugerencias, asignar otro tipo de labor existente o dar de alta uno nuevo.
+                        </span>
+                        <div style="display: flex; gap: 8px;">
+                            <Button Size="@ButtonSize.Small" OnClick="AcceptAllHighConfidenceLaborTypes" Style="border-radius: 6px; font-size: 12px;">
+                                <Icon Type="check" /> Confirmar sugerencias altas
+                            </Button>
+                        </div>
+                    </div>
+
+                    <div style="max-height: 420px; overflow-y: auto; border: 1px solid rgba(255,255,255,0.1); border-radius: 8px;">
+                        <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+                            <thead style="background: rgba(255,255,255,0.06); position: sticky; top: 0; z-index: 1;">
+                                <tr style="border-bottom: 1px solid rgba(255,255,255,0.1); text-align: left;">
+                                    <th style="padding: 10px 12px; color: rgba(255,255,255,0.8);">Labor en Excel</th>
+                                    <th style="padding: 10px 12px; color: rgba(255,255,255,0.8); width: 120px;">Ocurrencias</th>
+                                    <th style="padding: 10px 12px; color: rgba(255,255,255,0.8); width: 150px;">Certeza / Semáforo</th>
+                                    <th style="padding: 10px 12px; color: rgba(255,255,255,0.8);">Tipo de Labor en Gestor-OT</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var map in _preview.LaborTypeMappings)
+                                {
+                                    <tr style="border-bottom: 1px solid rgba(255,255,255,0.05); background: @(map.ConfidenceLevel == "None" ? "rgba(231, 76, 60, 0.05)" : "transparent");">
+                                        <td style="padding: 10px 12px;">
+                                            <strong style="color: #fff; display: block;">@map.RawName</strong>
+                                        </td>
+                                        <td style="padding: 10px 12px; color: rgba(255,255,255,0.8);">
+                                            <span>@map.Occurrences labores</span>
+                                        </td>
+                                        <td style="padding: 10px 12px;">
+                                            @if (map.Confidence >= 0.95)
+                                            {
+                                                <Tag Color="@("green")"><Icon Type="check" /> Exacto (@((int)(map.Confidence * 100))%)</Tag>
+                                            }
+                                            else if (map.Confidence >= 0.60)
+                                            {
+                                                <Tag Color="@("orange")"><Icon Type="question-circle" /> Sugerido (@((int)(map.Confidence * 100))%)</Tag>
+                                            }
+                                            else
+                                            {
+                                                <Tag Color="@("red")"><Icon Type="close-circle" /> Sin coincidencia</Tag>
+                                            }
+                                        </td>
+                                        <td style="padding: 10px 12px;">
+                                            <div style="display: flex; gap: 8px; align-items: center;">
+                                                <RadioGroup TValue="string" Value="@map.Action" Size="@InputSize.Small" OnChange="@(val => OnLaborTypeActionChanged(map, val))">
+                                                    <Radio RadioButton Value="@("Match")">Asignar Existente</Radio>
+                                                    <Radio RadioButton Value="@("CreateNew")">+ Crear Nuevo</Radio>
+                                                </RadioGroup>
+                                            </div>
+
+                                            @if (map.Action == "Match")
+                                            {
+                                                <div style="margin-top: 6px;">
+                                                    <Select TItem="LaborTypeDto" TItemValue="Guid?"
+                                                            @bind-Value="map.MatchedLaborTypeId"
+                                                            DataSource="@_laborTypesList"
+                                                            LabelName="@nameof(LaborTypeDto.Name)"
+                                                            ValueName="@nameof(LaborTypeDto.Id)"
+                                                            Placeholder="Seleccionar tipo de labor del catálogo..."
+                                                            EnableSearch="true"
+                                                            Style="width: 100%;"
+                                                            OnSelectedItemChanged="@(item => OnLaborTypeSelected(map, item))" />
+                                                </div>
+                                            }
+                                            else if (map.Action == "CreateNew")
+                                            {
+                                                <div style="margin-top: 6px;">
+                                                    <Input @bind-Value="map.NewTypeName" Placeholder="Nombre del tipo de labor" Size="@InputSize.Small" />
+                                                </div>
+                                            }
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </ChildContent>
+            </TabPane>
+
+            <!-- TAB 3: LABORES DETECTADAS -->
             <TabPane Key="labors">
                 <TabTemplate>
                     <span><Icon Type="unordered-list" /> Labores Detectadas (@_preview.TotalLabors)</span>
@@ -247,6 +345,7 @@
                                     <th style="padding: 8px 12px; color: rgba(255,255,255,0.8);">Establecimiento / Lote</th>
                                     <th style="padding: 8px 12px; color: rgba(255,255,255,0.8);">Labor y Sup.</th>
                                     <th style="padding: 8px 12px; color: rgba(255,255,255,0.8);">Receta de Insumos</th>
+                                    <th style="padding: 8px 12px; color: rgba(255,255,255,0.8); width: 140px;">Responsable</th>
                                     <th style="padding: 8px 12px; color: rgba(255,255,255,0.8); width: 100px;">Modo</th>
                                 </tr>
                             </thead>
@@ -287,6 +386,26 @@
                                                         </li>
                                                     }
                                                 </ul>
+                                            }
+                                        </td>
+                                        <td style="padding: 8px 12px;">
+                                            @if (!string.IsNullOrWhiteSpace(labor.MatchedContactName))
+                                            {
+                                                <span style="color: #fff; font-weight: 500;">@labor.MatchedContactName</span>
+                                                <Tag Color="@(labor.IsExternalBilling ? "orange" : "green")" Style="font-size: 10px; margin-top: 2px; display: block; width: fit-content;">
+                                                    @(labor.IsExternalBilling ? "Contratista" : "Propio")
+                                                </Tag>
+                                            }
+                                            else if (!string.IsNullOrWhiteSpace(labor.Contractor))
+                                            {
+                                                <span style="color: rgba(255,255,255,0.8);">@labor.Contractor</span>
+                                                <Tag Color="@(labor.IsExternalBilling ? "orange" : "default")" Style="font-size: 10px; margin-top: 2px; display: block; width: fit-content;">
+                                                    @(labor.IsExternalBilling ? "Contratista" : "Propio")
+                                                </Tag>
+                                            }
+                                            else
+                                            {
+                                                <span style="color: rgba(255,255,255,0.3);">—</span>
                                             }
                                         </td>
                                         <td style="padding: 8px 12px;">
@@ -343,7 +462,7 @@
                 Las labores y sus recetas de insumos se importaron y asociaron correctamente a los lotes en la campaña <strong>@CampaignName</strong>.
             </p>
 
-            <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; max-width: 650px; margin: 0 auto 24px auto;">
+            <div style="display: grid; grid-template-columns: repeat(@(_result.NewLaborTypesCreated > 0 ? 5 : 4), 1fr); gap: 12px; max-width: 750px; margin: 0 auto 24px auto;">
                 <div style="background: rgba(255,255,255,0.05); padding: 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1);">
                     <div style="font-size: 22px; font-weight: 700; color: #2ECC71;">@_result.LaborsCreated</div>
                     <div style="font-size: 11px; color: rgba(255,255,255,0.6);">Labores Creadas</div>
@@ -354,8 +473,15 @@
                 </div>
                 <div style="background: rgba(255,255,255,0.05); padding: 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1);">
                     <div style="font-size: 22px; font-weight: 700; color: #F39C12;">@_result.NewSuppliesCreated</div>
-                    <div style="font-size: 11px; color: rgba(255,255,255,0.6);">Nuevos en Catálogo</div>
+                    <div style="font-size: 11px; color: rgba(255,255,255,0.6);">Insumos Nuevos</div>
                 </div>
+                @if (_result.NewLaborTypesCreated > 0)
+                {
+                    <div style="background: rgba(255,255,255,0.05); padding: 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1);">
+                        <div style="font-size: 22px; font-weight: 700; color: #1ABC9C;">@_result.NewLaborTypesCreated</div>
+                        <div style="font-size: 11px; color: rgba(255,255,255,0.6);">Tipos Lab. Nuevos</div>
+                    </div>
+                }
                 <div style="background: rgba(255,255,255,0.05); padding: 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1);">
                     <div style="font-size: 22px; font-weight: 700; color: #9B59B6;">@_result.AliasesLearned</div>
                     <div style="font-size: 11px; color: rgba(255,255,255,0.6);">Alias Memorizados</div>
@@ -398,10 +524,11 @@
     private LaborImportPreviewDto? _preview;
     private LaborImportResultDto? _result;
     private List<InventoryDto> _inventoryList = new();
+    private List<LaborTypeDto> _laborTypesList = new();
 
     protected override async Task OnInitializedAsync()
     {
-        await LoadInventory();
+        await Task.WhenAll(LoadInventory(), LoadLaborTypes());
     }
 
     private async Task LoadInventory()
@@ -413,6 +540,18 @@
         catch (Exception ex)
         {
             Console.WriteLine($"Error al cargar inventario: {ex.Message}");
+        }
+    }
+
+    private async Task LoadLaborTypes()
+    {
+        try
+        {
+            _laborTypesList = await Http.GetFromJsonAsync<List<LaborTypeDto>>("api/labor-types", AppJsonSerializerContext.Default.ListLaborTypeDto) ?? new();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error al cargar tipos de labor: {ex.Message}");
         }
     }
 
@@ -523,7 +662,40 @@
                 map.Action = "Match";
             }
         }
-        Message.Success("Sugerencias confirmadas.");
+        Message.Success("Sugerencias de insumos confirmadas.");
+    }
+
+    private void OnLaborTypeActionChanged(LaborImportTypeMappingDto map, object? val)
+    {
+        map.Action = val?.ToString() ?? "Match";
+        if (map.Action == "CreateNew")
+        {
+            map.NewTypeName ??= map.RawName;
+        }
+    }
+
+    private void OnLaborTypeSelected(LaborImportTypeMappingDto map, LaborTypeDto? selected)
+    {
+        if (selected != null)
+        {
+            map.MatchedLaborTypeId = selected.Id;
+            map.MatchedLaborTypeName = selected.Name;
+            map.Confidence = 1.0;
+            map.ConfidenceLevel = "High";
+        }
+    }
+
+    private void AcceptAllHighConfidenceLaborTypes()
+    {
+        if (_preview == null) return;
+        foreach (var map in _preview.LaborTypeMappings)
+        {
+            if (map.Confidence >= 0.60 && map.MatchedLaborTypeId.HasValue)
+            {
+                map.Action = "Match";
+            }
+        }
+        Message.Success("Sugerencias de tipos de labor confirmadas.");
     }
 
     private async Task ExecuteImport()
@@ -543,6 +715,9 @@
 
             string mappingsJson = JsonSerializer.Serialize(_preview.SupplyMappings, AppJsonSerializerContext.Default.ListLaborImportSupplyMappingDto);
             content.Add(new StringContent(mappingsJson), "mappingsJson");
+
+            string laborTypeMappingsJson = JsonSerializer.Serialize(_preview.LaborTypeMappings, AppJsonSerializerContext.Default.ListLaborImportTypeMappingDto);
+            content.Add(new StringContent(laborTypeMappingsJson), "laborTypeMappingsJson");
 
             var response = await Http.PostAsync($"api/campaigns/{CampaignId}/labors/import/execute", content);
 

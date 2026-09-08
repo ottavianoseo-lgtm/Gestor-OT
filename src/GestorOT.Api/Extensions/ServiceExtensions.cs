@@ -84,6 +84,7 @@ public static class ServiceExtensions
             services.AddScoped<IPaseXlsxExportService, PaseXlsxExportService>();
             services.AddScoped<ILotExcelImportService, LotExcelImportService>();
             services.AddScoped<ILaborExcelImportService, LaborExcelImportService>();
+            services.AddScoped<ITraceabilityReportService, TraceabilityReportService>();
             services.AddHttpClient();
 #pragma warning disable EXTEXP0018
             services.AddHybridCache();

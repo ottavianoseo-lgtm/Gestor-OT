@@ -58,6 +58,7 @@ public class LaborImportController : ControllerBase
         Guid campaignId,
         [FromForm] IFormFile? file,
         [FromForm] string? mappingsJson,
+        [FromForm] string? laborTypeMappingsJson,
         CancellationToken ct)
     {
         if (file == null || file.Length == 0)
@@ -80,10 +81,23 @@ public class LaborImportController : ControllerBase
             }
         }
 
+        List<LaborImportTypeMappingDto> laborTypeMappings = new();
+        if (!string.IsNullOrWhiteSpace(laborTypeMappingsJson))
+        {
+            try
+            {
+                laborTypeMappings = JsonSerializer.Deserialize(laborTypeMappingsJson, AppJsonSerializerContext.Default.ListLaborImportTypeMappingDto) ?? new();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Error al deserializar laborTypeMappingsJson");
+            }
+        }
+
         try
         {
             await using var stream = file.OpenReadStream();
-            var result = await _importService.ExecuteAsync(campaignId, stream, mappings, ct);
+            var result = await _importService.ExecuteAsync(campaignId, stream, mappings, laborTypeMappings, ct);
             return Ok(result);
         }
         catch (InvalidOperationException ex)

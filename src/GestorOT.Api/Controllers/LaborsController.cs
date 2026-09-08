@@ -178,7 +178,7 @@ public class LaborsController : ControllerBase
                     RealDose = supplyDto.RealDose,
                     RealHectares = supplyDto.RealHectares,
                     RealTotal = supplyDto.RealDose.HasValue ? Math.Round(supplyDto.RealDose.Value * (supplyDto.RealHectares ?? labor.Hectares), 4) : supplyDto.RealTotal,
-                    UnitOfMeasure = supplyDto.UnitOfMeasure,
+                    UnitOfMeasure = UnitHelper.CleanDoseUnit(supplyDto.UnitOfMeasure) ?? supplyDto.SupplyUnit ?? supplyDto.UnitOfMeasure,
                     TankMixOrder = supplyDto.TankMixOrder,
                     IsSubstitute = supplyDto.IsSubstitute
                 });
@@ -317,7 +317,7 @@ public class LaborsController : ControllerBase
                     existing.RealDose = supplyDto.RealDose;
                     existing.RealHectares = supplyDto.RealHectares;
                     existing.RealTotal = supplyDto.RealDose.HasValue ? Math.Round(supplyDto.RealDose.Value * (supplyDto.RealHectares ?? existing.RealHectares ?? labor.Hectares), 4) : supplyDto.RealTotal;
-                    existing.UnitOfMeasure = supplyDto.UnitOfMeasure ?? "";
+                    existing.UnitOfMeasure = UnitHelper.CleanDoseUnit(supplyDto.UnitOfMeasure) ?? supplyDto.SupplyUnit ?? supplyDto.UnitOfMeasure ?? "";
                     existing.TankMixOrder = supplyDto.TankMixOrder;
                     existing.IsSubstitute = supplyDto.IsSubstitute;
                 }
@@ -335,7 +335,7 @@ public class LaborsController : ControllerBase
                         RealDose = supplyDto.RealDose,
                         RealHectares = supplyDto.RealHectares,
                         RealTotal = supplyDto.RealDose.HasValue ? Math.Round(supplyDto.RealDose.Value * (supplyDto.RealHectares ?? labor.Hectares), 4) : supplyDto.RealTotal,
-                        UnitOfMeasure = supplyDto.UnitOfMeasure ?? "",
+                        UnitOfMeasure = UnitHelper.CleanDoseUnit(supplyDto.UnitOfMeasure) ?? supplyDto.SupplyUnit ?? supplyDto.UnitOfMeasure ?? "",
                         TankMixOrder = supplyDto.TankMixOrder,
                         IsSubstitute = supplyDto.IsSubstitute
                     };
@@ -456,7 +456,7 @@ public class LaborsController : ControllerBase
                 PlannedTotal = s.PlannedTotal,
                 RealDose = s.PlannedDose,
                 RealTotal = s.PlannedTotal,
-                UnitOfMeasure = s.UnitOfMeasure
+                UnitOfMeasure = UnitHelper.CleanDoseUnit(s.UnitOfMeasure) ?? s.UnitOfMeasure
             });
         }
 
@@ -543,7 +543,7 @@ public class LaborsController : ControllerBase
                         RealDose = dose,
                         RealTotal = dose * newLabor.Hectares,
                         RealHectares = newLabor.Hectares,
-                        UnitOfMeasure = s.UnitOfMeasure,
+                        UnitOfMeasure = UnitHelper.CleanDoseUnit(s.UnitOfMeasure) ?? s.UnitOfMeasure,
                         TankMixOrder = s.TankMixOrder,
                         IsSubstitute = s.IsSubstitute
                     });
@@ -1070,7 +1070,7 @@ public class LaborsController : ControllerBase
                                         PlannedDose = ds.Dose,
                                         PlannedHectares = labor.Hectares,
                                         PlannedTotal = ds.Dose * labor.Hectares,
-                                        UnitOfMeasure = ds.DoseUnit,
+                                        UnitOfMeasure = UnitHelper.CleanDoseUnit(ds.DoseUnit) ?? ds.DoseUnit,
                                         RealDose = status == LaborStatus.Realized ? ds.Dose : null,
                                         RealHectares = status == LaborStatus.Realized ? labor.Hectares : null,
                                         RealTotal = status == LaborStatus.Realized ? ds.Dose * labor.Hectares : null
@@ -1317,7 +1317,24 @@ public class LaborsController : ControllerBase
             labor.Lot?.Name,
             labor.Type?.Name,
             labor.ErpActivity?.Name,
-            labor.Supplies.Select(s => new LaborSupplyDto(s.Id, s.LaborId, s.SupplyId, s.PlannedHectares, s.RealHectares, s.PlannedDose, s.RealDose, s.PlannedTotal, s.RealTotal, s.CalculatedDose, s.CalculatedTotal, s.UnitOfMeasure, s.Supply?.ItemName, s.Supply?.UnitA, s.TankMixOrder, s.IsSubstitute)).ToList(),
+            labor.Supplies.Select(s => new LaborSupplyDto(
+                s.Id,
+                s.LaborId,
+                s.SupplyId,
+                s.PlannedHectares,
+                s.RealHectares,
+                s.PlannedDose,
+                s.RealDose,
+                s.PlannedTotal,
+                s.RealTotal,
+                s.CalculatedDose,
+                s.CalculatedTotal,
+                UnitHelper.CleanDoseUnit(s.UnitOfMeasure) ?? s.Supply?.GetEffectiveUnit() ?? s.UnitOfMeasure,
+                s.Supply?.ItemName,
+                s.Supply?.GetEffectiveUnit() ?? UnitHelper.CleanDoseUnit(s.UnitOfMeasure),
+                s.TankMixOrder,
+                s.IsSubstitute
+            )).ToList(),
             labor.PrescriptionMapUrl,
             labor.MachineryUsedId,
             labor.WeatherLogJson,
