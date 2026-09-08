@@ -58,6 +58,8 @@ public record LaborImportTypeMappingDto
     public string NormalizedName { get; init; } = string.Empty;
     public Guid? MatchedLaborTypeId { get; set; }
     public string? MatchedLaborTypeName { get; set; }
+    public Guid? SuggestedLaborTypeId { get; set; }
+    public string? SuggestedLaborTypeName { get; set; }
     public double Confidence { get; set; }
     public string ConfidenceLevel { get; set; } = "None"; // "High", "Medium", "None"
     public bool IsFromAlias { get; set; }

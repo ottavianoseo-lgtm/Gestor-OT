@@ -426,9 +426,14 @@ public class LaborExcelImportTests
             Assert.Single(preview.LaborTypeMappings);
             var laborTypeMap = preview.LaborTypeMappings[0];
             Assert.Equal("Fertilizacion", laborTypeMap.RawName);
-            Assert.Equal(laborTypeId, laborTypeMap.MatchedLaborTypeId);
-            Assert.Equal("Fertilización al Voleo", laborTypeMap.MatchedLaborTypeName);
+            Assert.Null(laborTypeMap.MatchedLaborTypeId); // Suggested only, not auto-linked
+            Assert.Equal(laborTypeId, laborTypeMap.SuggestedLaborTypeId);
+            Assert.Equal("Fertilización al Voleo", laborTypeMap.SuggestedLaborTypeName);
             Assert.True(laborTypeMap.Confidence >= 0.70);
+
+            // User confirms/links the suggestion
+            laborTypeMap.MatchedLaborTypeId = laborTypeMap.SuggestedLaborTypeId;
+            laborTypeMap.MatchedLaborTypeName = laborTypeMap.SuggestedLaborTypeName;
 
             // 2. Execute
             stream.Position = 0;

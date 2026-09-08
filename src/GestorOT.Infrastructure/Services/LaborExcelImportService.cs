@@ -1096,40 +1096,14 @@ public class LaborExcelImportService : ILaborExcelImportService
                 continue;
             }
 
-            // Tier 2: Substring / Contains match
-            var containsMatches = laborTypes
-                .Where(lt =>
-                {
-                    string n = NormalizeString(lt.Name);
-                    return !string.IsNullOrWhiteSpace(n) && (n.Contains(normRaw) || normRaw.Contains(n));
-                })
-                .ToList();
-
-            if (containsMatches.Count == 1)
-            {
-                var match = containsMatches[0];
-                result.Add(new LaborImportTypeMappingDto
-                {
-                    RawName = rawName,
-                    NormalizedName = normRaw,
-                    MatchedLaborTypeId = match.Id,
-                    MatchedLaborTypeName = match.Name,
-                    Confidence = 0.90,
-                    ConfidenceLevel = "High",
-                    IsFromAlias = false,
-                    Occurrences = occurrences,
-                    Action = "Match"
-                });
-                continue;
-            }
-
-            // Tier 3: Fuzzy similarity matching
+            // Tier 2: Suggest possible match only! (Never auto-link without user action unless exact or alias)
             double bestScore = 0;
             LaborType? bestLt = null;
 
             foreach (var lt in laborTypes)
             {
-                double score = CalculateSimilarity(normRaw, NormalizeString(lt.Name));
+                string normLt = NormalizeString(lt.Name);
+                double score = CalculateSimilarity(normRaw, normLt);
                 if (score > bestScore)
                 {
                     bestScore = score;
@@ -1137,16 +1111,19 @@ public class LaborExcelImportService : ILaborExcelImportService
                 }
             }
 
-            if (bestScore >= 0.60 && bestLt != null)
+            unmatchedCount++;
+            if (bestScore >= 0.50 && bestLt != null)
             {
                 result.Add(new LaborImportTypeMappingDto
                 {
                     RawName = rawName,
                     NormalizedName = normRaw,
-                    MatchedLaborTypeId = bestLt.Id,
-                    MatchedLaborTypeName = bestLt.Name,
+                    MatchedLaborTypeId = null, // Must be linked by user
+                    MatchedLaborTypeName = null,
+                    SuggestedLaborTypeId = bestLt.Id,
+                    SuggestedLaborTypeName = bestLt.Name,
                     Confidence = Math.Round(bestScore, 2),
-                    ConfidenceLevel = bestScore >= 0.80 ? "High" : "Medium",
+                    ConfidenceLevel = "Medium",
                     IsFromAlias = false,
                     Occurrences = occurrences,
                     Action = "Match"
@@ -1154,13 +1131,14 @@ public class LaborExcelImportService : ILaborExcelImportService
             }
             else
             {
-                unmatchedCount++;
                 result.Add(new LaborImportTypeMappingDto
                 {
                     RawName = rawName,
                     NormalizedName = normRaw,
                     MatchedLaborTypeId = null,
                     MatchedLaborTypeName = null,
+                    SuggestedLaborTypeId = null,
+                    SuggestedLaborTypeName = null,
                     Confidence = 0,
                     ConfidenceLevel = "None",
                     IsFromAlias = false,

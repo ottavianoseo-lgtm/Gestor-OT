@@ -285,13 +285,21 @@
                                             {
                                                 <Tag Color="@("cyan")"><Icon Type="star" /> Alias Memorizado</Tag>
                                             }
-                                            else if (map.Confidence >= 0.95)
+                                            else if (map.Confidence >= 1.0 && map.MatchedLaborTypeId.HasValue)
                                             {
-                                                <Tag Color="@("green")"><Icon Type="check" /> Exacto (@((int)(map.Confidence * 100))%)</Tag>
+                                                <Tag Color="@("green")"><Icon Type="check" /> Exacto (100%)</Tag>
                                             }
-                                            else if (map.Confidence >= 0.60)
+                                            else if (map.SuggestedLaborTypeId.HasValue && !map.MatchedLaborTypeId.HasValue)
                                             {
-                                                <Tag Color="@("orange")"><Icon Type="question-circle" /> Sugerido (@((int)(map.Confidence * 100))%)</Tag>
+                                                <Tag Color="@("orange")"><Icon Type="bulb" /> Sugerencia (@((int)(map.Confidence * 100))%)</Tag>
+                                            }
+                                            else if (map.SuggestedLaborTypeId.HasValue && map.MatchedLaborTypeId == map.SuggestedLaborTypeId)
+                                            {
+                                                <Tag Color="@("green")"><Icon Type="check" /> Sugerencia Aceptada</Tag>
+                                            }
+                                            else if (map.MatchedLaborTypeId.HasValue)
+                                            {
+                                                <Tag Color="@("blue")"><Icon Type="link" /> Asignado</Tag>
                                             }
                                             else
                                             {
@@ -299,7 +307,15 @@
                                             }
                                         </td>
                                         <td style="padding: 10px 12px;">
-                                            <div>
+                                            <div style="display: flex; flex-direction: column; gap: 6px;">
+                                                @if (map.SuggestedLaborTypeId.HasValue && !map.MatchedLaborTypeId.HasValue)
+                                                {
+                                                    <div>
+                                                        <Button Size="@ButtonSize.Small" Type="@ButtonType.Dashed" OnClick="@(() => AcceptSuggestion(map))" Style="color: #F39C12; border-color: #F39C12; font-size: 12px;">
+                                                            <Icon Type="check" /> Sugerido: Vincular con '@map.SuggestedLaborTypeName'
+                                                        </Button>
+                                                    </div>
+                                                }
                                                 <Select TItem="LaborTypeDto" TItemValue="Guid?"
                                                         @bind-Value="map.MatchedLaborTypeId"
                                                         DataSource="@_laborTypesList"
@@ -664,17 +680,27 @@
         }
     }
 
+    private void AcceptSuggestion(LaborImportTypeMappingDto map)
+    {
+        if (map.SuggestedLaborTypeId.HasValue)
+        {
+            map.MatchedLaborTypeId = map.SuggestedLaborTypeId;
+            map.MatchedLaborTypeName = map.SuggestedLaborTypeName;
+        }
+    }
+
     private void AcceptAllHighConfidenceLaborTypes()
     {
         if (_preview == null) return;
         foreach (var map in _preview.LaborTypeMappings)
         {
-            if (map.Confidence >= 0.60 && map.MatchedLaborTypeId.HasValue)
+            if (map.SuggestedLaborTypeId.HasValue && !map.MatchedLaborTypeId.HasValue)
             {
-                map.Action = "Match";
+                map.MatchedLaborTypeId = map.SuggestedLaborTypeId;
+                map.MatchedLaborTypeName = map.SuggestedLaborTypeName;
             }
         }
-        Message.Success("Sugerencias de tipos de labor confirmadas.");
+        Message.Success("Sugerencias de tipos de labor vinculadas.");
     }
 
     private async Task ExecuteImport()
