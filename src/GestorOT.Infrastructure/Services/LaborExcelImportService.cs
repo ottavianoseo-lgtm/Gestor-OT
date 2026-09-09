@@ -160,6 +160,7 @@ public class LaborExcelImportService : ILaborExcelImportService
 
         var campaignLots = await _context.CampaignLots
             .Include(cl => cl.Lot)
+            .Include(cl => cl.Rotations)
             .Where(cl => cl.CampaignId == campaignId)
             .ToListAsync(ct);
 
@@ -387,13 +388,23 @@ public class LaborExcelImportService : ILaborExcelImportService
                     }
                     else
                     {
+                        // Resolve ErpActivityId from the active rotation for this lot at the labor date
+                        Guid? resolvedActivityId = null;
+                        if (campaignLot != null && parsedLabor.Date.HasValue)
+                        {
+                            var laborDate = DateOnly.FromDateTime(parsedLabor.Date.Value);
+                            var activeRotation = campaignLot.Rotations
+                                .FirstOrDefault(r => r.StartDate <= laborDate && r.EndDate >= laborDate);
+                            resolvedActivityId = activeRotation?.ErpActivityId;
+                        }
+
                         laborToSave = new Labor
                         {
                             Id = Guid.NewGuid(),
                             TenantId = _context.CurrentTenantId,
                             LotId = parsedLabor.LotId.Value,
                             CampaignLotId = parsedLabor.CampaignLotId.Value,
-                            ErpActivityId = campaignLot?.CropId, // Inherit Crop/Activity from campaign lot
+                            ErpActivityId = resolvedActivityId,
                             LaborTypeId = targetLaborTypeId.Value,
                             ContactId = parsedLabor.ContactId,
                             IsExternalBilling = parsedLabor.IsExternalBilling,

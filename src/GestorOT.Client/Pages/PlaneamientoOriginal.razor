@@ -95,7 +95,8 @@ else
                 @if (context.Supplies != null && context.Supplies.Count > 0)
                 {
                     var first = context.Supplies.First();
-                    <span style="color: rgba(255,255,255,0.6); font-size: 11px;">@first.SupplyName @first.PlannedTotal.ToString("N2") @first.UnitOfMeasure</span>
+                    var cleanUnit = UnitHelper.CleanDoseUnit(first.SupplyUnit) ?? UnitHelper.CleanDoseUnit(first.UnitOfMeasure) ?? "u";
+                    <span style="color: rgba(255,255,255,0.6); font-size: 11px;">@first.SupplyName @first.PlannedTotal.ToString("N2") @cleanUnit</span>
                     if (context.Supplies.Count > 1)
                     {
                         <Tag Style="background: rgba(52,152,219,0.15); color: #3498DB; border: 1px solid rgba(52,152,219,0.3); border-radius: 4px; font-size: 9px; margin-left: 4px;">+@(context.Supplies.Count - 1)</Tag>

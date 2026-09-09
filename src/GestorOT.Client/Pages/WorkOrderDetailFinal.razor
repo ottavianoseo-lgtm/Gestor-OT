@@ -281,9 +281,10 @@ else if (_order != null)
         OnClose="() => _breakdownDrawerVisible = false">
     @if (_breakdownSupply != null)
     {
-        <h4 style="color: #fff;">@_breakdownSupply.SupplyName (@(UnitHelper.CleanDoseUnit(_breakdownSupply.SupplyUnit) ?? _breakdownSupply.SupplyUnit ?? "u"))</h4>
+        var cleanUnit = UnitHelper.CleanDoseUnit(_breakdownSupply.SupplyUnit) ?? "u";
+        <h4 style="color: #fff;">@_breakdownSupply.SupplyName (@cleanUnit)</h4>
         <p style="color: rgba(255,255,255,0.6);">
-            Total planeado: @_breakdownPlannedTotal.ToString("N2") · Total real: @(_breakdownSupply.RealTotalUsed?.ToString("N2") ?? "—")
+            Total planeado: @_breakdownPlannedTotal.ToString("N2") @cleanUnit · Total real: @(_breakdownSupply.RealTotalUsed.HasValue ? $"{_breakdownSupply.RealTotalUsed.Value:N2} {cleanUnit}" : "—")
         </p>
 
         <h5 style="color: #3498DB; margin-top: 20px;">Planeado</h5>

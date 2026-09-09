@@ -151,7 +151,7 @@
 
             <FormItem Label="@($"Fecha {(_model.Status == "Realized" ? "Ejecución" : "Estimada")}")" Style="@(HasError("date") ? "border: 1px solid #E74C3C; border-radius: 8px; padding: 8px;" : "")">
                 <DatePicker TValue="DateTime?" Value="@(_model.Status == "Realized" ? _model.ExecutionDate : _model.EstimatedDate)" 
-                            OnChange="@(async args => { if (_model.Status == "Realized") _model.ExecutionDate = args.Date; else await OnFechaEstimadaChanged(args); })" 
+                            OnChange="@(async args => { if (_model.Status == "Realized") { _model.ExecutionDate = args.Date; await CheckRotation(args.Date ?? DateTime.Today); } else await OnFechaEstimadaChanged(args); })" 
                             Style="width: 100%; color: var(--text-primary);" />
                 @if (_fechaFueraRotacion && _model.Status != "Realized")
                 {
@@ -499,7 +499,9 @@
         if (LaborId != Guid.Empty)
         {
             await LoadLabor();
-            if (_model.EstimatedDate.HasValue) await CheckRotation(_model.EstimatedDate.Value);
+            // CheckRotation on load: use EstimatedDate, fall back to ExecutionDate (for realized labors)
+            var dateForRotationCheck = _model.EstimatedDate ?? _model.ExecutionDate;
+            if (dateForRotationCheck.HasValue) await CheckRotation(dateForRotationCheck.Value);
             CheckHectaresWarning(_model.Hectares);
         }
         else
