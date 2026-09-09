@@ -34,7 +34,12 @@
   </ItemGroup>
   <ItemGroup Condition="'$(Configuration)' == 'Release'">
   <TrimmerRootAssembly Include="GestorOT.Client" />
-  
+
+  <!-- Los DTOs se alcanzan por reflexión desde LabelName/ValueName de AntDesign.Select.
+       Sin enraizarlos, el trimmer borra los getters y el Select revienta en runtime
+       con "NotAMemberOfType" solo en builds publicados. -->
+  <TrimmerRootAssembly Include="GestorOT.Shared" />
+
   <TrimmerRootAssembly Include="AntDesign" />
   <TrimmerRootAssembly Include="Microsoft.AspNetCore.Components.QuickGrid" />
   <TrimmerRootAssembly Include="NetTopologySuite" />

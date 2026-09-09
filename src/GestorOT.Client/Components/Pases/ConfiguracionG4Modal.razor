@@ -21,8 +21,8 @@
                             Placeholder="General / Defecto (Sin tipo)"
                             AllowClear Loading="@_loadingBasicCatalogs"
                             DataSource="@_laborTypes"
-                            LabelName="@nameof(LaborTypeDto.Name)"
-                            ValueName="@nameof(LaborTypeDto.Id)" />
+                            ItemLabel="x => x.Name"
+                            ItemValue="x => x.Id" />
                 </FormItem>
             </Col>
             <Col Span="12">
@@ -41,8 +41,8 @@
                             Placeholder="Seleccionar Empresa"
                             AllowClear EnableSearch Loading="@_loadingBasicCatalogs"
                             DataSource="@_empresas"
-                            LabelName="@nameof(ErpCompanyDto.Nombre)"
-                            ValueName="@nameof(ErpCompanyDto.CodEmpresa)" />
+                            ItemLabel="x => x.Nombre"
+                            ItemValue="x => x.CodEmpresa" />
                 </FormItem>
             </Col>
             <Col Span="12">
@@ -51,8 +51,8 @@
                             Placeholder="Seleccionar Comprobante G4"
                             AllowClear EnableSearch Loading="@_loadingBasicCatalogs"
                             DataSource="@_comprobantes"
-                            LabelName="@nameof(ErpVoucherTypeDto.Nombre)"
-                            ValueName="@nameof(ErpVoucherTypeDto.CodComprobante)" />
+                            ItemLabel="x => x.Nombre"
+                            ItemValue="x => x.CodComprobante" />
                 </FormItem>
             </Col>
         </Row>
@@ -69,8 +69,8 @@
                             Placeholder="Seleccionar Moneda"
                             AllowClear EnableSearch Loading="@_loadingBasicCatalogs"
                             DataSource="@_monedas"
-                            LabelName="@nameof(ErpCurrencyDto.Nombre)"
-                            ValueName="@nameof(ErpCurrencyDto.CodMoneda)" />
+                            ItemLabel="x => x.Nombre"
+                            ItemValue="x => x.CodMoneda" />
                 </FormItem>
             </Col>
             <Col Span="8">
@@ -79,8 +79,8 @@
                             Placeholder="Seleccionar Responsable"
                             AllowClear EnableSearch Loading="@_loadingBasicCatalogs"
                             DataSource="@_personas"
-                            LabelName="@nameof(ErpPersonItemDto.Nombre)"
-                            ValueName="@nameof(ErpPersonItemDto.CodPersona)" />
+                            ItemLabel="x => x.Nombre"
+                            ItemValue="x => x.CodPersona" />
                 </FormItem>
             </Col>
         </Row>
@@ -96,8 +96,8 @@
                             Placeholder="Seleccionar Perfil Debe"
                             AllowClear EnableSearch Loading="@_loadingBasicCatalogs"
                             DataSource="@_perfiles"
-                            LabelName="@nameof(ErpProfileDto.Nombre)"
-                            ValueName="@nameof(ErpProfileDto.CodPerfil)" />
+                            ItemLabel="x => x.Nombre"
+                            ItemValue="x => x.CodPerfil" />
                 </FormItem>
             </Col>
             <Col Span="12">
@@ -108,8 +108,8 @@
                             Placeholder="Seleccionar Perfil Haber"
                             AllowClear EnableSearch Loading="@_loadingBasicCatalogs"
                             DataSource="@_perfiles"
-                            LabelName="@nameof(ErpProfileDto.Nombre)"
-                            ValueName="@nameof(ErpProfileDto.CodPerfil)" />
+                            ItemLabel="x => x.Nombre"
+                            ItemValue="x => x.CodPerfil" />
                 </FormItem>
             </Col>
         </Row>
@@ -126,8 +126,8 @@
                             AllowClear EnableSearch OnSearch="OnSearchAccountsGestion"
                             Loading="@_loadingCuentasGestion"
                             DataSource="@_filteredCuentasGestion"
-                            LabelName="@nameof(ErpAccountDto.DisplayName)"
-                            ValueName="@nameof(ErpAccountDto.CodCuenta)" />
+                            ItemLabel="x => x.DisplayName"
+                            ItemValue="x => x.CodCuenta" />
                 </FormItem>
             </Col>
             <Col Span="12">
@@ -139,8 +139,8 @@
                             AllowClear EnableSearch OnSearch="OnSearchAccountsGestion"
                             Loading="@_loadingCuentasGestion"
                             DataSource="@_filteredCuentasGestion"
-                            LabelName="@nameof(ErpAccountDto.DisplayName)"
-                            ValueName="@nameof(ErpAccountDto.CodCuenta)" />
+                            ItemLabel="x => x.DisplayName"
+                            ItemValue="x => x.CodCuenta" />
                 </FormItem>
             </Col>
         </Row>
@@ -154,8 +154,8 @@
                             AllowClear EnableSearch OnSearch="OnSearchAccountsCentro"
                             Loading="@_loadingCuentasCentro"
                             DataSource="@_filteredCuentasCentro"
-                            LabelName="@nameof(ErpAccountDto.DisplayName)"
-                            ValueName="@nameof(ErpAccountDto.CodCuenta)" />
+                            ItemLabel="x => x.DisplayName"
+                            ItemValue="x => x.CodCuenta" />
                 </FormItem>
             </Col>
             <Col Span="12">
@@ -166,8 +166,8 @@
                             AllowClear EnableSearch OnSearch="OnSearchAccountsCentro"
                             Loading="@_loadingCuentasCentro"
                             DataSource="@_filteredCuentasCentro"
-                            LabelName="@nameof(ErpAccountDto.DisplayName)"
-                            ValueName="@nameof(ErpAccountDto.CodCuenta)" />
+                            ItemLabel="x => x.DisplayName"
+                            ItemValue="x => x.CodCuenta" />
                 </FormItem>
             </Col>
         </Row>
@@ -181,8 +181,8 @@
                             AllowClear EnableSearch OnSearch="OnSearchAccountsContabilidad"
                             Loading="@_loadingCuentasContabilidad"
                             DataSource="@_filteredCuentasContabilidad"
-                            LabelName="@nameof(ErpAccountDto.DisplayName)"
-                            ValueName="@nameof(ErpAccountDto.CodCuenta)" />
+                            ItemLabel="x => x.DisplayName"
+                            ItemValue="x => x.CodCuenta" />
                 </FormItem>
             </Col>
             <Col Span="12">
@@ -193,8 +193,8 @@
                             AllowClear EnableSearch OnSearch="OnSearchAccountsContabilidad"
                             Loading="@_loadingCuentasContabilidad"
                             DataSource="@_filteredCuentasContabilidad"
-                            LabelName="@nameof(ErpAccountDto.DisplayName)"
-                            ValueName="@nameof(ErpAccountDto.CodCuenta)" />
+                            ItemLabel="x => x.DisplayName"
+                            ItemValue="x => x.CodCuenta" />
                 </FormItem>
             </Col>
         </Row>
@@ -298,16 +298,23 @@
             var persTask = Http.GetFromJsonAsync<List<ErpPersonItemDto>>("api/pases/erp/personas");
             var perfTask = Http.GetFromJsonAsync<List<ErpProfileDto>>("api/pases/erp/perfiles");
 
-            _laborTypes = await laborTask ?? new();
-            _empresas = await empTask ?? new();
-            _comprobantes = await compTask ?? new();
-            _monedas = await monTask ?? new();
-            _personas = await persTask ?? new();
-            _perfiles = await perfTask ?? new();
+            // Cada catálogo se espera por separado: si uno falla, los demás igual se cargan.
+            var fallidos = new List<string>();
+            _laborTypes = await SafeAsync(laborTask, "tipos de labor", fallidos) ?? new();
+            _empresas = await SafeAsync(empTask, "empresas", fallidos) ?? new();
+            _comprobantes = await SafeAsync(compTask, "comprobantes", fallidos) ?? new();
+            _monedas = await SafeAsync(monTask, "monedas", fallidos) ?? new();
+            _personas = await SafeAsync(persTask, "personas", fallidos) ?? new();
+            _perfiles = await SafeAsync(perfTask, "perfiles de imputación", fallidos) ?? new();
+
+            if (fallidos.Count > 0)
+            {
+                Message.Error($"No se pudieron cargar del ERP: {string.Join(", ", fallidos)}.");
+            }
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error al cargar catálogos básicos ERP: {ex.Message}");
+            Message.Error($"Error al cargar catálogos del ERP: {ex.Message}");
         }
         finally
         {
@@ -349,6 +356,20 @@
         _loadingCuentasContabilidad = false;
         FilterCuentasContabilidad();
         StateHasChanged();
+    }
+
+    private async Task<T?> SafeAsync<T>(Task<T?> task, string nombre, List<string> fallidos)
+    {
+        try
+        {
+            return await task;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Catálogo ERP '{nombre}' falló: {ex.Message}");
+            fallidos.Add(nombre);
+            return default;
+        }
     }
 
     private void OnSearchAccountsGestion(string text) { _accountSearchTextGestion = text ?? string.Empty; FilterCuentasGestion(); }
