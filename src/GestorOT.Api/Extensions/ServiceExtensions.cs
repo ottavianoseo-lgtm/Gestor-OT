@@ -76,6 +76,7 @@ public static class ServiceExtensions
             services.AddScoped<IWorkOrderQueryService, WorkOrderQueryService>();
             services.AddScoped<IWorkOrderPdfExporterService, WorkOrderPdfExporterService>();
             services.AddScoped<ILotQueryService, LotQueryService>();
+            services.AddScoped<IShapefileImportService, ShapefileImportService>();
             services.AddScoped<IDashboardQueryService, DashboardQueryService>();
             services.AddScoped<IAuditLogQueryService, AuditLogQueryService>();
             services.AddScoped<GestorOT.Application.Services.IRotationService, RotationService>();

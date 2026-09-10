@@ -322,10 +322,34 @@
        OnCancel="() => _showImportModal = false"
        Footer="@null"
        Width="500">
-    <div style="margin-bottom: 16px; color: rgba(255,255,255,0.7); font-size: 13px;">
-        Seleccione un archivo <strong>.geojson</strong> o <strong>.kml</strong> para importar polígonos al mapa.
+    <div style="margin-bottom: 8px; color: rgba(255,255,255,0.7); font-size: 13px;">
+        Seleccione un <strong>.zip</strong> con el shapefile, o un <strong>.geojson</strong> / <strong>.kml</strong>.
     </div>
-    <InputFile OnChange="HandleFileImport" accept=".geojson,.json,.kml" style="margin-bottom: 16px;" />
+    <div style="margin-bottom: 16px; color: rgba(255,255,255,0.45); font-size: 12px; line-height: 1.5;">
+        El shapefile son varios archivos juntos (<code>.shp</code>, <code>.shx</code>, <code>.dbf</code>,
+        <code>.prj</code>): mandalos zipeados sin convertir nada. El <code>.prj</code> es el que dice en qué
+        sistema de coordenadas vienen, y se usa para reproyectarlos.
+    </div>
+    <InputFile OnChange="HandleFileImport" accept=".zip,.geojson,.json,.kml" style="margin-bottom: 16px;" />
+    @if (_importCrs != null)
+    {
+        <div style="margin-bottom: 12px; color: #2ECC71; font-size: 12px;">
+            <Icon Type="check-circle" /> Reproyectado desde <strong>@_importCrs</strong> a WGS84.
+        </div>
+    }
+    @if (_importWarnings.Count > 0)
+    {
+        <Alert Type="@AlertType.Warning" ShowIcon="true" Style="margin-bottom: 12px;">
+            <MessageTemplate>
+                <ul style="margin: 0; padding-left: 18px; font-size: 12px;">
+                    @foreach (var w in _importWarnings)
+                    {
+                        <li>@w</li>
+                    }
+                </ul>
+            </MessageTemplate>
+        </Alert>
+    }
     @if (_importLoading)
     {
         <div style="text-align: center; padding: 20px;">
@@ -1268,11 +1292,22 @@
     {
         _importLoading = true;
         _importResults.Clear();
+        _importWarnings.Clear();
+        _importCrs = null;
         StateHasChanged();
 
         try
         {
             var file = e.File;
+
+            // El shapefile es binario y son varios archivos, asi que no se puede parsear en el
+            // browser como el geojson: va al servidor, que lo lee y lo reproyecta con PostGIS.
+            if (file.Name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+            {
+                await ImportShapefileAsync(file);
+                return;
+            }
+
             using var stream = file.OpenReadStream(maxAllowedSize: 10 * 1024 * 1024);
             using var reader = new System.IO.StreamReader(stream);
             var content = await reader.ReadToEndAsync();
@@ -1314,6 +1349,54 @@
             _importLoading = false;
             StateHasChanged();
         }
+    }
+
+    private List<string> _importWarnings = new();
+    private string? _importCrs;
+
+    private async Task ImportShapefileAsync(IBrowserFile file)
+    {
+        using var content = new MultipartFormDataContent();
+        var fileContent = new StreamContent(file.OpenReadStream(maxAllowedSize: 64 * 1024 * 1024));
+        fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/zip");
+        content.Add(fileContent, "file", file.Name);
+
+        var response = await Http.PostAsync("api/lots/import/shapefile", content);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var detail = await response.Content.ReadAsStringAsync();
+            Message.Error(string.IsNullOrWhiteSpace(detail) ? "No se pudo leer el shapefile." : detail);
+            return;
+        }
+
+        var result = await response.Content.ReadFromJsonAsync<ShapefileImportResultDto>();
+        if (result == null)
+        {
+            Message.Error("No se pudo leer la respuesta del servidor.");
+            return;
+        }
+
+        _importCrs = result.SourceCrs;
+        _importWarnings = result.Warnings ?? new();
+
+        if (result.Features.Count == 0)
+        {
+            Message.Warning("No se encontraron polígonos en el shapefile.");
+            return;
+        }
+
+        _importResults = result.Features
+            .Select(f => new ImportResult { Wkt = f.Wkt, Name = f.Name })
+            .ToList();
+
+        foreach (var feature in _importResults)
+        {
+            await JS.InvokeAsync<bool>("mapInterop.addImportedPolygon", feature.Wkt, feature.Name);
+        }
+        await JS.InvokeAsync<bool>("mapInterop.fitImportedBounds");
+
+        Message.Success($"{result.Features.Count} polígono(s) leído(s) del shapefile.");
     }
 
     private bool _importCreateNewLot = true;

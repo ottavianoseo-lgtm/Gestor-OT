@@ -15,11 +15,16 @@ public class LotsController : ControllerBase
 {
     private readonly IApplicationDbContext _context;
     private readonly ILotQueryService _queryService;
+    private readonly IShapefileImportService _shapefileImport;
 
-    public LotsController(IApplicationDbContext context, ILotQueryService queryService)
+    public LotsController(
+        IApplicationDbContext context,
+        ILotQueryService queryService,
+        IShapefileImportService shapefileImport)
     {
         _context = context;
         _queryService = queryService;
+        _shapefileImport = shapefileImport;
     }
 
     [HttpGet]
@@ -40,6 +45,41 @@ public class LotsController : ControllerBase
     public async Task<ActionResult<GeoJsonFeatureCollection>> GetLotsGeoJson(CancellationToken ct)
     {
         return await _queryService.GetGeoJsonAsync(ct);
+    }
+
+    /// <summary>
+    /// Lee un shapefile zipeado y devuelve los polígonos en 4326, listos para vincular a lotes.
+    /// No persiste nada: el alta sigue pasando por el flujo de /mapa.
+    /// </summary>
+    [HttpPost("import/shapefile")]
+    [RequestSizeLimit(64 * 1024 * 1024)]
+    public async Task<ActionResult<ShapefileImportResultDto>> ImportShapefile(IFormFile file, CancellationToken ct)
+    {
+        if (file is null || file.Length == 0)
+        {
+            return BadRequest("No se recibió ningún archivo.");
+        }
+
+        if (!file.FileName.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+        {
+            return BadRequest("El shapefile son varios archivos (.shp, .shx, .dbf, .prj): mandalos zipeados en un único .zip.");
+        }
+
+        try
+        {
+            await using var stream = file.OpenReadStream();
+            return await _shapefileImport.ReadZipAsync(stream, ct);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+        catch (InvalidDataException)
+        {
+            // ZipArchive tira esto cuando el archivo no es un zip valido: es culpa del archivo
+            // que subieron, no del servidor, asi que va 400 y no 500.
+            return BadRequest("El archivo no se pudo abrir como .zip. Puede estar corrupto o incompleto.");
+        }
     }
 
     [HttpGet("{id:guid}/surface-history")]
