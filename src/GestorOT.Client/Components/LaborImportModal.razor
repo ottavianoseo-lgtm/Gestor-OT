@@ -1,5 +1,6 @@
 @using GestorOT.Shared
 @using GestorOT.Shared.Dtos
+@using GestorOT.Domain.Enums
 @using System.Net.Http.Json
 @using System.Text.Json
 @using AntDesign
@@ -316,15 +317,31 @@
                                                         </Button>
                                                     </div>
                                                 }
+                                                @{
+                                                    var modeFilter = ModeForMapping(map);
+                                                }
                                                 <Select TItem="LaborTypeDto" TItemValue="Guid?"
                                                         @bind-Value="map.MatchedLaborTypeId"
-                                                        DataSource="@_laborTypesList"
-                                                        LabelName="@nameof(LaborTypeDto.Name)"
-                                                        ValueName="@nameof(LaborTypeDto.Id)"
+                                                        DataSource="@LaborTypesFor(map)"
+                                                        ItemLabel="x => x.DisplayName"
+                                                        ItemValue="x => (Guid?)x.Id"
                                                         Placeholder="Seleccionar concepto del ERP..."
                                                         EnableSearch="true"
                                                         Style="width: 100%;"
                                                         OnSelectedItemChanged="@(item => OnLaborTypeSelected(map, item))" />
+                                                @if (modeFilter is not null)
+                                                {
+                                                    <span style="font-size: 10px; color: rgba(255,255,255,0.45);">
+                                                        Filtrado a tareas @(modeFilter == LaborExecutionMode.Contractor ? "de contratista" : "propias"),
+                                                        según la columna Contratista del Excel
+                                                    </span>
+                                                }
+                                                else
+                                                {
+                                                    <span style="font-size: 10px; color: #F39C12;">
+                                                        Este nombre aparece en filas propias y de contratista: se muestran todas las tareas
+                                                    </span>
+                                                }
                                             </div>
                                         </td>
                                     </tr>
@@ -529,6 +546,52 @@
     private LaborImportResultDto? _result;
     private List<InventoryDto> _inventoryList = new();
     private List<LaborTypeDto> _laborTypesList = new();
+
+    /// <summary>
+    /// Modo al que se puede acotar el mapeo de un nombre del Excel. Se deduce de las filas
+    /// que usan ese nombre: si todas son propias o todas de contratista, se acota a ese modo;
+    /// si el nombre aparece en las dos, devuelve null y no se filtra nada, porque acotarlo
+    /// esconde la mitad de las opciones válidas.
+    /// </summary>
+    private LaborExecutionMode? ModeForMapping(LaborImportTypeMappingDto map)
+    {
+        if (_preview == null) return null;
+
+        var rows = _preview.Labors
+            .Where(l => string.Equals(l.LaborTypeName?.Trim(), map.RawName?.Trim(),
+                StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        if (rows.Count == 0) return null;
+
+        var external = rows.Select(l => l.IsExternalBilling).Distinct().ToList();
+        if (external.Count != 1) return null;
+
+        return external[0] ? LaborExecutionMode.Contractor : LaborExecutionMode.Own;
+    }
+
+    private List<LaborTypeDto> LaborTypesFor(LaborImportTypeMappingDto map)
+    {
+        var mode = ModeForMapping(map);
+        if (mode is null) return _laborTypesList;
+
+        var matching = _laborTypesList
+            .Where(t => t.ExecutionMode.MatchesFilter(mode.Value))
+            .ToList();
+
+        // La tarea ya vinculada nunca se cae de la lista, aunque no coincida con el modo:
+        // si no está, el select se ve vacío y parece que se perdió el mapeo.
+        if (map.MatchedLaborTypeId.HasValue && matching.All(t => t.Id != map.MatchedLaborTypeId.Value))
+        {
+            var current = _laborTypesList.FirstOrDefault(t => t.Id == map.MatchedLaborTypeId.Value);
+            if (current != null)
+            {
+                matching.Insert(0, current);
+            }
+        }
+
+        return matching;
+    }
 
     protected override async Task OnInitializedAsync()
     {

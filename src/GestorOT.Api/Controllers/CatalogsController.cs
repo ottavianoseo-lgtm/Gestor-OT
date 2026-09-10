@@ -25,7 +25,7 @@ public class CatalogsController : ControllerBase
             .AsNoTracking()
             .OrderBy(lt => lt.Name)
             .Select(lt => new LaborTypeDto(
-                lt.Id, lt.Name, lt.Description, lt.ExternalErpId))
+                lt.Id, lt.Name, lt.Description, lt.ExternalErpId, lt.ExecutionMode))
             .ToListAsync(ct);
     }
 

@@ -1,5 +1,6 @@
 using GestorOT.Application.Interfaces;
 using GestorOT.Domain.Entities;
+using GestorOT.Domain.Enums;
 using GestorOT.Shared.Dtos;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -49,7 +50,7 @@ public class ErpConceptsController : ControllerBase
     }
 
     [HttpPost("{id:guid}/activate")]
-    public async Task<IActionResult> ActivateConcept(Guid id)
+    public async Task<IActionResult> ActivateConcept(Guid id, [FromQuery] LaborExecutionMode? mode = null)
     {
         var concept = await _context.ErpConcepts.FindAsync(id);
         if (concept == null) return NotFound();
@@ -66,7 +67,14 @@ public class ErpConceptsController : ControllerBase
                     Id = Guid.NewGuid(),
                     TenantId = concept.TenantId,
                     Name = concept.Description,
-                    ExternalErpId = concept.ExternalErpId
+                    // El subgrupo distingue las dos variantes que el ERP crea para la misma
+                    // tarea (por hectarea vs por UTA); sin el quedan dos filas iguales.
+                    Description = concept.SubGrupoConcepto,
+                    ExternalErpId = concept.ExternalErpId,
+                    // El subgrupo del ERP ya dice el modo ("... (CONTRATISTA)" / "... (MAQ
+                    // PROPIA)"), así que se deduce de ahí. El parámetro solo pisa esa
+                    // deducción, para los ERP donde el subgrupo no lo aclare.
+                    ExecutionMode = mode ?? LaborExecutionModeExtensions.InferFromErpSubGroup(concept.SubGrupoConcepto)
                 });
             }
         }

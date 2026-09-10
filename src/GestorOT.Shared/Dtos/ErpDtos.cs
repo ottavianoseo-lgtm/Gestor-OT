@@ -21,10 +21,46 @@ public record LaborTypeDto(
     Guid Id,
     string Name,
     string? Description,
-    string? ExternalErpId
+    string? ExternalErpId,
+    LaborExecutionMode? ExecutionMode = null
 )
 {
     public LaborTypeDto() : this(Guid.Empty, string.Empty, null, null) { }
+
+    /// <summary>
+    /// Nombre con el subgrupo del ERP pegado atras. El ERP repite la misma tarea en dos
+    /// subgrupos (por hectarea / por UTA) con codigos distintos, asi que sin esto quedan
+    /// dos filas identicas a la vista. Description guarda el subgrupo tal cual vino.
+    /// </summary>
+    [JsonIgnore]
+    public string DisplayName
+    {
+        get
+        {
+            var subGroup = ShortSubGroup;
+            return string.IsNullOrWhiteSpace(subGroup) ? Name : $"{Name} - {subGroup}";
+        }
+    }
+
+    /// <summary>Subgrupo sin el prefijo "LABORES ", que es redundante en un catalogo de labores.</summary>
+    [JsonIgnore]
+    public string? ShortSubGroup
+    {
+        get
+        {
+            var subGroup = Description?.Trim();
+            if (string.IsNullOrEmpty(subGroup)) return null;
+
+            const string redundantPrefix = "LABORES ";
+            if (subGroup.StartsWith(redundantPrefix, StringComparison.OrdinalIgnoreCase)
+                && subGroup.Length > redundantPrefix.Length)
+            {
+                subGroup = subGroup[redundantPrefix.Length..].Trim();
+            }
+
+            return subGroup;
+        }
+    }
 }
 
 public record CurrencyDto(

@@ -196,9 +196,21 @@ public class ErpSyncService : IErpSyncService
                 // 2. Sync to LaborTypes - Auto-create/update all labor concepts
                 if (grupo.Contains("LABOR", StringComparison.OrdinalIgnoreCase))
                 {
+                    // El match es por codigo ERP y nada mas. El ERP repite la misma tarea en dos
+                    // subgrupos (por hectarea = contratista, por UTA = maquinaria propia) con
+                    // codConcepto distinto; si se matcheara tambien por nombre, la segunda
+                    // variante encontraria la fila de la primera y le pisaria el ExternalErpId,
+                    // dejando un solo LaborType donde tienen que existir los dos.
                     var laborType = await _context.LaborTypes
                         .IgnoreQueryFilters()
-                        .Where(l => l.TenantId == tenantId && (l.ExternalErpId == externalId || l.Name == item.Descripcion))
+                        .Where(l => l.TenantId == tenantId && l.ExternalErpId == externalId)
+                        .FirstOrDefaultAsync(ct);
+
+                    // Los tipos cargados a mano no tienen codigo ERP: a esos si se los adopta
+                    // por nombre, porque no hay gemelo con el que confundirlos.
+                    laborType ??= await _context.LaborTypes
+                        .IgnoreQueryFilters()
+                        .Where(l => l.TenantId == tenantId && l.ExternalErpId == null && l.Name == item.Descripcion)
                         .FirstOrDefaultAsync(ct);
 
                     if (laborType == null)
@@ -209,7 +221,11 @@ public class ErpSyncService : IErpSyncService
                             TenantId = tenantId,
                             Name = item.Descripcion,
                             ExternalErpId = externalId,
-                            Description = !string.IsNullOrWhiteSpace(subGrupo) ? subGrupo : grupo
+                            Description = !string.IsNullOrWhiteSpace(subGrupo) ? subGrupo : grupo,
+                            // El subgrupo ya dice el modo, asi que se deduce aca: si no, cada
+                            // sincronizacion mete tipos sin clasificar y el filtro de labores
+                            // deja de filtrar.
+                            ExecutionMode = LaborExecutionModeExtensions.InferFromErpSubGroup(subGrupo)
                         };
                         _context.LaborTypes.Add(laborType);
                     }
@@ -221,6 +237,10 @@ public class ErpSyncService : IErpSyncService
                         {
                             laborType.Description = !string.IsNullOrWhiteSpace(subGrupo) ? subGrupo : grupo;
                         }
+
+                        // Solo se completa si esta vacio: un modo puesto a mano desde la pantalla
+                        // de tipos no se pisa en la proxima sincronizacion.
+                        laborType.ExecutionMode ??= LaborExecutionModeExtensions.InferFromErpSubGroup(subGrupo);
                     }
                 }
 

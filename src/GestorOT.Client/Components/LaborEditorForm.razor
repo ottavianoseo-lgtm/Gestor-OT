@@ -40,6 +40,22 @@
                 </MessageTemplate>
             </Alert>
         }
+        <FormItem Label="¿Labor propia o de contratista?">
+            <div style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap;">
+                <RadioGroup Value="@_model.IsExternalBilling" TValue="bool" ValueChanged="OnExecutionModeChanged" ButtonStyle="RadioButtonStyle.Solid">
+                    <RadioButton Value="@false">Propia</RadioButton>
+                    <RadioButton Value="@true">Contratista</RadioButton>
+                </RadioGroup>
+                <span style="color: var(--text-secondary); font-size: 12px;">
+                    Filtra el catálogo de tareas: @FilteredLaborTypes.Count de @_laborTypes.Count
+                    @if (_unclassifiedLaborTypeCount > 0)
+                    {
+                        <span> (incluye @_unclassifiedLaborTypeCount sin clasificar)</span>
+                    }
+                </span>
+            </div>
+        </FormItem>
+
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
             <FormItem Label="Campo (Filtro)">
                 <Select TItemValue="Guid" TItem="FieldDto" @bind-Value="_filterFieldId"
@@ -116,10 +132,19 @@
 
             <FormItem Label="Tipo de Labor (Tarea)" Style="@(HasError("laborType") ? "border: 1px solid #E74C3C; border-radius: 8px; padding: 8px;" : "")">
                 <Select TItemValue="Guid" TItem="LaborTypeDto" @bind-Value="_model.LaborTypeId"
-                        Placeholder="Seleccionar tipo de labor" EnableSearch
-                        LabelName="@nameof(LaborTypeDto.Name)" ValueName="@nameof(LaborTypeDto.Id)"
-                        DataSource="@_laborTypes">
+                        Placeholder="@(FilteredLaborTypes.Count == 0 ? "Sin tareas para este modo" : "Seleccionar tipo de labor")"
+                        EnableSearch
+                        ItemLabel="x => x.DisplayName" ItemValue="x => x.Id"
+                        DataSource="@FilteredLaborTypes">
                 </Select>
+                @if (_laborTypes.Count > 0 && FilteredLaborTypes.Count == 0)
+                {
+                    <div style="color: #FAAD14; font-size: 11px; margin-top: 4px;">
+                        <Icon Type="warning" /> No hay tareas marcadas como
+                        @(_model.IsExternalBilling ? "de contratista" : "propias") en el catálogo.
+                        Clasificalas en Admin &gt; Tipos de Labor.
+                    </div>
+                }
                 @if (HasError("laborType"))
                 {
                     <div style="color: #E74C3C; font-size: 11px; margin-top: 4px;">@GetError("laborType")</div>
@@ -138,11 +163,16 @@
                             <SelectOption TItemValue="Guid?" TItem="ContactDto" Value="@((Guid?)contact.Id)" Label="@contact.FullName" />
                         }
                     </Select>
-                    <RadioGroup @bind-Value="_model.IsExternalBilling">
-                        <Radio Value="@false">Propio</Radio>
-                        <Radio Value="@true">Contratista</Radio>
-                    </RadioGroup>
                 </div>
+                @if (_contactRoleMismatch)
+                {
+                    <div style="color: #FAAD14; font-size: 11px; margin-top: 4px;">
+                        <Icon Type="warning" /> El responsable elegido es
+                        @(_model.IsExternalBilling ? "staff interno" : "contratista"),
+                        y arriba marcaste la labor como @(_model.IsExternalBilling ? "de contratista" : "propia").
+                        Revisá si es correcto.
+                    </div>
+                }
                 @if (HasError("contact"))
                 {
                     <div style="color: #E74C3C; font-size: 11px; margin-top: 4px;">@GetError("contact")</div>
@@ -356,6 +386,39 @@
             : _allFieldsRaw.OrderBy(f => f.Name).ToList();
     private Guid _filterFieldId;
     private List<LaborTypeDto> _laborTypes = new();
+    private bool _contactRoleMismatch;
+
+    /// <summary>
+    /// Tareas que sirven para el modo elegido arriba. Los tipos sin clasificar entran en
+    /// los dos modos, así los que ya estaban activados antes de este campo no desaparecen.
+    /// </summary>
+    private List<LaborTypeDto> FilteredLaborTypes
+    {
+        get
+        {
+            var requested = _model.IsExternalBilling
+                ? LaborExecutionMode.Contractor
+                : LaborExecutionMode.Own;
+
+            var matching = _laborTypes.Where(t => t.ExecutionMode.MatchesFilter(requested)).ToList();
+
+            // La tarea ya guardada siempre queda en la lista, aunque no coincida con el modo:
+            // al editar una labor vieja, si no está el select se muestra vacío y se puede
+            // guardar sin tarea sin que el usuario lo note.
+            if (_model.LaborTypeId != Guid.Empty && matching.All(t => t.Id != _model.LaborTypeId))
+            {
+                var current = _laborTypes.FirstOrDefault(t => t.Id == _model.LaborTypeId);
+                if (current != null)
+                {
+                    matching.Insert(0, current);
+                }
+            }
+
+            return matching;
+        }
+    }
+
+    private int _unclassifiedLaborTypeCount => _laborTypes.Count(t => t.ExecutionMode is null);
     private List<ErpActivityDto> _activities = new();
     private List<InventoryDto> _inventories = new();
     private List<ContactDto> _contacts = new();
@@ -764,10 +827,34 @@
     private void OnContactChanged(ContactDto contact)
     {
         ClearError("contact");
-        if (contact != null)
+        // El modo propio/contratista se elige arriba y manda: acá solo se avisa si el
+        // responsable elegido no concuerda, sin pisar la decisión del usuario.
+        _contactRoleMismatch = contact != null
+            && (contact.Role == ContactRole.Contractor) != _model.IsExternalBilling;
+    }
+
+    private void OnExecutionModeChanged(bool isExternalBilling)
+    {
+        _model.IsExternalBilling = isExternalBilling;
+
+        // Al cambiar el modo a propósito, la tarea que no pertenece al modo nuevo se limpia
+        // para no guardar una labor propia con una tarea de contratista (o viceversa).
+        // Se compara contra el modo del tipo, no contra FilteredLaborTypes, porque esa lista
+        // arrastra la tarea ya guardada justamente para no perderla al editar.
+        var requested = isExternalBilling
+            ? LaborExecutionMode.Contractor
+            : LaborExecutionMode.Own;
+
+        var selected = _laborTypes.FirstOrDefault(t => t.Id == _model.LaborTypeId);
+        if (selected != null && !selected.ExecutionMode.MatchesFilter(requested))
         {
-            _model.IsExternalBilling = contact.Role == ContactRole.Contractor;
+            _model.LaborTypeId = Guid.Empty;
+            ClearError("laborType");
         }
+
+        var contact = _contacts.FirstOrDefault(c => c.Id == _model.ContactId);
+        _contactRoleMismatch = contact != null
+            && (contact.Role == ContactRole.Contractor) != isExternalBilling;
     }
 
     private async Task OnLotChanged(CampaignLotDto lot)

@@ -1,5 +1,6 @@
 using GestorOT.Application.Interfaces;
 using GestorOT.Domain.Entities;
+using GestorOT.Domain.Enums;
 using GestorOT.Shared.Dtos;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -45,7 +46,8 @@ public class LaborTypesController : ControllerBase
                 lt.Id,
                 lt.Name,
                 lt.Description,
-                lt.ExternalErpId
+                lt.ExternalErpId,
+                lt.ExecutionMode
             ))
             .ToListAsync();
 
@@ -62,7 +64,8 @@ public class LaborTypesController : ControllerBase
                 lt.Id,
                 lt.Name,
                 lt.Description,
-                lt.ExternalErpId
+                lt.ExternalErpId,
+                lt.ExecutionMode
             ))
             .FirstOrDefaultAsync();
 
@@ -78,13 +81,14 @@ public class LaborTypesController : ControllerBase
             Id = Guid.NewGuid(),
             Name = dto.Name.Trim(),
             Description = dto.Description,
-            ExternalErpId = dto.ExternalErpId
+            ExternalErpId = dto.ExternalErpId,
+            ExecutionMode = dto.ExecutionMode
         };
 
         _context.LaborTypes.Add(item);
         await _context.SaveChangesAsync();
 
-        var result = new LaborTypeDto(item.Id, item.Name, item.Description, item.ExternalErpId);
+        var result = new LaborTypeDto(item.Id, item.Name, item.Description, item.ExternalErpId, item.ExecutionMode);
         return CreatedAtAction(nameof(GetLaborType), new { id = item.Id }, result);
     }
 
@@ -97,7 +101,19 @@ public class LaborTypesController : ControllerBase
         item.Name = dto.Name.Trim();
         item.Description = dto.Description;
         item.ExternalErpId = dto.ExternalErpId;
+        item.ExecutionMode = dto.ExecutionMode;
 
+        await _context.SaveChangesAsync();
+        return NoContent();
+    }
+
+    [HttpPatch("{id:guid}/execution-mode")]
+    public async Task<IActionResult> SetExecutionMode(Guid id, [FromQuery] LaborExecutionMode? mode)
+    {
+        var item = await _context.LaborTypes.FindAsync(id);
+        if (item == null) return NotFound();
+
+        item.ExecutionMode = mode;
         await _context.SaveChangesAsync();
         return NoContent();
     }

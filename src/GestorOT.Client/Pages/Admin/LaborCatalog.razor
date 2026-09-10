@@ -1,5 +1,6 @@
 @page "/admin/labor-catalog"
 @using GestorOT.Shared.Dtos
+@using GestorOT.Domain.Enums
 @using System.Net.Http.Json
 @using AntDesign
 @inject HttpClient Http
@@ -43,8 +44,8 @@
         <ActionColumn Title="Acciones" Width="120">
             @if (!context.IsActivated)
             {
-                <Button Type="@ButtonType.Primary" Size="@ButtonSize.Small" Ghost 
-                        OnClick="() => Activate(context)" Loading="_processingId == context.Id">
+                <Button Type="@ButtonType.Primary" Size="@ButtonSize.Small" Ghost
+                        OnClick="() => AskModeAndActivate(context)" Loading="_processingId == context.Id">
                     Activar
                 </Button>
             }
@@ -59,12 +60,47 @@
     </Table>
 </div>
 
+<Modal Title="@($"Activar «{_pendingConcept?.Description}»")"
+       Visible="_modeModalVisible"
+       OnOk="ConfirmActivate"
+       OnCancel="() => _modeModalVisible = false"
+       OkText="@("Activar")"
+       ConfirmLoading="_processingId != null"
+       Width="480">
+    <p style="color: var(--text-secondary); margin-bottom: 16px;">
+        El ERP guarda un código distinto para la versión propia y la de contratista de la misma
+        labor. Las labores nuevas van a ver esta tarea solo en el modo que elijas acá.
+    </p>
+    @if (_inferredMode is not null)
+    {
+        <p style="color: #2ECC71; font-size: 12px; margin-bottom: 12px;">
+            <Icon Type="check-circle" /> Deducido del subgrupo del ERP
+            («@_pendingConcept?.SubGrupoConcepto»). Cambialo solo si está mal.
+        </p>
+    }
+    else
+    {
+        <p style="color: #F39C12; font-size: 12px; margin-bottom: 12px;">
+            <Icon Type="warning" /> El subgrupo del ERP no aclara el modo, elegilo a mano.
+        </p>
+    }
+    <RadioGroup @bind-Value="_pendingMode" TValue="LaborExecutionMode" ButtonStyle="RadioButtonStyle.Solid">
+        <RadioButton Value="@LaborExecutionMode.Own">Propia</RadioButton>
+        <RadioButton Value="@LaborExecutionMode.Contractor">Contratista</RadioButton>
+    </RadioGroup>
+</Modal>
+
 @code {
     private List<ErpConceptDto> _concepts = new();
     private bool _loading = true;
     private bool _syncing;
     private string _search = "";
     private Guid? _processingId;
+
+    private bool _modeModalVisible;
+    private ErpConceptDto? _pendingConcept;
+    private LaborExecutionMode _pendingMode = LaborExecutionMode.Own;
+    private LaborExecutionMode? _inferredMode;
 
     private IEnumerable<ErpConceptDto> FilteredConcepts => 
         string.IsNullOrWhiteSpace(_search) 
@@ -120,12 +156,32 @@
         }
     }
 
-    private async Task Activate(ErpConceptDto concept)
+    private void AskModeAndActivate(ErpConceptDto concept)
+    {
+        _pendingConcept = concept;
+        // El subgrupo del ERP casi siempre lo dice, así que el modal llega resuelto y solo
+        // hay que confirmar. Si el subgrupo no aclara nada, queda en Propia por defecto.
+        _inferredMode = LaborExecutionModeExtensions.InferFromErpSubGroup(concept.SubGrupoConcepto);
+        _pendingMode = _inferredMode ?? LaborExecutionMode.Own;
+        _modeModalVisible = true;
+    }
+
+    private async Task ConfirmActivate()
+    {
+        if (_pendingConcept == null) return;
+
+        var concept = _pendingConcept;
+        _modeModalVisible = false;
+        await Activate(concept, _pendingMode);
+        _pendingConcept = null;
+    }
+
+    private async Task Activate(ErpConceptDto concept, LaborExecutionMode mode)
     {
         _processingId = concept.Id;
         try
         {
-            var response = await Http.PostAsync($"api/erpconcepts/{concept.Id}/activate", null);
+            var response = await Http.PostAsync($"api/erpconcepts/{concept.Id}/activate?mode={mode}", null);
             if (response.IsSuccessStatusCode)
             {
                 Message.Success($"{concept.Description} activada.");
