@@ -8,6 +8,9 @@ namespace GestorOT.Api.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
+// Anónimo por definición: login es la puerta de entrada, logout tiene que funcionar aunque el
+// token ya venció, y "me" es cómo el cliente averigua si hay sesión.
+[AllowAnonymous]
 public class AuthController : ControllerBase
 {
     private readonly IAuthService _authService;

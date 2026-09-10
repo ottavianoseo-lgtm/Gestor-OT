@@ -4,6 +4,7 @@ using GestorOT.Application.Interfaces;
 using GestorOT.Domain.Entities;
 using GestorOT.Domain.Enums;
 using GestorOT.Shared.Dtos;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.EntityFrameworkCore;
@@ -58,6 +59,7 @@ public class ShareController : ControllerBase
         return new ShareLinkDto(publicUrl, sharedToken.ExpiresAt);
     }
 
+    [AllowAnonymous] // El contratista abre el link sin cuenta: el token es la credencial.
     [HttpGet("validate/{token}")]
     public async Task<ActionResult<PublicWorkOrderDto>> ValidateToken(string token)
     {
@@ -172,6 +174,7 @@ public class ShareController : ControllerBase
         );
     }
 
+    [AllowAnonymous] // Idem: la autorizacion la da el token, que se valida adentro.
     [HttpPost("realize/{token}/labor/{laborId:guid}")]
     [IgnoreAntiforgeryToken]
     public async Task<IActionResult> RealizeLaborPublic(string token, Guid laborId, [FromBody] PublicLaborExecutionRequest request)
@@ -277,6 +280,7 @@ public class ShareController : ControllerBase
         return NoContent();
     }
 
+    [AllowAnonymous] // Flujo del HTML exportado, tambien autenticado por token en el body.
     [HttpPost("realize-from-html")]
     [IgnoreAntiforgeryToken]
     public async Task<IActionResult> RealizeFromHtml([FromBody] HtmlExecutionRequest request)
@@ -375,6 +379,7 @@ public class ShareController : ControllerBase
 
     // Endpoint público para que el contratista adjunte un archivo a una labor
     // No requiere autenticación — el token actúa como credencial
+    [AllowAnonymous] // Adjuntos que sube el contratista desde el link.
     [HttpPost("upload-file/{token}/labor/{laborId:guid}")]
     [IgnoreAntiforgeryToken]
     [DisableRequestSizeLimit]

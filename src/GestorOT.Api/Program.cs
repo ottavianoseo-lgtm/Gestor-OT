@@ -91,7 +91,14 @@ else
     app.UseExceptionHandler("/Error", createScopeForErrors: true);
 }
 
-app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true);
+// Solo para las rutas de la app, nunca para /api. Re-ejecutar el pipeline en /not-found hace
+// que la respuesta de error de la API se reescriba: un 401 en un POST volvia como 400 de
+// antiforgery (porque /not-found sí pasa por ese middleware) y en un PUT o DELETE como 405.
+// El cliente no podia distinguir "falta sesión" de "pedido mal formado".
+app.UseWhen(context => !context.Request.Path.StartsWithSegments("/api"), appBuilder =>
+{
+    appBuilder.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true);
+});
 app.UseStaticFiles();
 app.UseRouting();
 app.UseAuthentication();
@@ -116,7 +123,12 @@ app.Use(async (context, next) =>
 });
 
 app.MapGroup("/api").DisableAntiforgery();
-app.MapControllers();
+
+// Toda la API exige sesión. Se aplica solo a los controllers y no como FallbackPolicy global
+// porque el fallback alcanzaría también a los endpoints de Blazor, y entonces no se podría
+// cargar ni la pantalla de login. Las excepciones van con [AllowAnonymous]: AuthController y
+// los endpoints de ShareController que el contratista abre con token en vez de sesión.
+app.MapControllers().RequireAuthorization();
 app.MapStaticAssets();
 app.MapRazorComponents<GestorOT.Api.Components.App>()
     .AddInteractiveWebAssemblyRenderMode()
