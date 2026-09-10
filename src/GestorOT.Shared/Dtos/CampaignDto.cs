@@ -55,7 +55,8 @@ public record CampaignLotDto(
     decimal CadastralArea,
     decimal ProductiveArea,
     Guid? CropId,
-    string? CampaignName = null
+    string? CampaignName = null,
+    long? CodCentro = null
 )
 {
     public CampaignLotDto() : this(Guid.Empty, Guid.Empty, Guid.Empty, null, null, null, 0, 0, null, null) { }

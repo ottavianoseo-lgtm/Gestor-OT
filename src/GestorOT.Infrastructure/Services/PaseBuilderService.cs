@@ -41,6 +41,7 @@ public sealed class PaseBuilderService : IPaseBuilderService
             .Include(l => l.WorkOrder)
             .Include(l => l.Contact)
             .Include(l => l.Lot)
+            .Include(l => l.CampaignLot)
             .Include(l => l.Supplies).ThenInclude(s => s.Supply)
             .Where(l => l.TenantId == tenantId && l.WorkOrderId != null && workOrderIds.Contains(l.WorkOrderId.Value))
             .ToListAsync(ct);
@@ -50,6 +51,7 @@ public sealed class PaseBuilderService : IPaseBuilderService
             .Include(l => l.WorkOrder)
             .Include(l => l.Contact)
             .Include(l => l.Lot)
+            .Include(l => l.CampaignLot)
             .Include(l => l.Supplies).ThenInclude(s => s.Supply)
             .Where(l => l.TenantId == tenantId && laborIds.Contains(l.Id))
             .ToListAsync(ct);
@@ -140,6 +142,22 @@ public sealed class PaseBuilderService : IPaseBuilderService
                 continue;
             }
 
+            // El centro de costo es el lote, no el tipo de labor. Se resuelve como en
+            // Ganaderia (registro pisa plantilla): la campania pisa al lote, y el lote pisa a
+            // la config. Sin esto toda labor del mismo tipo imputaba al mismo centro sin
+            // importar donde se hizo, y el pase no servia para costo por lote.
+            long? codCentroDebe = labor.CampaignLot?.CodCentro
+                ?? labor.Lot?.CodCentro
+                ?? config.CodCuentaDebeCentro;
+            long? codCentroHaber = labor.CampaignLot?.CodCentro
+                ?? labor.Lot?.CodCentro
+                ?? config.CodCuentaHaberCentro;
+
+            if (!config.NoImputaCentro && codCentroDebe is null && codCentroHaber is null)
+            {
+                warnings.Add($"Labor {labor.Id} ({labor.Type?.Name ?? "Sin Tipo"}) en lote {labor.Lot?.Name ?? "S/N"}: el comprobante imputa centro pero el lote no tiene centro asignado y la regla contable tampoco. Asignale el centro al lote.");
+            }
+
             // Resolve ErpConcept for LaborType
             long codConcepto = 0;
             string? codigoConcepto = null;
@@ -209,8 +227,8 @@ public sealed class PaseBuilderService : IPaseBuilderService
                 CodPerfilImputacionHaber = config.CodPerfilHaber,
                 CodCuentaDebeGestion = config.CodCuentaDebeGestion,
                 CodCuentaHaberGestion = config.CodCuentaHaberGestion,
-                CodCuentaDebeCentro = config.CodCuentaDebeCentro,
-                CodCuentaHaberCentro = config.CodCuentaHaberCentro,
+                CodCuentaDebeCentro = codCentroDebe,
+                CodCuentaHaberCentro = codCentroHaber,
                 CodCuentaDebeContabilidad = config.CodCuentaDebeContabilidad,
                 CodCuentaHaberContabilidad = config.CodCuentaHaberContabilidad,
                 CodCuentaDebeAuxiliar = config.CodCuentaDebeAuxiliar,
@@ -261,8 +279,8 @@ public sealed class PaseBuilderService : IPaseBuilderService
                     CodPerfilImputacionHaber = config.CodPerfilHaber,
                     CodCuentaDebeGestion = config.CodCuentaDebeGestion,
                     CodCuentaHaberGestion = config.CodCuentaHaberGestion,
-                    CodCuentaDebeCentro = config.CodCuentaDebeCentro,
-                    CodCuentaHaberCentro = config.CodCuentaHaberCentro,
+                    CodCuentaDebeCentro = codCentroDebe,
+                    CodCuentaHaberCentro = codCentroHaber,
                     CodCuentaDebeContabilidad = config.CodCuentaDebeContabilidad,
                     CodCuentaHaberContabilidad = config.CodCuentaHaberContabilidad,
                     CodCuentaDebeAuxiliar = config.CodCuentaDebeAuxiliar,
@@ -367,6 +385,7 @@ public sealed class PaseBuilderService : IPaseBuilderService
             .AsNoTracking()
             .Include(l => l.Type)
             .Include(l => l.Lot)
+            .Include(l => l.CampaignLot)
             .Where(l => l.TenantId == tenantId && l.WorkOrderId == null)
             .ToListAsync(ct);
 

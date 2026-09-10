@@ -144,7 +144,8 @@ public class LotsController : ControllerBase
             Name = dto.Name,
             Status = dto.Status,
             Geometry = geometry,
-            CadastralArea = cadastralArea
+            CadastralArea = cadastralArea,
+            CodCentro = dto.CodCentro
         };
 
         _context.Lots.Add(lot);
@@ -168,7 +169,7 @@ public class LotsController : ControllerBase
         await _context.SaveChangesAsync();
 
         return CreatedAtAction(nameof(GetLot), new { id = lot.Id },
-            new LotDto(lot.Id, lot.FieldId, lot.Name, lot.Status, dto.WktGeometry, null, areaHa, lot.CadastralArea));
+            new LotDto(lot.Id, lot.FieldId, lot.Name, lot.Status, dto.WktGeometry, null, areaHa, lot.CadastralArea, lot.CodCentro));
     }
 
     [HttpPut("{id:guid}")]
@@ -181,6 +182,7 @@ public class LotsController : ControllerBase
         lot.Name = dto.Name;
         lot.Status = dto.Status;
         lot.FieldId = dto.FieldId;
+        lot.CodCentro = dto.CodCentro;
 
         if (!string.IsNullOrEmpty(dto.WktGeometry))
         {

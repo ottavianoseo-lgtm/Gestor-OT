@@ -35,7 +35,8 @@ public class LotQueryService : ILotQueryService
             l.Geometry != null ? writer.Write(l.Geometry) : null,
             l.Field?.Name,
             areaMap.GetValueOrDefault(l.Id, 0),
-            l.CadastralArea
+            l.CadastralArea,
+            l.CodCentro
         )).ToList();
     }
 
@@ -60,7 +61,8 @@ public class LotQueryService : ILotQueryService
             lot.Geometry != null ? writer.Write(lot.Geometry) : null,
             lot.Field?.Name,
             areaHa,
-            lot.CadastralArea
+            lot.CadastralArea,
+            lot.CodCentro
         );
     }
 

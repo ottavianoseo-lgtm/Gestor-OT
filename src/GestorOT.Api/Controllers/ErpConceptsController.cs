@@ -53,8 +53,39 @@ public class ErpConceptsController : ControllerBase
             c.SubGrupoConcepto,
             c.ExternalErpId,
             c.LastSyncDate,
-            activatedLaborIds.Contains(c.ExternalErpId) || activatedInventoryIds.Contains(c.ExternalErpId)
+            activatedLaborIds.Contains(c.ExternalErpId) || activatedInventoryIds.Contains(c.ExternalErpId),
+            c.ExecutionMode
         )).ToList();
+    }
+
+    /// <summary>
+    /// Marca un concepto como propio o de contratista sin activarlo ni desactivarlo. Se
+    /// puede clasificar antes de que exista el LaborType (queda guardado acá y se usa como
+    /// default cuando se active) y, si ya está activado, se propaga al LaborType para que el
+    /// filtro de "Tipo de Labor (Tarea)" del editor lo vea sin pasar por Desactivar+Activar.
+    /// </summary>
+    [HttpPatch("{id:guid}/execution-mode")]
+    public async Task<IActionResult> SetExecutionMode(Guid id, [FromQuery] LaborExecutionMode? mode)
+    {
+        var concept = await _context.ErpConcepts.FindAsync(id);
+        if (concept == null) return NotFound();
+
+        concept.ExecutionMode = mode;
+
+        if (concept.ExternalErpId != null)
+        {
+            var laborTypes = await _context.LaborTypes
+                .Where(l => l.ExternalErpId == concept.ExternalErpId)
+                .ToListAsync();
+
+            foreach (var laborType in laborTypes)
+            {
+                laborType.ExecutionMode = mode;
+            }
+        }
+
+        await _context.SaveChangesAsync();
+        return Ok();
     }
 
     [HttpPost("{id:guid}/activate")]
@@ -70,6 +101,18 @@ public class ErpConceptsController : ControllerBase
             var exists = await _context.LaborTypes.AnyAsync(l => l.ExternalErpId == concept.ExternalErpId);
             if (!exists)
             {
+                // Precedencia: lo que se pasó en esta llamada (el modal de activación),
+                // despues lo que ya se marcó en la columna "Propia" del catálogo, y recién
+                // ahí lo que el subgrupo del ERP deduce solo ("... (CONTRATISTA)" / "... (MAQ
+                // PROPIA)").
+                var resolvedMode = mode
+                    ?? concept.ExecutionMode
+                    ?? LaborExecutionModeExtensions.InferFromErpSubGroup(concept.SubGrupoConcepto);
+
+                // Se deja el concepto en sync con lo que terminó decidiendo el LaborType, para
+                // que la columna "Propia" del catálogo no muestre algo distinto de lo activado.
+                concept.ExecutionMode = resolvedMode;
+
                 _context.LaborTypes.Add(new LaborType
                 {
                     Id = Guid.NewGuid(),
@@ -79,10 +122,7 @@ public class ErpConceptsController : ControllerBase
                     // tarea (por hectarea vs por UTA); sin el quedan dos filas iguales.
                     Description = concept.SubGrupoConcepto,
                     ExternalErpId = concept.ExternalErpId,
-                    // El subgrupo del ERP ya dice el modo ("... (CONTRATISTA)" / "... (MAQ
-                    // PROPIA)"), así que se deduce de ahí. El parámetro solo pisa esa
-                    // deducción, para los ERP donde el subgrupo no lo aclare.
-                    ExecutionMode = mode ?? LaborExecutionModeExtensions.InferFromErpSubGroup(concept.SubGrupoConcepto)
+                    ExecutionMode = resolvedMode
                 });
             }
         }

@@ -1,3 +1,5 @@
+using GestorOT.Domain.Enums;
+
 namespace GestorOT.Shared.Dtos;
 
 public record ErpConceptDto(
@@ -10,7 +12,8 @@ public record ErpConceptDto(
     string? SubGrupoConcepto,
     string? ExternalErpId,
     DateTime LastSyncDate,
-    bool IsActivated = false
+    bool IsActivated = false,
+    LaborExecutionMode? ExecutionMode = null
 )
 {
     public ErpConceptDto() : this(Guid.Empty, string.Empty, 0, null, null, null, null, null, DateTime.MinValue) { }

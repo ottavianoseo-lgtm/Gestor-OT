@@ -6,6 +6,7 @@
 @inject HttpClient Http
 @inject IMessageService Message
 @inject GestorOT.Client.Services.TenantState TenantState
+@inject GestorOT.Client.Services.CatalogCache CatalogCache
 
 <PageTitle>Tipo de Labores - Admin</PageTitle>
 
@@ -31,6 +32,19 @@
         <PropertyColumn Property="c => c.Description" Title="Descripción" Sortable />
         <PropertyColumn Property="c => c.SubGrupoConcepto" Title="Subgrupo" Sortable />
         <PropertyColumn Property="c => c.UnitA" Title="Unidad" Width="80" />
+        @* Independiente de Activar/Desactivar a propósito: antes el único lugar donde se
+           elegía Propia/Contratista era el modal que aparece al activar, así que cambiarla
+           después obligaba a desactivar y reactivar. Este checkbox pega directo al
+           concepto (y, si ya está activada, también al LaborType) sin tocar su estado. *@
+        <Column TData="bool" Title="Propia" Width="130">
+            <Checkbox Checked="@(context.ExecutionMode == LaborExecutionMode.Own)"
+                      CheckedChanged="@(isOwn => SetMode(context, isOwn ? LaborExecutionMode.Own : LaborExecutionMode.Contractor))"
+                      Disabled="_modeProcessingId == context.Id" />
+            @if (context.ExecutionMode is null)
+            {
+                <Tag Color="@AntDesign.TagColor.Orange" Style="margin-left: 8px;">Sin clasificar</Tag>
+            }
+        </Column>
         <Column TData="bool" Title="Estado">
             @if (context.IsActivated)
             {
@@ -99,6 +113,7 @@
     private bool _syncing;
     private string _search = "";
     private Guid? _processingId;
+    private Guid? _modeProcessingId;
 
     private bool _modeModalVisible;
     private ErpConceptDto? _pendingConcept;
@@ -253,4 +268,40 @@
     }
 
     private void OnSearch() => StateHasChanged();
+
+    private async Task SetMode(ErpConceptDto concept, LaborExecutionMode mode)
+    {
+        if (concept.ExecutionMode == mode) return;
+
+        _modeProcessingId = concept.Id;
+        try
+        {
+            var response = await Http.PatchAsync(
+                $"api/erpconcepts/{concept.Id}/execution-mode?mode={mode}", null);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                Message.Error($"No se pudo guardar el modo de «{concept.Description}».");
+                return;
+            }
+
+            var index = _concepts.FindIndex(c => c.Id == concept.Id);
+            if (index >= 0)
+            {
+                _concepts[index] = _concepts[index] with { ExecutionMode = mode };
+            }
+
+            // El editor de labores lee el catálogo de LaborTypes cacheado; sin esto el
+            // filtro Propia/Contratista sigue viendo el modo viejo hasta que vence el TTL.
+            CatalogCache.Invalidate("labor-types");
+        }
+        catch
+        {
+            Message.Error("Error de red al guardar el modo.");
+        }
+        finally
+        {
+            _modeProcessingId = null;
+        }
+    }
 }

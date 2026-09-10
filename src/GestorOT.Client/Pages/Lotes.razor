@@ -261,6 +261,22 @@
         </div>
 
         <div style="margin-top: 10px;">
+            <label style="display: block; color: rgba(255,255,255,0.6); font-size: 13px; margin-bottom: 8px;">
+                Centro de costo (ERP)
+            </label>
+            <Select TItemValue="long?" TItem="ErpAccountDto" @bind-Value="_formModel.CodCentro"
+                    Placeholder="@(_centros.Count == 0 ? "Sin centros cargados desde el ERP" : "Buscar centro...")"
+                    AllowClear EnableSearch Loading="_loadingCentros"
+                    DataSource="@_centros"
+                    ItemLabel="x => x.DisplayName" ItemValue="x => (long?)x.CodCuenta"
+                    Style="width: 100%;" />
+            <div style="color: rgba(255,255,255,0.4); font-size: 11px; margin-top: 4px;">
+                A esta cuenta imputan los pases G4 de las labores de este lote. Sin centro, la
+                imputación cae en la que traiga la regla contable del tipo de labor.
+            </div>
+        </div>
+
+        <div style="margin-top: 10px;">
             <RadioGroup @bind-Value="_formModel.Status">
                 <Radio Value="@("Active")" Style="color: #fff;">Activo</Radio>
                 <Radio Value="@("Inactive")" Style="color: #fff;">Inactivo</Radio>
@@ -410,6 +426,8 @@
     private List<LotDto> _lots = new();
     private List<FieldDto> _availableFields = new();
     private List<CampaignLotDto> _campaignLots = new();
+    private List<ErpAccountDto> _centros = new();
+    private bool _loadingCentros;
     private Dictionary<Guid, List<SurfaceHistoryDto>> _historyByLot = new();
     private bool _loading = true;
     private Table<LotDto>? _table;
@@ -463,6 +481,7 @@
         public Guid FieldId { get; set; }
         public string Status { get; set; } = "Active";
         public decimal CadastralArea { get; set; }
+        public long? CodCentro { get; set; }
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -480,6 +499,29 @@
         CampaignState.OnChange += OnCampaignChanged;
         TenantState.OnChange += OnCampaignChanged;
         await LoadData();
+        await LoadCentros();
+    }
+
+    /// <summary>
+    /// Cuentas del plan de centros del ERP. Se reusa el endpoint que ya alimentaba la
+    /// configuración contable de los pases, así el catálogo es exactamente el mismo.
+    /// </summary>
+    private async Task LoadCentros()
+    {
+        _loadingCentros = true;
+        try
+        {
+            _centros = await Http.GetFromJsonAsync<List<ErpAccountDto>>("api/pases/erp/cuentas/centro") ?? new();
+        }
+        catch
+        {
+            Message.Warning("No se pudieron cargar los centros del ERP.");
+        }
+        finally
+        {
+            _loadingCentros = false;
+            StateHasChanged();
+        }
     }
 
     private void OnCampaignChanged()
@@ -610,7 +652,8 @@
             Name = lot.Name,
             FieldId = lot.FieldId,
             Status = lot.Status,
-            CadastralArea = lot.CadastralArea
+            CadastralArea = lot.CadastralArea,
+            CodCentro = lot.CodCentro
         };
         
         await LoadLotCampaigns(lot.Id);
@@ -851,7 +894,8 @@
                 Name = _formModel.Name,
                 FieldId = _formModel.FieldId,
                 Status = _formModel.Status,
-                CadastralArea = _formModel.CadastralArea
+                CadastralArea = _formModel.CadastralArea,
+                CodCentro = _formModel.CodCentro
             };
 
             var dto = new LotDto(
@@ -862,7 +906,8 @@
                 existingWkt,
                 null,
                 0,
-                formSnapshot.CadastralArea
+                formSnapshot.CadastralArea,
+                formSnapshot.CodCentro
             );
 
             HttpResponseMessage response;

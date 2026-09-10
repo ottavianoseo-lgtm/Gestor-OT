@@ -8,7 +8,8 @@ public record LotDto(
     string? WktGeometry = null,
     string? FieldName = null,
     double Area = 0,
-    decimal CadastralArea = 0
+    decimal CadastralArea = 0,
+    long? CodCentro = null
 )
 {
     public LotDto() : this(Guid.Empty, Guid.Empty, string.Empty, "Active", null, null, 0, 0) { }
