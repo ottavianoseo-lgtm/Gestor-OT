@@ -85,8 +85,8 @@
         </p>
     }
     <RadioGroup @bind-Value="_pendingMode" TValue="LaborExecutionMode" ButtonStyle="RadioButtonStyle.Solid">
-        <RadioButton Value="@LaborExecutionMode.Own">Propia</RadioButton>
-        <RadioButton Value="@LaborExecutionMode.Contractor">Contratista</RadioButton>
+        <Radio TValue="LaborExecutionMode" Value="@LaborExecutionMode.Own" RadioButton="true">Propia</Radio>
+        <Radio TValue="LaborExecutionMode" Value="@LaborExecutionMode.Contractor" RadioButton="true">Contratista</Radio>
     </RadioGroup>
 </Modal>
 

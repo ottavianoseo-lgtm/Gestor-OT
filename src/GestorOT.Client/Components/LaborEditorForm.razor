@@ -43,8 +43,8 @@
         <FormItem Label="¿Labor propia o de contratista?">
             <div style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap;">
                 <RadioGroup Value="@_model.IsExternalBilling" TValue="bool" ValueChanged="OnExecutionModeChanged" ButtonStyle="RadioButtonStyle.Solid">
-                    <RadioButton Value="@false">Propia</RadioButton>
-                    <RadioButton Value="@true">Contratista</RadioButton>
+                    <Radio TValue="bool" Value="@false" RadioButton="true">Propia</Radio>
+                    <Radio TValue="bool" Value="@true" RadioButton="true">Contratista</Radio>
                 </RadioGroup>
                 <span style="color: var(--text-secondary); font-size: 12px;">
                     Filtra el catálogo de tareas: @FilteredLaborTypes.Count de @_laborTypes.Count

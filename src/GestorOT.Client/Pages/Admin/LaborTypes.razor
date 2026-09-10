@@ -47,8 +47,8 @@
             <RadioGroup Value="@context.ExecutionMode" TValue="LaborExecutionMode?" Size="@InputSize.Small"
                         ValueChanged="mode => SetMode(context, mode)"
                         Disabled="_savingId == context.Id">
-                <RadioButton Value="@(LaborExecutionMode.Own)">Propia</RadioButton>
-                <RadioButton Value="@(LaborExecutionMode.Contractor)">Contratista</RadioButton>
+                <Radio TValue="LaborExecutionMode?" Value="@(LaborExecutionMode.Own)" RadioButton="true">Propia</Radio>
+                <Radio TValue="LaborExecutionMode?" Value="@(LaborExecutionMode.Contractor)" RadioButton="true">Contratista</Radio>
             </RadioGroup>
             @if (context.ExecutionMode is null)
             {
