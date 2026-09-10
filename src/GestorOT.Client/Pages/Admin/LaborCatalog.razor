@@ -60,12 +60,15 @@
     </Table>
 </div>
 
+@* Visible va con binding de dos vias: el Modal avisa el cierre por VisibleChanged, y sin
+   delegate su estado interno se desincroniza del nuestro. Cuando eso pasa el wrapper queda
+   montado y la mascara invisible se come los clicks de toda la pagina. *@
 <Modal Title="@($"Activar «{_pendingConcept?.Description}»")"
-       Visible="_modeModalVisible"
+       @bind-Visible="_modeModalVisible"
        OnOk="ConfirmActivate"
-       OnCancel="() => _modeModalVisible = false"
+       OnCancel="CancelActivate"
        OkText="@("Activar")"
-       ConfirmLoading="_processingId != null"
+       ConfirmLoading="_confirming"
        Width="480">
     <p style="color: var(--text-secondary); margin-bottom: 16px;">
         El ERP guarda un código distinto para la versión propia y la de contratista de la misma
@@ -101,6 +104,7 @@
     private ErpConceptDto? _pendingConcept;
     private LaborExecutionMode _pendingMode = LaborExecutionMode.Own;
     private LaborExecutionMode? _inferredMode;
+    private bool _confirming;
 
     private IEnumerable<ErpConceptDto> FilteredConcepts => 
         string.IsNullOrWhiteSpace(_search) 
@@ -166,14 +170,33 @@
         _modeModalVisible = true;
     }
 
+    private void CancelActivate()
+    {
+        _modeModalVisible = false;
+        _pendingConcept = null;
+        _confirming = false;
+    }
+
     private async Task ConfirmActivate()
     {
-        if (_pendingConcept == null) return;
+        if (_pendingConcept == null || _confirming) return;
 
         var concept = _pendingConcept;
-        _modeModalVisible = false;
-        await Activate(concept, _pendingMode);
-        _pendingConcept = null;
+
+        // El modal se cierra recien cuando termina el trabajo, no antes: cerrarlo y despues
+        // await-ear dejaba el ConfirmLoading prendiendose y apagandose sobre un modal ya
+        // cerrado, y el wrapper podia quedar montado tapando la pagina.
+        _confirming = true;
+        try
+        {
+            await Activate(concept, _pendingMode);
+        }
+        finally
+        {
+            _confirming = false;
+            _modeModalVisible = false;
+            _pendingConcept = null;
+        }
     }
 
     private async Task Activate(ErpConceptDto concept, LaborExecutionMode mode)

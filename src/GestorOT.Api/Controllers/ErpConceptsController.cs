@@ -32,8 +32,16 @@ public class ErpConceptsController : ControllerBase
         var concepts = await query.ToListAsync();
 
         // Check which ones are already activated
-        var activatedLaborIds = await _context.LaborTypes.Select(l => l.ExternalErpId).ToListAsync();
-        var activatedInventoryIds = await _context.Inventories.Select(i => i.ExternalErpId).ToListAsync();
+        // Se excluyen los null: un LaborType cargado a mano no tiene codigo ERP, y con el null
+        // adentro Contains() marcaba como activado a cualquier concepto sin codigo.
+        var activatedLaborIds = await _context.LaborTypes
+            .Where(l => l.ExternalErpId != null)
+            .Select(l => l.ExternalErpId)
+            .ToListAsync();
+        var activatedInventoryIds = await _context.Inventories
+            .Where(i => i.ExternalErpId != null)
+            .Select(i => i.ExternalErpId)
+            .ToListAsync();
 
         return concepts.Select(c => new ErpConceptDto(
             c.Id,
@@ -112,16 +120,21 @@ public class ErpConceptsController : ControllerBase
 
         if (group.Contains("LABOR"))
         {
-            var laborType = await _context.LaborTypes
-                .FirstOrDefaultAsync(l => l.ExternalErpId == concept.ExternalErpId);
-            
-            if (laborType != null)
+            // Se saca la lista completa, no el primero: el sync viejo matcheaba por nombre y
+            // dejo pares de LaborTypes con el mismo ExternalErpId. Borrando uno solo, el
+            // gemelo sobrevivia y el concepto seguia figurando como activado aunque la
+            // respuesta fuera Ok.
+            var laborTypes = await _context.LaborTypes
+                .Where(l => l.ExternalErpId == concept.ExternalErpId)
+                .ToListAsync();
+
+            if (laborTypes.Count > 0)
             {
-                // Optional: Check if used in any labor before deleting
-                var isUsed = await _context.Labors.AnyAsync(l => l.LaborTypeId == laborType.Id);
+                var ids = laborTypes.Select(l => l.Id).ToList();
+                var isUsed = await _context.Labors.AnyAsync(l => ids.Contains(l.LaborTypeId));
                 if (isUsed) return BadRequest("No se puede desactivar una labor que ya está siendo usada en órdenes de trabajo.");
 
-                _context.LaborTypes.Remove(laborType);
+                _context.LaborTypes.RemoveRange(laborTypes);
             }
         }
         else if (group.Contains("INSUMO"))
