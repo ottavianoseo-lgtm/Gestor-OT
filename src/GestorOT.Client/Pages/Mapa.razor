@@ -360,17 +360,50 @@
     {
         <div style="margin-top: 12px;">
             <div style="font-size: 12px; color: rgba(255,255,255,0.5); margin-bottom: 8px;">
-                @_importResults.Count polígono(s) encontrado(s):
+                @VisibleImportResults.Count() de @_importResults.Count polígono(s)
+                @if (_importGroups.Count > 1)
+                {
+                    <span> en @_importGroups.Count shapefiles</span>
+                }
             </div>
-            @foreach (var result in _importResults)
+
+            @* Cuando el zip trae varios shapefiles, se agrupan para poder descartar uno entero
+               antes de vincular: el cliente suele mandar bundles duplicados (uno por lote) junto
+               al consolidado, y solo se quiere importar uno de los dos. *@
+            @foreach (var grupo in _importGroups)
             {
-                <div style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 10px; margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center;">
-                    <span style="color: rgba(255,255,255,0.8); font-size: 13px;">@(string.IsNullOrEmpty(result.Name) ? "Sin nombre" : result.Name)</span>
-                    <Button Size="@ButtonSize.Small" OnClick="() => LinkImportedToLot(result)"
-                            Style="border-radius: 6px; background: #9B59B620; border-color: #9B59B640; color: #9B59B6; font-size: 11px;">
-                        <Icon Type="link" Theme="IconThemeType.Outline" /> Vincular
-                    </Button>
-                </div>
+                var descartado = _discardedGroups.Contains(grupo.Name);
+                var delGrupo = _importResults.Where(r => r.SourceShapefile == grupo.Name).ToList();
+
+                @if (_importGroups.Count > 1)
+                {
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin: 10px 0 6px; padding: 6px 8px; background: rgba(255,255,255,0.03); border-radius: 6px;">
+                        <div>
+                            <span style="color: @(descartado ? "rgba(255,255,255,0.35)" : "#fff"); font-size: 13px; font-weight: 600;">@grupo.Name</span>
+                            <span style="color: rgba(255,255,255,0.4); font-size: 11px; margin-left: 6px;">
+                                @grupo.FeatureCount polígono(s) · @(grupo.SourceCrs ?? "sin .prj")
+                            </span>
+                        </div>
+                        <Button Size="@ButtonSize.Small" OnClick="() => ToggleGroup(grupo.Name)"
+                                Style="@($"border-radius: 6px; font-size: 11px; background: {(descartado ? "rgba(46,204,113,0.12)" : "rgba(231,76,60,0.12)")}; border-color: {(descartado ? "rgba(46,204,113,0.35)" : "rgba(231,76,60,0.35)")}; color: {(descartado ? "#2ECC71" : "#E74C3C")};")">
+                            @(descartado ? "Incluir" : "Descartar")
+                        </Button>
+                    </div>
+                }
+
+                @if (!descartado)
+                {
+                    @foreach (var result in delGrupo)
+                    {
+                        <div style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 10px; margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center;">
+                            <span style="color: rgba(255,255,255,0.8); font-size: 13px;">@(string.IsNullOrEmpty(result.Name) ? "Sin nombre" : result.Name)</span>
+                            <Button Size="@ButtonSize.Small" OnClick="() => LinkImportedToLot(result)"
+                                    Style="border-radius: 6px; background: #9B59B620; border-color: #9B59B640; color: #9B59B6; font-size: 11px;">
+                                <Icon Type="link" Theme="IconThemeType.Outline" /> Vincular
+                            </Button>
+                        </div>
+                    }
+                }
             }
         </div>
     }
@@ -880,6 +913,7 @@
     {
         public string Wkt { get; set; } = "";
         public string Name { get; set; } = "";
+        public string? SourceShapefile { get; set; }
     }
 
     private class MapBounds
@@ -1294,6 +1328,8 @@
         _importResults.Clear();
         _importWarnings.Clear();
         _importCrs = null;
+        _importGroups.Clear();
+        _discardedGroups.Clear();
         StateHasChanged();
 
         try
@@ -1353,6 +1389,29 @@
 
     private List<string> _importWarnings = new();
     private string? _importCrs;
+    private List<ShapefileGroupDto> _importGroups = new();
+    private HashSet<string> _discardedGroups = new();
+
+    /// <summary>Polígonos de los grupos que el usuario no descartó.</summary>
+    private IEnumerable<ImportResult> VisibleImportResults =>
+        _importResults.Where(r => r.SourceShapefile is null || !_discardedGroups.Contains(r.SourceShapefile));
+
+    private async Task ToggleGroup(string groupName)
+    {
+        if (!_discardedGroups.Remove(groupName))
+        {
+            _discardedGroups.Add(groupName);
+        }
+
+        // El mapa tiene que reflejar el descarte: si no, se siguen viendo polígonos que ya no
+        // se van a importar.
+        await JS.InvokeVoidAsync("mapInterop.clearDrawn");
+        foreach (var f in VisibleImportResults)
+        {
+            await JS.InvokeAsync<bool>("mapInterop.addImportedPolygon", f.Wkt, f.Name);
+        }
+        await JS.InvokeAsync<bool>("mapInterop.fitImportedBounds");
+    }
 
     private async Task ImportShapefileAsync(IBrowserFile file)
     {
@@ -1379,6 +1438,8 @@
 
         _importCrs = result.SourceCrs;
         _importWarnings = result.Warnings ?? new();
+        _importGroups = result.Groups ?? new();
+        _discardedGroups.Clear();
 
         if (result.Features.Count == 0)
         {
@@ -1387,7 +1448,7 @@
         }
 
         _importResults = result.Features
-            .Select(f => new ImportResult { Wkt = f.Wkt, Name = f.Name })
+            .Select(f => new ImportResult { Wkt = f.Wkt, Name = f.Name, SourceShapefile = f.SourceShapefile })
             .ToList();
 
         foreach (var feature in _importResults)

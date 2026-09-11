@@ -16,11 +16,11 @@ namespace GestorOT.Tests.Regression;
 /// como llegan los archivos del cliente— eso producía un lote con la geometría de un polígono y
 /// los atributos de otro, sin ningún aviso.
 ///
-/// Ahora las entradas se agrupan por nombre base antes de elegir, y si hay más de un shapefile
-/// se falla en vez de adivinar.
+/// Las entradas se agrupan por nombre base antes de elegir nada, así cada shapefile conserva sus
+/// propios componentes. OT-47 además los importa a todos en vez de quedarse con uno.
 ///
-/// Estos tests cubren el armado del zip y la elección de componentes, que es donde estaba el
-/// defecto. No llegan a la reproyección, que necesita PostGIS.
+/// Estos tests cubren el agrupamiento, que es donde estaba el defecto. La reproyección necesita
+/// PostGIS y se verifica aparte.
 /// </summary>
 public class ShapefileZipGroupingTests
 {
@@ -93,25 +93,36 @@ public class ShapefileZipGroupingTests
         new(context: null!, NullLogger<ShapefileImportService>.Instance);
 
     [Fact]
-    public async Task UnZipConVariosShapefiles_Falla_YListaLosQueEncontro()
+    public void UnZipConVariosShapefiles_LosDetectaATodos_ComoBundlesSeparados()
     {
         // La estructura del zip real de La Celina: varios shapefiles en la misma carpeta.
+        // OT-46 hacía que esto fallara; OT-47 los soporta, cada uno como un bundle propio.
         using var zip = BuildZip(
             ("LCl_1", BuildShapefile("1", -60.0, -34.0)),
             ("LCl_2", BuildShapefile("2", -60.1, -34.0)),
             ("LCl_3", BuildShapefile("3", -60.2, -34.0)));
 
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(
-            () => CreateService().ReadZipAsync(zip));
+        using var archive = new ZipArchive(zip, ZipArchiveMode.Read);
+        var (bundles, anidados) = ShapefileImportService.LocateBundles(archive);
 
-        Assert.Contains("3 shapefiles", ex.Message);
-        Assert.Contains("LCl_1", ex.Message);
-        Assert.Contains("LCl_2", ex.Message);
-        Assert.Contains("LCl_3", ex.Message);
+        Assert.Equal(3, bundles.Count);
+        Assert.Equal(new[] { "LCl_1", "LCl_2", "LCl_3" }, bundles.Select(b => b.Nombre).ToArray());
+        Assert.Empty(anidados);
+
+        // Lo que causaba el bug: cada bundle tiene que traer SUS propios componentes.
+        foreach (var b in bundles)
+        {
+            Assert.True(b.Componentes.ContainsKey(".shp"));
+            Assert.True(b.Componentes.ContainsKey(".dbf"));
+            foreach (var (_, entry) in b.Componentes)
+            {
+                Assert.Equal(b.Nombre, Path.GetFileNameWithoutExtension(entry.Name));
+            }
+        }
     }
 
     [Fact]
-    public async Task DosShapefilesHomonimosEnCarpetasDistintas_CuentanComoDos()
+    public void DosShapefilesHomonimosEnCarpetasDistintas_NoSeMezclan()
     {
         // El agrupamiento usa la ruta completa: si usara solo el nombre, estos dos colisionarían
         // y se mezclarían entre sí.
@@ -119,10 +130,39 @@ public class ShapefileZipGroupingTests
             ("campoA/lotes", BuildShapefile("A", -60.0, -34.0)),
             ("campoB/lotes", BuildShapefile("B", -61.0, -35.0)));
 
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(
-            () => CreateService().ReadZipAsync(zip));
+        using var archive = new ZipArchive(zip, ZipArchiveMode.Read);
+        var (bundles, _) = ShapefileImportService.LocateBundles(archive);
 
-        Assert.Contains("2 shapefiles", ex.Message);
+        Assert.Equal(2, bundles.Count);
+        Assert.All(bundles, b => Assert.True(b.Componentes.ContainsKey(".shp")));
+    }
+
+    [Fact]
+    public void ArchivosNoGisYZipAnidado_SeSeparanDeLosShapefiles()
+    {
+        var archivos = BuildShapefile("1", -60.0, -34.0);
+
+        var ms = new MemoryStream();
+        using (var zip = new ZipArchive(ms, ZipArchiveMode.Create, leaveOpen: true))
+        {
+            foreach (var (ext, bytes) in archivos)
+            {
+                using var s = zip.CreateEntry("La Celina/LCl_1" + ext).Open();
+                s.Write(bytes, 0, bytes.Length);
+            }
+            using (var s = zip.CreateEntry("La Celina/planimetria.pdf").Open()) s.Write("pdf"u8);
+            using (var s = zip.CreateEntry("La Celina/cultivos.qgz").Open()) s.Write("qgz"u8);
+            using (var s = zip.CreateEntry("La Celina/Shape_Poligonos_Agricolas.zip").Open()) s.Write("zip"u8);
+        }
+        ms.Position = 0;
+
+        using var archive = new ZipArchive(ms, ZipArchiveMode.Read);
+        var (bundles, anidados) = ShapefileImportService.LocateBundles(archive);
+
+        Assert.Single(bundles);
+        Assert.Equal("LCl_1", bundles[0].Nombre);
+        Assert.Single(anidados);
+        Assert.Contains("Shape_Poligonos_Agricolas.zip", anidados[0]);
     }
 
     [Fact]
@@ -158,10 +198,10 @@ public class ShapefileZipGroupingTests
     }
 
     [Fact]
-    public async Task LosArchivosBasuraDeMacOs_NoCuentanComoShapefile()
+    public void LosArchivosBasuraDeMacOs_NoCuentanComoShapefile()
     {
         // __MACOSX/._shape.shp matchea la extensión pero no es un shapefile: si contara, un zip
-        // hecho en Mac con un solo shapefile se rechazaría por "varios".
+        // hecho en Mac con un solo shapefile aparecería como dos.
         var archivos = BuildShapefile("1", -60.0, -34.0);
 
         var ms = new MemoryStream();
@@ -172,17 +212,15 @@ public class ShapefileZipGroupingTests
                 using var s = zip.CreateEntry("LCl_1" + ext).Open();
                 s.Write(bytes, 0, bytes.Length);
             }
-
             using var basura = zip.CreateEntry("__MACOSX/._LCl_1.shp").Open();
             basura.Write("basura"u8);
         }
         ms.Position = 0;
 
-        // Llega hasta la normalización, que necesita base de datos: el punto es que NO se cayó
-        // antes por creer que había dos shapefiles.
-        var ex = await Record.ExceptionAsync(() => CreateService().ReadZipAsync(ms));
+        using var archive = new ZipArchive(ms, ZipArchiveMode.Read);
+        var (bundles, _) = ShapefileImportService.LocateBundles(archive);
 
-        Assert.False(ex is InvalidOperationException io && io.Message.Contains("shapefiles"),
-            $"No debería contarlos como varios shapefiles. Excepción: {ex?.Message}");
+        Assert.Single(bundles);
+        Assert.Equal("LCl_1", bundles[0].Nombre);
     }
 }

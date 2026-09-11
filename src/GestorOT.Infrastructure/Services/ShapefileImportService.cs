@@ -39,24 +39,18 @@ public class ShapefileImportService : IShapefileImportService
         _logger = logger;
     }
 
-    public async Task<ShapefileImportResultDto> ReadZipAsync(Stream zipStream, CancellationToken ct = default)
+    /// <summary>Un shapefile del zip: sus componentes, ya agrupados por nombre base.</summary>
+    internal sealed record Bundle(string Nombre, Dictionary<string, ZipArchiveEntry> Componentes);
+
+    /// <summary>
+    /// Agrupa las entradas del zip por nombre base. Se separa del procesamiento para poder
+    /// testear el agrupamiento sin base de datos, que es donde estuvo el defecto de OT-46.
+    ///
+    /// La clave es la ruta completa sin extension, no solo el nombre: dos shapefiles homonimos
+    /// en carpetas distintas son shapefiles distintos.
+    /// </summary>
+    internal static (List<Bundle> Bundles, List<string> ZipsAnidados) LocateBundles(ZipArchive archive)
     {
-        var warnings = new List<string>();
-
-        // El zip se pasa a memoria: los stream providers de NTS piden poder reposicionarse, y
-        // asi se evitan archivos temporales en disco.
-        using var buffer = new MemoryStream();
-        await zipStream.CopyToAsync(buffer, ct);
-        buffer.Position = 0;
-
-        using var archive = new ZipArchive(buffer, ZipArchiveMode.Read);
-
-        // Las entradas se agrupan por nombre base ANTES de elegir nada. Tomar el primer .shp y
-        // el primer .dbf por separado mezclaba la geometria de un shapefile con los atributos
-        // de otro cuando el zip traia varios, que es como llegan los archivos del cliente.
-        //
-        // La clave del grupo es la ruta completa sin extension, no solo el nombre: dos
-        // shapefiles homonimos en carpetas distintas son shapefiles distintos.
         var grupos = new Dictionary<string, Dictionary<string, ZipArchiveEntry>>(StringComparer.OrdinalIgnoreCase);
         var zipsAnidados = new List<string>();
 
@@ -76,9 +70,9 @@ public class ShapefileImportService : IShapefileImportService
                 continue;
             }
 
+            // Los no-GIS (PDF, PNG, .qgz, .qmd) se ignoran sin ruido.
             if (!ComponentesShapefile.Contains(ext)) continue;
 
-            // Se cataloga sin leer bytes: recien se lee el grupo que termine eligiendose.
             var clave = entry.FullName[..^ext.Length];
 
             if (!grupos.TryGetValue(clave, out var componentes))
@@ -90,88 +84,139 @@ public class ShapefileImportService : IShapefileImportService
             componentes[ext] = entry;
         }
 
-        var conGeometria = grupos
+        var bundles = grupos
             .Where(g => g.Value.ContainsKey(".shp"))
             .OrderBy(g => g.Key, StringComparer.OrdinalIgnoreCase)
+            .Select(g => new Bundle(Path.GetFileName(g.Key), g.Value))
             .ToList();
 
-        if (conGeometria.Count == 0)
-            throw new InvalidOperationException("El .zip no contiene ningún archivo .shp.");
+        return (bundles, zipsAnidados);
+    }
 
-        if (conGeometria.Count > 1)
-        {
-            // Se falla en vez de elegir uno: cualquier eleccion automatica seria arbitraria y
-            // descartaria el resto en silencio. El soporte multi-shapefile va aparte (OT-47).
-            var listado = string.Join(", ", conGeometria.Select(g => Path.GetFileName(g.Key)));
-            throw new InvalidOperationException(
-                $"El .zip contiene {conGeometria.Count} shapefiles ({listado}) y todavía no se pueden importar juntos. " +
-                "Subí uno por vez, con sus .shp, .shx, .dbf y .prj.");
-        }
+    public async Task<ShapefileImportResultDto> ReadZipAsync(Stream zipStream, CancellationToken ct = default)
+    {
+        var warnings = new List<string>();
 
-        var elegido = conGeometria[0];
-        var nombreBase = Path.GetFileName(elegido.Key);
-        var archivos = elegido.Value;
+        // El zip se pasa a memoria: los stream providers de NTS piden poder reposicionarse, y
+        // asi se evitan archivos temporales en disco.
+        using var buffer = new MemoryStream();
+        await zipStream.CopyToAsync(buffer, ct);
+        buffer.Position = 0;
 
-        // Todos los componentes salen del mismo nombre base que el .shp elegido.
-        if (!archivos.TryGetValue(".dbf", out var dbfEntry))
-        {
-            throw new InvalidOperationException(
-                $"Falta el archivo '{nombreBase}.dbf', que es donde vienen los nombres de los lotes. " +
-                "Asegurate de incluir todos los archivos del shapefile en el zip.");
-        }
+        using var archive = new ZipArchive(buffer, ZipArchiveMode.Read);
 
-        byte[] shp = await ReadEntryBytesAsync(archivos[".shp"], ct);
-        byte[] dbf = await ReadEntryBytesAsync(dbfEntry, ct);
+        var (bundles, zipsAnidados) = LocateBundles(archive);
 
-        byte[]? shx = archivos.TryGetValue(".shx", out var shxEntry)
-            ? await ReadEntryBytesAsync(shxEntry, ct)
-            : null;
-
-        string? prj = archivos.TryGetValue(".prj", out var prjEntry)
-            ? Encoding.UTF8.GetString(await ReadEntryBytesAsync(prjEntry, ct)).Trim()
-            : null;
-
-        string? cpg = archivos.TryGetValue(".cpg", out var cpgEntry)
-            ? Encoding.UTF8.GetString(await ReadEntryBytesAsync(cpgEntry, ct)).Trim()
-            : null;
-
-        var shpEntryName = nombreBase;
+        if (bundles.Count == 0)
+            throw new InvalidOperationException("El .zip no contiene ningun archivo .shp.");
 
         if (zipsAnidados.Count > 0)
         {
-            // No se recursiona: un zip adentro del zip puede traer otros shapefiles y elegir
-            // por nuestra cuenta cual importar seria adivinar. Se avisa para que no pase
-            // desapercibido.
+            // No se recursiona: ademas de tener que decidir por el usuario que importar de
+            // adentro, un zip anidado es la puerta de entrada clasica a un zip bomb.
             warnings.Add($"Se ignoraron {zipsAnidados.Count} archivo(s) .zip dentro del zip ({string.Join(", ", zipsAnidados.Select(Path.GetFileName))}). Si contienen shapefiles, subilos por separado.");
         }
 
-        if (shx is null)
+        var todasLasFeatures = new List<ShapefileFeatureDto>();
+        var grupos = new List<ShapefileGroupDto>();
+
+        foreach (var bundle in bundles)
         {
-            // El .shx es solo el indice: se puede leer sin el, pero conviene avisar porque
-            // suele significar que el zip llego incompleto.
-            warnings.Add("Falta el .shx (índice). Se leyó igual, pero revisá que el zip esté completo.");
+            var archivos = bundle.Componentes;
+
+            // Todos los componentes salen del mismo nombre base que el .shp.
+            if (!archivos.TryGetValue(".dbf", out var dbfEntry))
+            {
+                if (bundles.Count == 1)
+                {
+                    throw new InvalidOperationException(
+                        $"Falta el archivo '{bundle.Nombre}.dbf', que es donde vienen los nombres de los lotes. " +
+                        "Asegurate de incluir todos los archivos del shapefile en el zip.");
+                }
+
+                // Con varios shapefiles, uno incompleto no invalida los demas: se saltea avisando.
+                warnings.Add($"Se salteo '{bundle.Nombre}': falta su archivo .dbf.");
+                continue;
+            }
+
+            byte[] shp = await ReadEntryBytesAsync(archivos[".shp"], ct);
+            byte[] dbf = await ReadEntryBytesAsync(dbfEntry, ct);
+
+            byte[]? shx = archivos.TryGetValue(".shx", out var shxEntry)
+                ? await ReadEntryBytesAsync(shxEntry, ct)
+                : null;
+
+            // Cada shapefile se reproyecta con SU .prj y se decodifica con SU .cpg: en un mismo
+            // zip pueden venir en sistemas de coordenadas distintos.
+            string? prj = archivos.TryGetValue(".prj", out var prjEntry)
+                ? Encoding.UTF8.GetString(await ReadEntryBytesAsync(prjEntry, ct)).Trim()
+                : null;
+
+            string? cpg = archivos.TryGetValue(".cpg", out var cpgEntry)
+                ? Encoding.UTF8.GetString(await ReadEntryBytesAsync(cpgEntry, ct)).Trim()
+                : null;
+
+            var avisosDelGrupo = new List<string>();
+
+            if (shx is null)
+            {
+                avisosDelGrupo.Add("falta el .shx (indice)");
+            }
+
+            if (prj is null)
+            {
+                avisosDelGrupo.Add("falta el .prj, asi que se asumio WGS84 (EPSG:4326): si cae en el lugar equivocado o las hectareas dan cualquier cosa, es por esto");
+            }
+
+            var (rawFeatures, columns, nameColumn) = ReadFeatures(shp, dbf, shx, cpg, avisosDelGrupo);
+
+            var normalized = rawFeatures.Count > 0
+                ? await NormalizeAsync(rawFeatures, prj, avisosDelGrupo, ct)
+                : [];
+
+            if (normalized.Count == 0)
+            {
+                avisosDelGrupo.Add("no se encontraron poligonos");
+            }
+
+            foreach (var aviso in avisosDelGrupo)
+            {
+                warnings.Add($"{bundle.Nombre}: {aviso}.");
+            }
+
+            todasLasFeatures.AddRange(normalized.Select(f => f with { SourceShapefile = bundle.Nombre }));
+
+            grupos.Add(new ShapefileGroupDto(
+                bundle.Nombre,
+                normalized.Count,
+                DescribeCrs(prj),
+                prj is not null,
+                columns,
+                nameColumn));
+
+            _logger.LogInformation(
+                "Shapefile '{Name}': {Total} geometrias leidas, {Ok} validas, prj={Prj}",
+                bundle.Nombre, rawFeatures.Count, normalized.Count, prj is null ? "(falta)" : "presente");
         }
 
-        if (prj is null)
+        if (grupos.Count == 0)
         {
-            warnings.Add("Falta el .prj, así que no se puede saber en qué sistema de coordenadas vienen los polígonos. Se asumió WGS84 (EPSG:4326): si los lotes caen en el lugar equivocado o las hectáreas dan cualquier cosa, es por esto.");
+            throw new InvalidOperationException(
+                "Ninguno de los shapefiles del zip esta completo: a todos les falta el .dbf.");
         }
 
-        var (rawFeatures, columns, nameColumn) = ReadFeatures(shp, dbf, shx, cpg, warnings);
+        // La raiz refleja el primer grupo, por compatibilidad con el contrato anterior. El
+        // detalle por shapefile va en Groups.
+        var primero = grupos[0];
 
-        if (rawFeatures.Count == 0)
-        {
-            warnings.Add("No se encontraron polígonos en el shapefile.");
-            return new ShapefileImportResultDto([], DescribeCrs(prj), false, columns, nameColumn, warnings);
-        }
-
-        var normalized = await NormalizeAsync(rawFeatures, prj, warnings, ct);
-
-        _logger.LogInformation(
-            "Shapefile '{Name}': {Total} geometrias leidas, {Ok} validas, prj={Prj}",
-            shpEntryName, rawFeatures.Count, normalized.Count, prj is null ? "(falta)" : "presente");
-
-        return new ShapefileImportResultDto(normalized, DescribeCrs(prj), prj is not null, columns, nameColumn, warnings);
+        return new ShapefileImportResultDto(
+            todasLasFeatures,
+            primero.SourceCrs,
+            primero.Reprojected,
+            primero.AttributeColumns,
+            primero.NameColumn,
+            warnings,
+            grupos);
     }
 
     private static async Task<byte[]> ReadEntryBytesAsync(ZipArchiveEntry entry, CancellationToken ct)

@@ -5,6 +5,10 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
+    <!-- Para poder testear el agrupamiento del zip sin exponerlo en la API publica. -->
+    <InternalsVisibleTo Include="GestorOT.Tests" />
+  </ItemGroup>
+  <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.0" />
     <PackageReference Include="Microsoft.Extensions.Caching.Hybrid" Version="10.0.0-preview.*" />
