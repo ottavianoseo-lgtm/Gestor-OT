@@ -210,8 +210,27 @@
     {
         try
         {
-            var url = $"api/pases/lotes/{loteId}/export";
-            await JS.InvokeVoidAsync("open", url, "_blank");
+            // Se baja por el HttpClient y no con window.open: la navegación del browser manda
+            // la cookie de sesión pero no el header X-Tenant-ID, que lo agrega TenantHttpHandler.
+            // Sin ese header, para un SuperAdmin el tenant queda en Guid.Empty y el lote no
+            // aparece ("Lote ... no encontrado para tenant 00000000-...").
+            var response = await Http.GetAsync($"api/pases/lotes/{loteId}/export");
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var detalle = await response.Content.ReadAsStringAsync();
+                Message.Error(string.IsNullOrWhiteSpace(detalle)
+                    ? $"No se pudo descargar el lote ({(int)response.StatusCode})."
+                    : detalle);
+                return;
+            }
+
+            var bytes = await response.Content.ReadAsByteArrayAsync();
+            var fileName = response.Content.Headers.ContentDisposition?.FileName?.Trim('"')
+                           ?? $"PasesG4-{loteId}.xlsx";
+
+            await JS.InvokeVoidAsync("utilsInterop.downloadFile", fileName,
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", bytes);
         }
         catch (Exception ex)
         {
