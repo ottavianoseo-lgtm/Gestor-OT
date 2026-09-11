@@ -101,7 +101,16 @@
         </div>
         <div class="legend-divider"></div>
         <div style="font-size: 11px; color: rgba(255,255,255,0.4);">
-            Lotes: @_lotsCount
+            @if (_gisViewMode == "fields")
+            {
+                <div>Campos: @_fieldsCount</div>
+                <div>Superficie: @_fieldsArea.ToString("N2") ha</div>
+            }
+            else
+            {
+                <div>Lotes: @_lotsCount</div>
+                <div>Superficie: @_totalArea.ToString("N2") ha</div>
+            }
         </div>
     </div>
 
@@ -283,9 +292,33 @@
                     <span class="rail-label">Campo</span>
                     <span class="rail-value">@(_selectedLot.FieldName ?? "—")</span>
                 </div>
-                <div class="rail-section">
-                    <span class="rail-label">Área Dibujada</span>
-                    <span class="rail-value">@_selectedLot.Area.ToString("N2") ha</span>
+                @{
+                    var desvio = SurfaceDeviation.Compare(_selectedLot.Area, _selectedLot.CadastralArea);
+                }
+                <div class="surface-comparison">
+                    <div class="rail-section">
+                        <span class="rail-label">Superficie GIS</span>
+                        <span class="rail-value">@_selectedLot.Area.ToString("N2") ha</span>
+                    </div>
+                    <div class="rail-section">
+                        <span class="rail-label">Superficie catastral</span>
+                        <span class="rail-value">@(desvio.CanCompare ? $"{_selectedLot.CadastralArea.ToString("N2")} ha" : "—")</span>
+                    </div>
+                    @if (desvio.CanCompare)
+                    {
+                        <div class="rail-section">
+                            <span class="rail-label">Desvío</span>
+                            <span class="rail-value" style="@($"color: {DeviationColor(desvio.Level)};")">
+                                @(desvio.DifferenceHa >= 0 ? "+" : "")@desvio.DifferenceHa.ToString("N2") ha (@desvio.DeviationPercent.ToString("N1") %)
+                            </span>
+                        </div>
+                    }
+                    else
+                    {
+                        <div style="font-size: 11px; color: rgba(255,255,255,0.45); line-height: 1.4;">
+                            Sin superficie catastral cargada: no hay contra qué comparar el polígono.
+                        </div>
+                    }
                 </div>
                 <div class="rail-section">
                     <span class="rail-label">Geometría</span>
@@ -788,6 +821,13 @@
 
 @code {
     private int _lotsCount = 0;
+
+    // La superficie sale de la property 'area' de cada feature, que el backend calcula con
+    // ST_Area(geography). No se recalcula en el cliente: daria un numero distinto al del panel
+    // y al de los reportes.
+    private double _totalArea = 0;
+    private int _fieldsCount = 0;
+    private double _fieldsArea = 0;
     private bool _loading = true;
     private bool _hasLoaded = false;
     private string? _errorMessage;
@@ -1007,6 +1047,7 @@
             if (featureCollection?.Features != null)
             {
                 _lotsCount = featureCollection.Features.Count;
+                _totalArea = 0;
 
                 foreach (var feature in featureCollection.Features)
                 {
@@ -1025,6 +1066,8 @@
                             else
                                 area = Convert.ToDouble(a);
                         }
+
+                        _totalArea += area;
 
                         var leafletCoords = ConvertToLeafletCoords(feature.Geometry.Coordinates);
                         var coordsJson = System.Text.Json.JsonSerializer.Serialize(leafletCoords);
@@ -1067,6 +1110,8 @@
                 if (fieldsFeatureCollection?.Features != null)
                 {
                     await JS.InvokeVoidAsync("mapInterop.clearFields");
+                    _fieldsCount = 0;
+                    _fieldsArea = 0;
                     foreach (var feature in fieldsFeatureCollection.Features)
                     {
                         if (feature != null && feature.Geometry?.Coordinates != null && feature.Properties != null)
@@ -1089,6 +1134,9 @@
                                 else
                                     fArea = Convert.ToDouble(a);
                             }
+
+                            _fieldsCount++;
+                            _fieldsArea += fArea;
 
                             var leafletCoords = ConvertToLeafletCoords(feature.Geometry.Coordinates);
                             var coordsJson = System.Text.Json.JsonSerializer.Serialize(leafletCoords);
@@ -1236,6 +1284,13 @@
     }
 
     private string _gisViewMode = "interactive";
+
+    private static string DeviationColor(SurfaceDeviationLevel level) => level switch
+    {
+        SurfaceDeviationLevel.Critical => "#E74C3C",
+        SurfaceDeviationLevel.Warning => "#FAAD14",
+        _ => "#2ECC71"
+    };
 
     private async Task ChangeViewMode(string mode)
     {
