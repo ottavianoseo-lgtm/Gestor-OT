@@ -951,6 +951,18 @@ public class LaborsController : ControllerBase
         // Pre-validation: check all labors before inserting any
         foreach (var lot in campaignLots)
         {
+            // Las labores se dimensionan contra la superficie real de la campania. Si el lote no
+            // la tiene cargada no se inventa con la catastral: se corta acá, porque ese numero
+            // se arrastra a insumos, costos y al pase G4.
+            var tieneOverrideDeSuperficie = request.LaborsOverride?
+                .Any(o => o.CampaignLotId == lot.Id && o.Hectares > 0) == true;
+
+            if (lot.ProductiveArea <= 0 && !tieneOverrideDeSuperficie)
+            {
+                errors.Add($"Lote {lot.Lot?.Name ?? lot.LotId.ToString()}: no tiene superficie productiva cargada en esta campaña. Cargala antes de generar labores.");
+                continue;
+            }
+
             foreach (var sItem in strategy.Items.OrderBy(i => i.SortOrder).ThenBy(i => i.DayOffset))
             {
                 var ovr = request.LaborsOverride?.FirstOrDefault(o => o.CampaignLotId == lot.Id && o.StrategyItemId == sItem.Id);
@@ -1029,7 +1041,10 @@ public class LaborsController : ControllerBase
                         var ovr = request.LaborsOverride?.FirstOrDefault(o => o.CampaignLotId == lot.Id && o.StrategyItemId == sItem.Id);
 
                         var executionDate = (ovr != null) ? ovr.Date : request.BaseDate.AddDays(sItem.DayOffset);
-                        var hectares = (ovr != null && ovr.Hectares > 0) ? ovr.Hectares : (lot.ProductiveArea > 0 ? lot.ProductiveArea : (lot.Lot?.CadastralArea ?? 0));
+                        // Superficie real de la campania, sin fallback a la catastral. Ya quedo
+                        // validado arriba que es > 0. El override manual sigue mandando.
+                        var hectares = (ovr != null && ovr.Hectares > 0) ? ovr.Hectares : lot.ProductiveArea;
+
                         var laborTypeId = (ovr != null) ? ovr.LaborTypeId : sItem.LaborTypeId;
                         var contactId = (ovr != null) ? ovr.ContactId : null;
                         var isExternal = (ovr != null) ? ovr.IsExternalBilling : false;

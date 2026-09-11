@@ -110,7 +110,10 @@ public class TraceabilityReportService : ITraceabilityReportService
             }
 
             var cropName = firstLabor?.ErpActivity?.Name;
-            var lotReport = BuildLotReport(lot, fieldId, fieldName, lot.CadastralArea, cropName, lotLabors);
+            // Este lote no esta en la campania: no tiene superficie real. Se reporta en cero
+            // en vez de sustituirla por la catastral, que haria que el total sume superficies
+            // de dos conceptos distintos sin poder distinguirlas.
+            var lotReport = BuildLotReport(lot, fieldId, fieldName, 0, cropName, lotLabors);
             fieldEntry.Lots.Add(lotReport);
         }
 
@@ -152,7 +155,7 @@ public class TraceabilityReportService : ITraceabilityReportService
                 fieldId,
                 fieldName,
                 lots.Count,
-                lots.Sum(l => l.ProductiveArea > 0 ? l.ProductiveArea : l.CadastralArea),
+                lots.Sum(l => l.ProductiveArea),
                 fieldLaborTotals,
                 fieldSupplyTotals,
                 lots.OrderBy(l => l.LotName).ToList()

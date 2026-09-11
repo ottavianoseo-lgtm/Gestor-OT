@@ -621,7 +621,7 @@ else
     private decimal GetLotHectares(Guid lotId)
     {
         var lot = _lots.FirstOrDefault(l => l.LotId == lotId);
-        return lot != null ? (lot.ProductiveArea > 0 ? lot.ProductiveArea : lot.CadastralArea) : 0;
+        return lot?.ProductiveArea ?? 0;
     }
 
     private void OpenAssignModal()

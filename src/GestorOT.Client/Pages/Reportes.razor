@@ -226,7 +226,7 @@ else
                         {
                             <div style="display: flex; gap: 14px; font-size: 13px; align-items: center; flex-wrap: wrap;">
                                 <span style="color: rgba(255,255,255,0.6);">Campo: <strong style="color: #fff;">@CurrentLot.FieldName</strong></span>
-                                <span style="color: rgba(255,255,255,0.6);">Superficie: <strong style="color: #2ECC71;">@((CurrentLot.ProductiveArea > 0 ? CurrentLot.ProductiveArea : CurrentLot.CadastralArea).ToString("N1")) ha</strong></span>
+                                <span style="color: rgba(255,255,255,0.6);">Superficie: <strong style="color: #2ECC71;">@(CurrentLot.ProductiveArea.ToString("N1")) ha</strong></span>
                                 @if (!string.IsNullOrEmpty(CurrentLot.CropName))
                                 {
                                     <Tag Style="background: #2ECC7120; color: #2ECC71; border: 1px solid #2ECC7140;">

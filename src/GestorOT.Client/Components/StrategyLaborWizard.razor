@@ -471,7 +471,10 @@
                         StrategyItemId = item.Id,
                         StrategyItemName = item.LaborTypeName ?? "Labor",
                         LaborTypeId = item.LaborTypeId,
-                        Hectares = lot.ProductiveArea > 0 ? lot.ProductiveArea : lot.CadastralArea,
+                        // Superficie real de la campania, sin caer en la catastral: si esta en
+                        // cero el usuario lo ve y la corrige, en vez de generar labores con una
+                        // superficie que no es la que se trabaja.
+                        Hectares = lot.ProductiveArea,
                         Date = date,
                         // La tarea viene fija de la estrategia, así que el modo se deduce de
                         // ella en vez de arrancar siempre en Propio. Si el tipo está sin
