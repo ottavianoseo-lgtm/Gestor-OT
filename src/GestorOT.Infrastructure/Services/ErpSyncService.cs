@@ -193,7 +193,7 @@ public class ErpSyncService : IErpSyncService
                     concept.LastSyncDate = DateTime.UtcNow;
                 }
 
-                // 2. Sync to LaborTypes - Auto-create/update all labor concepts
+                // 2. Actualizar los LaborTypes ya activados con lo que dice el ERP.
                 if (grupo.Contains("LABOR", StringComparison.OrdinalIgnoreCase))
                 {
                     // El match es por codigo ERP y nada mas. El ERP repite la misma tarea en dos
@@ -213,23 +213,14 @@ public class ErpSyncService : IErpSyncService
                         .Where(l => l.TenantId == tenantId && l.ExternalErpId == null && l.Name == item.Descripcion)
                         .FirstOrDefaultAsync(ct);
 
-                    if (laborType == null)
-                    {
-                        laborType = new LaborType
-                        {
-                            Id = Guid.NewGuid(),
-                            TenantId = tenantId,
-                            Name = item.Descripcion,
-                            ExternalErpId = externalId,
-                            Description = !string.IsNullOrWhiteSpace(subGrupo) ? subGrupo : grupo,
-                            // El subgrupo ya dice el modo, asi que se deduce aca: si no, cada
-                            // sincronizacion mete tipos sin clasificar y el filtro de labores
-                            // deja de filtrar.
-                            ExecutionMode = LaborExecutionModeExtensions.InferFromErpSubGroup(subGrupo)
-                        };
-                        _context.LaborTypes.Add(laborType);
-                    }
-                    else
+                    // El sync NO crea LaborTypes. Un LaborType existe porque alguien activo
+                    // ese concepto desde el catalogo, y eso es lo que hace que "Tipo de
+                    // Labores" liste las labores que la empresa usa y no las mil del ERP.
+                    //
+                    // Crearlos aca tenia dos efectos que se veian como bugs: todos los
+                    // conceptos figuraban como activados apenas se sincronizaba, y desactivar
+                    // uno no duraba nada porque la sincronizacion siguiente lo resucitaba.
+                    if (laborType != null)
                     {
                         laborType.Name = item.Descripcion;
                         laborType.ExternalErpId = externalId;
@@ -379,12 +370,12 @@ public class ErpSyncService : IErpSyncService
 
         var normalizedSelected = cleanGroups.Select(s => s.ToUpperInvariant()).ToHashSet();
 
-        // 1. Ensure ErpConcepts are in sync from GestorMax if needed
-        var hasConcepts = await _context.ErpConcepts.IgnoreQueryFilters().AnyAsync(c => c.TenantId == tenantId, ct);
-        if (!hasConcepts)
-        {
-            await SyncCatalogAsync(tenantId, ct);
-        }
+        // Sincronizar desde Inventario es el unico lugar que trae el catalogo del ERP, asi
+        // que refresca siempre y no solo la primera vez. Con el "solo si esta vacio" de antes,
+        // una empresa que ya tenia conceptos no volvia a ver nunca un insumo ni una labor
+        // nueva del ERP. Trae el catalogo completo, labores incluidas, no solo los grupos
+        // elegidos: los grupos deciden que se convierte en insumo, no que se trae.
+        await SyncCatalogAsync(tenantId, ct);
 
         // 2. Fetch concepts belonging to selected groups
         var conceptsToSync = await _context.ErpConcepts

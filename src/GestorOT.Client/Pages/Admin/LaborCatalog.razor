@@ -5,7 +5,6 @@
 @using AntDesign
 @inject HttpClient Http
 @inject IMessageService Message
-@inject GestorOT.Client.Services.TenantState TenantState
 @inject GestorOT.Client.Services.CatalogCache CatalogCache
 
 <PageTitle>Tipo de Labores - Admin</PageTitle>
@@ -13,12 +12,8 @@
 <div class="page-header">
     <div>
         <h2 class="page-title">Tipo de Labores (ERP)</h2>
-        <span class="page-subtitle">Gestiona las tareas disponibles sincronizadas desde el ERP</span>
+        <span class="page-subtitle">Activá las tareas del ERP que la empresa usa. El catálogo se trae desde Inventario.</span>
     </div>
-    <Button Type="@ButtonType.Primary" Icon="sync" OnClick="SyncFromErp" Loading="_syncing"
-            Style="background: #E74C3C; border-color: #E74C3C; border-radius: 8px;">
-        Sincronizar Catálogo
-    </Button>
 </div>
 
 <div class="glass-card">
@@ -110,7 +105,6 @@
 @code {
     private List<ErpConceptDto> _concepts = new();
     private bool _loading = true;
-    private bool _syncing;
     private string _search = "";
     private Guid? _processingId;
     private Guid? _modeProcessingId;
@@ -146,32 +140,6 @@
         finally
         {
             _loading = false;
-        }
-    }
-
-    private async Task SyncFromErp()
-    {
-        _syncing = true;
-        try
-        {
-            var response = await Http.PostAsync($"api/sync/catalog?tenantId={TenantState.CurrentTenant?.Id}", null);
-            if (response.IsSuccessStatusCode)
-            {
-                Message.Success("Sincronización completada.");
-                await LoadData();
-            }
-            else
-            {
-                Message.Error("Error en la sincronización.");
-            }
-        }
-        catch
-        {
-            Message.Error("Error de conexión con el servidor.");
-        }
-        finally
-        {
-            _syncing = false;
         }
     }
 
