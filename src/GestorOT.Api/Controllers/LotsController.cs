@@ -16,15 +16,18 @@ public class LotsController : ControllerBase
     private readonly IApplicationDbContext _context;
     private readonly ILotQueryService _queryService;
     private readonly IShapefileImportService _shapefileImport;
+    private readonly ILotBulkLinkService _bulkLinkService;
 
     public LotsController(
         IApplicationDbContext context,
         ILotQueryService queryService,
-        IShapefileImportService shapefileImport)
+        IShapefileImportService shapefileImport,
+        ILotBulkLinkService bulkLinkService)
     {
         _context = context;
         _queryService = queryService;
         _shapefileImport = shapefileImport;
+        _bulkLinkService = bulkLinkService;
     }
 
     [HttpGet]
@@ -80,6 +83,43 @@ public class LotsController : ControllerBase
             // que subieron, no del servidor, asi que va 400 y no 500.
             return BadRequest("El archivo no se pudo abrir como .zip. Puede estar corrupto o incompleto.");
         }
+    }
+
+    /// <summary>
+    /// Propone qué hacer con cada polígono importado, cruzando su nombre contra los lotes del
+    /// campo. No persiste nada: es la vista previa de la conciliación.
+    /// </summary>
+    [HttpPost("match")]
+    public async Task<ActionResult<LotMatchResultDto>> MatchImported(LotMatchRequestDto request, CancellationToken ct)
+    {
+        if (request.FieldId == Guid.Empty)
+        {
+            return BadRequest("Hay que indicar el campo destino: el nombre del lote en el shapefile suele ser solo un número y a nivel global colisiona entre campos.");
+        }
+
+        return await _bulkLinkService.ProposeAsync(request, ct);
+    }
+
+    /// <summary>
+    /// Aplica todas las vinculaciones de una importación en un solo movimiento. Todo o nada.
+    /// </summary>
+    [HttpPost("bulk-link")]
+    public async Task<ActionResult<LotBulkLinkResultDto>> BulkLink(LotBulkLinkRequestDto request, CancellationToken ct)
+    {
+        if (request.FieldId == Guid.Empty)
+        {
+            return BadRequest("Hay que indicar el campo destino.");
+        }
+
+        if (request.Items.Count == 0)
+        {
+            return BadRequest("No se recibió ningún polígono para vincular.");
+        }
+
+        var result = await _bulkLinkService.ApplyAsync(request, ct);
+
+        // El 409 distingue "hay conflictos que resolver" de "el pedido estaba mal armado".
+        return result.Success ? Ok(result) : Conflict(result);
     }
 
     [HttpGet("{id:guid}/surface-history")]
