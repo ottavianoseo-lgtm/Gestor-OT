@@ -171,12 +171,19 @@
                 </div>
             </div>
             <div style="padding: 10px;">
-                <Input @bind-Value="_lotsSearch" Placeholder="Filtrar..." />
+                <input class="ant-input" type="text" placeholder="Filtrar..." value="@_lotsSearch"
+                       @oninput="OnLotsSearchChanged" style="width: 100%;" />
+                <div style="display: flex; align-items: center; gap: 10px; margin-top: 8px; font-size: 11px; color: rgba(255,255,255,0.5);">
+                    <span>@FilteredLots.Count() de @_allLots.Count lotes</span>
+                    @if (!string.IsNullOrWhiteSpace(_lotsSearch))
+                    {
+                        <a style="color: #E74C3C; cursor: pointer;" @onclick="ClearLotsFilter">Limpiar</a>
+                        <a style="color: #16A085; cursor: pointer;" @onclick="FitFilteredLots">Encuadrar</a>
+                    }
+                </div>
             </div>
             <div style="overflow-y: auto; flex: 1;">
-                @foreach (var lot in _allLots.Where(l => string.IsNullOrEmpty(_lotsSearch) || 
-                    l.Name.Contains(_lotsSearch, StringComparison.OrdinalIgnoreCase) || 
-                    (l.FieldName?.Contains(_lotsSearch, StringComparison.OrdinalIgnoreCase) ?? false)))
+                @foreach (var lot in FilteredLots)
                 {
                     <div class="orphan-item @(lot.Id == _selectedLot?.Id ? "orphan-item--active" : "")"
                          @onclick="() => NavigateToLot(lot)">
@@ -744,6 +751,32 @@
         border-left: 3px solid #E74C3C;
     }
 
+    /* OT-35. Van sin fondo sobre imagen satelital, asi que la legibilidad la da el
+       text-shadow. pointer-events: none es necesario: si la etiqueta captura el mouse,
+       tapa el hover del poligono que tiene debajo. */
+    .leaflet-tooltip.lot-label {
+        background: transparent;
+        border: none;
+        box-shadow: none;
+        color: #fff;
+        font-size: 11px;
+        font-weight: 700;
+        text-shadow: 0 0 3px rgba(0,0,0,0.9), 0 1px 2px rgba(0,0,0,0.85);
+        pointer-events: none;
+        white-space: nowrap;
+        padding: 0;
+    }
+
+    .leaflet-tooltip.lot-label::before {
+        display: none;
+    }
+
+    /* Debajo del umbral de zoom se ocultan por CSS. Iterar N tooltips en cada zoom
+       es justamente el costo que el umbral busca evitar. */
+    .lot-labels-hidden .leaflet-tooltip.lot-label {
+        display: none;
+    }
+
     .surface-comparison {
         background: rgba(255,255,255,0.04);
         border: 1px solid rgba(255,255,255,0.06);
@@ -856,6 +889,59 @@
     private List<ImportResult> _importResults = new();
     private bool _showLotsPanel;
     private string _lotsSearch = "";
+    private CancellationTokenSource? _lotsSearchDebounce;
+
+    /// <summary>
+    /// El filtro es solo de presentacion: no toca _allLots ni pega al backend. La misma
+    /// lista alimenta el panel y lo que se ve en el mapa, para que no puedan discrepar.
+    /// </summary>
+    private IEnumerable<LotDto> FilteredLots => string.IsNullOrWhiteSpace(_lotsSearch)
+        ? _allLots
+        : _allLots.Where(l =>
+            l.Name.Contains(_lotsSearch, StringComparison.OrdinalIgnoreCase) ||
+            (l.FieldName?.Contains(_lotsSearch, StringComparison.OrdinalIgnoreCase) ?? false));
+
+    private async Task OnLotsSearchChanged(ChangeEventArgs e)
+    {
+        _lotsSearch = e.Value?.ToString() ?? "";
+
+        // Sin debounce se llamaria a JS en cada tecla, y cada llamada recorre todas las capas.
+        _lotsSearchDebounce?.Cancel();
+        _lotsSearchDebounce = new CancellationTokenSource();
+        var token = _lotsSearchDebounce.Token;
+
+        try
+        {
+            await Task.Delay(250, token);
+            await ApplyLotFilterAsync();
+        }
+        catch (TaskCanceledException)
+        {
+            // Llego otra tecla antes de los 250 ms: vale la ultima.
+        }
+    }
+
+    private async Task ApplyLotFilterAsync()
+    {
+        // null significa "sin filtro": el mapa vuelve a mostrar lo que diga el modo de vista.
+        var visibles = string.IsNullOrWhiteSpace(_lotsSearch)
+            ? null
+            : FilteredLots.Select(l => l.Id.ToString()).ToArray();
+
+        await JS.InvokeAsync<int>("mapInterop.filterLots", visibles);
+        StateHasChanged();
+    }
+
+    private async Task ClearLotsFilter()
+    {
+        _lotsSearch = "";
+        await ApplyLotFilterAsync();
+    }
+
+    private async Task FitFilteredLots()
+    {
+        await JS.InvokeAsync<bool>("mapInterop.fitVisibleLots");
+    }
     private bool _polygonMenuVisible;
     private bool _editingExistingLot;
     private string _editingExistingLotName = "";

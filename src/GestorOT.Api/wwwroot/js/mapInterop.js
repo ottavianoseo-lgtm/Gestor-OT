@@ -122,6 +122,8 @@ window.mapInterop = {
         this.fieldLayers = {};
         this.selectedLayer = null;
         this.editingLotId = null;
+        this.lotFilter = null;
+        this.selectedFieldId = null;
 
         this.map = L.map(containerId, {
             preferCanvas: true,
@@ -168,6 +170,9 @@ window.mapInterop = {
 
         this.drawnItems = new L.FeatureGroup();
         this.map.addLayer(this.drawnItems);
+
+        this.map.on('zoomend', () => this.updateLabelVisibility());
+        this.updateLabelVisibility();
 
         if (typeof L.Control.Draw !== 'undefined') {
             this.drawControl = new L.Control.Draw({
@@ -230,6 +235,99 @@ window.mapInterop = {
 
     viewMode: 'interactive',
     selectedFieldId: null,
+    lotFilter: null,
+
+    LABEL_MIN_ZOOM: 13,
+
+    // ------------------------------------------------------------------
+    // Estilo y visibilidad de las capas, resueltos en un unico lugar.
+    //
+    // Antes cada operacion decidia por su cuenta y con sus propias constantes:
+    // el alta de la capa, highlightLot, selectField y setGisViewMode. La ultima
+    // en correr pisaba a las anteriores, asi que pasar el mouse por el lote
+    // seleccionado lo apagaba y cambiar de modo de vista revivia lo filtrado.
+    // Ahora esas operaciones cambian estado y llaman a estas funciones.
+    // ------------------------------------------------------------------
+
+    lotBaseColor: function (layer) {
+        return layer._status === 'Active' ? '#2ECC71' : '#E74C3C';
+    },
+
+    // Cuanto se destaca un lote. El color no se toca aca: sale de lotBaseColor.
+    lotEmphasis: function (layer) {
+        if (layer === this.selectedLayer) return { weight: 4, fillOpacity: 0.65 };
+        if (this.selectedFieldId && layer._fieldId === this.selectedFieldId) return { weight: 2.5, fillOpacity: 0.55 };
+        return { weight: 2, fillOpacity: 0.35 };
+    },
+
+    applyLotStyle: function (layer) {
+        const color = this.lotBaseColor(layer);
+        const emphasis = this.lotEmphasis(layer);
+
+        // El hover suma un delta sobre lo que corresponda, nunca reemplaza: por eso
+        // al salir no hace falta acordarse del estilo previo, se vuelve a calcular.
+        layer.setStyle({
+            color: color,
+            fillColor: color,
+            weight: emphasis.weight + (layer._hovered ? 2 : 0),
+            fillOpacity: emphasis.fillOpacity + (layer._hovered ? 0.15 : 0)
+        });
+    },
+
+    applyFieldStyle: function (fieldId, layer) {
+        if (fieldId === this.selectedFieldId) {
+            layer.setStyle({ weight: 4, fillOpacity: 0.15, color: '#16A085' });
+        } else if (this.selectedFieldId && this.viewMode === 'interactive') {
+            layer.setStyle({ weight: 1.5, fillOpacity: 0.1, color: '#7F8C8D' });
+        } else if (this.viewMode === 'fields') {
+            layer.setStyle({ weight: 2.5, fillOpacity: 0.35, color: '#16A085' });
+        } else {
+            layer.setStyle({ weight: 2, fillOpacity: 0.25, color: '#16A085' });
+        }
+    },
+
+    // Un lote se ve si lo pide el modo de vista Y pasa el filtro. Las dos condiciones
+    // juntas y en un solo lado: separadas, la ultima en evaluarse ganaba.
+    isLotVisible: function (layer) {
+        if (this.lotFilter && !this.lotFilter.has(layer._lotId)) return false;
+        if (this.viewMode === 'lots') return true;
+        return !!(this.selectedFieldId && layer._fieldId === this.selectedFieldId);
+    },
+
+    isFieldVisible: function () {
+        return this.viewMode !== 'lots';
+    },
+
+    setLayerPresence: function (layer, shouldBeVisible) {
+        const isOn = this.map.hasLayer(layer);
+        if (shouldBeVisible && !isOn) layer.addTo(this.map);
+        else if (!shouldBeVisible && isOn) this.map.removeLayer(layer);
+    },
+
+    applyLayerVisibility: function () {
+        if (!this.map) return;
+
+        Object.keys(this.fieldLayers).forEach(fId => {
+            const layer = this.fieldLayers[fId];
+            this.setLayerPresence(layer, this.isFieldVisible());
+            if (this.map.hasLayer(layer)) this.applyFieldStyle(fId, layer);
+        });
+
+        Object.values(this.lotLayers).forEach(layer => {
+            this.setLayerPresence(layer, this.isLotVisible(layer));
+            if (this.map.hasLayer(layer)) this.applyLotStyle(layer);
+        });
+    },
+
+    // Las etiquetas se prenden y apagan con una clase en el contenedor: iterar N
+    // tooltips en cada zoom es justamente lo que el umbral busca evitar.
+    updateLabelVisibility: function () {
+        if (!this.map) return;
+        const container = this.map.getContainer();
+        if (container) {
+            container.classList.toggle('lot-labels-hidden', this.map.getZoom() < this.LABEL_MIN_ZOOM);
+        }
+    },
 
     setDotNetRef: function (ref) {
         this.dotNetRef = ref;
@@ -250,9 +348,17 @@ window.mapInterop = {
                 weight: 2
             });
 
-            if (this.viewMode === 'lots' || (this.viewMode === 'interactive' && this.selectedFieldId && this.selectedFieldId === fieldId)) {
-                polygon.addTo(this.map);
-            }
+            polygon._lotId = String(lotId).toLowerCase();
+            polygon._fieldId = fieldId;
+            polygon._status = status;
+
+            polygon.bindTooltip(lotName || '', {
+                permanent: true,
+                direction: 'center',
+                className: 'lot-label'
+            });
+
+            this.setLayerPresence(polygon, this.isLotVisible(polygon));
 
             const popupContent = `
                 <div style="min-width: 200px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #1a1a2e;">
@@ -282,7 +388,16 @@ window.mapInterop = {
                 }
             });
 
-            polygon._fieldId = fieldId;
+            polygon.on('mouseover', () => {
+                polygon._hovered = true;
+                this.applyLotStyle(polygon);
+            });
+
+            polygon.on('mouseout', () => {
+                polygon._hovered = false;
+                this.applyLotStyle(polygon);
+            });
+
             this.lotLayers[lotId] = polygon;
             return true;
         } catch (e) {
@@ -292,17 +407,20 @@ window.mapInterop = {
     },
 
     highlightLot: function (lotId) {
-        if (this.selectedLayer) {
-            this.selectedLayer.setStyle({ weight: 2, fillOpacity: 0.35 });
-        }
+        const target = this.lotLayers[lotId];
+        if (!target) return;
 
-        if (this.lotLayers[lotId]) {
-            this.selectedLayer = this.lotLayers[lotId];
-            if (!this.map.hasLayer(this.selectedLayer)) {
-                this.selectedLayer.addTo(this.map);
-            }
-            this.selectedLayer.setStyle({ weight: 4, fillOpacity: 0.65 });
-        }
+        const previous = this.selectedLayer;
+        this.selectedLayer = target;
+
+        // Al anterior se le recalcula el estilo en vez de devolverlo a una constante:
+        // si pertenece al campo seleccionado tiene que volver a su estilo de campo
+        // activo, no al base.
+        if (previous && previous !== target) this.applyLotStyle(previous);
+
+        // Seleccionar un lote lo muestra aunque el modo de vista lo tuviera oculto.
+        if (!this.map.hasLayer(target)) target.addTo(this.map);
+        this.applyLotStyle(target);
     },
 
     centerOnLot: function (lotId) {
@@ -360,9 +478,8 @@ window.mapInterop = {
                 weight: 2.5
             });
 
-            if (this.viewMode === 'fields' || this.viewMode === 'interactive') {
-                polygon.addTo(this.map);
-            }
+            this.setLayerPresence(polygon, this.isFieldVisible());
+            if (this.map.hasLayer(polygon)) this.applyFieldStyle(fieldId, polygon);
 
             polygon.bindTooltip(`🏡 <strong>${fieldName}</strong> (${area.toFixed(1)} ha - ${lotsCount} lotes)`, {
                 sticky: true,
@@ -405,32 +522,12 @@ window.mapInterop = {
         if (!this.map) return;
         this.selectedFieldId = fieldId;
 
-        // Highlight field outline
-        Object.keys(this.fieldLayers).forEach(fId => {
-            const fLayer = this.fieldLayers[fId];
-            if (fId === fieldId) {
-                if (!this.map.hasLayer(fLayer)) fLayer.addTo(this.map);
-                fLayer.setStyle({ weight: 4, fillOpacity: 0.15, color: '#16A085' });
-                this.map.fitBounds(fLayer.getBounds(), { padding: [60, 60], maxZoom: 15 });
-            } else {
-                if (this.viewMode === 'interactive') {
-                    fLayer.setStyle({ weight: 1.5, fillOpacity: 0.1, color: '#7F8C8D' });
-                }
-            }
-        });
+        this.applyLayerVisibility();
 
-        // Show lots belonging to this field
-        Object.keys(this.lotLayers).forEach(lId => {
-            const lLayer = this.lotLayers[lId];
-            if (fieldId && lLayer._fieldId === fieldId) {
-                if (!this.map.hasLayer(lLayer)) lLayer.addTo(this.map);
-                lLayer.setStyle({ weight: 2.5, fillOpacity: 0.55 });
-            } else {
-                if (this.viewMode === 'interactive' || this.viewMode === 'fields') {
-                    if (this.map.hasLayer(lLayer)) this.map.removeLayer(lLayer);
-                }
-            }
-        });
+        const selected = this.fieldLayers[fieldId];
+        if (selected) {
+            this.map.fitBounds(selected.getBounds(), { padding: [60, 60], maxZoom: 15 });
+        }
 
         if (this.dotNetRef) {
             this.dotNetRef.invokeMethodAsync('OnFieldSelected', fieldId);
@@ -442,32 +539,37 @@ window.mapInterop = {
         this.viewMode = mode;
         this.selectedFieldId = null;
 
-        if (mode === 'fields') {
-            Object.values(this.fieldLayers).forEach(layer => {
-                if (!this.map.hasLayer(layer)) layer.addTo(this.map);
-                layer.setStyle({ weight: 2.5, fillOpacity: 0.35, color: '#16A085' });
-            });
-            Object.values(this.lotLayers).forEach(layer => {
-                if (this.map.hasLayer(layer)) this.map.removeLayer(layer);
-            });
-        } else if (mode === 'lots') {
-            Object.values(this.fieldLayers).forEach(layer => {
-                if (this.map.hasLayer(layer)) this.map.removeLayer(layer);
-            });
-            Object.values(this.lotLayers).forEach(layer => {
-                if (!this.map.hasLayer(layer)) layer.addTo(this.map);
-                layer.setStyle({ weight: 2, fillOpacity: 0.35 });
-            });
-        } else {
-            // 'interactive'
-            Object.values(this.fieldLayers).forEach(layer => {
-                if (!this.map.hasLayer(layer)) layer.addTo(this.map);
-                layer.setStyle({ weight: 2, fillOpacity: 0.25, color: '#16A085' });
-            });
-            Object.values(this.lotLayers).forEach(layer => {
-                if (this.map.hasLayer(layer)) this.map.removeLayer(layer);
-            });
+        // El filtro sobrevive al cambio de modo: son condiciones independientes y
+        // applyLayerVisibility las combina.
+        this.applyLayerVisibility();
+    },
+
+    // OT-38: visibleLotIds es un array de ids; null limpia el filtro.
+    // Devuelve cuantos lotes quedan visibles en el mapa.
+    filterLots: function (visibleLotIds) {
+        if (!this.map) return 0;
+
+        this.lotFilter = visibleLotIds
+            ? new Set(visibleLotIds.map(id => String(id).toLowerCase()))
+            : null;
+        this.applyLayerVisibility();
+
+        return Object.values(this.lotLayers).filter(l => this.isLotVisible(l)).length;
+    },
+
+    // Encuadra solo lo que se esta viendo, no el universo completo.
+    fitVisibleLots: function () {
+        if (!this.map) return false;
+
+        const visibles = Object.values(this.lotLayers).filter(l => this.isLotVisible(l));
+        if (visibles.length === 0) return false;
+
+        const bounds = L.featureGroup(visibles).getBounds();
+        if (bounds && bounds.isValid()) {
+            this.map.fitBounds(bounds, { padding: [50, 50] });
+            return true;
         }
+        return false;
     },
 
     clearFields: function () {
