@@ -119,6 +119,7 @@ namespace GestorOT.Shared;
 [JsonSerializable(typeof(BulkValidationRequest))]
 [JsonSerializable(typeof(CheckLotOverlapRequestDto))]
 [JsonSerializable(typeof(LotOverlapCheckResultDto))]
+[JsonSerializable(typeof(LotAreaResult))]
 [JsonSerializable(typeof(LoginRequestDto))]
 [JsonSerializable(typeof(LoginResponseDto))]
 [JsonSerializable(typeof(AuthUserInfoDto))]

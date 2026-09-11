@@ -247,7 +247,13 @@
             <div class="rail-body">
                 <div class="rail-section">
                     <span class="rail-label">Área Calculada</span>
-                    <span class="rail-value">@_drawnArea.ToString("N2") ha</span>
+                    <span class="rail-value">
+                        @_drawnArea.ToString("N2") ha
+                        @if (_drawnAreaIsEstimated)
+                        {
+                            <span style="font-size: 11px; color: #F39C12; font-weight: 500; margin-left: 6px;">(estimada)</span>
+                        }
+                    </span>
                 </div>
                 <div style="margin-top: 16px;">
                     @if (_editingExistingLot)
@@ -553,7 +559,7 @@
 
 <Modal Title="⚠️ Advertencia de Superposición Espacial"
        Visible="_showOverlapModal"
-       OnCancel="() => { _showOverlapModal = false; _pendingOverrideOverlap = false; }"
+       OnCancel="CancelOverlap"
        Footer="@null"
        Width="520">
     @if (_overlapWarningResult != null)
@@ -582,11 +588,11 @@
             </div>
 
             <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 10px;">
-                <Button OnClick="() => { _showOverlapModal = false; _pendingOverrideOverlap = false; }">
+                <Button OnClick="CancelOverlap">
                     Cancelar
                 </Button>
                 <Button Type="@ButtonType.Primary" Danger OnClick="ForceCreateWithOverlap">
-                    Crear de todos modos
+                    @(_overlapSource == "draw" ? "Guardar de todos modos" : "Crear de todos modos")
                 </Button>
             </div>
         </div>
@@ -908,8 +914,10 @@
     private LotOverlapCheckResultDto? _overlapWarningResult;
     private bool _showOverlapModal;
     private bool _pendingOverrideOverlap;
+    private string? _overlapSource;
     private string? _drawnWkt;
     private double _drawnArea;
+    private bool _drawnAreaIsEstimated;
     private Guid _linkingLotId;
     private string? _cityQuery;
     private bool _showCreateLotInline;
@@ -996,10 +1004,34 @@
         _creatingLot = true;
         try
         {
+            // El panel inline creaba el lote sin chequear solapamiento. Es una creacion nueva,
+            // asi que no hay self-overlap que excluir: la geometria dibujada se valida contra
+            // el campo entero, igual que en la importacion.
+            if (!_pendingOverrideOverlap && !string.IsNullOrEmpty(_drawnWkt) && _newLotFieldId != Guid.Empty)
+            {
+                var overlapCheck = await CheckOverlapAsync(_drawnWkt, _newLotFieldId, null);
+                if (overlapCheck is { HasOverlap: true })
+                {
+                    _overlapWarningResult = overlapCheck;
+                    _overlapSource = "create";
+                    _showOverlapModal = true;
+                    return;
+                }
+            }
+
             var dto = new LotDto(Guid.Empty, _newLotFieldId, _newLotName, "Active", _drawnWkt, "", _drawnArea, (decimal)_drawnArea);
-            var postUrl = CampaignState.CurrentCampaign != null && CampaignState.CurrentCampaign.Id != Guid.Empty
-                ? $"api/lots?campaignId={CampaignState.CurrentCampaign.Id}"
-                : "api/lots";
+            var queryParams = "";
+            if (CampaignState.CurrentCampaign != null && CampaignState.CurrentCampaign.Id != Guid.Empty)
+            {
+                queryParams = $"campaignId={CampaignState.CurrentCampaign.Id}";
+            }
+            if (_pendingOverrideOverlap)
+            {
+                queryParams = string.IsNullOrEmpty(queryParams)
+                    ? "overrideOverlap=true"
+                    : $"{queryParams}&overrideOverlap=true";
+            }
+            var postUrl = string.IsNullOrEmpty(queryParams) ? "api/lots" : $"api/lots?{queryParams}";
             var response = await Http.PostAsJsonAsync(postUrl, dto);
             
             if (response.IsSuccessStatusCode)
@@ -1013,6 +1045,20 @@
                     Message.Success("Lote creado y vinculado.");
                     // Immediately save geometry since we already have the WKT and the ID
                     await SaveDrawnGeometry();
+                }
+            }
+            else if (response.StatusCode == System.Net.HttpStatusCode.Conflict)
+            {
+                var overlapResult = await response.Content.ReadFromJsonAsync<LotOverlapCheckResultDto>(AppJsonSerializerContext.Default.LotOverlapCheckResultDto);
+                if (overlapResult != null)
+                {
+                    _overlapWarningResult = overlapResult;
+                    _overlapSource = "create";
+                    _showOverlapModal = true;
+                }
+                else
+                {
+                    Message.Error("El lote dibujado se superpone con otro lote existente.");
                 }
             }
             else
@@ -1327,6 +1373,7 @@
     {
         _drawnWkt = null;
         _drawnArea = 0;
+        _drawnAreaIsEstimated = false;
         _polygonMenuVisible = false;
         var savedLinkingId = _linkingLotId;
         _linkingLotId = Guid.Empty;
@@ -1365,6 +1412,21 @@
             MapBounds? savedBounds = null;
             try { savedBounds = await JS.InvokeAsync<MapBounds?>("mapInterop.getCurrentBounds"); } catch { }
 
+            // El dibujo manual cae en este PUT, que hasta ahora no validaba nada: la misma
+            // geometria se rechazaba si venia de un archivo y se aceptaba si se dibujaba. El
+            // backend ya la valida; chequear aca permite mostrar el modal en vez de un 409 seco.
+            if (!_pendingOverrideOverlap && lot.FieldId != Guid.Empty)
+            {
+                var overlap = await CheckOverlapAsync(_drawnWkt, lot.FieldId, lot.Id);
+                if (overlap is { HasOverlap: true })
+                {
+                    _overlapWarningResult = overlap;
+                    _overlapSource = "draw";
+                    _showOverlapModal = true;
+                    return;
+                }
+            }
+
             var dto = new LotDto(
                 lot.Id,
                 lot.FieldId,
@@ -1376,7 +1438,10 @@
                 lot.CadastralArea
             );
 
-            var response = await Http.PutAsJsonAsync($"api/lots/{lot.Id}",
+            var putUrl = _pendingOverrideOverlap
+                ? $"api/lots/{lot.Id}?overrideOverlap=true"
+                : $"api/lots/{lot.Id}";
+            var response = await Http.PutAsJsonAsync(putUrl,
                 dto, AppJsonSerializerContext.Default.LotDto);
 
             if (response.IsSuccessStatusCode)
@@ -1384,11 +1449,26 @@
                 Message.Success($"Geometría guardada para '{lot.Name}'.");
                 _drawnWkt = null;
                 _drawnArea = 0;
+                _drawnAreaIsEstimated = false;
                 _polygonMenuVisible = false;
                 _linkingLotId = Guid.Empty;
                 _editingExistingLot = false;
                 _editingExistingLotName = "";
                 await ReloadMap(savedBounds);
+            }
+            else if (response.StatusCode == System.Net.HttpStatusCode.Conflict)
+            {
+                var overlapResult = await response.Content.ReadFromJsonAsync<LotOverlapCheckResultDto>(AppJsonSerializerContext.Default.LotOverlapCheckResultDto);
+                if (overlapResult != null)
+                {
+                    _overlapWarningResult = overlapResult;
+                    _overlapSource = "draw";
+                    _showOverlapModal = true;
+                }
+                else
+                {
+                    Message.Error("La geometría se superpone con otro lote existente.");
+                }
             }
             else
             {
@@ -1497,10 +1577,10 @@
     }
 
     [JSInvokable]
-    public void OnPolygonDrawn(string wkt, double area)
+    public async Task OnPolygonDrawn(string wkt, double area)
     {
         _drawnWkt = wkt;
-        _drawnArea = area;
+        _drawnArea = await ResolveDrawnAreaAsync(wkt, area);
         _polygonMenuVisible = true;
         _selectedLot = null;
         if (!_editingExistingLot)
@@ -1509,12 +1589,55 @@
     }
 
     [JSInvokable]
-    public void OnPolygonEdited(string wkt, double area)
+    public async Task OnPolygonEdited(string wkt, double area)
     {
         _drawnWkt = wkt;
-        _drawnArea = area;
+        _drawnArea = await ResolveDrawnAreaAsync(wkt, area);
         _polygonMenuVisible = true;
         StateHasChanged();
+    }
+
+    /// <summary>
+    /// La superficie que se muestra al dibujar tiene que ser la misma que se persiste. El area
+    /// que manda Leaflet es una aproximacion esferica en JS; la de PostGIS es la fuente de
+    /// verdad, asi que se pide al servidor. Si no responde, se cae al valor local y se marca
+    /// como "(estimada)": lo guardado igual sale del backend, pero el operador no ve un numero
+    /// que despues va a cambiar sin aviso.
+    /// </summary>
+    private async Task<double> ResolveDrawnAreaAsync(string wkt, double fallback)
+    {
+        try
+        {
+            var req = new CheckLotOverlapRequestDto(wkt, Guid.Empty);
+            var resp = await Http.PostAsJsonAsync("api/lots/calculate-area", req, AppJsonSerializerContext.Default.CheckLotOverlapRequestDto);
+            if (resp.IsSuccessStatusCode)
+            {
+                var result = await resp.Content.ReadFromJsonAsync<LotAreaResult>(AppJsonSerializerContext.Default.LotAreaResult);
+                if (result != null)
+                {
+                    _drawnAreaIsEstimated = false;
+                    return result.AreaHa;
+                }
+            }
+        }
+        catch { }
+        _drawnAreaIsEstimated = true;
+        return fallback;
+    }
+
+    private async Task<LotOverlapCheckResultDto?> CheckOverlapAsync(string wkt, Guid fieldId, Guid? excludeLotId)
+    {
+        try
+        {
+            var req = new CheckLotOverlapRequestDto(wkt, fieldId, excludeLotId);
+            var resp = await Http.PostAsJsonAsync("api/lots/check-overlap", req, AppJsonSerializerContext.Default.CheckLotOverlapRequestDto);
+            if (resp.IsSuccessStatusCode)
+            {
+                return await resp.Content.ReadFromJsonAsync<LotOverlapCheckResultDto>(AppJsonSerializerContext.Default.LotOverlapCheckResultDto);
+            }
+        }
+        catch { }
+        return null;
     }
 
     [JSInvokable]
@@ -1522,6 +1645,7 @@
     {
         _drawnWkt = null;
         _drawnArea = 0;
+        _drawnAreaIsEstimated = false;
         _polygonMenuVisible = false;
         _linkingLotId = Guid.Empty;
         StateHasChanged();
@@ -1686,12 +1810,31 @@
 
     private bool _linkModeCombine = true;
 
+    private void CancelOverlap()
+    {
+        _showOverlapModal = false;
+        _pendingOverrideOverlap = false;
+        _overlapSource = null;
+    }
+
     private async Task ForceCreateWithOverlap()
     {
         _showOverlapModal = false;
         _pendingOverrideOverlap = true;
-        await SaveImportedGeometry();
-        _pendingOverrideOverlap = false;
+        try
+        {
+            if (_overlapSource == "draw")
+                await SaveDrawnGeometry();
+            else if (_overlapSource == "create")
+                await CreateAndLinkLot();
+            else
+                await SaveImportedGeometry();
+        }
+        finally
+        {
+            _pendingOverrideOverlap = false;
+            _overlapSource = null;
+        }
     }
 
     private async Task SaveImportedGeometry()
@@ -1720,22 +1863,14 @@
 
                 if (!_pendingOverrideOverlap)
                 {
-                    try
+                    var overlapCheck = await CheckOverlapAsync(_importLinkWkt, _newLotFieldId, null);
+                    if (overlapCheck is { HasOverlap: true })
                     {
-                        var checkReq = new CheckLotOverlapRequestDto(_importLinkWkt, _newLotFieldId);
-                        var checkResp = await Http.PostAsJsonAsync("api/lots/check-overlap", checkReq, AppJsonSerializerContext.Default.CheckLotOverlapRequestDto);
-                        if (checkResp.IsSuccessStatusCode)
-                        {
-                            var overlapCheck = await checkResp.Content.ReadFromJsonAsync<LotOverlapCheckResultDto>(AppJsonSerializerContext.Default.LotOverlapCheckResultDto);
-                            if (overlapCheck != null && overlapCheck.HasOverlap)
-                            {
-                                _overlapWarningResult = overlapCheck;
-                                _showOverlapModal = true;
-                                return;
-                            }
-                        }
+                        _overlapWarningResult = overlapCheck;
+                        _overlapSource = "import";
+                        _showOverlapModal = true;
+                        return;
                     }
-                    catch { }
                 }
 
                 var createDto = new LotDto(
@@ -1776,6 +1911,7 @@
                     if (overlapResult != null)
                     {
                         _overlapWarningResult = overlapResult;
+                        _overlapSource = "import";
                         _showOverlapModal = true;
                     }
                     else
@@ -1803,6 +1939,18 @@
                     ? CombineWktGeometries(lot.WktGeometry, _importLinkWkt)
                     : _importLinkWkt;
 
+                if (!_pendingOverrideOverlap && lot.FieldId != Guid.Empty)
+                {
+                    var overlapCheck = await CheckOverlapAsync(finalWkt, lot.FieldId, lot.Id);
+                    if (overlapCheck is { HasOverlap: true })
+                    {
+                        _overlapWarningResult = overlapCheck;
+                        _overlapSource = "import";
+                        _showOverlapModal = true;
+                        return;
+                    }
+                }
+
                 var dto = new LotDto(
                     lot.Id,
                     lot.FieldId,
@@ -1814,7 +1962,10 @@
                     0
                 );
 
-                var response = await Http.PutAsJsonAsync($"api/lots/{lot.Id}",
+                var putUrl = _pendingOverrideOverlap
+                    ? $"api/lots/{lot.Id}?overrideOverlap=true"
+                    : $"api/lots/{lot.Id}";
+                var response = await Http.PutAsJsonAsync(putUrl,
                     dto, AppJsonSerializerContext.Default.LotDto);
 
                 if (response.IsSuccessStatusCode)
@@ -1837,6 +1988,20 @@
                     _importLinkWkt = null;
                     _linkingLotId = Guid.Empty;
                     await ReloadMap(savedBounds);
+                }
+                else if (response.StatusCode == System.Net.HttpStatusCode.Conflict)
+                {
+                    var overlapResult = await response.Content.ReadFromJsonAsync<LotOverlapCheckResultDto>(AppJsonSerializerContext.Default.LotOverlapCheckResultDto);
+                    if (overlapResult != null)
+                    {
+                        _overlapWarningResult = overlapResult;
+                        _overlapSource = "import";
+                        _showOverlapModal = true;
+                    }
+                    else
+                    {
+                        Message.Error("La geometría se superpone con otro lote existente.");
+                    }
                 }
                 else
                 {

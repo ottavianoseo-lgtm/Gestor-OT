@@ -216,12 +216,39 @@ public class LotsController : ControllerBase
             new LotDto(lot.Id, lot.FieldId, lot.Name, lot.Status, dto.WktGeometry, null, areaHa, lot.CadastralArea, lot.CodCentro));
     }
 
+    /// <summary>
+    /// Calcula la superficie de una geometria sin persistir nada, para que el mapa muestre
+    /// mientras se dibuja el mismo numero que va a quedar guardado.
+    /// </summary>
+    [HttpPost("calculate-area")]
+    public async Task<ActionResult<LotAreaResult>> CalculateArea([FromBody] CheckLotOverlapRequestDto req, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(req.WktGeometry)) return BadRequest("Falta la geometria.");
+
+        var areaHa = await _queryService.CalculateAreaFromWktAsync(req.WktGeometry, ct);
+        return Ok(new LotAreaResult { Id = req.ExcludeLotId ?? Guid.Empty, AreaHa = areaHa });
+    }
+
     [HttpPut("{id:guid}")]
-    public async Task<IActionResult> UpdateLot(Guid id, LotDto dto)
+    public async Task<IActionResult> UpdateLot(Guid id, LotDto dto, [FromQuery] bool overrideOverlap = false, CancellationToken ct = default)
     {
         // Use FirstOrDefaultAsync (not FindAsync) so tenant query filter is applied
         var lot = await _context.Lots.FirstOrDefaultAsync(l => l.Id == id);
         if (lot == null) return NotFound("El lote no existe.");
+
+        // El chequeo va aca y no solo en el cliente: el dibujo manual entra por este PUT y se
+        // salteaba la validacion entera, asi que la misma geometria se rechazaba si venia de un
+        // archivo y se aceptaba si se dibujaba. En el backend ningun flujo puede esquivarla.
+        if (!overrideOverlap && !string.IsNullOrEmpty(dto.WktGeometry) && dto.FieldId != Guid.Empty)
+        {
+            // ExcludeLotId es imprescindible al redibujar: sin el, el lote se detecta
+            // solapado consigo mismo y no se puede guardar nunca.
+            var overlapResult = await _queryService.CheckLotOverlapAsync(dto.WktGeometry, dto.FieldId, id, ct);
+            if (overlapResult.HasOverlap)
+            {
+                return Conflict(overlapResult);
+            }
+        }
 
         lot.Name = dto.Name;
         lot.Status = dto.Status;

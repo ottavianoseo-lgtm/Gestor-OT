@@ -234,33 +234,27 @@ public class LotQueryService : ILotQueryService
         return new GeoJsonFeatureCollection("FeatureCollection", features);
     }
 
+    /// <summary>
+    /// La superficie sale de PostGIS sobre el elipsoide (ST_Area::geography) y de ningun otro
+    /// lado: es la fuente de verdad para el panel, los reportes y los pases.
+    ///
+    /// No hay fallback en memoria a proposito. El que habia hacia geom.Area * 10000 sobre una
+    /// geometria en grados: para un lote de 76 ha devolvia 0,076, y como estaba dentro de un
+    /// catch, cualquier error transitorio de base terminaba persistiendo esa superficie
+    /// inventada sin que nadie se enterara. Si PostGIS no puede calcularla, preferimos que la
+    /// operacion falle a guardar un numero que no significa nada.
+    /// </summary>
     public async Task<double> CalculateAreaFromWktAsync(string wkt, CancellationToken ct = default)
     {
         if (string.IsNullOrEmpty(wkt)) return 0;
-        
-        try
-        {
-            var result = await _context.Database
-                .SqlQueryRaw<double>(
-                    @"SELECT COALESCE(ST_Area(ST_GeomFromText({0}, 4326)::geography) / 10000.0, 0) AS ""Value""",
-                    wkt)
-                .FirstOrDefaultAsync(ct);
-                
-            return Math.Round(result, 4);
-        }
-        catch
-        {
-            try
-            {
-                var reader = new WKTReader();
-                var geom = reader.Read(wkt);
-                return geom != null ? Math.Round(geom.Area * 10000.0, 4) : 0;
-            }
-            catch
-            {
-                return 0;
-            }
-        }
+
+        var result = await _context.Database
+            .SqlQueryRaw<double>(
+                @"SELECT COALESCE(ST_Area(ST_GeomFromText({0}, 4326)::geography) / 10000.0, 0) AS ""Value""",
+                wkt)
+            .FirstOrDefaultAsync(ct);
+
+        return Math.Round(result, 4);
     }
 
     public async Task<double> CalculateNonOverlappingAreaAsync(List<Guid> lotIds, CancellationToken ct = default)
