@@ -44,10 +44,14 @@ public class LotsController : ControllerBase
         return result;
     }
 
+    /// <summary>
+    /// Con campaignId cada lote suma el cultivo de esa campaña. Sin el parámetro responde lo
+    /// mismo que siempre, para no romper a los que ya lo consumen.
+    /// </summary>
     [HttpGet("geojson")]
-    public async Task<ActionResult<GeoJsonFeatureCollection>> GetLotsGeoJson(CancellationToken ct)
+    public async Task<ActionResult<GeoJsonFeatureCollection>> GetLotsGeoJson([FromQuery] Guid? campaignId, CancellationToken ct)
     {
-        return await _queryService.GetGeoJsonAsync(ct);
+        return await _queryService.GetGeoJsonAsync(campaignId, ct);
     }
 
     /// <summary>

@@ -124,6 +124,7 @@ window.mapInterop = {
         this.editingLotId = null;
         this.lotFilter = null;
         this.selectedFieldId = null;
+        this.symbology = 'status';
 
         this.map = L.map(containerId, {
             preferCanvas: true,
@@ -236,6 +237,7 @@ window.mapInterop = {
     viewMode: 'interactive',
     selectedFieldId: null,
     lotFilter: null,
+    symbology: 'status',
 
     LABEL_MIN_ZOOM: 13,
 
@@ -250,7 +252,16 @@ window.mapInterop = {
     // ------------------------------------------------------------------
 
     lotBaseColor: function (layer) {
+        // El color por cultivo lo calcula el servidor y viaja con el feature: la leyenda usa
+        // el mismo valor, asi que no pueden discrepar.
+        if (this.symbology === 'crop') return layer._cropColor || '#7F8C8D';
         return layer._status === 'Active' ? '#2ECC71' : '#E74C3C';
+    },
+
+    // OT-34: 'status' (el de siempre) o 'crop'. Solo cambia el color, no que se ve.
+    setSymbology: function (mode) {
+        this.symbology = mode;
+        this.applyLayerVisibility();
     },
 
     // Cuanto se destaca un lote. El color no se toca aca: sale de lotBaseColor.
@@ -333,7 +344,7 @@ window.mapInterop = {
         this.dotNetRef = ref;
     },
 
-    addLotPolygon: function (lotId, lotName, status, area, fieldName, coordinatesJson, fieldId) {
+    addLotPolygon: function (lotId, lotName, status, area, fieldName, coordinatesJson, fieldId, cropName, cropColor) {
         if (!this.map) return false;
 
         try {
@@ -351,6 +362,8 @@ window.mapInterop = {
             polygon._lotId = String(lotId).toLowerCase();
             polygon._fieldId = fieldId;
             polygon._status = status;
+            polygon._cropName = cropName || null;
+            polygon._cropColor = cropColor || null;
 
             polygon.bindTooltip(lotName || '', {
                 permanent: true,
@@ -359,6 +372,7 @@ window.mapInterop = {
             });
 
             this.setLayerPresence(polygon, this.isLotVisible(polygon));
+            if (this.map.hasLayer(polygon)) this.applyLotStyle(polygon);
 
             const popupContent = `
                 <div style="min-width: 200px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #1a1a2e;">

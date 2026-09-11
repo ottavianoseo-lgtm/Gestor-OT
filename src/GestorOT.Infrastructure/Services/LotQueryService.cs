@@ -1,5 +1,6 @@
 using GestorOT.Application.Interfaces;
 using GestorOT.Application.Services;
+using GestorOT.Shared;
 using GestorOT.Shared.Dtos;
 using Microsoft.EntityFrameworkCore;
 using NetTopologySuite.Geometries;
@@ -66,7 +67,7 @@ public class LotQueryService : ILotQueryService
         );
     }
 
-    public async Task<GeoJsonFeatureCollection> GetGeoJsonAsync(CancellationToken ct = default)
+    public async Task<GeoJsonFeatureCollection> GetGeoJsonAsync(Guid? campaignId = null, CancellationToken ct = default)
     {
         var areaMap = await GetLotAreasAsync(CancellationToken.None);
 
@@ -76,21 +77,112 @@ public class LotQueryService : ILotQueryService
             .Where(l => l.Geometry != null)
             .ToListAsync(CancellationToken.None);
 
-        var features = lots.Select(l => new GeoJsonFeature(
-            "Feature",
-            new Dictionary<string, object>
-            {
-                ["id"] = l.Id.ToString(),
-                ["name"] = l.Name,
-                ["status"] = l.Status,
-                ["fieldId"] = l.FieldId.ToString(),
-                ["fieldName"] = l.Field?.Name ?? "",
-                ["area"] = areaMap.GetValueOrDefault(l.Id, 0)
-            },
+        var cropByLot = campaignId.HasValue && campaignId.Value != Guid.Empty
+            ? await GetCropByLotAsync(campaignId.Value, ct)
+            : null;
+
+        var features = lots.Select(l => BuildLotFeature(
+            l.Id,
+            l.Name,
+            l.Status,
+            l.FieldId,
+            l.Field?.Name,
+            areaMap.GetValueOrDefault(l.Id, 0),
+            cropByLot is not null ? cropByLot.GetValueOrDefault(l.Id) : null,
             l.Geometry != null ? ParseGeometry(l.Geometry) : null
         )).ToList();
 
         return new GeoJsonFeatureCollection("FeatureCollection", features);
+    }
+
+    /// <summary>
+    /// Arma el feature de un lote. Está separado para poder fijar por test que sin cultivo el
+    /// payload es exactamente el de antes: es el criterio de aceptación que más fácil se
+    /// rompe sin que nadie lo note, porque el mapa sigue andando igual.
+    /// </summary>
+    internal static GeoJsonFeature BuildLotFeature(
+        Guid id,
+        string name,
+        string status,
+        Guid fieldId,
+        string? fieldName,
+        double areaHa,
+        LotCropInfo? crop,
+        GeoJsonGeometry? geometry)
+    {
+        var properties = new Dictionary<string, object>
+        {
+            ["id"] = id.ToString(),
+            ["name"] = name,
+            ["status"] = status,
+            ["fieldId"] = fieldId.ToString(),
+            ["fieldName"] = fieldName ?? "",
+            ["area"] = areaHa
+        };
+
+        // Sin campaña seleccionada no se agrega ninguna clave: el payload queda igual al que
+        // consumen el resto de los llamadores.
+        if (crop.HasValue)
+        {
+            properties["cropId"] = crop.Value.CropId.ToString();
+            properties["cropName"] = crop.Value.CropName;
+            properties["cropColor"] = crop.Value.Color;
+        }
+
+        return new GeoJsonFeature("Feature", properties, geometry);
+    }
+
+    /// <summary>
+    /// El cultivo de cada lote en una campaña, en una sola consulta proyectada. Resolverlo
+    /// lote por lote seria un N+1 sobre la cantidad de lotes del establecimiento.
+    /// </summary>
+    private async Task<Dictionary<Guid, LotCropInfo?>> GetCropByLotAsync(Guid campaignId, CancellationToken ct)
+    {
+        var rotations = await _context.Rotations
+            .AsNoTracking()
+            .Where(r => r.CampaignLot!.CampaignId == campaignId)
+            .Select(r => new
+            {
+                r.CampaignLot!.LotId,
+                CropId = r.ErpActivityId,
+                CropName = r.ErpActivity != null ? r.ErpActivity.Name : null,
+                r.StartDate,
+                r.EndDate
+            })
+            .ToListAsync(ct);
+
+        // El color sale de la posicion en el catalogo ordenado, asi que hace falta el catalogo
+        // entero y no solo los cultivos de esta campaña: si dependiera de los presentes, el
+        // color de un cultivo cambiaria al cambiar de campaña.
+        var catalogIndex = (await _context.ErpActivities
+                .AsNoTracking()
+                .OrderBy(a => a.Name)
+                .Select(a => a.Id)
+                .ToListAsync(ct))
+            .Select((id, index) => (id, index))
+            .ToDictionary(x => x.id, x => x.index);
+
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+
+        return rotations
+            .Where(r => r.CropName != null)
+            .GroupBy(r => r.LotId)
+            .ToDictionary(
+                g => g.Key,
+                g =>
+                {
+                    var elegido = CropSelection.ForDate(
+                        g.Select(r => new CampaignCrop(r.CropId, r.CropName!, r.StartDate, r.EndDate)),
+                        today);
+
+                    if (elegido is not CampaignCrop crop) return (LotCropInfo?)null;
+
+                    var color = CropPalette.ColorFor(
+                        crop.CropName,
+                        catalogIndex.TryGetValue(crop.CropId, out var i) ? i : null);
+
+                    return new LotCropInfo(crop.CropId, crop.CropName, color);
+                });
     }
 
     public async Task<GeoJsonFeatureCollection> GetFieldsGeoJsonAsync(CancellationToken ct = default)

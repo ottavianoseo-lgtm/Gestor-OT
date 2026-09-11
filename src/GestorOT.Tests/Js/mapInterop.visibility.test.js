@@ -60,8 +60,8 @@ function reset() {
 }
 
 const COORDS = '[[[0,0],[1,0],[1,1],[0,0]]]';
-function addLot(id, fieldId, status) {
-    m.addLotPolygon(id, 'Lote ' + id, status || 'Active', 10, 'Campo', COORDS, fieldId);
+function addLot(id, fieldId, status, cropName, cropColor) {
+    m.addLotPolygon(id, 'Lote ' + id, status || 'Active', 10, 'Campo', COORDS, fieldId, cropName, cropColor);
 }
 function addField(id) {
     m.addFieldPolygon(id, 'Campo ' + id, 2, 100, COORDS);
@@ -139,6 +139,35 @@ seed(); reset(); addLot('x', 'A', 'Inactive'); m.setGisViewMode('lots');
 check('lote inactivo en rojo', m.lotLayers['x'].options.color, '#E74C3C');
 m.lotLayers['x'].fire('mouseover');
 check('el hover no toca el color', m.lotLayers['x'].options.color, '#E74C3C');
+
+console.log('\n--- OT-34: simbologia por cultivo ---');
+
+reset();
+addLot('t1', 'A', 'Active', 'Trigo', '#795548');
+addLot('s1', 'A', 'Active', 'Soja', '#27AE60');
+addLot('n1', 'A', 'Inactive');            // sin cultivo en la campaña
+m.setGisViewMode('lots');
+
+check('modo estado: manda el estado', m.lotLayers['t1'].options.color, '#2ECC71');
+check('modo estado: inactivo en rojo', m.lotLayers['n1'].options.color, '#E74C3C');
+
+m.setSymbology('crop');
+check('modo cultivo: trigo', m.lotLayers['t1'].options.color, '#795548');
+check('modo cultivo: soja', m.lotLayers['s1'].options.color, '#27AE60');
+check('modo cultivo: sin cultivo va al gris', m.lotLayers['n1'].options.color, '#7F8C8D');
+
+check('cambiar de simbologia no cambia que se ve', visibles(), ['n1', 's1', 't1']);
+
+m.lotLayers['t1'].fire('mouseover');
+check('el hover no pisa el color del cultivo', m.lotLayers['t1'].options.color, '#795548');
+check('el hover si resalta', m.lotLayers['t1'].options.weight, 4);
+m.lotLayers['t1'].fire('mouseout');
+
+m.selectField('A');
+check('seleccionar campo no pisa el color del cultivo', m.lotLayers['s1'].options.color, '#27AE60');
+
+m.setSymbology('status');
+check('volver a estado restaura el color por estado', m.lotLayers['t1'].options.color, '#2ECC71');
 
 console.log(fails === 0 ? '\nTODO OK\n' : `\n${fails} FALLAS\n`);
 process.exit(fails === 0 ? 0 : 1);

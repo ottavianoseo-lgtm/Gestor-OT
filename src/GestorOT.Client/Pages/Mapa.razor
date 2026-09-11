@@ -36,6 +36,16 @@
         </button>
     </div>
 
+    <div class="gis-mode-selector" style="position: absolute; top: 16px; left: 640px; z-index: 1000; background: rgba(26, 26, 46, 0.85); backdrop-filter: blur(8px); padding: 4px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.12); display: flex; gap: 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.2);">
+        <button class="mode-btn @(_symbology == "status" ? "mode-btn--active" : "")" @onclick='() => ChangeSymbology("status")'>
+            Estado
+        </button>
+        <button class="mode-btn @(_symbology == "crop" ? "mode-btn--active" : "")" @onclick='() => ChangeSymbology("crop")'
+                title="@(CampaignState.CurrentCampaign == null ? "Elegí una campaña para ver los cultivos" : "")">
+            Cultivo
+        </button>
+    </div>
+
     @if (_loading)
     {
         <div class="gis-overlay">
@@ -87,18 +97,39 @@
 
     <div class="gis-legend">
         <div style="font-weight: 700; font-size: 12px; color: #fff; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 1px;">Leyenda</div>
-        <div class="legend-item">
-            <div class="legend-dot" style="background: #2ECC71;"></div>
-            <span>Lote Activo</span>
-        </div>
-        <div class="legend-item">
-            <div class="legend-dot" style="background: #E74C3C;"></div>
-            <span>Lote Inactivo</span>
-        </div>
-        <div class="legend-item">
-            <div class="legend-dot" style="background: #9B59B6;"></div>
-            <span>Importado</span>
-        </div>
+        @if (_symbology == "crop")
+        {
+            @if (_cropsInView.Count == 0)
+            {
+                <div style="font-size: 11px; color: rgba(255,255,255,0.45); line-height: 1.4;">
+                    @(CampaignState.CurrentCampaign == null
+                        ? "Elegí una campaña para ver los cultivos."
+                        : "Ningún lote tiene cultivo cargado en esta campaña.")
+                </div>
+            }
+            @foreach (var cultivo in _cropsInView.OrderByDescending(c => c.Value.Count).ThenBy(c => c.Key))
+            {
+                <div class="legend-item">
+                    <div class="legend-dot" style="@($"background: {cultivo.Value.Color};")"></div>
+                    <span>@cultivo.Key (@cultivo.Value.Count)</span>
+                </div>
+            }
+        }
+        else
+        {
+            <div class="legend-item">
+                <div class="legend-dot" style="background: #2ECC71;"></div>
+                <span>Lote Activo</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-dot" style="background: #E74C3C;"></div>
+                <span>Lote Inactivo</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-dot" style="background: #9B59B6;"></div>
+                <span>Importado</span>
+            </div>
+        }
         <div class="legend-divider"></div>
         <div style="font-size: 11px; color: rgba(255,255,255,0.4);">
             @if (_gisViewMode == "fields")
@@ -1105,7 +1136,14 @@
 
             var lotsTask = Http.GetFromJsonAsync("api/lots",
                 AppJsonSerializerContext.Default.ListLotDto, cts.Token);
-            var geoTask = Http.GetFromJsonAsync("api/lots/geojson",
+            // Con campaña, cada feature trae ademas el cultivo y su color. Sin campaña el
+            // payload es el de siempre y el modo Cultivo no tiene nada que pintar.
+            var campaignId = CampaignState.CurrentCampaign?.Id;
+            var geoUrl = campaignId.HasValue && campaignId.Value != Guid.Empty
+                ? $"api/lots/geojson?campaignId={campaignId.Value}"
+                : "api/lots/geojson";
+
+            var geoTask = Http.GetFromJsonAsync(geoUrl,
                 AppJsonSerializerContext.Default.GeoJsonFeatureCollection, cts.Token);
             var fieldsTask = Http.GetFromJsonAsync("api/fields",
                 AppJsonSerializerContext.Default.ListFieldDto, cts.Token);
@@ -1134,6 +1172,7 @@
             {
                 _lotsCount = featureCollection.Features.Count;
                 _totalArea = 0;
+                _cropsInView.Clear();
 
                 foreach (var feature in featureCollection.Features)
                 {
@@ -1155,11 +1194,29 @@
 
                         _totalArea += area;
 
+                        var cropName = feature.Properties.TryGetValue("cropName", out var cn) ? cn?.ToString() ?? "" : "";
+                        var cropColor = feature.Properties.TryGetValue("cropColor", out var cc) ? cc?.ToString() ?? "" : "";
+
+                        if (!string.IsNullOrEmpty(cropName))
+                        {
+                            // El conteo es por cultivo presente en la vista, que es lo que la
+                            // leyenda informa.
+                            _cropsInView[cropName] = _cropsInView.TryGetValue(cropName, out var previo)
+                                ? (previo.Color, previo.Count + 1)
+                                : (cropColor, 1);
+                        }
+                        else if (campaignId.HasValue && campaignId.Value != Guid.Empty)
+                        {
+                            _cropsInView[SinCultivo] = _cropsInView.TryGetValue(SinCultivo, out var prev)
+                                ? (prev.Color, prev.Count + 1)
+                                : ("#7F8C8D", 1);
+                        }
+
                         var leafletCoords = ConvertToLeafletCoords(feature.Geometry.Coordinates);
                         var coordsJson = System.Text.Json.JsonSerializer.Serialize(leafletCoords);
 
                         await JS.InvokeAsync<bool>("mapInterop.addLotPolygon",
-                            lotId, lotName, status, area, fieldName, coordsJson, fieldId);
+                            lotId, lotName, status, area, fieldName, coordsJson, fieldId, cropName, cropColor);
                     }
                 }
 
@@ -1370,6 +1427,19 @@
     }
 
     private string _gisViewMode = "interactive";
+    private string _symbology = "status";
+
+    private const string SinCultivo = "Sin cultivo";
+
+    /// <summary>Cultivos presentes en lo que se esta viendo, con su color y cuantos lotes.</summary>
+    private Dictionary<string, (string Color, int Count)> _cropsInView = new();
+
+    private async Task ChangeSymbology(string mode)
+    {
+        _symbology = mode;
+        // Solo cambia el color: la visibilidad la sigue decidiendo el modo de vista.
+        await JS.InvokeVoidAsync("mapInterop.setSymbology", mode);
+    }
 
     private static string DeviationColor(SurfaceDeviationLevel level) => level switch
     {

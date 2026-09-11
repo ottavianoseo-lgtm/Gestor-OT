@@ -6,7 +6,12 @@ public interface ILotQueryService
 {
     Task<List<LotDto>> GetAllAsync(CancellationToken ct = default);
     Task<LotDto?> GetByIdAsync(Guid id, CancellationToken ct = default);
-    Task<GeoJsonFeatureCollection> GetGeoJsonAsync(CancellationToken ct = default);
+    /// <summary>
+    /// Los lotes con geometría, en GeoJSON. Con <paramref name="campaignId"/> cada feature
+    /// suma el cultivo de esa campaña (cropId, cropName, cropColor); sin el parámetro el
+    /// payload es el mismo de siempre.
+    /// </summary>
+    Task<GeoJsonFeatureCollection> GetGeoJsonAsync(Guid? campaignId = null, CancellationToken ct = default);
     Task<GeoJsonFeatureCollection> GetFieldsGeoJsonAsync(CancellationToken ct = default);
     Task<double> CalculateAreaFromWktAsync(string wkt, CancellationToken ct = default);
     Task<double> CalculateNonOverlappingAreaAsync(List<Guid> lotIds, CancellationToken ct = default);
