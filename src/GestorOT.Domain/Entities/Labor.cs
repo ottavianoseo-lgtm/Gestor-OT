@@ -11,6 +11,14 @@ public class Labor : TenantEntity
     public Guid LaborTypeId { get; set; } // Tarea/Item de Labor
     public Guid? ContactId { get; set; } // The actual Responsible
     public bool IsExternalBilling { get; set; } // Specific to this labor
+
+    /// <summary>
+    /// Fuerza una regla contable puntual para esta labor, saltando la resolución por tipo. Es
+    /// la salida de emergencia para el caso que no entra en ninguna regla; en null (lo normal)
+    /// resuelve el tipo de labor.
+    /// </summary>
+    public Guid? AccountConfigurationId { get; set; }
+    public AccountConfiguration? AccountConfiguration { get; set; }
     public LaborMode Mode { get; set; } = LaborMode.Planned;
     public LaborStatus Status { get; set; } = LaborStatus.Planned;
     public LaborPriority Priority { get; set; } = LaborPriority.Regular;

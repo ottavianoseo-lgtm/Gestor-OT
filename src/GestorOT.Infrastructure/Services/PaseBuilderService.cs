@@ -69,10 +69,7 @@ public sealed class PaseBuilderService : IPaseBuilderService
             .Where(c => c.TenantId == tenantId && c.IsActive)
             .ToListAsync(ct);
 
-        var configsByLaborType = configs
-            .Where(c => c.LaborTypeId != null)
-            .GroupBy(c => c.LaborTypeId!.Value)
-            .ToDictionary(g => g.Key, g => g.ToList());
+        var configsById = configs.ToDictionary(c => c.Id);
 
         var defaultConfigs = configs.Where(c => c.LaborTypeId == null).ToList();
         var defaultConfig = defaultConfigs.FirstOrDefault() ?? configs.FirstOrDefault();
@@ -119,16 +116,15 @@ public sealed class PaseBuilderService : IPaseBuilderService
 
         foreach (var labor in allLabors)
         {
-            // Determine config
-            AccountConfiguration? config = null;
-            if (labor.LaborTypeId != Guid.Empty && configsByLaborType.TryGetValue(labor.LaborTypeId, out var matchingConfigs) && matchingConfigs.Any())
-            {
-                config = matchingConfigs.FirstOrDefault();
-            }
-            else
-            {
-                config = defaultConfig;
-            }
+            // Cadena de precedencia, de lo mas especifico a lo mas general:
+            //   1. la regla que la labor fija a mano
+            //   2. la del tipo de labor acotada al modo (propia / contratista)
+            //   3. la del tipo de labor sin modo
+            //   4. la general
+            // Antes era un FirstOrDefault() sobre las del tipo: con mas de una regla elegia
+            // una arbitraria y en silencio.
+            AccountConfiguration? config = ResolveConfig(
+                labor, configsById, configs, defaultConfig, warnings);
 
             if (config == null)
             {
@@ -178,12 +174,24 @@ public sealed class PaseBuilderService : IPaseBuilderService
                 }
             }
 
-            // Resolve CodPersona
+            // Resolve CodPersona. Se prioriza el vinculo explicito Contact -> ErpPerson y el
+            // codigo que el contacto ya tiene guardado; el matcheo por nombre queda como ultimo
+            // recurso porque dos personas homonimas en el ERP imputan a la cuenta equivocada.
             long? codPersona = config.CodPersona;
             if (labor.Contact != null)
             {
-                var matchedPerson = erpPeople.FirstOrDefault(p =>
-                    string.Equals(p.ExternalErpId, labor.Contact.ExternalErpId, StringComparison.OrdinalIgnoreCase) ||
+                ErpPerson? matchedPerson = null;
+
+                if (labor.Contact.ErpPersonId is Guid erpPersonId)
+                {
+                    matchedPerson = erpPeople.FirstOrDefault(p => p.Id == erpPersonId);
+                }
+
+                matchedPerson ??= erpPeople.FirstOrDefault(p =>
+                    !string.IsNullOrEmpty(labor.Contact.ExternalErpId) &&
+                    string.Equals(p.ExternalErpId, labor.Contact.ExternalErpId, StringComparison.OrdinalIgnoreCase));
+
+                matchedPerson ??= erpPeople.FirstOrDefault(p =>
                     string.Equals(p.FullName, labor.Contact.FullName, StringComparison.OrdinalIgnoreCase));
 
                 if (matchedPerson != null && long.TryParse(matchedPerson.ExternalErpId, out var parsedPersonId))
@@ -292,6 +300,7 @@ public sealed class PaseBuilderService : IPaseBuilderService
             }
 
             seqGroup++;
+
         }
 
         if (!pases.Any())
@@ -302,6 +311,12 @@ public sealed class PaseBuilderService : IPaseBuilderService
         lote.TotalPases = pases.Count;
 
         _context.PasesLote.Add(lote);
+        // El idAgrupacionPase separa un mismo origen en varios pases del G4. Se calcula
+        // agrupando, como en el modulo oficial de Ganaderia (PaseBuilder.AssignGroups): con el
+        // contador por labor, una labor y su insumo con distinto comprobante o moneda caian en
+        // el mismo pase y el G4 lo rechaza.
+        AssignGroups(pases);
+
         _context.PasesImputacion.AddRange(pases);
         await _context.SaveChangesAsync(ct);
 
@@ -414,6 +429,7 @@ public sealed class PaseBuilderService : IPaseBuilderService
         var configs = await _context.AccountConfigurations
             .AsNoTracking()
             .Include(c => c.LaborType)
+            .Include(c => c.ErpActivity)
             .Where(c => c.TenantId == tenantId)
             .ToListAsync(ct);
 
@@ -427,7 +443,12 @@ public sealed class PaseBuilderService : IPaseBuilderService
             c.CodCuentaDebeCentro, c.CodCuentaHaberCentro,
             c.CodCuentaDebeContabilidad, c.CodCuentaHaberContabilidad,
             c.CodCuentaDebeAuxiliar, c.CodCuentaHaberAuxiliar
-        )).ToList();
+        )
+        {
+            ErpActivityId = c.ErpActivityId,
+            ErpActivityName = c.ErpActivity?.Name,
+            ExecutionMode = c.ExecutionMode
+        }).ToList();
     }
 
     public async Task SaveAccountConfigurationAsync(Guid tenantId, AccountConfigurationDto dto, CancellationToken ct = default)
@@ -446,6 +467,8 @@ public sealed class PaseBuilderService : IPaseBuilderService
         }
 
         entity.LaborTypeId = dto.LaborTypeId;
+        entity.ErpActivityId = dto.ErpActivityId;
+        entity.ExecutionMode = dto.ExecutionMode;
         entity.DebitAccountCode = dto.DebitAccountCode;
         entity.CreditAccountCode = dto.CreditAccountCode;
         entity.Description = dto.Description;
@@ -472,4 +495,98 @@ public sealed class PaseBuilderService : IPaseBuilderService
 
         await _context.SaveChangesAsync(ct);
     }
+
+    /// <summary>
+    /// Resuelve que regla contable le corresponde a una labor.
+    ///
+    /// Una regla declara hasta tres dimensiones opcionales: tipo de labor, actividad del ERP y
+    /// modo propia/contratista. Aplica a la labor si todas las que tiene declaradas coinciden;
+    /// las que deja en null son comodines. Entre las que aplican gana la mas especifica, o sea
+    /// la que declara mas dimensiones, asi que una regla de (COSECHA + SOJA) le gana a una de
+    /// (COSECHA) y esa a la general.
+    ///
+    /// Se prefiere esto a una escalera de casos fijos porque cada dimension nueva multiplicaria
+    /// las ramas, y porque permite combinaciones que una escalera no cubre, como una regla que
+    /// aplique a una actividad entera sin importar la tarea.
+    ///
+    /// Si empatan dos reglas igual de especificas avisa, en vez de elegir una en silencio como
+    /// hacia el FirstOrDefault() anterior.
+    /// </summary>
+    private static AccountConfiguration? ResolveConfig(
+        Labor labor,
+        Dictionary<Guid, AccountConfiguration> configsById,
+        List<AccountConfiguration> configs,
+        AccountConfiguration? defaultConfig,
+        List<string> warnings)
+    {
+        var etiqueta = $"Labor {labor.Id} ({labor.Type?.Name ?? "Sin Tipo"})";
+
+        // El override explicito de la labor gana sobre cualquier regla.
+        if (labor.AccountConfigurationId is Guid explicitId)
+        {
+            if (configsById.TryGetValue(explicitId, out var explicitConfig))
+            {
+                return explicitConfig;
+            }
+
+            warnings.Add($"{etiqueta}: tiene una regla contable asignada que ya no existe o esta inactiva. Se resolvio por las reglas generales.");
+        }
+
+        var modo = labor.IsExternalBilling
+            ? LaborExecutionMode.Contractor
+            : LaborExecutionMode.Own;
+
+        var aplicables = configs
+            .Where(c => c.LaborTypeId is null || c.LaborTypeId == labor.LaborTypeId)
+            .Where(c => c.ErpActivityId is null || c.ErpActivityId == labor.ErpActivityId)
+            .Where(c => c.ExecutionMode is null || c.ExecutionMode == modo)
+            .ToList();
+
+        if (aplicables.Count == 0)
+        {
+            return defaultConfig;
+        }
+
+        var maxEspecificidad = aplicables.Max(Especificidad);
+        var ganadoras = aplicables.Where(c => Especificidad(c) == maxEspecificidad).ToList();
+
+        if (ganadoras.Count > 1)
+        {
+            var nombres = string.Join(", ", ganadoras.Select(c =>
+                string.IsNullOrWhiteSpace(c.Description) ? c.Id.ToString()[..8] : c.Description));
+            warnings.Add($"{etiqueta}: hay {ganadoras.Count} reglas contables igual de especificas que aplican ({nombres}). Se uso la primera; dejá una sola o asignale la regla a la labor.");
+        }
+
+        return ganadoras[0];
+    }
+
+    /// <summary>Cuantas dimensiones declara la regla: a mas dimensiones, mas especifica.</summary>
+    private static int Especificidad(AccountConfiguration config)
+    {
+        int n = 0;
+        if (config.LaborTypeId is not null) n++;
+        if (config.ErpActivityId is not null) n++;
+        if (config.ExecutionMode is not null) n++;
+        return n;
+    }
+
+    /// <summary>
+    /// Un pase del G4 por combinacion de origen, empresa, comprobante, moneda y lista de
+    /// precios. Replica PaseBuilder.AssignGroups del modulo oficial de Ganaderia.
+    /// </summary>
+    private static void AssignGroups(List<PaseImputacion> pases)
+    {
+        int grupo = 1;
+
+        foreach (var group in pases.GroupBy(p => (p.LaborId, p.CodEmpresa, p.CodComprobante, p.CodMoneda, p.CodListaDePrecios)))
+        {
+            foreach (var pase in group)
+            {
+                pase.IdAgrupacionPase = grupo;
+            }
+
+            grupo++;
+        }
+    }
+
 }

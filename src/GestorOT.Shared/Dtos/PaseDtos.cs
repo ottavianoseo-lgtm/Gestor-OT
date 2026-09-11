@@ -1,3 +1,4 @@
+using GestorOT.Domain.Enums;
 using System.Text.Json.Serialization;
 
 namespace GestorOT.Shared.Dtos;
@@ -211,6 +212,12 @@ public record AccountConfigurationDto
     public Guid TenantId { get; set; }
     public Guid? LaborTypeId { get; set; }
     public string? LaborTypeName { get; set; }
+
+    /// Dimensiones opcionales que acotan la regla. Van fuera del constructor a proposito, para
+    /// no romper las llamadas posicionales que ya existen.
+    public Guid? ErpActivityId { get; set; }
+    public string? ErpActivityName { get; set; }
+    public LaborExecutionMode? ExecutionMode { get; set; }
     public string DebitAccountCode { get; set; } = string.Empty;
     public string CreditAccountCode { get; set; } = string.Empty;
     public string? Description { get; set; }

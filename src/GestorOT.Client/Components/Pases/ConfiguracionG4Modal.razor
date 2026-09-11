@@ -1,4 +1,5 @@
 @using GestorOT.Shared.Dtos
+@using GestorOT.Domain.Enums
 @using System.Net.Http.Json
 @using AntDesign
 @inject HttpClient Http
@@ -31,6 +32,33 @@
                 </FormItem>
             </Col>
         </Row>
+
+        <Row Gutter="16">
+            <Col Span="12">
+                <FormItem Label="Actividad ERP (opcional)">
+                    <Select TItemValue="Guid?" TItem="ErpActivityDto" @bind-Value="_model.ErpActivityId"
+                            Placeholder="Cualquier actividad"
+                            AllowClear EnableSearch Loading="@_loadingBasicCatalogs"
+                            DataSource="@_activities"
+                            ItemLabel="x => x.Name"
+                            ItemValue="x => (Guid?)x.Id" />
+                </FormItem>
+            </Col>
+            <Col Span="12">
+                <FormItem Label="Modo (opcional)">
+                    <Select TItemValue="LaborExecutionMode?" TItem="LaborExecutionMode?" @bind-Value="_model.ExecutionMode"
+                            Placeholder="Propias y de contratista"
+                            AllowClear
+                            DataSource="@_modos"
+                            ItemLabel="ModoLabel"
+                            ItemValue="x => x" />
+                </FormItem>
+            </Col>
+        </Row>
+
+        <Alert Type="@AlertType.Info" ShowIcon="true" Style="margin-bottom: 16px;"
+               Message="@("Cuanto más específica, más prioridad")"
+               Description="@("Una regla aplica a una labor si coinciden todas las dimensiones que declara; las que dejás vacías son comodines. Entre las que aplican gana la que declara más. Dejá todo vacío para la regla general.")" />
 
         <Divider Text="Configuración del Lote Contable (GestorMax)" Style="color: rgba(255,255,255,0.6);" />
 
@@ -223,6 +251,13 @@
     private List<ErpCurrencyDto> _monedas = new();
     private List<ErpPersonItemDto> _personas = new();
     private List<ErpProfileDto> _perfiles = new();
+    private List<ErpActivityDto> _activities = new();
+
+    private static string ModoLabel(LaborExecutionMode? modo) =>
+        modo == LaborExecutionMode.Contractor ? "Solo contratista" : "Solo propias";
+
+    private static readonly List<LaborExecutionMode?> _modos =
+        new() { LaborExecutionMode.Own, LaborExecutionMode.Contractor };
 
     private List<ErpAccountDto> _allCuentasGestion = new();
     private List<ErpAccountDto> _filteredCuentasGestion = new();
@@ -252,6 +287,8 @@
                 Id = Configuration.Id,
                 TenantId = Configuration.TenantId,
                 LaborTypeId = Configuration.LaborTypeId,
+                ErpActivityId = Configuration.ErpActivityId,
+                ExecutionMode = Configuration.ExecutionMode,
                 LaborTypeName = Configuration.LaborTypeName,
                 Description = Configuration.Description,
                 CodEmpresa = Configuration.CodEmpresa,
@@ -297,6 +334,7 @@
             var monTask = Http.GetFromJsonAsync<List<ErpCurrencyDto>>("api/pases/erp/monedas");
             var persTask = Http.GetFromJsonAsync<List<ErpPersonItemDto>>("api/pases/erp/personas");
             var perfTask = Http.GetFromJsonAsync<List<ErpProfileDto>>("api/pases/erp/perfiles");
+            var actTask = CatalogCache.GetActivitiesAsync();
 
             // Cada catálogo se espera por separado: si uno falla, los demás igual se cargan.
             var fallidos = new List<string>();
@@ -306,6 +344,7 @@
             _monedas = await SafeAsync(monTask, "monedas", fallidos) ?? new();
             _personas = await SafeAsync(persTask, "personas", fallidos) ?? new();
             _perfiles = await SafeAsync(perfTask, "perfiles de imputación", fallidos) ?? new();
+            _activities = await SafeAsync(actTask, "actividades", fallidos) ?? new();
 
             if (fallidos.Count > 0)
             {
@@ -530,7 +569,12 @@
                 _model.CodCuentaDebeContabilidad,
                 _model.CodCuentaHaberContabilidad,
                 null, null
-            );
+            )
+            {
+                // Van por inicializador: son propiedades fuera del constructor posicional.
+                ErpActivityId = _model.ErpActivityId,
+                ExecutionMode = _model.ExecutionMode
+            };
 
             var resp = await Http.PostAsJsonAsync("api/pases/account-configurations", dto);
             if (resp.IsSuccessStatusCode)
@@ -564,6 +608,8 @@
         public Guid Id { get; set; }
         public Guid TenantId { get; set; }
         public Guid? LaborTypeId { get; set; }
+        public Guid? ErpActivityId { get; set; }
+        public LaborExecutionMode? ExecutionMode { get; set; }
         public string? LaborTypeName { get; set; }
         public string? Description { get; set; }
         public long? CodEmpresa { get; set; } = 1;
