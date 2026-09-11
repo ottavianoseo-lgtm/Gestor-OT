@@ -1,4 +1,3 @@
-using System.Security.Claims;
 using GestorOT.Application.Interfaces;
 using GestorOT.Domain.Entities;
 using Microsoft.AspNetCore.Http;
@@ -54,39 +53,19 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
     public DbSet<SupplyAlias> SupplyAliases => Set<SupplyAlias>();
     public DbSet<LaborTypeAlias> LaborTypeAliases => Set<LaborTypeAlias>();
 
-    public Guid CurrentTenantId
-    {
-        get
-        {
-            if (_httpContextAccessor?.HttpContext != null)
-            {
-                var user = _httpContextAccessor.HttpContext.User;
-                var isSuperAdmin = user?.IsInRole("SuperAdmin") == true 
-                                   || user?.FindFirst(ClaimTypes.Role)?.Value == "SuperAdmin";
+    /// <summary>
+    /// El alcance de la request, resuelto una sola vez acá para que el filtro global y el
+    /// interceptor de sesión no puedan discrepar.
+    /// </summary>
+    private TenantScope Scope => TenantScope.Resolve(_httpContextAccessor?.HttpContext);
 
-                if (isSuperAdmin)
-                {
-                    // SuperAdmin: puede especificar un tenant dinámicamente mediante X-Tenant-ID o operar en Global (Guid.Empty)
-                    var tenantHeader = _httpContextAccessor.HttpContext.Request.Headers["X-Tenant-ID"].FirstOrDefault();
-                    if (Guid.TryParse(tenantHeader, out var headerTenantId))
-                        return headerTenantId;
+    public Guid CurrentTenantId => Scope.TenantId;
 
-                    return Guid.Empty;
-                }
-
-                // Usuarios normales / administradores de tenant: SIEMPRE anclados a su tenant del JWT
-                var claimTenant = user?.FindFirst("tenant_id")?.Value;
-                if (Guid.TryParse(claimTenant, out var userTenantId) && userTenantId != Guid.Empty)
-                    return userTenantId;
-
-                // Fallback para peticiones sin autenticación (ej. endpoints públicos de inicio o compartidos)
-                var fallbackHeader = _httpContextAccessor.HttpContext.Request.Headers["X-Tenant-ID"].FirstOrDefault();
-                if (Guid.TryParse(fallbackHeader, out var fallbackTenantId))
-                    return fallbackTenantId;
-            }
-            return Guid.Empty;
-        }
-    }
+    /// <summary>
+    /// Si esta request puede consultar cruzando empresas. Es true solo para el SuperAdmin en
+    /// modo Global; sin esto, "no sé de qué tenant es" terminaba significando "mostrale todo".
+    /// </summary>
+    public bool IsCrossTenantAllowed => Scope.CrossTenant;
 
     private Guid? CurrentCampaignId => _campaignContext?.CurrentCampaignId;
 
@@ -100,158 +79,158 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
 
         modelBuilder.Entity<Field>(entity =>
         {
-            entity.HasQueryFilter(e => CurrentTenantId == Guid.Empty || e.TenantId == CurrentTenantId);
+            entity.HasQueryFilter(e => IsCrossTenantAllowed || e.TenantId == CurrentTenantId);
         });
 
         modelBuilder.Entity<Lot>(entity =>
         {
-            entity.HasQueryFilter(e => CurrentTenantId == Guid.Empty || e.TenantId == CurrentTenantId);
+            entity.HasQueryFilter(e => IsCrossTenantAllowed || e.TenantId == CurrentTenantId);
         });
 
         modelBuilder.Entity<CampaignLot>(entity =>
         {
-            entity.HasQueryFilter(e => CurrentTenantId == Guid.Empty || e.TenantId == CurrentTenantId);
+            entity.HasQueryFilter(e => IsCrossTenantAllowed || e.TenantId == CurrentTenantId);
         });
 
         modelBuilder.Entity<Rotation>(entity =>
         {
-            entity.HasQueryFilter(e => CurrentTenantId == Guid.Empty || e.TenantId == CurrentTenantId);
+            entity.HasQueryFilter(e => IsCrossTenantAllowed || e.TenantId == CurrentTenantId);
         });
 
         modelBuilder.Entity<WorkOrder>(entity =>
         {
-            entity.HasQueryFilter(e => CurrentTenantId == Guid.Empty || e.TenantId == CurrentTenantId);
+            entity.HasQueryFilter(e => IsCrossTenantAllowed || e.TenantId == CurrentTenantId);
         });
 
         modelBuilder.Entity<Inventory>(entity =>
         {
-            entity.HasQueryFilter(e => CurrentTenantId == Guid.Empty || e.TenantId == CurrentTenantId);
+            entity.HasQueryFilter(e => IsCrossTenantAllowed || e.TenantId == CurrentTenantId);
         });
 
         modelBuilder.Entity<Labor>(entity =>
         {
-            entity.HasQueryFilter(e => CurrentTenantId == Guid.Empty || e.TenantId == CurrentTenantId);
+            entity.HasQueryFilter(e => IsCrossTenantAllowed || e.TenantId == CurrentTenantId);
         });
 
 
         modelBuilder.Entity<CropStrategy>(entity =>
         {
-            entity.HasQueryFilter(e => CurrentTenantId == Guid.Empty || e.TenantId == CurrentTenantId);
+            entity.HasQueryFilter(e => IsCrossTenantAllowed || e.TenantId == CurrentTenantId);
         });
 
         modelBuilder.Entity<Contact>(entity =>
         {
-            entity.HasQueryFilter(e => CurrentTenantId == Guid.Empty || e.TenantId == CurrentTenantId);
+            entity.HasQueryFilter(e => IsCrossTenantAllowed || e.TenantId == CurrentTenantId);
         });
 
         modelBuilder.Entity<LaborType>(entity =>
         {
-            entity.HasQueryFilter(e => CurrentTenantId == Guid.Empty || e.TenantId == CurrentTenantId);
+            entity.HasQueryFilter(e => IsCrossTenantAllowed || e.TenantId == CurrentTenantId);
         });
 
         modelBuilder.Entity<UserProfile>(entity =>
         {
-            entity.HasQueryFilter(e => CurrentTenantId == Guid.Empty || e.TenantId == CurrentTenantId);
+            entity.HasQueryFilter(e => IsCrossTenantAllowed || e.TenantId == CurrentTenantId);
         });
 
         modelBuilder.Entity<TankMixRule>(entity =>
         {
-            entity.HasQueryFilter(e => CurrentTenantId == Guid.Empty || e.TenantId == CurrentTenantId);
+            entity.HasQueryFilter(e => IsCrossTenantAllowed || e.TenantId == CurrentTenantId);
         });
 
         modelBuilder.Entity<AuditLog>(entity =>
         {
-            entity.HasQueryFilter(e => CurrentTenantId == Guid.Empty || e.TenantId == CurrentTenantId);
+            entity.HasQueryFilter(e => IsCrossTenantAllowed || e.TenantId == CurrentTenantId);
         });
 
         modelBuilder.Entity<Campaign>(entity =>
         {
-            entity.HasQueryFilter(e => CurrentTenantId == Guid.Empty || e.TenantId == CurrentTenantId);
+            entity.HasQueryFilter(e => IsCrossTenantAllowed || e.TenantId == CurrentTenantId);
         });
 
         modelBuilder.Entity<CampaignField>(entity =>
         {
-            entity.HasQueryFilter(e => CurrentTenantId == Guid.Empty || e.TenantId == CurrentTenantId);
+            entity.HasQueryFilter(e => IsCrossTenantAllowed || e.TenantId == CurrentTenantId);
         });
 
         modelBuilder.Entity<SharedToken>(entity =>
         {
-            entity.HasQueryFilter(e => CurrentTenantId == Guid.Empty || e.TenantId == CurrentTenantId);
+            entity.HasQueryFilter(e => IsCrossTenantAllowed || e.TenantId == CurrentTenantId);
         });
 
         modelBuilder.Entity<ErpPerson>(entity =>
         {
-            entity.HasQueryFilter(e => CurrentTenantId == Guid.Empty || e.TenantId == CurrentTenantId);
+            entity.HasQueryFilter(e => IsCrossTenantAllowed || e.TenantId == CurrentTenantId);
         });
 
         modelBuilder.Entity<ErpActivity>(entity =>
         {
-            entity.HasQueryFilter(e => CurrentTenantId == Guid.Empty || e.TenantId == CurrentTenantId);
+            entity.HasQueryFilter(e => IsCrossTenantAllowed || e.TenantId == CurrentTenantId);
         });
 
         modelBuilder.Entity<ErpConcept>(entity =>
         {
-            entity.HasQueryFilter(e => CurrentTenantId == Guid.Empty || e.TenantId == CurrentTenantId);
+            entity.HasQueryFilter(e => IsCrossTenantAllowed || e.TenantId == CurrentTenantId);
         });
 
         modelBuilder.Entity<WorkOrderStatus>(entity =>
         {
-            entity.HasQueryFilter(e => CurrentTenantId == Guid.Empty || e.TenantId == CurrentTenantId);
+            entity.HasQueryFilter(e => IsCrossTenantAllowed || e.TenantId == CurrentTenantId);
         });
 
         modelBuilder.Entity<FileAsset>(entity =>
         {
-            entity.HasQueryFilter(e => CurrentTenantId == Guid.Empty || e.TenantId == CurrentTenantId);
+            entity.HasQueryFilter(e => IsCrossTenantAllowed || e.TenantId == CurrentTenantId);
         });
 
         modelBuilder.Entity<LaborFileAsset>(entity =>
         {
-            entity.HasQueryFilter(e => CurrentTenantId == Guid.Empty || e.TenantId == CurrentTenantId);
+            entity.HasQueryFilter(e => IsCrossTenantAllowed || e.TenantId == CurrentTenantId);
         });
 
         modelBuilder.Entity<LaborAttachment>(entity =>
         {
-            entity.HasQueryFilter(e => CurrentTenantId == Guid.Empty || e.TenantId == CurrentTenantId);
+            entity.HasQueryFilter(e => IsCrossTenantAllowed || e.TenantId == CurrentTenantId);
         });
 
         modelBuilder.Entity<WorkOrderSupplyApproval>(entity =>
         {
-            entity.HasQueryFilter(e => CurrentTenantId == Guid.Empty || e.TenantId == CurrentTenantId);
+            entity.HasQueryFilter(e => IsCrossTenantAllowed || e.TenantId == CurrentTenantId);
         });
 
         modelBuilder.Entity<LaborSupply>(entity =>
         {
-            entity.HasQueryFilter(e => CurrentTenantId == Guid.Empty || e.TenantId == CurrentTenantId);
+            entity.HasQueryFilter(e => IsCrossTenantAllowed || e.TenantId == CurrentTenantId);
         });
 
         modelBuilder.Entity<StrategyItem>(entity =>
         {
-            entity.HasQueryFilter(e => CurrentTenantId == Guid.Empty || e.TenantId == CurrentTenantId);
+            entity.HasQueryFilter(e => IsCrossTenantAllowed || e.TenantId == CurrentTenantId);
         });
 
         modelBuilder.Entity<PaseLote>(entity =>
         {
-            entity.HasQueryFilter(e => CurrentTenantId == Guid.Empty || e.TenantId == CurrentTenantId);
+            entity.HasQueryFilter(e => IsCrossTenantAllowed || e.TenantId == CurrentTenantId);
         });
 
         modelBuilder.Entity<PaseImputacion>(entity =>
         {
-            entity.HasQueryFilter(e => CurrentTenantId == Guid.Empty || e.TenantId == CurrentTenantId);
+            entity.HasQueryFilter(e => IsCrossTenantAllowed || e.TenantId == CurrentTenantId);
         });
 
         modelBuilder.Entity<AccountConfiguration>(entity =>
         {
-            entity.HasQueryFilter(e => CurrentTenantId == Guid.Empty || e.TenantId == CurrentTenantId);
+            entity.HasQueryFilter(e => IsCrossTenantAllowed || e.TenantId == CurrentTenantId);
         });
 
         modelBuilder.Entity<SupplyAlias>(entity =>
         {
-            entity.HasQueryFilter(e => CurrentTenantId == Guid.Empty || e.TenantId == CurrentTenantId);
+            entity.HasQueryFilter(e => IsCrossTenantAllowed || e.TenantId == CurrentTenantId);
         });
 
         modelBuilder.Entity<LaborTypeAlias>(entity =>
         {
-            entity.HasQueryFilter(e => CurrentTenantId == Guid.Empty || e.TenantId == CurrentTenantId);
+            entity.HasQueryFilter(e => IsCrossTenantAllowed || e.TenantId == CurrentTenantId);
         });
 
         // Global DateTime UTC Converter for Npgsql 6.0+

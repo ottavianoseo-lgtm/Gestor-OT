@@ -1,40 +1,13 @@
 @using GestorOT.Shared.Dtos
-@inject GestorOT.Client.Services.TenantState TenantState
 
 @ChildContent
 
 @code {
+    // La empresa elegida se guarda en localStorage y se recupera en Program.cs al arrancar.
+    // Antes se intentaba con [PersistentState], que solo funciona cuando el servidor prerenderiza:
+    // App.razor usa prerender: false, asi que no se persistia nada y cada recarga dejaba al
+    // SuperAdmin sin empresa seleccionada, viendo datos de todas.
+
     [Parameter]
     public RenderFragment? ChildContent { get; set; }
-
-    [PersistentState]
-    public string? PersistedTenantId { get; set; }
-
-    [PersistentState]
-    public string? PersistedTenantName { get; set; }
-
-    protected override void OnInitialized()
-    {
-        if (!TenantState.IsSelected && !string.IsNullOrEmpty(PersistedTenantId) && Guid.TryParse(PersistedTenantId, out var tenantId))
-        {
-            TenantState.SetTenant(new TenantDto(tenantId, PersistedTenantName ?? "Empresa", null, null, DateTime.MinValue));
-        }
-
-        TenantState.OnChange += OnTenantChanged;
-    }
-
-    private void OnTenantChanged()
-    {
-        if (TenantState.CurrentTenant != null)
-        {
-            PersistedTenantId = TenantState.CurrentTenant.Id.ToString();
-            PersistedTenantName = TenantState.CurrentTenant.Name;
-        }
-        else
-        {
-            PersistedTenantId = null;
-            PersistedTenantName = null;
-        }
-        StateHasChanged();
-    }
 }

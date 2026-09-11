@@ -28,4 +28,10 @@ builder.Services.AddScoped(sp =>
 
 builder.Services.AddAntDesign();
 
-await builder.Build().RunAsync();
+var host = builder.Build();
+
+// La empresa elegida se recupera acá y no desde un componente: si alguna página alcanzara a
+// pedirle datos a la API antes, la request saldría sin X-Tenant-ID y traería las de todas.
+await host.Services.GetRequiredService<TenantState>().RestoreAsync();
+
+await host.RunAsync();

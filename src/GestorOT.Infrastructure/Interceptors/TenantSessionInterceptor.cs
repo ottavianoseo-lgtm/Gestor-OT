@@ -1,4 +1,5 @@
 using System.Data.Common;
+using GestorOT.Infrastructure.Data;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 
@@ -13,20 +14,9 @@ public class TenantSessionInterceptor : DbConnectionInterceptor
         _httpContextAccessor = httpContextAccessor;
     }
 
-    private Guid CurrentTenantId
-    {
-        get
-        {
-            var httpContext = _httpContextAccessor.HttpContext;
-            if (httpContext != null)
-            {
-                var tenantHeader = httpContext.Request.Headers["X-Tenant-ID"].FirstOrDefault();
-                if (Guid.TryParse(tenantHeader, out var tenantId))
-                    return tenantId;
-            }
-            return Guid.Empty;
-        }
-    }
+    // Se resuelve con la misma regla que el filtro global: tomar el header a secas dejaba
+    // que cualquier usuario eligiera sobre qué empresa apuntaba la sesión de la base.
+    private Guid CurrentTenantId => TenantScope.Resolve(_httpContextAccessor.HttpContext).TenantId;
 
     public override async Task ConnectionOpenedAsync(
         DbConnection connection,
