@@ -16,34 +16,36 @@
 <div class="gis-container @(_selectedLot != null || _drawnWkt != null ? "rail-active" : "")">
     <div id="map" class="gis-map"></div>
 
-    <div class="gis-search">
-        <Search Placeholder="Buscar ciudad o localidad..."
-                @bind-Value="_cityQuery"
-                OnSearch="SearchCity"
-                EnterButton="@(true)"
-                Style="width: 260px; border-radius: 20px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.2);" />
-    </div>
+    <div class="gis-top-bar">
+        <div class="gis-mode-selector">
+            <button class="mode-btn @(_gisViewMode == "interactive" ? "mode-btn--active" : "")" @onclick='() => ChangeViewMode("interactive")'>
+                🔍 Interactivo
+            </button>
+            <button class="mode-btn @(_gisViewMode == "fields" ? "mode-btn--active" : "")" @onclick='() => ChangeViewMode("fields")'>
+                🏡 Campos
+            </button>
+            <button class="mode-btn @(_gisViewMode == "lots" ? "mode-btn--active" : "")" @onclick='() => ChangeViewMode("lots")'>
+                🌾 Lotes
+            </button>
+        </div>
 
-    <div class="gis-mode-selector" style="position: absolute; top: 16px; left: 360px; z-index: 1000; background: rgba(26, 26, 46, 0.85); backdrop-filter: blur(8px); padding: 4px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.12); display: flex; gap: 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.2);">
-        <button class="mode-btn @(_gisViewMode == "interactive" ? "mode-btn--active" : "")" @onclick='() => ChangeViewMode("interactive")'>
-            🔍 Interactivo
-        </button>
-        <button class="mode-btn @(_gisViewMode == "fields" ? "mode-btn--active" : "")" @onclick='() => ChangeViewMode("fields")'>
-            🏡 Campos
-        </button>
-        <button class="mode-btn @(_gisViewMode == "lots" ? "mode-btn--active" : "")" @onclick='() => ChangeViewMode("lots")'>
-            🌾 Lotes
-        </button>
-    </div>
+        <div class="gis-mode-selector">
+            <button class="mode-btn @(_symbology == "status" ? "mode-btn--active" : "")" @onclick='() => ChangeSymbology("status")'>
+                Estado
+            </button>
+            <button class="mode-btn @(_symbology == "crop" ? "mode-btn--active" : "")" @onclick='() => ChangeSymbology("crop")'
+                    title="@(CampaignState.CurrentCampaign == null ? "Elegí una campaña para ver los cultivos" : "")">
+                Cultivo
+            </button>
+        </div>
 
-    <div class="gis-mode-selector" style="position: absolute; top: 16px; left: 640px; z-index: 1000; background: rgba(26, 26, 46, 0.85); backdrop-filter: blur(8px); padding: 4px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.12); display: flex; gap: 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.2);">
-        <button class="mode-btn @(_symbology == "status" ? "mode-btn--active" : "")" @onclick='() => ChangeSymbology("status")'>
-            Estado
-        </button>
-        <button class="mode-btn @(_symbology == "crop" ? "mode-btn--active" : "")" @onclick='() => ChangeSymbology("crop")'
-                title="@(CampaignState.CurrentCampaign == null ? "Elegí una campaña para ver los cultivos" : "")">
-            Cultivo
-        </button>
+        <div class="gis-search">
+            <Search Placeholder="Buscar ciudad o localidad..."
+                    @bind-Value="_cityQuery"
+                    OnSearch="SearchCity"
+                    EnterButton="@(true)"
+                    Style="width: 240px; border-radius: 20px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.2);" />
+        </div>
     </div>
 
     @if (_loading)
@@ -828,19 +830,45 @@
 
     .gis-toast {
         position: absolute;
-        top: 16px;
+        top: 72px;
         left: 50%;
         transform: translateX(-50%);
         z-index: 1001;
         max-width: 400px;
     }
 
-    .gis-search {
+    .gis-top-bar {
         position: absolute;
         top: 16px;
         left: 50%;
         transform: translateX(-50%);
         z-index: 1000;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        pointer-events: none;
+    }
+
+    .gis-top-bar > * {
+        pointer-events: auto;
+    }
+
+    .gis-mode-selector {
+        background: rgba(26, 26, 46, 0.85);
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
+        padding: 4px;
+        border-radius: 20px;
+        border: 1px solid rgba(255,255,255,0.12);
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+    }
+
+    .gis-search {
+        display: flex;
+        align-items: center;
     }
 
     .gis-toolbar {
@@ -855,20 +883,6 @@
 
     .rail-active .gis-toolbar {
         display: none !important;
-    }
-
-    .gis-legend {
-        position: absolute;
-        top: 16px;
-        left: 16px;
-        z-index: 999;
-        background: rgba(30,30,46,0.9);
-        backdrop-filter: blur(12px);
-        -webkit-backdrop-filter: blur(12px);
-        border: 1px solid rgba(255,255,255,0.1);
-        border-radius: 12px;
-        padding: 14px 18px;
-        min-width: 160px;
     }
 
     .toolbar-btn {
