@@ -111,6 +111,33 @@ public class LotBulkLinkTests
     }
 
     [Fact]
+    public async Task NombreParecido_SeProponeComoSugerenciaDifusa()
+    {
+        // OT-51: sin coincidencia exacta, pero un único lote lo bastante parecido. El backend lo
+        // propone igual para que el operador solo confirme, en vez de buscar entre 122 filas.
+        var dbName = Guid.NewGuid().ToString();
+        var tenantId = Guid.NewGuid();
+        var campo = Guid.NewGuid();
+
+        using (var seed = CreateContext(dbName, tenantId))
+        {
+            seed.Fields.Add(new Field { Id = campo, TenantId = tenantId, Name = "Campo" });
+            seed.Lots.Add(new Lot { Id = Guid.NewGuid(), TenantId = tenantId, FieldId = campo, Name = "Lote Norte" });
+            seed.SaveChanges();
+        }
+
+        using var ctx = CreateContext(dbName, tenantId);
+        var result = await CreateService(ctx).ProposeAsync(
+            new LotMatchRequestDto(campo, new List<ShapefileFeatureDto> { Feature("Lote Norrte") }));
+
+        var p = Assert.Single(result.Proposals);
+        Assert.Equal(LotMatchStatus.FuzzyMatch, p.Status);
+        Assert.Equal(LotLinkAction.Link, p.SuggestedAction);
+        Assert.Equal("Lote Norte", p.MatchedLotName);
+        Assert.True(p.Score >= LotNameMatcher.AutoThreshold, $"score={p.Score}");
+    }
+
+    [Fact]
     public async Task ConVariosCandidatos_QuedaAmbiguoYNoSeAutoVincula()
     {
         var dbName = Guid.NewGuid().ToString();

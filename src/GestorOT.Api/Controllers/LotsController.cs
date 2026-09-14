@@ -338,6 +338,62 @@ public class LotsController : ControllerBase
         return Ok(new LotUpdateResultDto(avisos));
     }
 
+    /// <summary>
+    /// Quita la geometría de un lote. También borra el polígono del año en la campaña activa
+    /// (OT-49): con campaña seleccionada el mapa prefiere ese polígono, así que sin esto el
+    /// borrado parecería no hacer nada. Las demás campañas no se tocan: son registros históricos.
+    /// </summary>
+    [HttpDelete("{id:guid}/geometry")]
+    public async Task<IActionResult> DeleteLotGeometry(Guid id, CancellationToken ct = default)
+    {
+        var lot = await _context.Lots.FirstOrDefaultAsync(l => l.Id == id, ct);
+        if (lot == null) return NotFound("El lote no existe.");
+
+        lot.Geometry = null;
+
+        if (_campaignContext.CurrentCampaignId is Guid campaignId && campaignId != Guid.Empty)
+        {
+            await _campaignGeometry.ClearAsync(campaignId, lot, ct);
+            await RecalculateCampaignFieldHectaresAsync(campaignId, lot.FieldId, ct);
+        }
+
+        await _context.SaveChangesAsync(ct);
+
+        // 200 con el mismo contrato que UpdateLot: el cliente trata cualquier 2xx como éxito.
+        return Ok(new LotUpdateResultDto(new List<string>()));
+    }
+
+    /// <summary>
+    /// Recalcula las hectáreas asignadas del campo en la campaña. Sin geometría
+    /// <see cref="ILotQueryService.CalculateNonOverlappingAreaAsync"/> cae al catastro, que es
+    /// el respaldo correcto cuando ya no hay polígono que unir.
+    /// </summary>
+    private async Task RecalculateCampaignFieldHectaresAsync(Guid campaignId, Guid fieldId, CancellationToken ct)
+    {
+        var campaignField = await _context.CampaignFields
+            .FirstOrDefaultAsync(cf => cf.CampaignId == campaignId && cf.FieldId == fieldId, ct);
+
+        if (campaignField == null) return;
+
+        var lotIds = await _context.CampaignLots
+            .Where(cl => cl.CampaignId == campaignId && cl.Lot!.FieldId == fieldId)
+            .Select(cl => cl.LotId)
+            .ToListAsync(ct);
+
+        if (lotIds.Count == 0)
+        {
+            campaignField.AllocatedHectares = 0;
+            return;
+        }
+
+        var nonOverlapArea = await _queryService.CalculateNonOverlappingAreaAsync(lotIds, ct);
+        campaignField.AllocatedHectares = nonOverlapArea > 0
+            ? (decimal)nonOverlapArea
+            : await _context.CampaignLots
+                .Where(cl => cl.CampaignId == campaignId && cl.Lot!.FieldId == fieldId)
+                .SumAsync(cl => cl.ProductiveArea, ct);
+    }
+
     [HttpDelete("{id:guid}")]
     public async Task<IActionResult> DeleteLot(Guid id)
     {

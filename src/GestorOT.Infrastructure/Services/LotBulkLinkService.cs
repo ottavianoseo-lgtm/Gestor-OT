@@ -30,22 +30,10 @@ public class LotBulkLinkService : ILotBulkLinkService
     }
 
     /// <summary>
-    /// Los nombres se comparan sin distinguir mayúsculas, sin espacios de más y sin ceros a la
-    /// izquierda: el .dbf suele traer "01" donde el lote se llama "1".
+    /// Los nombres se comparan con <see cref="LotNameMatcher"/>: normaliza (acentos, separadores,
+    /// palabras genéricas, ceros a la izquierda) y además puntúa por similitud, porque para 122
+    /// polígonos el match exacto por igualdad de string deja demasiado trabajo manual.
     /// </summary>
-    private static string Normalize(string? name)
-    {
-        if (string.IsNullOrWhiteSpace(name)) return string.Empty;
-
-        var collapsed = string.Join(' ', name.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
-        var trimmed = collapsed.TrimStart('0');
-
-        // "0" completo no debe quedar vacío.
-        if (trimmed.Length == 0) trimmed = collapsed;
-
-        return trimmed.ToUpperInvariant();
-    }
-
     public async Task<LotMatchResultDto> ProposeAsync(LotMatchRequestDto request, CancellationToken ct = default)
     {
         // El cruce va siempre acotado al campo: los .dbf traen el lote como "1", "2", sin
@@ -56,28 +44,80 @@ public class LotBulkLinkService : ILotBulkLinkService
             .Select(l => new { l.Id, l.Name, TieneGeometria = l.Geometry != null })
             .ToListAsync(ct);
 
-        var porNombre = lotsDelCampo
-            .GroupBy(l => Normalize(l.Name))
-            .ToDictionary(g => g.Key, g => g.ToList());
+        // La clave normalizada se calcula una sola vez por lote: el bucle compara N features
+        // contra M lotes y normalizar dentro del cruce seria N*M normalizaciones.
+        var lotesNormalizados = lotsDelCampo
+            .Select(l => new { l.Id, l.Name, l.TieneGeometria, Key = LotNameMatcher.Normalize(l.Name) })
+            .ToList();
 
         var proposals = new List<LotMatchProposalDto>();
 
         foreach (var feature in request.Features)
         {
-            var clave = Normalize(feature.Name);
-            porNombre.TryGetValue(clave, out var candidatos);
-            candidatos ??= [];
+            var clave = LotNameMatcher.Normalize(feature.Name);
 
-            var (status, accion, lotId, lotName, tieneGeom) = candidatos.Count switch
+            var scored = lotesNormalizados
+                .Select(l => new LotCandidateDto(
+                    l.Id,
+                    l.Name,
+                    l.TieneGeometria,
+                    clave.Length == 0 || l.Key.Length == 0 ? 0 : LotNameMatcher.ScoreNormalized(clave, l.Key)))
+                .OrderByDescending(c => c.Score)
+                .ThenBy(c => c.Name, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            var exactos = scored.Where(c => c.Score >= 1).ToList();
+            var fuertes = scored.Where(c => c.Score >= LotNameMatcher.AutoThreshold).ToList();
+
+            LotMatchStatus status;
+            LotLinkAction accion;
+            LotCandidateDto? elegido = null;
+
+            if (exactos.Count == 1)
             {
-                1 => (LotMatchStatus.ExactMatch, LotLinkAction.Link, (Guid?)candidatos[0].Id, candidatos[0].Name, candidatos[0].TieneGeometria),
-                > 1 => (LotMatchStatus.Ambiguous, LotLinkAction.Skip, null, null, false),
+                status = LotMatchStatus.ExactMatch;
+                accion = LotLinkAction.Link;
+                elegido = exactos[0];
+            }
+            else if (exactos.Count > 1)
+            {
+                // Dos lotes con el mismo nombre normalizado: no se elige por el operador.
+                status = LotMatchStatus.Ambiguous;
+                accion = LotLinkAction.Skip;
+            }
+            else if (fuertes.Count == 1)
+            {
+                status = LotMatchStatus.FuzzyMatch;
+                accion = LotLinkAction.Link;
+                elegido = fuertes[0];
+            }
+            else if (fuertes.Count > 1)
+            {
+                // Varios lotes igual de parecidos: elegir el "primero" seria adivinar.
+                status = LotMatchStatus.Ambiguous;
+                accion = LotLinkAction.Skip;
+            }
+            else if (string.IsNullOrWhiteSpace(feature.Name))
+            {
+                // Sin nombre no hay nada que crear; se saltea.
+                status = LotMatchStatus.NoMatch;
+                accion = LotLinkAction.Skip;
+            }
+            else
+            {
                 // Sin match se propone crear, que es lo que el operador quiere en el alta inicial
-                // de un campo. Si el nombre viene vacio no hay con que crearlo: se saltea.
-                _ => string.IsNullOrWhiteSpace(feature.Name)
-                    ? (LotMatchStatus.NoMatch, LotLinkAction.Skip, null, null, false)
-                    : (LotMatchStatus.NoMatch, LotLinkAction.Create, null, null, false)
-            };
+                // de un campo.
+                status = LotMatchStatus.NoMatch;
+                accion = LotLinkAction.Create;
+            }
+
+            // Candidatos para elegir a mano: los fuertes, o si no los que pasan el umbral bajo.
+            // Igual se acotan: con 122 features una lista de 200 lotes por fila es inusable.
+            var candidatos = (fuertes.Count > 0
+                    ? fuertes
+                    : scored.Where(c => c.Score >= LotNameMatcher.CandidateThreshold))
+                .Take(8)
+                .ToList();
 
             proposals.Add(new LotMatchProposalDto(
                 feature.Name,
@@ -86,10 +126,11 @@ public class LotBulkLinkService : ILotBulkLinkService
                 feature.SourceShapefile,
                 status,
                 accion,
-                lotId,
-                lotName,
-                tieneGeom,
-                candidatos.Select(c => new LotCandidateDto(c.Id, c.Name, c.TieneGeometria)).ToList()));
+                elegido?.LotId,
+                elegido?.Name,
+                elegido?.HasGeometry ?? false,
+                candidatos,
+                elegido?.Score ?? (scored.Count > 0 ? scored[0].Score : 0)));
         }
 
         return new LotMatchResultDto(

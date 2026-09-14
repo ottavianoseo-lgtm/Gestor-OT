@@ -7,7 +7,13 @@ public enum LotMatchStatus
     /// <summary>Más de un candidato: lo tiene que resolver el operador.</summary>
     Ambiguous = 1,
     /// <summary>Ningún lote con ese nombre en el campo.</summary>
-    NoMatch = 2
+    NoMatch = 2,
+    /// <summary>
+    /// Ningún nombre idéntico, pero hay un único lote lo bastante parecido como para proponerlo
+    /// (OT-51). Distinto de ExactMatch para que la UI pueda mostrar la confianza y el operador
+    /// sepa que esa vinculación la sugirió el sistema, no el nombre del archivo.
+    /// </summary>
+    FuzzyMatch = 3
 }
 
 public enum LotLinkAction
@@ -20,7 +26,7 @@ public enum LotLinkAction
     Skip = 2
 }
 
-public record LotCandidateDto(Guid LotId, string Name, bool HasGeometry)
+public record LotCandidateDto(Guid LotId, string Name, bool HasGeometry, double Score = 0)
 {
     public LotCandidateDto() : this(Guid.Empty, string.Empty, false) { }
 }
@@ -37,7 +43,9 @@ public record LotMatchProposalDto(
     string? MatchedLotName,
     /// <summary>El lote destino ya tiene polígono: hay que decidir reemplazar o combinar.</summary>
     bool TargetHasGeometry,
-    List<LotCandidateDto> Candidates
+    List<LotCandidateDto> Candidates,
+    /// <summary>Confianza 0..1 del mejor candidato. 1 es coincidencia exacta.</summary>
+    double Score = 0
 )
 {
     public LotMatchProposalDto() : this(string.Empty, string.Empty, 0, null, LotMatchStatus.NoMatch, LotLinkAction.Skip, null, null, false, new()) { }

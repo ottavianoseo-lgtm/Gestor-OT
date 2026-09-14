@@ -21,4 +21,13 @@ public interface ICampaignGeometryService
     /// superficie catastral que puede significar un polígono mal trazado.
     /// </returns>
     Task<List<string>> ApplyAsync(Guid campaignId, Lot lot, CancellationToken ct = default);
+
+    /// <summary>
+    /// Borra el polígono del año en la campaña activa. Se llama al eliminar la geometría de un
+    /// lote: si no, el mapa seguiría prefiriendo el polígono de campaña y el borrado parecería
+    /// no hacer nada. No toca las demás campañas, que son registros históricos.
+    ///
+    /// No hace SaveChanges: el llamador decide.
+    /// </summary>
+    Task ClearAsync(Guid campaignId, Lot lot, CancellationToken ct = default);
 }

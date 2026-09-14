@@ -387,6 +387,14 @@
                             OnClick="() => EditLotGeometry(_selectedLot)">
                         <Icon Type="edit" Theme="IconThemeType.Outline" /> Editar Geometría
                     </Button>
+                    <Popconfirm Title="¿Eliminar la geometría de este lote? El lote quedará sin polígono. No se puede deshacer."
+                                OkText="Eliminar" CancelText="Cancelar"
+                                OnConfirm="() => DeleteLotGeometry(_selectedLot)">
+                        <Button Block Size="@ButtonSize.Small" Loading="_deletingGeometry"
+                                Style="background: rgba(231,76,60,0.12); border: 1px solid rgba(231,76,60,0.4); border-radius: 8px; color: #E74C3C;">
+                            <Icon Type="delete" Theme="IconThemeType.Outline" /> Eliminar Geometría
+                        </Button>
+                    </Popconfirm>
                 }
                 <Button Block Size="@ButtonSize.Small"
                         Style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; color: #fff;"
@@ -672,37 +680,23 @@
     </div>
 </Modal>
 
-@* Conciliación masiva (OT-48): además del "Vincular" polígono por polígono de arriba —que sigue
-   sirviendo para correcciones puntuales—, esta pantalla cruza TODAS las features visibles contra
-   los lotes del campo elegido y aplica todo en una sola confirmación. *@
-<Modal Title="Conciliar Lotes Importados"
+@* Asistente de vinculación (OT-51): reemplaza la vieja tabla de conciliación (OT-48). A la
+   izquierda los polígonos del import; a la derecha los lotes del campo. El backend ya propone
+   el par por nombre (exacto o difuso); click en un polígono + click en un lote lo arma a mano.
+   Lo que quede sin emparejar se puede crear u omitir. Aplica con el mismo bulk-link de siempre. *@
+<Modal Title="Asistente de Vinculación de Polígonos"
        Visible="_showReconcileModal"
        OnCancel="CloseReconcileModal"
        Footer="@null"
-       Width="920">
+       Width="1080">
     @if (_reconcileLoading)
     {
         <div style="text-align: center; padding: 30px;">
-            <Spin Tip="Cruzando contra los lotes del campo..." />
+            <Spin Tip="Cruzando los polígonos contra los lotes del campo..." />
         </div>
     }
-    else if (_reconcileRows.Count > 0)
+    else
     {
-        <div style="display: flex; gap: 10px; margin-bottom: 14px; flex-wrap: wrap;">
-            <div style="background: rgba(46,204,113,0.1); border: 1px solid rgba(46,204,113,0.3); border-radius: 8px; padding: 8px 14px; font-size: 12px; color: #2ECC71;">
-                <strong>@_reconcileRows.Count(r => r.Action == LotLinkAction.Link)</strong> a vincular
-            </div>
-            <div style="background: rgba(52,152,219,0.1); border: 1px solid rgba(52,152,219,0.3); border-radius: 8px; padding: 8px 14px; font-size: 12px; color: #3498DB;">
-                <strong>@_reconcileRows.Count(r => r.Action == LotLinkAction.Create)</strong> a crear
-            </div>
-            <div style="background: rgba(243,156,18,0.1); border: 1px solid rgba(243,156,18,0.3); border-radius: 8px; padding: 8px 14px; font-size: 12px; color: #F39C12;">
-                <strong>@_reconcileRows.Count(r => r.Proposal.Status == LotMatchStatus.Ambiguous)</strong> ambiguo(s)
-            </div>
-            <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 8px 14px; font-size: 12px; color: rgba(255,255,255,0.6);">
-                <strong>@_reconcileRows.Count(r => r.Action == LotLinkAction.Skip)</strong> se omiten
-            </div>
-        </div>
-
         @if (_reconcileSurfaceWarnings.Count > 0)
         {
             <Alert Type="@AlertType.Warning" ShowIcon="true" Style="margin-bottom: 14px;">
@@ -742,88 +736,171 @@
             </Alert>
         }
 
-        <div style="max-height: 420px; overflow-y: auto; border: 1px solid rgba(255,255,255,0.08); border-radius: 8px;">
-            <div style="display: grid; grid-template-columns: 2fr 0.8fr 1fr 1.1fr 1.7fr 1.7fr; gap: 8px; padding: 8px 10px; background: rgba(255,255,255,0.05); font-size: 11px; color: rgba(255,255,255,0.5); text-transform: uppercase; position: sticky; top: 0;">
-                <span>Feature</span>
-                <span>Superficie</span>
-                <span>Estado</span>
-                <span>Acción</span>
-                <span>Lote destino</span>
-                <span>Aviso</span>
+        @if (_reconcileRows.Count > 0)
+        {
+            <div style="display: flex; gap: 10px; margin-bottom: 12px; flex-wrap: wrap;">
+                <div style="background: rgba(46,204,113,0.1); border: 1px solid rgba(46,204,113,0.3); border-radius: 8px; padding: 8px 14px; font-size: 12px; color: #2ECC71;">
+                    <strong>@ReconcilePairedCount</strong> emparejados
+                </div>
+                <div style="background: rgba(52,152,219,0.1); border: 1px solid rgba(52,152,219,0.3); border-radius: 8px; padding: 8px 14px; font-size: 12px; color: #3498DB;">
+                    <strong>@_reconcileRows.Count(r => r.Action == LotLinkAction.Create)</strong> a crear
+                </div>
+                <div style="background: rgba(243,156,18,0.1); border: 1px solid rgba(243,156,18,0.3); border-radius: 8px; padding: 8px 14px; font-size: 12px; color: #F39C12;">
+                    <strong>@_reconcileRows.Count(r => r.Proposal.Status == LotMatchStatus.Ambiguous)</strong> ambiguo(s)
+                </div>
+                <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 8px 14px; font-size: 12px; color: rgba(255,255,255,0.6);">
+                    <strong>@_reconcileRows.Count(r => r.Action == LotLinkAction.Skip)</strong> se omiten
+                </div>
             </div>
-            @foreach (var row in _reconcileRows)
-            {
-                <div style="display: grid; grid-template-columns: 2fr 0.8fr 1fr 1.1fr 1.7fr 1.7fr; gap: 8px; padding: 8px 10px; border-top: 1px solid rgba(255,255,255,0.06); align-items: center; font-size: 12px;">
-                    <div>
-                        <div style="color: #fff;">@(string.IsNullOrEmpty(row.Proposal.FeatureName) ? "(sin nombre)" : row.Proposal.FeatureName)</div>
-                        @if (!string.IsNullOrEmpty(row.Proposal.SourceShapefile))
-                        {
-                            <div style="color: rgba(255,255,255,0.4); font-size: 10px;">@row.Proposal.SourceShapefile</div>
-                        }
+
+            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px; flex-wrap: wrap;">
+                <Button Size="@ButtonSize.Small" OnClick="AutoAssignReconcile">
+                    <Icon Type="check" Theme="IconThemeType.Outline" /> Auto-asignar sugerencias
+                </Button>
+                <Button Size="@ButtonSize.Small" OnClick="ClearReconcileAssignments">Limpiar</Button>
+                <Checkbox @bind-Checked="_reconcileShowLotsWithGeometry">Mostrar lotes con geometría</Checkbox>
+                <span style="font-size: 11px; color: rgba(255,255,255,0.4);">
+                    Elegí un polígono y después un lote para emparejarlos.
+                </span>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                <div>
+                    <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px;">
+                        <span style="font-size: 12px; font-weight: 700; color: #fff;">Polígonos del archivo</span>
+                        <span style="font-size: 11px; color: rgba(255,255,255,0.45);">@ReconcileVisibleRows.Count() de @_reconcileRows.Count</span>
                     </div>
-                    <div style="color: rgba(255,255,255,0.7);">@row.Proposal.AreaHa.ToString("0.00") ha</div>
-                    <div style="color: @ReconcileStatusColor(row.Proposal.Status); font-size: 11px; font-weight: 600;">
-                        @ReconcileStatusLabel(row.Proposal.Status)
-                    </div>
-                    <div>
-                        <Select TItemValue="LotLinkAction" TItem="string" @bind-Value="row.Action" Size="@InputSize.Small" Style="width: 100%;">
-                            <SelectOption TItemValue="LotLinkAction" TItem="string" Value="LotLinkAction.Link" Label="Vincular" />
-                            <SelectOption TItemValue="LotLinkAction" TItem="string" Value="LotLinkAction.Create" Label="Crear" />
-                            <SelectOption TItemValue="LotLinkAction" TItem="string" Value="LotLinkAction.Skip" Label="Omitir" />
-                        </Select>
-                    </div>
-                    <div>
-                        @if (row.Action == LotLinkAction.Link)
+                    <Input @bind-Value="_reconcileFeatureSearch" Placeholder="Buscar polígono..." Size="@InputSize.Small" AllowClear />
+                    <div class="reconcile-pane" style="margin-top: 8px;">
+                        @foreach (var row in ReconcileVisibleRows)
                         {
-                            @if (row.Proposal.Candidates.Count > 1)
-                            {
-                                <Select TItem="LotCandidateDto" TItemValue="Guid" DataSource="row.Proposal.Candidates"
-                                        @bind-Value="row.SelectedLotId"
-                                        LabelName="@nameof(LotCandidateDto.Name)" ValueName="@nameof(LotCandidateDto.LotId)"
-                                        Placeholder="Elegir lote" Size="@InputSize.Small" Style="width: 100%;" />
-                            }
-                            else
-                            {
-                                <span style="color: rgba(255,255,255,0.75);">@(row.Proposal.MatchedLotName ?? "—")</span>
-                            }
-                        }
-                        else if (row.Action == LotLinkAction.Create)
-                        {
-                            <Input TValue="string" @bind-Value="row.NewLotName" Placeholder="@row.Proposal.FeatureName" Size="@InputSize.Small" />
-                        }
-                        else
-                        {
-                            <span style="color: rgba(255,255,255,0.35);">—</span>
-                        }
-                    </div>
-                    <div>
-                        @if (row.Action == LotLinkAction.Link && row.Proposal.TargetHasGeometry)
-                        {
-                            <span style="color: #F39C12; font-size: 11px;"><Icon Type="warning" Theme="IconThemeType.Outline" /> Pisa geometría existente</span>
+                            var esActiva = row.Id == _reconcileActiveRowId;
+                            var estaEmparejada = row.Action == LotLinkAction.Link && row.SelectedLotId != Guid.Empty;
+                            <div class="reconcile-item @(esActiva ? "reconcile-item--active" : "") @(estaEmparejada ? "reconcile-item--done" : "")"
+                                 @onclick="() => SelectReconcileRow(row)">
+                                <div style="min-width: 0; flex: 1;">
+                                    <div style="color: #fff; font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                                        @(string.IsNullOrEmpty(row.Proposal.FeatureName) ? "(sin nombre)" : row.Proposal.FeatureName)
+                                    </div>
+                                    <div style="font-size: 10px; color: rgba(255,255,255,0.4); display: flex; gap: 6px; flex-wrap: wrap; margin-top: 2px;">
+                                        <span>@row.Proposal.AreaHa.ToString("0.00") ha</span>
+                                        <span style="color: @ReconcileStatusColor(row.Proposal.Status); font-weight: 600;">
+                                            @ReconcileStatusLabel(row.Proposal.Status)@(row.Proposal.Score > 0 ? $" · {(row.Proposal.Score * 100).ToString("0")}%" : "")
+                                        </span>
+                                        @if (!string.IsNullOrEmpty(row.Proposal.SourceShapefile))
+                                        {
+                                            <span>· @row.Proposal.SourceShapefile</span>
+                                        }
+                                    </div>
+
+                                    @if (estaEmparejada)
+                                    {
+                                        <div style="margin-top: 5px; display: flex; align-items: center; gap: 6px; font-size: 11px; color: #2ECC71;">
+                                            <Icon Type="link" Theme="IconThemeType.Outline" />
+                                            <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">@ReconcileLotName(row.SelectedLotId)</span>
+                                            <a style="color: #E74C3C; cursor: pointer; flex-shrink: 0;"
+                                               @onclick:stopPropagation="true"
+                                               @onclick="() => UnassignReconcileRow(row)">quitar</a>
+                                        </div>
+                                    }
+                                    else if (row.Action == LotLinkAction.Create)
+                                    {
+                                        <div style="margin-top: 5px;" @onclick:stopPropagation="true">
+                                            <Input TValue="string" @bind-Value="row.NewLotName" Size="@InputSize.Small"
+                                                   Placeholder="@(string.IsNullOrEmpty(row.Proposal.FeatureName) ? "Nombre del lote nuevo" : row.Proposal.FeatureName)"
+                                                   Style="width: 100%;" />
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <div style="margin-top: 5px; font-size: 11px; color: rgba(255,255,255,0.35);">Sin asignar</div>
+                                    }
+                                </div>
+
+                                <div style="display: flex; flex-direction: column; gap: 4px; flex-shrink: 0;" @onclick:stopPropagation="true">
+                                    @if (row.Action == LotLinkAction.Create)
+                                    {
+                                        <Button Size="@ButtonSize.Small" OnClick="() => SetReconcileAction(row, LotLinkAction.Skip)">Omitir</Button>
+                                    }
+                                    else if (estaEmparejada)
+                                    {
+                                        <Button Size="@ButtonSize.Small" OnClick="() => SetReconcileAction(row, LotLinkAction.Skip)">Omitir</Button>
+                                    }
+                                    else
+                                    {
+                                        <Button Size="@ButtonSize.Small" OnClick="() => SetReconcileAction(row, LotLinkAction.Create)">Crear</Button>
+                                    }
+                                </div>
+                            </div>
                         }
                     </div>
                 </div>
-            }
-        </div>
 
-        @if (_reconcileRows.Any(r => r.Action == LotLinkAction.Link && r.Proposal.TargetHasGeometry))
-        {
-            <div style="margin-top: 12px;">
-                <Checkbox @bind-Checked="_reconcileCombineGeometry">
-                    Combinar con la geometría existente en vez de reemplazarla
-                </Checkbox>
+                <div>
+                    <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px;">
+                        <span style="font-size: 12px; font-weight: 700; color: #fff;">Lotes @(_reconcileShowLotsWithGeometry ? "del campo" : "sin geometría")</span>
+                        <span style="font-size: 11px; color: rgba(255,255,255,0.45);">@ReconcileAvailableLots.Count() lote(s)</span>
+                    </div>
+                    <Input @bind-Value="_reconcileLotSearch" Placeholder="Buscar lote..." Size="@InputSize.Small" AllowClear />
+                    <div class="reconcile-pane" style="margin-top: 8px;">
+                        @if (!ReconcileAvailableLots.Any())
+                        {
+                            <div style="padding: 20px; text-align: center; color: rgba(255,255,255,0.35); font-size: 12px;">
+                                No hay lotes que coincidan.
+                            </div>
+                        }
+                        @foreach (var lot in ReconcileAvailableLots)
+                        {
+                            var par = ReconcileRowPairedTo(lot.Id);
+                            <div class="reconcile-item @(par != null ? "reconcile-item--done" : "")"
+                                 @onclick="() => AssignLotToActive(lot)">
+                                <div style="min-width: 0;">
+                                    <div style="color: #fff; font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">@lot.Name</div>
+                                    <div style="font-size: 10px; color: rgba(255,255,255,0.4); margin-top: 2px;">
+                                        @lot.Area.ToString("0.00") ha
+                                        @if (!string.IsNullOrEmpty(lot.WktGeometry))
+                                        {
+                                            <span>· con geometría</span>
+                                        }
+                                    </div>
+                                </div>
+                                <div style="font-size: 10px; text-align: right; flex-shrink: 0; max-width: 45%;">
+                                    @if (par != null)
+                                    {
+                                        <span style="color: #2ECC71; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block;">
+                                            → @(string.IsNullOrEmpty(par.Proposal.FeatureName) ? "(sin nombre)" : par.Proposal.FeatureName)
+                                        </span>
+                                    }
+                                    else
+                                    {
+                                        <span style="color: rgba(255,255,255,0.3);">sin asignar</span>
+                                    }
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+
+            @if (_reconcileRows.Any(r => r.Action == LotLinkAction.Link && r.Proposal.TargetHasGeometry))
+            {
+                <div style="margin-top: 12px;">
+                    <Checkbox @bind-Checked="_reconcileCombineGeometry">
+                        Combinar con la geometría existente en vez de reemplazarla
+                    </Checkbox>
+                </div>
+            }
+
+            <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px;">
+                <Button OnClick="CloseReconcileModal">Cancelar</Button>
+                <Button Type="@ButtonType.Primary"
+                        Disabled="@(ReconcileHasUnresolvedAmbiguous || _reconcileApplying)"
+                        Loading="_reconcileApplying"
+                        OnClick="() => ConfirmReconcileAsync(false)">
+                    Aplicar vinculación masiva
+                </Button>
             </div>
         }
-
-        <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px;">
-            <Button OnClick="CloseReconcileModal">Cancelar</Button>
-            <Button Type="@ButtonType.Primary"
-                    Disabled="@(ReconcileHasUnresolvedAmbiguous || _reconcileApplying)"
-                    Loading="_reconcileApplying"
-                    OnClick="() => ConfirmReconcileAsync(false)">
-                Aplicar vinculación masiva
-            </Button>
-        </div>
     }
 </Modal>
 
@@ -1070,6 +1147,39 @@
         border-left: 3px solid #E74C3C;
     }
 
+    /* Asistente de vinculación (OT-51): dos listas enfrentadas, la izquierda de polígonos y la
+       derecha de lotes. El estado "activa"/"done"/"busy" lo resuelve el codigo, el CSS solo lo pinta. */
+    .reconcile-pane {
+        max-height: 420px;
+        overflow-y: auto;
+        border: 1px solid rgba(255,255,255,0.08);
+        border-radius: 8px;
+    }
+
+    .reconcile-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 10px;
+        border-bottom: 1px solid rgba(255,255,255,0.05);
+        cursor: pointer;
+        transition: background 0.12s;
+    }
+
+    .reconcile-item:hover {
+        background: rgba(255,255,255,0.04);
+    }
+
+    .reconcile-item--active {
+        background: rgba(52,152,219,0.16);
+        border-left: 3px solid #3498DB;
+    }
+
+    .reconcile-item--done {
+        background: rgba(46,204,113,0.07);
+    }
+
     /* OT-35. Van sin fondo sobre imagen satelital, asi que la legibilidad la da el
        text-shadow. pointer-events: none es necesario: si la etiqueta captura el mouse,
        tapa el hover del poligono que tiene debajo. */
@@ -1193,6 +1303,7 @@
     private bool _showLinkModal;
     private bool _importLoading;
     private bool _savingGeometry;
+    private bool _deletingGeometry;
     private LotOverlapCheckResultDto? _overlapWarningResult;
     private bool _showOverlapModal;
     private bool _pendingOverrideOverlap;
@@ -1379,6 +1490,34 @@
             : "[]";
         await JS.InvokeVoidAsync("mapInterop.startEditExistingLot",
             lot.Id.ToString(), lot.Name, lot.Status, lot.Area, lot.FieldName ?? "", coordinatesJson);
+    }
+
+    private async Task DeleteLotGeometry(LotDto lot)
+    {
+        if (lot == null || _deletingGeometry) return;
+        _deletingGeometry = true;
+        try
+        {
+            var response = await Http.DeleteAsync($"api/lots/{lot.Id}/geometry");
+            if (response.IsSuccessStatusCode)
+            {
+                Message.Success($"Geometría eliminada de '{lot.Name}'.");
+                await ReloadMap();
+            }
+            else
+            {
+                var body = await response.Content.ReadAsStringAsync();
+                Message.Error($"Error al eliminar la geometría: {body}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Message.Error($"Error: {ex.Message}");
+        }
+        finally
+        {
+            _deletingGeometry = false;
+        }
     }
 
     private async Task<string> ConvertWktToLeafletCoords(string wkt)
@@ -2292,9 +2431,14 @@
     // correcciones puntuales): cruza TODAS las features visibles del import contra los lotes
     // del campo elegido y aplica todo en una sola confirmación ("todo o nada" en el backend).
 
-    /// <summary>Fila editable de la tabla de conciliación: la propuesta del backend + lo que decidió el operador.</summary>
+    /// <summary>
+    /// Fila del asistente de vinculación: la propuesta del backend + lo que decidió el operador.
+    /// <see cref="Id"/> existe para poder marcar la fila activa al emparejar con el panel derecho
+    /// (el nombre de la feature puede repetirse y no sirve como identificador).
+    /// </summary>
     public class ReconcileRow
     {
+        public Guid Id { get; set; } = Guid.NewGuid();
         public LotMatchProposalDto Proposal { get; set; } = new();
         public LotLinkAction Action { get; set; }
         public Guid SelectedLotId { get; set; }
@@ -2308,6 +2452,11 @@
     private List<ReconcileRow> _reconcileRows = new();
     private List<string> _reconcileOverlapWarnings = new();
 
+    private string _reconcileFeatureSearch = "";
+    private string _reconcileLotSearch = "";
+    private Guid _reconcileActiveRowId = Guid.Empty;
+    private bool _reconcileShowLotsWithGeometry;
+
     /// <summary>
     /// OT-49: labores que quedaron por encima de la superficie real tras guardar la geometría
     /// del año. Van aparte de los solapamientos porque significan lo contrario: acá sí se
@@ -2316,17 +2465,41 @@
     private List<string> _reconcileSurfaceWarnings = new();
     private bool _reconcileCombineGeometry;
 
+    private IEnumerable<ReconcileRow> ReconcileVisibleRows =>
+        string.IsNullOrWhiteSpace(_reconcileFeatureSearch)
+            ? _reconcileRows
+            : _reconcileRows.Where(r =>
+                (r.Proposal.FeatureName ?? "").Contains(_reconcileFeatureSearch, StringComparison.OrdinalIgnoreCase));
+
+    private IEnumerable<LotDto> ReconcileAvailableLots =>
+        _allLots
+            .Where(l => l.FieldId == _reconcileFieldId)
+            .Where(l => _reconcileShowLotsWithGeometry || string.IsNullOrEmpty(l.WktGeometry))
+            .Where(l => string.IsNullOrWhiteSpace(_reconcileLotSearch)
+                        || l.Name.Contains(_reconcileLotSearch, StringComparison.OrdinalIgnoreCase))
+            .OrderBy(l => l.Name);
+
+    private int ReconcilePairedCount =>
+        _reconcileRows.Count(r => r.Action == LotLinkAction.Link && r.SelectedLotId != Guid.Empty);
+
+    private ReconcileRow? ReconcileRowPairedTo(Guid lotId) =>
+        _reconcileRows.FirstOrDefault(r => r.Action == LotLinkAction.Link && r.SelectedLotId == lotId);
+
+    private string ReconcileLotName(Guid lotId) =>
+        _allLots.FirstOrDefault(l => l.Id == lotId)?.Name ?? "lote";
+
     /// <summary>
     /// Ambiguo sin resolver: el operador dejó la acción en "Vincular" (la propuesta ambigua
     /// arranca en "Omitir", así que llegar acá significa que la cambió) pero todavía no eligió
-    /// cuál de los candidatos. Mientras haya una sola fila así, no se puede confirmar (paso 3 del plan).
+    /// cuál de los candidatos. Mientras haya una sola fila así, no se puede confirmar.
     /// </summary>
     private bool ReconcileHasUnresolvedAmbiguous =>
         _reconcileRows.Any(r => r.Action == LotLinkAction.Link && r.Proposal.Candidates.Count > 1 && r.SelectedLotId == Guid.Empty);
 
     private static string ReconcileStatusLabel(LotMatchStatus status) => status switch
     {
-        LotMatchStatus.ExactMatch => "Coincidencia exacta",
+        LotMatchStatus.ExactMatch => "Exacta",
+        LotMatchStatus.FuzzyMatch => "Sugerida",
         LotMatchStatus.Ambiguous => "Ambiguo",
         _ => "Sin coincidencia"
     };
@@ -2334,9 +2507,87 @@
     private static string ReconcileStatusColor(LotMatchStatus status) => status switch
     {
         LotMatchStatus.ExactMatch => "#2ECC71",
+        LotMatchStatus.FuzzyMatch => "#3498DB",
         LotMatchStatus.Ambiguous => "#F39C12",
         _ => "rgba(255,255,255,0.5)"
     };
+
+    private void SelectReconcileRow(ReconcileRow row)
+    {
+        // Volver a clickear la misma fila la deselecciona.
+        _reconcileActiveRowId = _reconcileActiveRowId == row.Id ? Guid.Empty : row.Id;
+    }
+
+    /// <summary>
+    /// Empareja un lote del panel derecho con la fila activa (o con la primera sin asignar, que
+    /// es el caso más común cuando se recorre el listado de polígonos en orden).
+    /// </summary>
+    private void AssignLotToActive(LotDto lot)
+    {
+        if (lot is null || lot.Id == Guid.Empty) return;
+
+        var row = _reconcileRows.FirstOrDefault(r => r.Id == _reconcileActiveRowId)
+            ?? _reconcileRows.FirstOrDefault(r => r.Action != LotLinkAction.Link || r.SelectedLotId == Guid.Empty);
+
+        if (row == null)
+        {
+            Message.Warning("Elegí primero un polígono de la izquierda.");
+            return;
+        }
+
+        // Un lote no puede quedar emparejado a dos features: se libera la asignación anterior.
+        foreach (var otra in _reconcileRows.Where(r => r.Id != row.Id && r.Action == LotLinkAction.Link && r.SelectedLotId == lot.Id))
+        {
+            otra.SelectedLotId = Guid.Empty;
+            otra.Action = LotLinkAction.Skip;
+        }
+
+        row.Action = LotLinkAction.Link;
+        row.SelectedLotId = lot.Id;
+        _reconcileActiveRowId = Guid.Empty;
+    }
+
+    private void UnassignReconcileRow(ReconcileRow row)
+    {
+        row.SelectedLotId = Guid.Empty;
+        // Si el backend proponía crear, se vuelve a esa propuesta; si no, queda omitida.
+        row.Action = row.Proposal.SuggestedAction == LotLinkAction.Create
+            ? LotLinkAction.Create
+            : LotLinkAction.Skip;
+    }
+
+    private void SetReconcileAction(ReconcileRow row, LotLinkAction action)
+    {
+        row.Action = action;
+        if (action != LotLinkAction.Link) row.SelectedLotId = Guid.Empty;
+    }
+
+    private void AutoAssignReconcile()
+    {
+        var aplicadas = 0;
+        foreach (var row in _reconcileRows)
+        {
+            if (row.Proposal.SuggestedAction == LotLinkAction.Link
+                && row.Proposal.MatchedLotId is Guid id && id != Guid.Empty)
+            {
+                row.Action = LotLinkAction.Link;
+                row.SelectedLotId = id;
+                aplicadas++;
+            }
+        }
+
+        Message.Info($"{aplicadas} sugerencia(s) aplicadas.");
+    }
+
+    private void ClearReconcileAssignments()
+    {
+        foreach (var row in _reconcileRows)
+        {
+            row.Action = LotLinkAction.Skip;
+            row.SelectedLotId = Guid.Empty;
+        }
+        _reconcileActiveRowId = Guid.Empty;
+    }
 
     /// <summary>
     /// Pide la propuesta de conciliación (POST api/lots/match) para todas las features visibles
@@ -2361,6 +2612,10 @@
         _reconcileOverlapWarnings.Clear();
         _reconcileSurfaceWarnings.Clear();
         _reconcileRows.Clear();
+        _reconcileFeatureSearch = "";
+        _reconcileLotSearch = "";
+        _reconcileActiveRowId = Guid.Empty;
+        _reconcileShowLotsWithGeometry = false;
         _showReconcileModal = true;
         _showImportModal = false;
         StateHasChanged();
@@ -2394,9 +2649,9 @@
             {
                 Proposal = p,
                 Action = p.SuggestedAction,
-                // Precarga el candidato cuando hay uno solo (ExactMatch); en Ambiguous queda en
-                // blanco a propósito, para forzar a elegir.
-                SelectedLotId = p.Candidates.Count == 1 ? p.Candidates[0].LotId : (p.MatchedLotId ?? Guid.Empty),
+                // La sugerencia —exacta o difusa— llega con el lote ya elegido. En Ambiguous
+                // queda en blanco a propósito, para forzar a elegir.
+                SelectedLotId = p.SuggestedAction == LotLinkAction.Link ? (p.MatchedLotId ?? Guid.Empty) : Guid.Empty,
                 NewLotName = p.FeatureName
             }).ToList();
         }

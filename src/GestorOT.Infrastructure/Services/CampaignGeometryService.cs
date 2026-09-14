@@ -67,6 +67,19 @@ public class CampaignGeometryService : ICampaignGeometryService
         return avisos;
     }
 
+    public async Task ClearAsync(Guid campaignId, Lot lot, CancellationToken ct = default)
+    {
+        if (campaignId == Guid.Empty) return;
+
+        var campaignLot = _context.CampaignLots.Local?.FirstOrDefault(cl => cl.CampaignId == campaignId && cl.LotId == lot.Id)
+            ?? await _context.CampaignLots
+                .FirstOrDefaultAsync(cl => cl.CampaignId == campaignId && cl.LotId == lot.Id, ct);
+
+        if (campaignLot == null) return;
+
+        campaignLot.Geometry = null;
+    }
+
     /// <summary>
     /// Aviso cuando la superficie derivada del polígono se aparta demasiado de la catastral.
     /// Puede ser una inundación real, pero también un polígono mal trazado: por eso se avisa en
