@@ -73,6 +73,9 @@ public class LaborExcelImportService : ILaborExcelImportService
         // Match labor types
         var (laborTypeMappings, unmatchedLaborTypesCount) = BuildLaborTypeMappings(parsedLabors, existingLaborTypeAliases, existingLaborTypes);
 
+        // Match supply providers (OT-26)
+        var (supplierMappings, unmatchedSuppliersCount) = BuildSupplierMappings(parsedLabors);
+
         // Link matched supplies back to parsed items for preview
         var mappingDict = new Dictionary<string, LaborImportSupplyMappingDto>(StringComparer.OrdinalIgnoreCase);
         foreach (var m in supplyMappings)
@@ -123,6 +126,11 @@ public class LaborExcelImportService : ILaborExcelImportService
             diagnostics.Add($"Se detectaron {unmatchedLaborTypesCount} tipos de labor sin coincidencia directa en el catálogo. Podés asignarlos o darlos de alta en la pestaña de Reconciliación de Labores.");
         }
 
+        if (unmatchedSuppliersCount > 0)
+        {
+            diagnostics.Add($"Se detectaron {unmatchedSuppliersCount} proveedores de insumos sin coincidencia directa en el padrón de contactos. Podés vincularlos en la pestaña de Reconciliación de Proveedores; si quedan sin vincular, el insumo se importa igual pero sin proveedor asignado.");
+        }
+
         decimal totalHectares = parsedLabors.Sum(l => l.Hectares);
         int totalSupplies = parsedLabors.Sum(l => l.Supplies.Count);
 
@@ -135,9 +143,11 @@ public class LaborExcelImportService : ILaborExcelImportService
             UnmatchedSuppliesCount = unmatchedCount,
             UniqueLaborTypesCount = laborTypeMappings.Count,
             UnmatchedLaborTypesCount = unmatchedLaborTypesCount,
+            UnmatchedSuppliersCount = unmatchedSuppliersCount,
             Labors = parsedLabors,
             SupplyMappings = supplyMappings,
             LaborTypeMappings = laborTypeMappings,
+            SupplierMappings = supplierMappings,
             Diagnostics = diagnostics,
             CanProceed = parsedLabors.Count > 0
         };
@@ -148,6 +158,7 @@ public class LaborExcelImportService : ILaborExcelImportService
         Stream fileStream,
         List<LaborImportSupplyMappingDto> mappings,
         List<LaborImportTypeMappingDto>? laborTypeMappings = null,
+        List<LaborImportSupplierMappingDto>? supplierMappings = null,
         CancellationToken ct = default)
     {
         var campaign = await _context.Campaigns.FirstOrDefaultAsync(c => c.Id == campaignId, ct);
@@ -293,6 +304,23 @@ public class LaborExcelImportService : ILaborExcelImportService
                                 aliasesLearned++;
                             }
                         }
+                    }
+                }
+
+                // 2b. Resolve supply provider overrides confirmed by the user in preview (OT-26).
+                // Un proveedor sin vincular no bloquea nada: el LaborSupply se crea igual, solo
+                // sin SupplierContactId (ver trampa del plan: nombre no resuelto no aborta el import).
+                var resolvedSuppliers = new Dictionary<string, Guid?>(StringComparer.OrdinalIgnoreCase);
+                if (supplierMappings != null)
+                {
+                    foreach (var sm in supplierMappings)
+                    {
+                        if (string.Equals(sm.Action, "Ignore", StringComparison.OrdinalIgnoreCase))
+                        {
+                            resolvedSuppliers[sm.RawName.Trim()] = null;
+                            continue;
+                        }
+                        resolvedSuppliers[sm.RawName.Trim()] = sm.MatchedContactId;
                     }
                 }
 
@@ -444,6 +472,16 @@ public class LaborExcelImportService : ILaborExcelImportService
                             ? sup.Unit
                             : (existingInventories.FirstOrDefault(i => i.Id == supplyId)?.Unit ?? "unidad");
 
+                        // Proveedor del insumo (OT-26): preferir la corrección del usuario en
+                        // preview; si no la hay, usar el matcheo automático hecho al parsear.
+                        Guid? supplierContactId = null;
+                        if (!string.IsNullOrWhiteSpace(sup.SupplierRawName))
+                        {
+                            supplierContactId = resolvedSuppliers.TryGetValue(sup.SupplierRawName.Trim(), out var overrideId)
+                                ? overrideId
+                                : sup.SupplierContactId;
+                        }
+
                         var laborSupply = new LaborSupply
                         {
                             Id = Guid.NewGuid(),
@@ -457,7 +495,8 @@ public class LaborExcelImportService : ILaborExcelImportService
                             PlannedTotal = totalQty,
                             RealTotal = isRealized ? totalQty : null,
                             UnitOfMeasure = supplyUnit,
-                            TankMixOrder = mixOrder++
+                            TankMixOrder = mixOrder++,
+                            SupplierContactId = supplierContactId
                         };
 
                         _context.LaborSupplies.Add(laborSupply);
@@ -837,7 +876,13 @@ public class LaborExcelImportService : ILaborExcelImportService
             }
             else
             {
-                // This is a Supply row
+                // This is a Supply row.
+                // La columna "Contr/Prove" es la misma que en la fila de Labor, pero en una fila
+                // de insumo representa al PROVEEDOR de ese insumo puntual, no al responsable de
+                // la labor (confirmado con datos reales AMSA: en la fila "Labor" vale "Propio",
+                // en las filas de insumos que siguen vale el nombre del distribuidor, ej. "Ekun").
+                string supplyRowContractorRaw = cfg.ColContratista > 0 ? row.Cell(cfg.ColContratista).GetString().Trim() : string.Empty;
+
                 if (currentLabor == null)
                 {
                     // Orphaned supply line, try to synthesize a labor if lot is present
@@ -846,8 +891,7 @@ public class LaborExcelImportService : ILaborExcelImportService
                     bool orphanRealized = !orphanDate.HasValue || orphanDate.Value.Date <= DateTime.UtcNow.Date;
                     string orphanMode = orphanRealized ? "Realized" : "Planned";
 
-                    string orphanContractor = cfg.ColContratista > 0 ? row.Cell(cfg.ColContratista).GetString().Trim() : string.Empty;
-                    var (orphanContactId, orphanMatchedName, orphanExternal) = MatchContact(orphanContractor, contacts);
+                    var (orphanContactId, orphanMatchedName, orphanExternal) = MatchContact(supplyRowContractorRaw, contacts);
 
                     currentLabor = new LaborImportParsedLaborDto
                     {
@@ -857,7 +901,7 @@ public class LaborExcelImportService : ILaborExcelImportService
                         LotName = orphanLot,
                         Hectares = cfg.ColSuperficie > 0 ? ParseDecimalCell(row.Cell(cfg.ColSuperficie)) : 0,
                         LaborTypeName = "Labor General",
-                        Contractor = orphanContractor,
+                        Contractor = supplyRowContractorRaw,
                         ContactId = orphanContactId,
                         MatchedContactName = orphanMatchedName,
                         IsExternalBilling = orphanExternal,
@@ -871,13 +915,18 @@ public class LaborExcelImportService : ILaborExcelImportService
                 string unit = cfg.ColUnidad > 0 ? row.Cell(cfg.ColUnidad).GetString().Trim() : string.Empty;
                 decimal? total = cfg.ColTotal > 0 ? ParseDecimalCell(row.Cell(cfg.ColTotal)) : null;
 
+                var (supplierContactId, matchedSupplierName, _) = MatchContact(supplyRowContractorRaw, contacts);
+
                 currentLabor.Supplies.Add(new LaborImportParsedItemDto
                 {
                     SupplyName = producLabor,
                     Dose = dose,
                     Unit = unit,
                     Total = total > 0 ? total : null,
-                    Category = tipo
+                    Category = tipo,
+                    SupplierRawName = string.IsNullOrWhiteSpace(supplyRowContractorRaw) ? null : supplyRowContractorRaw,
+                    SupplierContactId = supplierContactId,
+                    MatchedSupplierName = matchedSupplierName
                 });
             }
         }
@@ -1161,6 +1210,53 @@ public class LaborExcelImportService : ILaborExcelImportService
 
         // Sort: Non-matches first (so user sees them right away), then alphabetically
         return (result.OrderBy(r => r.ConfidenceLevel == "None" ? 0 : (r.ConfidenceLevel == "Medium" ? 1 : 2))
+                      .ThenBy(r => r.RawName)
+                      .ToList(), unmatchedCount);
+    }
+
+    /// <summary>
+    /// Agrupa los proveedores de insumos detectados (columna "Contr/Prove" leída en filas de
+    /// insumo, no de labor) contra el padrón de Contacts, usando el mismo matcheo por nombre
+    /// libre que ya se usa para el responsable de la labor (MatchContact). No bloquea el import:
+    /// un proveedor sin coincidencia queda con Action "Match" y MatchedContactId null, para que
+    /// se muestre en la vista previa y el usuario lo corrija o lo deje sin asignar.
+    /// </summary>
+    private (List<LaborImportSupplierMappingDto> Mappings, int UnmatchedCount) BuildSupplierMappings(
+        List<LaborImportParsedLaborDto> labors)
+    {
+        var suppliersGrouped = labors
+            .SelectMany(l => l.Supplies)
+            .Where(s => !string.IsNullOrWhiteSpace(s.SupplierRawName))
+            .GroupBy(s => s.SupplierRawName!.Trim(), StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var result = new List<LaborImportSupplierMappingDto>();
+        int unmatchedCount = 0;
+
+        foreach (var group in suppliersGrouped)
+        {
+            string rawName = group.Key;
+            string normRaw = NormalizeString(rawName);
+            int occurrences = group.Count();
+            var first = group.First();
+
+            bool matched = first.SupplierContactId.HasValue;
+            if (!matched) unmatchedCount++;
+
+            result.Add(new LaborImportSupplierMappingDto
+            {
+                RawName = rawName,
+                NormalizedName = normRaw,
+                MatchedContactId = first.SupplierContactId,
+                MatchedContactName = first.MatchedSupplierName,
+                Confidence = matched ? 1.0 : 0.0,
+                ConfidenceLevel = matched ? "High" : "None",
+                Occurrences = occurrences,
+                Action = "Match"
+            });
+        }
+
+        return (result.OrderBy(r => r.ConfidenceLevel == "None" ? 0 : 1)
                       .ThenBy(r => r.RawName)
                       .ToList(), unmatchedCount);
     }

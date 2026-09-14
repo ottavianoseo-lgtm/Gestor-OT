@@ -17,6 +17,8 @@ public class LaborSupply : ITenantEntity
     public string UnitOfMeasure { get; set; } = string.Empty;
     public int TankMixOrder { get; set; }
     public bool IsSubstitute { get; set; }
+    public Guid? SupplierContactId { get; set; } // Proveedor del insumo (OT-26)
     public Labor? Labor { get; set; }
     public Inventory? Supply { get; set; }
+    public Contact? SupplierContact { get; set; } // Navigation al proveedor
 }
