@@ -1764,7 +1764,7 @@
             return;
         }
 
-        var result = await response.Content.ReadFromJsonAsync<ShapefileImportResultDto>();
+        var result = await response.Content.ReadFromJsonAsync<ShapefileImportResultDto>(AppJsonSerializerContext.Default.ShapefileImportResultDto);
         if (result == null)
         {
             Message.Error("No se pudo leer la respuesta del servidor.");
