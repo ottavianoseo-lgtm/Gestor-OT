@@ -28,7 +28,7 @@ function makeLayer() {
         bindTooltip() { return this; },
         bindPopup() { return this; },
         on(ev, fn) { this._handlers[ev] = fn; return this; },
-        fire(ev) { if (this._handlers[ev]) this._handlers[ev](); },
+        fire(ev, e) { if (this._handlers[ev]) this._handlers[ev](e || { latlng: { lat: 0, lng: 0 } }); },
         addTo(map) { map._layers.add(this); return this; },
         getBounds() { return { isValid: () => true }; }
     };
@@ -38,7 +38,13 @@ const window = {};
 global.window = window;
 global.L = {
     polygon: () => makeLayer(),
-    featureGroup: (ls) => ({ getBounds: () => ({ isValid: () => true }) })
+    featureGroup: (ls) => ({ getBounds: () => ({ isValid: () => true }) }),
+    tooltip: () => ({
+        _content: null,
+        setLatLng() { return this; },
+        setContent(c) { this._content = c; return this; },
+        addTo(map) { map._layers.add(this); return this; }
+    })
 };
 
 eval(src);
@@ -51,8 +57,10 @@ function reset() {
         removeLayer(l) { this._layers.delete(l); },
         fitBounds() {},
         getContainer() { return null; },
-        getZoom() { return 14; }
+        _zoom: 14,
+        getZoom() { return this._zoom; }
     };
+    m.hoverTooltip = null;
     m.lotLayers = {}; m.fieldLayers = {};
     m.selectedLayer = null; m.selectedFieldId = null;
     m.lotFilter = null; m.viewMode = 'interactive';
@@ -119,7 +127,7 @@ seed(); m.setGisViewMode('lots'); m.highlightLot('a1');
 const sel = m.lotLayers['a1'];
 check('lote seleccionado', [sel.options.weight, sel.options.fillOpacity], [4, 0.65]);
 sel.fire('mouseover');
-check('hover sobre el seleccionado suma', [sel.options.weight, sel.options.fillOpacity], [6, 0.8]);
+check('hover sobre el seleccionado suma', [sel.options.weight, sel.options.fillOpacity], [7, 0.85]);
 sel.fire('mouseout');
 check('al salir vuelve a SELECCIONADO, no al base', [sel.options.weight, sel.options.fillOpacity], [4, 0.65]);
 
@@ -160,7 +168,7 @@ check('cambiar de simbologia no cambia que se ve', visibles(), ['n1', 's1', 't1'
 
 m.lotLayers['t1'].fire('mouseover');
 check('el hover no pisa el color del cultivo', m.lotLayers['t1'].options.color, '#795548');
-check('el hover si resalta', m.lotLayers['t1'].options.weight, 4);
+check('el hover si resalta', m.lotLayers['t1'].options.weight, 5);
 m.lotLayers['t1'].fire('mouseout');
 
 m.selectField('A');
@@ -168,6 +176,26 @@ check('seleccionar campo no pisa el color del cultivo', m.lotLayers['s1'].option
 
 m.setSymbology('status');
 check('volver a estado restaura el color por estado', m.lotLayers['t1'].options.color, '#2ECC71');
+
+console.log('\n--- el nombre del lote al pasar el mouse ---');
+
+function hoverLabel() {
+    return (m.hoverTooltip && m.map.hasLayer(m.hoverTooltip)) ? m.hoverTooltip._content : null;
+}
+
+// Por encima del umbral la etiqueta permanente ya muestra el nombre: un tooltip al cursor
+// seria el mismo dato dos veces.
+seed(); m.setGisViewMode('lots'); m.map._zoom = 14;
+m.lotLayers['a1'].fire('mouseover');
+check('con etiquetas visibles no se duplica el nombre', hoverLabel(), null);
+
+// Por debajo, la etiqueta esta apagada y sin esto el lote se quedaba sin nombre alguno:
+// peor que antes de OT-35, y distinto de los campos, que si lo muestran al pasar el mouse.
+seed(); m.setGisViewMode('lots'); m.map._zoom = 10;
+m.lotLayers['a1'].fire('mouseover');
+check('sin etiquetas, el hover muestra el nombre', hoverLabel(), 'Lote a1');
+m.lotLayers['a1'].fire('mouseout');
+check('al salir se va', hoverLabel(), null);
 
 console.log(fails === 0 ? '\nTODO OK\n' : `\n${fails} FALLAS\n`);
 process.exit(fails === 0 ? 0 : 1);

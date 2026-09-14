@@ -125,6 +125,7 @@ window.mapInterop = {
         this.lotFilter = null;
         this.selectedFieldId = null;
         this.symbology = 'status';
+        this.hoverTooltip = null;
 
         this.map = L.map(containerId, {
             preferCanvas: true,
@@ -238,6 +239,7 @@ window.mapInterop = {
     selectedFieldId: null,
     lotFilter: null,
     symbology: 'status',
+    hoverTooltip: null,
 
     LABEL_MIN_ZOOM: 13,
 
@@ -280,8 +282,9 @@ window.mapInterop = {
         layer.setStyle({
             color: color,
             fillColor: color,
-            weight: emphasis.weight + (layer._hovered ? 2 : 0),
-            fillOpacity: emphasis.fillOpacity + (layer._hovered ? 0.15 : 0)
+            weight: emphasis.weight + (layer._hovered ? 3 : 0),
+            // Redondeado: 0.65 + 0.2 en punto flotante da 0.8500000000000001.
+            fillOpacity: Math.round((emphasis.fillOpacity + (layer._hovered ? 0.2 : 0)) * 100) / 100
         });
     },
 
@@ -332,8 +335,43 @@ window.mapInterop = {
 
     // Las etiquetas se prenden y apagan con una clase en el contenedor: iterar N
     // tooltips en cada zoom es justamente lo que el umbral busca evitar.
+    lotLabelsHidden: function () {
+        return !this.map || this.map.getZoom() < this.LABEL_MIN_ZOOM;
+    },
+
+    // Nombre del lote al pasar el mouse, solo cuando la etiqueta permanente esta apagada.
+    //
+    // Sin esto, por debajo del umbral de zoom el lote se quedaba sin etiqueta Y sin tooltip:
+    // peor que antes de las etiquetas, y distinto de los campos, que siempre muestran su
+    // nombre al pasar el mouse.
+    //
+    // Es un unico tooltip compartido por todo el mapa y no uno por capa: tener N tooltips
+    // colgados es justamente lo que el umbral de zoom busca evitar.
+    showLotHoverLabel: function (layer, latlng) {
+        if (!this.map || !latlng || !this.lotLabelsHidden()) return;
+        if (!layer._lotName) return;
+
+        if (!this.hoverTooltip) {
+            this.hoverTooltip = L.tooltip({ direction: 'top', offset: [0, -4] });
+        }
+
+        this.hoverTooltip.setLatLng(latlng).setContent(layer._lotName);
+        if (!this.map.hasLayer(this.hoverTooltip)) this.hoverTooltip.addTo(this.map);
+    },
+
+    hideLotHoverLabel: function () {
+        if (this.hoverTooltip && this.map && this.map.hasLayer(this.hoverTooltip)) {
+            this.map.removeLayer(this.hoverTooltip);
+        }
+    },
+
     updateLabelVisibility: function () {
         if (!this.map) return;
+
+        // Si el zoom cruza el umbral con el mouse encima, el tooltip de hover quedaria
+        // conviviendo con la etiqueta permanente.
+        this.hideLotHoverLabel();
+
         const container = this.map.getContainer();
         if (container) {
             container.classList.toggle('lot-labels-hidden', this.map.getZoom() < this.LABEL_MIN_ZOOM);
@@ -362,6 +400,7 @@ window.mapInterop = {
             polygon._lotId = String(lotId).toLowerCase();
             polygon._fieldId = fieldId;
             polygon._status = status;
+            polygon._lotName = lotName || null;
             polygon._cropName = cropName || null;
             polygon._cropColor = cropColor || null;
 
@@ -402,14 +441,21 @@ window.mapInterop = {
                 }
             });
 
-            polygon.on('mouseover', () => {
+            polygon.on('mouseover', (e) => {
                 polygon._hovered = true;
                 this.applyLotStyle(polygon);
+                this.showLotHoverLabel(polygon, e && e.latlng);
+            });
+
+            polygon.on('mousemove', (e) => {
+                // Que el nombre acompañe al cursor, como el tooltip sticky de los campos.
+                if (polygon._hovered) this.showLotHoverLabel(polygon, e && e.latlng);
             });
 
             polygon.on('mouseout', () => {
                 polygon._hovered = false;
                 this.applyLotStyle(polygon);
+                this.hideLotHoverLabel();
             });
 
             this.lotLayers[lotId] = polygon;
