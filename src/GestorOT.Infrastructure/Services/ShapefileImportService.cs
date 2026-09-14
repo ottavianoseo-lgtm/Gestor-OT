@@ -20,8 +20,11 @@ public class ShapefileImportService : IShapefileImportService
 
     /// <summary>
     /// Columnas del .dbf que suelen traer el nombre del lote, en orden de preferencia. Los
-    /// exportadores no se ponen de acuerdo, asi que se prueba una lista y si ninguna aparece
-    /// se cae a la primera columna de texto.
+    /// exportadores no se ponen de acuerdo, asi que se prueba esta lista y, si ninguna aparece,
+    /// se cae a cualquier columna cuyo nombre contenga "LOTE", "NOMBRE" o "NAME" (ver
+    /// <see cref="PickNameColumn"/>). Si tampoco eso matchea, no hay columna de nombre: las
+    /// features quedan sin nombre y el cliente puede elegir una manualmente u optar por
+    /// autonumerar (OT-50).
     /// </summary>
     /// <summary>Extensiones que forman un shapefile y que se agrupan por nombre base.</summary>
     private static readonly HashSet<string> ComponentesShapefile =
