@@ -468,6 +468,30 @@
                     </div>
                 }
 
+                @if (!descartado && grupo.AttributeColumns.Count > 0)
+                {
+                    var columnaSeleccionada = _groupNameColumns.TryGetValue(grupo.Name, out var colSel) ? colSel : grupo.NameColumn;
+                    <div style="margin: 6px 0 10px; padding: 8px; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06); border-radius: 6px;">
+                        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
+                            <span style="font-size: 11px; color: rgba(255,255,255,0.55); white-space: nowrap;">Columna de nombre:</span>
+                            <Select TItemValue="string?" TItem="string"
+                                    Value="@columnaSeleccionada"
+                                    ValueChanged="@(async (string? v) => await OnNameColumnChanged(grupo.Name, v))"
+                                    Size="@InputSize.Small"
+                                    Style="flex: 1; min-width: 0;">
+                                <SelectOption TItemValue="string?" TItem="string" Value="@((string?)null)" Label="Sin columna de nombre (autonumerar)" />
+                                @foreach (var col in grupo.AttributeColumns)
+                                {
+                                    <SelectOption TItemValue="string?" TItem="string" Value="@col" Label="@col" />
+                                }
+                            </Select>
+                        </div>
+                        <div style="font-size: 11px; color: rgba(255,255,255,0.4);">
+                            Vista previa: @string.Join(", ", delGrupo.Take(5).Select(r => string.IsNullOrEmpty(r.Name) ? "(sin nombre)" : r.Name))@(delGrupo.Count > 5 ? "…" : "")
+                        </div>
+                    </div>
+                }
+
                 @if (!descartado)
                 {
                     @foreach (var result in delGrupo)
@@ -1117,6 +1141,13 @@
         public string Wkt { get; set; } = "";
         public string Name { get; set; } = "";
         public string? SourceShapefile { get; set; }
+
+        /// <summary>
+        /// Columnas del .dbf de esta feature (solo se llena en imports de shapefile). Permite
+        /// recalcular el nombre en el cliente cuando el usuario cambia la columna elegida, sin
+        /// volver a pedirle el archivo al backend (OT-50).
+        /// </summary>
+        public Dictionary<string, string>? Attributes { get; set; }
     }
 
     private class MapBounds
@@ -1727,6 +1758,13 @@
     private List<ShapefileGroupDto> _importGroups = new();
     private HashSet<string> _discardedGroups = new();
 
+    /// <summary>
+    /// Columna de nombre elegida por shapefile (clave = <see cref="ShapefileGroupDto.Name"/>).
+    /// Arranca precargada con la deteccion automatica del backend (<see cref="ShapefileGroupDto.NameColumn"/>,
+    /// que puede ser null); null en este diccionario significa "Sin columna de nombre" -> autonumerar.
+    /// </summary>
+    private Dictionary<string, string?> _groupNameColumns = new();
+
     /// <summary>Polígonos de los grupos que el usuario no descartó.</summary>
     private IEnumerable<ImportResult> VisibleImportResults =>
         _importResults.Where(r => r.SourceShapefile is null || !_discardedGroups.Contains(r.SourceShapefile));
@@ -1775,6 +1813,7 @@
         _importWarnings = result.Warnings ?? new();
         _importGroups = result.Groups ?? new();
         _discardedGroups.Clear();
+        _groupNameColumns.Clear();
 
         if (result.Features.Count == 0)
         {
@@ -1783,8 +1822,18 @@
         }
 
         _importResults = result.Features
-            .Select(f => new ImportResult { Wkt = f.Wkt, Name = f.Name, SourceShapefile = f.SourceShapefile })
+            .Select(f => new ImportResult { Wkt = f.Wkt, Name = f.Name, SourceShapefile = f.SourceShapefile, Attributes = f.Attributes })
             .ToList();
+
+        // Se precarga con la deteccion automatica del backend y se recalculan los nombres con la
+        // misma logica que despues usa el selector manual: si la deteccion acerto, da el mismo
+        // resultado que ya trajo el backend (sin pasos extra); si no encontro columna, esto ya
+        // autonumera en vez de dejar las features sin nombre.
+        foreach (var grupo in _importGroups)
+        {
+            _groupNameColumns[grupo.Name] = grupo.NameColumn;
+            ApplyGroupNames(grupo.Name, grupo.NameColumn);
+        }
 
         foreach (var feature in _importResults)
         {
@@ -1793,6 +1842,51 @@
         await JS.InvokeAsync<bool>("mapInterop.fitImportedBounds");
 
         Message.Success($"{result.Features.Count} polígono(s) leído(s) del shapefile.");
+    }
+
+    /// <summary>
+    /// Recalcula, en el cliente y sin llamadas al backend, los nombres de las features de un
+    /// grupo cuando el usuario cambia la columna de nombre elegida para ese shapefile (OT-50).
+    /// </summary>
+    private async Task OnNameColumnChanged(string groupName, string? column)
+    {
+        _groupNameColumns[groupName] = column;
+        ApplyGroupNames(groupName, column);
+
+        // El mapa tiene que reflejar los nombres nuevos, igual que al descartar un grupo.
+        await JS.InvokeVoidAsync("mapInterop.clearDrawn");
+        foreach (var f in VisibleImportResults)
+        {
+            await JS.InvokeAsync<bool>("mapInterop.addImportedPolygon", f.Wkt, f.Name);
+        }
+        await JS.InvokeAsync<bool>("mapInterop.fitImportedBounds");
+    }
+
+    /// <summary>Aplica la columna elegida a las features de un grupo, sin tocar el mapa.</summary>
+    private void ApplyGroupNames(string groupName, string? column)
+    {
+        var featuresDelGrupo = _importResults.Where(r => r.SourceShapefile == groupName).ToList();
+        for (int i = 0; i < featuresDelGrupo.Count; i++)
+        {
+            featuresDelGrupo[i].Name = ComputeFeatureName(groupName, column, featuresDelGrupo[i].Attributes, i + 1);
+        }
+    }
+
+    /// <summary>
+    /// Si se eligio una columna, el nombre sale de ahi tal cual: es el mismo criterio que usa el
+    /// backend para la deteccion automatica (<c>ShapefileImportService.ReadFeatures</c>), asi que
+    /// dejar seleccionada la columna detectada no cambia nada. Sin columna ("Sin columna de
+    /// nombre"), se autonumera con el nombre del shapefile: es el caso de shapefiles como
+    /// "Poligonos_Agricolas" que no traen ninguna columna de nombre y hoy quedaban todos anonimos.
+    /// </summary>
+    private static string ComputeFeatureName(string groupName, string? column, Dictionary<string, string>? attributes, int indexInGroup)
+    {
+        if (column is null)
+        {
+            return $"{groupName}_{indexInGroup}";
+        }
+
+        return attributes != null && attributes.TryGetValue(column, out var value) ? value : string.Empty;
     }
 
     private bool _importCreateNewLot = true;
