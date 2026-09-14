@@ -132,6 +132,8 @@ namespace GestorOT.Shared;
 [JsonSerializable(typeof(List<LaborImportSupplyMappingDto>))]
 [JsonSerializable(typeof(LaborImportTypeMappingDto))]
 [JsonSerializable(typeof(List<LaborImportTypeMappingDto>))]
+[JsonSerializable(typeof(LaborImportSupplierMappingDto))]
+[JsonSerializable(typeof(List<LaborImportSupplierMappingDto>))]
 [JsonSerializable(typeof(LaborImportParsedItemDto))]
 [JsonSerializable(typeof(List<LaborImportParsedItemDto>))]
 [JsonSerializable(typeof(LaborImportParsedLaborDto))]

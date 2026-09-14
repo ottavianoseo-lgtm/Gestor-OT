@@ -698,4 +698,287 @@ public class LaborExcelImportTests
             Assert.Equal(2, l1.Supplies.Count);
         }
     }
+
+    // OT-26: la columna "Contr/Prove" es la MISMA columna del Excel tanto para la fila de Labor
+    // como para las filas de Insumo, pero significa cosas distintas segun la fila (confirmado
+    // contra el archivo real "Planilla Cultivos 2026-2027 AMSA (1).xlsx", hoja "Planilla Datos":
+    // en la fila "Labor" es el responsable/contratista que ejecuta; en las filas de insumo que
+    // siguen es el proveedor de ese insumo puntual, ej. fila Labor "Propio" / fila Herbicida
+    // "Lartirigoyen"). Este test verifica que ambos significados se resuelven por separado.
+    [Fact]
+    public async Task LaborExcelImport_ResolvesSupplierPerInsumoRow_DistinctFromLaborResponsible()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var tenantId = Guid.NewGuid();
+        var campaignId = Guid.NewGuid();
+        var supplierContactId = Guid.NewGuid();
+
+        using (var context = CreateContext(dbName, tenantId))
+        {
+            var campaign = new Campaign { Id = campaignId, TenantId = tenantId, Name = "2026-2027", IsActive = true };
+            var field = new Field { Id = Guid.NewGuid(), TenantId = tenantId, Name = "Campo Norte" };
+            var lot1 = new Lot { Id = Guid.NewGuid(), TenantId = tenantId, FieldId = field.Id, Name = "Lote 1" };
+            var cl1 = new CampaignLot { Id = Guid.NewGuid(), TenantId = tenantId, CampaignId = campaignId, LotId = lot1.Id };
+
+            var supplierContact = new Contact
+            {
+                Id = supplierContactId,
+                TenantId = tenantId,
+                FullName = "Lartirigoyen",
+                Role = ContactRole.Contractor
+            };
+
+            var lt1 = new LaborType { Id = Guid.NewGuid(), TenantId = tenantId, Name = "Pulverización", ExternalErpId = "ERP-1" };
+
+            context.Campaigns.Add(campaign);
+            context.Fields.Add(field);
+            context.Lots.Add(lot1);
+            context.CampaignLots.Add(cl1);
+            context.Contacts.Add(supplierContact);
+            context.LaborTypes.Add(lt1);
+            await context.SaveChangesAsync();
+        }
+
+        using var stream = new MemoryStream();
+        using (var wb = new ClosedXML.Excel.XLWorkbook())
+        {
+            var ws = wb.Worksheets.Add("Labores e Insumos");
+            string[] headers = ["Fecha", "Establecimiento", "Lote", "Superficie (ha)", "Tipo", "Labor o Insumo", "Dosis", "Unidad", "Contratista", "Modo", "Notas"];
+            for (int i = 0; i < headers.Length; i++) ws.Cell(1, i + 1).Value = headers[i];
+
+            // Fila de Labor: "Contr/Prove" = Propio (el responsable de la labor)
+            ws.Cell(2, 1).Value = "2026-02-20";
+            ws.Cell(2, 2).Value = "Campo Norte";
+            ws.Cell(2, 3).Value = "Lote 1";
+            ws.Cell(2, 4).Value = 50;
+            ws.Cell(2, 5).Value = "Labor";
+            ws.Cell(2, 6).Value = "Pulverización";
+            ws.Cell(2, 7).Value = 1;
+            ws.Cell(2, 8).Value = "ha";
+            ws.Cell(2, 9).Value = "Propio";
+
+            // Fila de Insumo: "Contr/Prove" = Lartirigoyen (el proveedor de ESE insumo)
+            ws.Cell(3, 1).Value = "2026-02-20";
+            ws.Cell(3, 2).Value = "Campo Norte";
+            ws.Cell(3, 3).Value = "Lote 1";
+            ws.Cell(3, 4).Value = 50;
+            ws.Cell(3, 5).Value = "Herbicida";
+            ws.Cell(3, 6).Value = "2,4D";
+            ws.Cell(3, 7).Value = 1.5;
+            ws.Cell(3, 8).Value = "litros";
+            ws.Cell(3, 9).Value = "Lartirigoyen";
+
+            // Fila de Insumo con proveedor que NO matchea ningun contacto existente
+            ws.Cell(4, 1).Value = "2026-02-20";
+            ws.Cell(4, 2).Value = "Campo Norte";
+            ws.Cell(4, 3).Value = "Lote 1";
+            ws.Cell(4, 4).Value = 50;
+            ws.Cell(4, 5).Value = "Coadyuvante";
+            ws.Cell(4, 6).Value = "Aceite Vegetal";
+            ws.Cell(4, 7).Value = 0.5;
+            ws.Cell(4, 8).Value = "litros";
+            ws.Cell(4, 9).Value = "Proveedor Desconocido SRL";
+
+            wb.SaveAs(stream);
+        }
+
+        using var context2 = CreateContext(dbName, tenantId);
+        var service = new LaborExcelImportService(context2, NullLogger<LaborExcelImportService>.Instance);
+
+        stream.Position = 0;
+        var preview = await service.PreviewAsync(campaignId, stream);
+
+        var labor = Assert.Single(preview.Labors);
+
+        // El responsable de la labor ("Propio") sigue sin contacto asignado, sin relacion
+        // con el proveedor de sus insumos.
+        Assert.Null(labor.ContactId);
+        Assert.Equal(2, labor.Supplies.Count);
+
+        var herbicida = labor.Supplies.First(s => s.SupplyName == "2,4D");
+        Assert.Equal("Lartirigoyen", herbicida.SupplierRawName);
+        Assert.Equal(supplierContactId, herbicida.SupplierContactId);
+        Assert.Equal("Lartirigoyen", herbicida.MatchedSupplierName);
+
+        var coadyuvante = labor.Supplies.First(s => s.SupplyName == "Aceite Vegetal");
+        Assert.Equal("Proveedor Desconocido SRL", coadyuvante.SupplierRawName);
+        Assert.Null(coadyuvante.SupplierContactId);
+
+        // La vista previa expone ambos proveedores para revision/correccion
+        Assert.Equal(2, preview.SupplierMappings.Count);
+        Assert.Equal(1, preview.UnmatchedSuppliersCount);
+        var unmatchedMap = preview.SupplierMappings.First(m => m.RawName == "Proveedor Desconocido SRL");
+        Assert.Null(unmatchedMap.MatchedContactId);
+        Assert.Equal("None", unmatchedMap.ConfidenceLevel);
+        var matchedMap = preview.SupplierMappings.First(m => m.RawName == "Lartirigoyen");
+        Assert.Equal(supplierContactId, matchedMap.MatchedContactId);
+
+        // Ejecutar: el insumo sin proveedor matcheado NO bloquea el import (trampa del plan)
+        stream.Position = 0;
+        var result = await service.ExecuteAsync(campaignId, stream, preview.SupplyMappings, preview.LaborTypeMappings, preview.SupplierMappings);
+        Assert.True(result.Success);
+        Assert.Empty(result.Errors);
+
+        var dbLabor = await context2.Labors.Include(l => l.Supplies).FirstAsync();
+        var dbHerbicida = dbLabor.Supplies.First(s => s.PlannedDose == 1.5m);
+        Assert.Equal(supplierContactId, dbHerbicida.SupplierContactId);
+
+        var dbCoadyuvante = dbLabor.Supplies.First(s => s.PlannedDose == 0.5m);
+        Assert.Null(dbCoadyuvante.SupplierContactId);
+    }
+
+    [Fact]
+    public async Task LaborExcelImport_UserCorrectsUnmatchedSupplierMapping_BeforeExecute_LinksLaborSupplyToContact()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var tenantId = Guid.NewGuid();
+        var campaignId = Guid.NewGuid();
+        var manualContactId = Guid.NewGuid();
+
+        using (var context = CreateContext(dbName, tenantId))
+        {
+            var campaign = new Campaign { Id = campaignId, TenantId = tenantId, Name = "2026-2027", IsActive = true };
+            var lot1 = new Lot { Id = Guid.NewGuid(), TenantId = tenantId, Name = "Lote 1" };
+            var cl1 = new CampaignLot { Id = Guid.NewGuid(), TenantId = tenantId, CampaignId = campaignId, LotId = lot1.Id };
+            var lt1 = new LaborType { Id = Guid.NewGuid(), TenantId = tenantId, Name = "Pulverización", ExternalErpId = "ERP-1" };
+            var manualContact = new Contact { Id = manualContactId, TenantId = tenantId, FullName = "Distribuidora Agro SA", Role = ContactRole.Contractor };
+
+            context.Campaigns.Add(campaign);
+            context.Lots.Add(lot1);
+            context.CampaignLots.Add(cl1);
+            context.LaborTypes.Add(lt1);
+            context.Contacts.Add(manualContact);
+            await context.SaveChangesAsync();
+        }
+
+        using var stream = new MemoryStream();
+        using (var wb = new ClosedXML.Excel.XLWorkbook())
+        {
+            var ws = wb.Worksheets.Add("Labores e Insumos");
+            string[] headers = ["Fecha", "Establecimiento", "Lote", "Superficie (ha)", "Tipo", "Labor o Insumo", "Dosis", "Unidad", "Contratista", "Modo", "Notas"];
+            for (int i = 0; i < headers.Length; i++) ws.Cell(1, i + 1).Value = headers[i];
+
+            ws.Cell(2, 1).Value = "2026-02-20";
+            ws.Cell(2, 2).Value = "Campo Norte";
+            ws.Cell(2, 3).Value = "Lote 1";
+            ws.Cell(2, 4).Value = 50;
+            ws.Cell(2, 5).Value = "Labor";
+            ws.Cell(2, 6).Value = "Pulverización";
+            ws.Cell(2, 7).Value = 1;
+            ws.Cell(2, 8).Value = "ha";
+            ws.Cell(2, 9).Value = "Propio";
+
+            // Nombre libre que no matchea contra "Distribuidora Agro SA" por ninguna de las
+            // reglas de MatchContact (exacto, prefijo, substring).
+            ws.Cell(3, 1).Value = "2026-02-20";
+            ws.Cell(3, 2).Value = "Campo Norte";
+            ws.Cell(3, 3).Value = "Lote 1";
+            ws.Cell(3, 4).Value = 50;
+            ws.Cell(3, 5).Value = "Herbicida";
+            ws.Cell(3, 6).Value = "2,4D";
+            ws.Cell(3, 7).Value = 1.5;
+            ws.Cell(3, 8).Value = "litros";
+            ws.Cell(3, 9).Value = "Insumos XYZ Import";
+
+            wb.SaveAs(stream);
+        }
+
+        using var context2 = CreateContext(dbName, tenantId);
+        var service = new LaborExcelImportService(context2, NullLogger<LaborExcelImportService>.Instance);
+
+        stream.Position = 0;
+        var preview = await service.PreviewAsync(campaignId, stream);
+
+        var supplierMap = Assert.Single(preview.SupplierMappings);
+        Assert.Equal("Insumos XYZ Import", supplierMap.RawName);
+        Assert.Null(supplierMap.MatchedContactId); // no matcheo automaticamente
+
+        // El usuario corrige manualmente en la vista previa (pestaña de Reconciliación de Proveedores)
+        supplierMap.MatchedContactId = manualContactId;
+        supplierMap.MatchedContactName = "Distribuidora Agro SA";
+
+        stream.Position = 0;
+        var result = await service.ExecuteAsync(campaignId, stream, preview.SupplyMappings, preview.LaborTypeMappings, preview.SupplierMappings);
+        Assert.True(result.Success);
+
+        var dbLabor = await context2.Labors.Include(l => l.Supplies).FirstAsync();
+        var dbSupply = Assert.Single(dbLabor.Supplies);
+        Assert.Equal(manualContactId, dbSupply.SupplierContactId);
+    }
+
+    // Regresion: un Excel sin ninguna columna de contratista/proveedor se sigue importando
+    // exactamente igual que antes de OT-26 (sin errores, sin proveedor asignado a nada).
+    [Fact]
+    public async Task LaborExcelImport_WithoutContratistaColumn_ImportsWithoutErrorsAndNoSupplierAssigned()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var tenantId = Guid.NewGuid();
+        var campaignId = Guid.NewGuid();
+
+        using (var context = CreateContext(dbName, tenantId))
+        {
+            var campaign = new Campaign { Id = campaignId, TenantId = tenantId, Name = "2026-2027", IsActive = true };
+            var lot1 = new Lot { Id = Guid.NewGuid(), TenantId = tenantId, Name = "Lote 1" };
+            var cl1 = new CampaignLot { Id = Guid.NewGuid(), TenantId = tenantId, CampaignId = campaignId, LotId = lot1.Id };
+            var lt1 = new LaborType { Id = Guid.NewGuid(), TenantId = tenantId, Name = "Pulverización", ExternalErpId = "ERP-1" };
+
+            context.Campaigns.Add(campaign);
+            context.Lots.Add(lot1);
+            context.CampaignLots.Add(cl1);
+            context.LaborTypes.Add(lt1);
+            await context.SaveChangesAsync();
+        }
+
+        using var stream = new MemoryStream();
+        using (var wb = new ClosedXML.Excel.XLWorkbook())
+        {
+            var ws = wb.Worksheets.Add("Labores e Insumos");
+            // Sin columna de Contratista / Contr-Prove
+            string[] headers = ["Fecha", "Establecimiento", "Lote", "Superficie (ha)", "Tipo", "Labor o Insumo", "Dosis", "Unidad"];
+            for (int i = 0; i < headers.Length; i++) ws.Cell(1, i + 1).Value = headers[i];
+
+            ws.Cell(2, 1).Value = "2026-02-20";
+            ws.Cell(2, 2).Value = "Campo Norte";
+            ws.Cell(2, 3).Value = "Lote 1";
+            ws.Cell(2, 4).Value = 50;
+            ws.Cell(2, 5).Value = "Labor";
+            ws.Cell(2, 6).Value = "Pulverización";
+            ws.Cell(2, 7).Value = 1;
+            ws.Cell(2, 8).Value = "ha";
+
+            ws.Cell(3, 1).Value = "2026-02-20";
+            ws.Cell(3, 2).Value = "Campo Norte";
+            ws.Cell(3, 3).Value = "Lote 1";
+            ws.Cell(3, 4).Value = 50;
+            ws.Cell(3, 5).Value = "Herbicida";
+            ws.Cell(3, 6).Value = "2,4D";
+            ws.Cell(3, 7).Value = 1.5;
+            ws.Cell(3, 8).Value = "litros";
+
+            wb.SaveAs(stream);
+        }
+
+        using var context2 = CreateContext(dbName, tenantId);
+        var service = new LaborExcelImportService(context2, NullLogger<LaborExcelImportService>.Instance);
+
+        stream.Position = 0;
+        var preview = await service.PreviewAsync(campaignId, stream);
+
+        var labor = Assert.Single(preview.Labors);
+        Assert.Null(labor.ContactId);
+        var supply = Assert.Single(labor.Supplies);
+        Assert.Null(supply.SupplierRawName);
+        Assert.Null(supply.SupplierContactId);
+        Assert.Empty(preview.SupplierMappings);
+        Assert.Equal(0, preview.UnmatchedSuppliersCount);
+
+        stream.Position = 0;
+        var result = await service.ExecuteAsync(campaignId, stream, preview.SupplyMappings, preview.LaborTypeMappings, preview.SupplierMappings);
+        Assert.True(result.Success);
+        Assert.Empty(result.Errors);
+
+        var dbLabor = await context2.Labors.Include(l => l.Supplies).FirstAsync();
+        var dbSupply = Assert.Single(dbLabor.Supplies);
+        Assert.Null(dbSupply.SupplierContactId);
+    }
 }

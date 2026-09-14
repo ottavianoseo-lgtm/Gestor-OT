@@ -28,6 +28,11 @@ public record LaborImportParsedItemDto
     public string Category { get; init; } = string.Empty;
     public Guid? MatchedSupplyId { get; set; }
     public string? MatchedSupplyName { get; set; }
+    // Proveedor del insumo (OT-26): misma columna "Contr/Prove" del Excel, pero leída en la
+    // fila del insumo en vez de la fila de la labor (donde esa columna significa "responsable").
+    public string? SupplierRawName { get; init; }
+    public Guid? SupplierContactId { get; set; }
+    public string? MatchedSupplierName { get; set; }
 }
 
 public record LaborImportParsedLaborDto
@@ -68,6 +73,18 @@ public record LaborImportTypeMappingDto
     public string? NewTypeName { get; set; }
 }
 
+public record LaborImportSupplierMappingDto
+{
+    public string RawName { get; init; } = string.Empty;
+    public string NormalizedName { get; init; } = string.Empty;
+    public Guid? MatchedContactId { get; set; }
+    public string? MatchedContactName { get; set; }
+    public double Confidence { get; set; }
+    public string ConfidenceLevel { get; set; } = "None"; // "High", "None"
+    public int Occurrences { get; init; }
+    public string Action { get; set; } = "Match"; // "Match", "Ignore"
+}
+
 public record LaborImportPreviewDto
 {
     public int TotalLabors { get; init; }
@@ -77,9 +94,11 @@ public record LaborImportPreviewDto
     public int UnmatchedSuppliesCount { get; init; }
     public int UniqueLaborTypesCount { get; init; }
     public int UnmatchedLaborTypesCount { get; init; }
+    public int UnmatchedSuppliersCount { get; init; }
     public List<LaborImportParsedLaborDto> Labors { get; init; } = new();
     public List<LaborImportSupplyMappingDto> SupplyMappings { get; init; } = new();
     public List<LaborImportTypeMappingDto> LaborTypeMappings { get; init; } = new();
+    public List<LaborImportSupplierMappingDto> SupplierMappings { get; init; } = new();
     public List<string> Diagnostics { get; init; } = new();
     public bool CanProceed { get; init; }
 }
@@ -89,6 +108,7 @@ public record LaborImportExecuteRequestDto
     public Guid CampaignId { get; init; }
     public List<LaborImportSupplyMappingDto> SupplyMappings { get; init; } = new();
     public List<LaborImportTypeMappingDto> LaborTypeMappings { get; init; } = new();
+    public List<LaborImportSupplierMappingDto> SupplierMappings { get; init; } = new();
 }
 
 public record LaborImportResultDto

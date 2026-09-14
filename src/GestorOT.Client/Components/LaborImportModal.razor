@@ -352,6 +352,82 @@
                 </ChildContent>
             </TabPane>
 
+            <!-- TAB: RECONCILIACIÓN DE PROVEEDORES DE INSUMOS (OT-26) -->
+            @if (_preview.SupplierMappings.Count > 0)
+            {
+                <TabPane Key="suppliers">
+                    <TabTemplate>
+                        <span>
+                            <Icon Type="shop" /> Proveedores de Insumos (@_preview.SupplierMappings.Count)
+                            @if (_preview.UnmatchedSuppliersCount > 0)
+                            {
+                                <Badge Count="@_preview.UnmatchedSuppliersCount" Style="margin-left: 6px; background-color: #F39C12;" />
+                            }
+                            else
+                            {
+                                <Icon Type="check-circle" Theme="IconThemeType.Fill" Style="color: #2ECC71; margin-left: 6px;" />
+                            }
+                        </span>
+                    </TabTemplate>
+                    <ChildContent>
+                        <div style="margin-bottom: 12px;">
+                            <span style="font-size: 13px; color: rgba(255,255,255,0.7);">
+                                Nombres detectados en la columna "Contr/Prove" de las filas de insumo. Podés vincularlos a un contacto existente;
+                                si dejás alguno sin vincular, el insumo se importa igual pero sin proveedor asignado.
+                            </span>
+                        </div>
+
+                        <div style="max-height: 420px; overflow-y: auto; border: 1px solid rgba(255,255,255,0.1); border-radius: 8px;">
+                            <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+                                <thead style="background: rgba(255,255,255,0.06); position: sticky; top: 0; z-index: 1;">
+                                    <tr style="border-bottom: 1px solid rgba(255,255,255,0.1); text-align: left;">
+                                        <th style="padding: 10px 12px; color: rgba(255,255,255,0.8);">Proveedor en Excel</th>
+                                        <th style="padding: 10px 12px; color: rgba(255,255,255,0.8); width: 100px;">Ocurrencias</th>
+                                        <th style="padding: 10px 12px; color: rgba(255,255,255,0.8); width: 150px;">Certeza</th>
+                                        <th style="padding: 10px 12px; color: rgba(255,255,255,0.8);">Contacto en Gestor-OT</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var map in _preview.SupplierMappings)
+                                    {
+                                        <tr style="border-bottom: 1px solid rgba(255,255,255,0.05); background: @(map.ConfidenceLevel == "None" ? "rgba(243, 156, 18, 0.05)" : "transparent");">
+                                            <td style="padding: 10px 12px;">
+                                                <strong style="color: #fff;">@map.RawName</strong>
+                                            </td>
+                                            <td style="padding: 10px 12px; color: rgba(255,255,255,0.8);">
+                                                @map.Occurrences
+                                            </td>
+                                            <td style="padding: 10px 12px;">
+                                                @if (map.ConfidenceLevel == "High")
+                                                {
+                                                    <Tag Color="@("green")"><Icon Type="check" /> Coincidencia</Tag>
+                                                }
+                                                else
+                                                {
+                                                    <Tag Color="@("orange")"><Icon Type="question-circle" /> Sin coincidencia</Tag>
+                                                }
+                                            </td>
+                                            <td style="padding: 10px 12px;">
+                                                <Select TItem="ContactDto" TItemValue="Guid?"
+                                                        @bind-Value="map.MatchedContactId"
+                                                        DataSource="@_contactsList"
+                                                        LabelName="@nameof(ContactDto.FullName)"
+                                                        ValueName="@nameof(ContactDto.Id)"
+                                                        Placeholder="Sin proveedor asignado"
+                                                        AllowClear="true"
+                                                        EnableSearch="true"
+                                                        Style="width: 100%;"
+                                                        OnSelectedItemChanged="@(item => OnSupplierSelected(map, item))" />
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    </ChildContent>
+                </TabPane>
+            }
+
             <!-- TAB 3: LABORES DETECTADAS -->
             <TabPane Key="labors">
                 <TabTemplate>
@@ -404,6 +480,16 @@
                                                     {
                                                         <li>
                                                             <strong>@s.SupplyName:</strong> @s.Dose @s.Unit
+                                                            @if (!string.IsNullOrWhiteSpace(s.SupplierRawName))
+                                                            {
+                                                                <span style="color: rgba(255,255,255,0.5);">
+                                                                    &bull; Prov: @(s.MatchedSupplierName ?? s.SupplierRawName)
+                                                                    @if (!s.SupplierContactId.HasValue)
+                                                                    {
+                                                                        <Icon Type="warning" Style="color: #F39C12; font-size: 11px; margin-left: 2px;" />
+                                                                    }
+                                                                </span>
+                                                            }
                                                         </li>
                                                     }
                                                 </ul>
@@ -546,6 +632,7 @@
     private LaborImportResultDto? _result;
     private List<InventoryDto> _inventoryList = new();
     private List<LaborTypeDto> _laborTypesList = new();
+    private List<ContactDto> _contactsList = new();
 
     /// <summary>
     /// Modo al que se puede acotar el mapeo de un nombre del Excel. Se deduce de las filas
@@ -595,7 +682,7 @@
 
     protected override async Task OnInitializedAsync()
     {
-        await Task.WhenAll(LoadInventory(), LoadLaborTypes());
+        await Task.WhenAll(LoadInventory(), LoadLaborTypes(), LoadContacts());
     }
 
     private async Task LoadInventory()
@@ -619,6 +706,18 @@
         catch (Exception ex)
         {
             Console.WriteLine($"Error al cargar tipos de labor: {ex.Message}");
+        }
+    }
+
+    private async Task LoadContacts()
+    {
+        try
+        {
+            _contactsList = await Http.GetFromJsonAsync<List<ContactDto>>("api/catalogs/contacts", AppJsonSerializerContext.Default.ListContactDto) ?? new();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error al cargar contactos: {ex.Message}");
         }
     }
 
@@ -732,6 +831,15 @@
         Message.Success("Sugerencias de insumos confirmadas.");
     }
 
+    private void OnSupplierSelected(LaborImportSupplierMappingDto map, ContactDto? selected)
+    {
+        map.MatchedContactId = selected?.Id;
+        map.MatchedContactName = selected?.FullName;
+        map.Confidence = selected != null ? 1.0 : 0.0;
+        map.ConfidenceLevel = selected != null ? "High" : "None";
+        map.Action = "Match";
+    }
+
     private void OnLaborTypeSelected(LaborImportTypeMappingDto map, LaborTypeDto? selected)
     {
         if (selected != null)
@@ -793,6 +901,9 @@
 
             string laborTypeMappingsJson = JsonSerializer.Serialize(_preview.LaborTypeMappings, AppJsonSerializerContext.Default.ListLaborImportTypeMappingDto);
             content.Add(new StringContent(laborTypeMappingsJson), "laborTypeMappingsJson");
+
+            string supplierMappingsJson = JsonSerializer.Serialize(_preview.SupplierMappings, AppJsonSerializerContext.Default.ListLaborImportSupplierMappingDto);
+            content.Add(new StringContent(supplierMappingsJson), "supplierMappingsJson");
 
             var response = await Http.PostAsync($"api/campaigns/{CampaignId}/labors/import/execute", content);
 
