@@ -13,6 +13,8 @@ public class LotImportRowDto
     public bool IsFieldNew { get; set; }
     public bool IsLotNew { get; set; }
     public bool IsCropNew { get; set; }
+    /// <summary>La fila trae una geometría GIS válida (GeoJSON o WKT) para el lote.</summary>
+    public bool HasGeometry { get; set; }
     public string Status { get; set; } = "Valid"; // "Valid", "Warning", "Error"
     public string? ValidationMessage { get; set; }
 }
@@ -27,6 +29,7 @@ public class LotImportSummaryDto
     public int ExistingFieldsCount { get; set; }
     public int NewLotsCount { get; set; }
     public int ExistingLotsCount { get; set; }
+    public int GeometryRows { get; set; }
     public decimal TotalHectares { get; set; }
     public List<string> NewCropsToCreate { get; set; } = new();
     public List<LotImportRowDto> Rows { get; set; } = new();
@@ -41,5 +44,7 @@ public class LotImportResultDto
     public int CampaignLotsLinked { get; set; }
     public int RotationsCreated { get; set; }
     public int CropsCreated { get; set; }
+    /// <summary>Lotes a los que se les guardó la geometría GIS en esta importación.</summary>
+    public int GeometriesImported { get; set; }
     public decimal TotalHectares { get; set; }
 }

@@ -178,44 +178,6 @@ public class LotExcelImportTests
     }
 
     [Fact]
-    public async Task RealAmsaFile_IfPresent_ImportsCompletely()
-    {
-        string amsaPath = @"c:\Users\HWLScuffi\workspace\Gestor-OT\Gestor-OT_Importacion_AMSA_26-27_COMPLETO.xlsx";
-        if (!File.Exists(amsaPath)) return;
-
-        var dbName = Guid.NewGuid().ToString();
-        var tenantId = Guid.NewGuid();
-        var campaignId = Guid.NewGuid();
-
-        using (var context = CreateContext(dbName, tenantId))
-        {
-            context.Campaigns.Add(new Campaign
-            {
-                Id = campaignId,
-                TenantId = tenantId,
-                Name = "AMSA 26-27",
-                StartDate = new DateOnly(2026, 7, 1),
-                EndDate = new DateOnly(2027, 6, 30),
-                Status = "Active"
-            });
-            await context.SaveChangesAsync();
-        }
-
-        using (var context = CreateContext(dbName, tenantId))
-        {
-            var service = new LotExcelImportService(context, NullLogger<LotExcelImportService>.Instance);
-            using var fileStream = File.OpenRead(amsaPath);
-
-            var summary = await service.PreviewAsync(campaignId, fileStream);
-
-            Assert.Equal(47, summary.TotalRows);
-            Assert.Equal(11, summary.NewFieldsCount);
-            Assert.Equal(47, summary.NewLotsCount);
-            Assert.Equal(0, summary.ErrorRows);
-        }
-    }
-
-    [Fact]
     public async Task ExecuteAsync_WithDuplicateActivitiesInDatabase_SucceedsWithoutArgumentException()
     {
         var dbName = Guid.NewGuid().ToString();
@@ -252,6 +214,154 @@ public class LotExcelImportTests
             Assert.NotNull(result);
             Assert.True(result.CampaignLotsLinked > 0);
         }
+    }
+
+    private const string GisPolygonJson =
+        "{\"type\":\"Polygon\",\"coordinates\":[[[-62.45526815,-35.61170922],[-62.4466211,-35.61879179],[-62.4425462,-35.61577398],[-62.44627649,-35.61241557],[-62.44099374,-35.60850829],[-62.43848092,-35.61061914],[-62.43286963,-35.60582474],[-62.4401253,-35.59964057],[-62.45526815,-35.61170922]]]}";
+
+    private Stream CreateExcelWithGisStream(string gis)
+    {
+        using var workbook = new XLWorkbook();
+        var ws = workbook.Worksheets.Add("Campos_Lotes_Rotacion");
+
+        string[] headers = ["Campo", "Lote", "Superficie Declarada (ha)", "Cultivo Actual", "Fecha Desde", "Fecha Hasta", "Notas", "GIS (GeoJSON)"];
+        for (int i = 0; i < headers.Length; i++)
+            ws.Cell(1, i + 1).Value = headers[i];
+
+        ws.Cell(2, 1).Value = "Breit";
+        ws.Cell(2, 2).Value = "Breit";
+        ws.Cell(2, 3).Value = 155;
+        ws.Cell(2, 4).Value = "Girasol";
+        ws.Cell(2, 5).Value = "2026-09-01";
+        ws.Cell(2, 6).Value = "2027-05-01";
+        ws.Cell(2, 7).Value = "";
+        ws.Cell(2, 8).Value = gis;
+
+        var ms = new MemoryStream();
+        workbook.SaveAs(ms);
+        ms.Position = 0;
+        return ms;
+    }
+
+    private async Task<Guid> SeedCampaignAsync(string dbName, Guid tenantId)
+    {
+        var campaignId = Guid.NewGuid();
+        using var context = CreateContext(dbName, tenantId);
+        context.Campaigns.Add(new Campaign
+        {
+            Id = campaignId,
+            TenantId = tenantId,
+            Name = "AMSA 26-27",
+            StartDate = new DateOnly(2026, 7, 1),
+            EndDate = new DateOnly(2027, 6, 30),
+            Status = "Active"
+        });
+        await context.SaveChangesAsync();
+        return campaignId;
+    }
+
+    [Fact]
+    public async Task PreviewAsync_ConColumnaGis_CuentaLaGeometria()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var tenantId = Guid.NewGuid();
+        var campaignId = await SeedCampaignAsync(dbName, tenantId);
+
+        using var context = CreateContext(dbName, tenantId);
+        var service = new LotExcelImportService(context, NullLogger<LotExcelImportService>.Instance);
+        using var stream = CreateExcelWithGisStream(GisPolygonJson);
+
+        var summary = await service.PreviewAsync(campaignId, stream);
+
+        var row = Assert.Single(summary.Rows);
+        Assert.True(row.HasGeometry);
+        Assert.Equal(1, summary.GeometryRows);
+        Assert.Equal(0, summary.ErrorRows);
+    }
+
+    [Fact]
+    public async Task PreviewAsync_ConGisQueNoEsPoligono_MarcaError()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var tenantId = Guid.NewGuid();
+        var campaignId = await SeedCampaignAsync(dbName, tenantId);
+
+        using var context = CreateContext(dbName, tenantId);
+        var service = new LotExcelImportService(context, NullLogger<LotExcelImportService>.Instance);
+        using var stream = CreateExcelWithGisStream("{\"type\":\"Point\",\"coordinates\":[-62.2,-35.8]}");
+
+        var summary = await service.PreviewAsync(campaignId, stream);
+
+        var row = Assert.Single(summary.Rows);
+        Assert.False(row.HasGeometry);
+        Assert.Equal(1, summary.ErrorRows);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_ConColumnaGis_GuardaLaGeometriaEnLoteYCampania()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var tenantId = Guid.NewGuid();
+        var campaignId = await SeedCampaignAsync(dbName, tenantId);
+
+        using (var context = CreateContext(dbName, tenantId))
+        {
+            var service = new LotExcelImportService(context, NullLogger<LotExcelImportService>.Instance);
+            using var stream = CreateExcelWithGisStream(GisPolygonJson);
+
+            var result = await service.ExecuteAsync(campaignId, stream);
+
+            Assert.True(result.Success);
+            Assert.Equal(1, result.LotsCreated);
+            Assert.Equal(1, result.GeometriesImported);
+        }
+
+        using (var context = CreateContext(dbName, tenantId))
+        {
+            var lot = await context.Lots.FirstAsync();
+            Assert.NotNull(lot.Geometry);
+            Assert.Equal(4326, lot.Geometry!.SRID);
+
+            var campLot = await context.CampaignLots.FirstAsync(cl => cl.CampaignId == campaignId);
+            Assert.NotNull(campLot.Geometry);
+        }
+    }
+
+    /// <summary>
+    /// Busca un archivo de prueba en la raíz del repo subiendo desde el binario. Existe para no
+    /// hardcodear rutas absolutas de una máquina.
+    /// </summary>
+    private static string? FindRepoFile(string fileName)
+    {
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        for (var i = 0; i < 8 && dir != null; i++, dir = dir.Parent)
+        {
+            var candidate = Path.Combine(dir.FullName, fileName);
+            if (File.Exists(candidate)) return candidate;
+        }
+        return null;
+    }
+
+    [Fact]
+    public async Task PlanillaUnificadaReal_IfPresent_LeeLaColumnaGis()
+    {
+        // Planilla real de AMSA (hoja Campos_Lotes_Rotacion con la columna GIS (GeoJSON)).
+        var path = FindRepoFile("Gestor-OT_Importacion_AMSA_26-27_UNIFICADO.xlsx");
+        if (path == null) return;
+
+        var dbName = Guid.NewGuid().ToString();
+        var tenantId = Guid.NewGuid();
+        var campaignId = await SeedCampaignAsync(dbName, tenantId);
+
+        using var context = CreateContext(dbName, tenantId);
+        var service = new LotExcelImportService(context, NullLogger<LotExcelImportService>.Instance);
+        using var fileStream = File.OpenRead(path);
+
+        var summary = await service.PreviewAsync(campaignId, fileStream);
+
+        Assert.Equal(54, summary.TotalRows);
+        Assert.Equal(40, summary.GeometryRows);
+        Assert.Equal(0, summary.ErrorRows);
     }
 }
 

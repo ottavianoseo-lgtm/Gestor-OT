@@ -45,11 +45,13 @@
             <p style="color: rgba(255,255,255,0.7); font-size: 13px; margin-bottom: 12px;">
                 El libro debe contener las columnas: <strong>Campo</strong>, <strong>Lote</strong>, <strong>Superficie Declarada (ha)</strong>, 
                 <strong>Cultivo Actual</strong>, <strong>Fecha Desde</strong>, <strong>Fecha Hasta</strong> y <strong>Notas</strong>.
+                Opcionalmente, <strong>GIS (GeoJSON)</strong> con el polígono del lote.
             </p>
             <ul style="color: rgba(255,255,255,0.6); font-size: 12px; padding-left: 20px; margin: 0;">
                 <li>Los campos y lotes existentes se reutilizan por nombre sin duplicarse.</li>
                 <li>Si no se especifican fechas de inicio o fin, se asignarán por defecto las fechas de la campaña.</li>
                 <li>Los cultivos que no figuren en el catálogo se darán de alta automáticamente como actividades activas.</li>
+                <li>Si la columna <strong>GIS (GeoJSON)</strong> trae un polígono, el lote se importa con su geometría. Es opcional.</li>
             </ul>
         </div>
 
@@ -120,6 +122,10 @@
                     @(_summary.NewLotsCount + _summary.ExistingLotsCount)
                     <span style="font-size: 12px; color: #2ECC71; margin-left: 4px;">(+@_summary.NewLotsCount nuevos)</span>
                 </div>
+            </div>
+            <div style="background: rgba(255,255,255,0.03); padding: 14px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.08); text-align: center;">
+                <div style="color: rgba(255,255,255,0.5); font-size: 11px; text-transform: uppercase;">Con GIS</div>
+                <div style="font-size: 22px; font-weight: 700; color: #16A085;">@_summary.GeometryRows</div>
             </div>
         </div>
 
@@ -203,6 +209,16 @@
                     <span style="font-size: 11px; color: rgba(255,255,255,0.8);">
                         @(context.StartDate?.ToString("dd/MM/yy") ?? "-") al @(context.EndDate?.ToString("dd/MM/yy") ?? "-")
                     </span>
+                }
+            </PropertyColumn>
+            <PropertyColumn Property="c => c.HasGeometry" Title="GIS" Width="80">
+                @if (context.HasGeometry)
+                {
+                    <Tag Color="@("cyan")"><Icon Type="environment" Theme="IconThemeType.Outline" /> Sí</Tag>
+                }
+                else
+                {
+                    <span style="color: rgba(255,255,255,0.3);">—</span>
                 }
             </PropertyColumn>
             <PropertyColumn Property="c => c.Status" Title="Diagnóstico">

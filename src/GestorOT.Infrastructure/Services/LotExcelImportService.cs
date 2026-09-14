@@ -4,6 +4,7 @@ using GestorOT.Domain.Entities;
 using GestorOT.Shared.Dtos;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using NetTopologySuite.Geometries;
 
 namespace GestorOT.Infrastructure.Services;
 
@@ -70,6 +71,11 @@ public class LotExcelImportService : ILotExcelImportService
             DateOnly? fechaHasta = headers.ColFechaHasta > 0 ? ParseDateCell(row.Cell(headers.ColFechaHasta)) : null;
             string? notas = headers.ColNotas > 0 ? GetCellString(row.Cell(headers.ColNotas)) : null;
 
+            // El GIS es opcional, pero si viene tiene que ser un polígono válido: mejor frenar en la
+            // vista previa que reventar al guardar en PostGIS.
+            string gisRaw = headers.ColGis > 0 ? GetCellString(row.Cell(headers.ColGis)) : string.Empty;
+            var gisValido = GeoJsonGeometryParser.TryParse(gisRaw, out var gisGeometry, out var gisError);
+
             var (effStart, effEnd, hasDateWarning) = ResolveRotationDates(fechaDesde, fechaHasta, campaign);
 
             var rowDto = new LotImportRowDto
@@ -81,7 +87,8 @@ public class LotExcelImportService : ILotExcelImportService
                 CropName = cropStr,
                 StartDate = effStart,
                 EndDate = effEnd,
-                Notes = string.IsNullOrWhiteSpace(notas) ? null : notas
+                Notes = string.IsNullOrWhiteSpace(notas) ? null : notas,
+                HasGeometry = gisGeometry != null
             };
 
             // Validation
@@ -101,6 +108,12 @@ public class LotExcelImportService : ILotExcelImportService
             {
                 rowDto.Status = "Error";
                 rowDto.ValidationMessage = "La superficie debe ser un valor numérico mayor a cero.";
+                summary.ErrorRows++;
+            }
+            else if (!gisValido)
+            {
+                rowDto.Status = "Error";
+                rowDto.ValidationMessage = $"La geometría GIS no es válida: {gisError}.";
                 summary.ErrorRows++;
             }
             else
@@ -155,6 +168,9 @@ public class LotExcelImportService : ILotExcelImportService
                     rowDto.Status = "Valid";
                     summary.ValidRows++;
                 }
+
+                if (rowDto.HasGeometry)
+                    summary.GeometryRows++;
 
                 summary.TotalHectares += rowDto.DeclaredAreaHa;
             }
@@ -266,6 +282,17 @@ public class LotExcelImportService : ILotExcelImportService
                     var (fechaDesde, fechaHasta, _) = ResolveRotationDates(rawDesde, rawHasta, campaign);
                     string? notas = headers.ColNotas > 0 ? GetCellString(row.Cell(headers.ColNotas)) : null;
 
+                    // La vista previa ya validó las geometrías; acá se vuelven a leer para calcular el
+                    // lote. Si alguna no parsea (archivo cambiado entre preview y execute) se ignora
+                    // en vez de abortar toda la importación.
+                    Geometry? gisGeometry = null;
+                    if (headers.ColGis > 0)
+                    {
+                        var gisRaw = GetCellString(row.Cell(headers.ColGis));
+                        if (!GeoJsonGeometryParser.TryParse(gisRaw, out gisGeometry, out _))
+                            gisGeometry = null;
+                    }
+
                     // 1. Campo (Field)
                     string fieldKey = campoStr.Trim().ToLowerInvariant();
                     if (!fieldMap.TryGetValue(fieldKey, out var field))
@@ -307,16 +334,24 @@ public class LotExcelImportService : ILotExcelImportService
                             FieldId = field.Id,
                             Name = loteStr.Trim(),
                             CadastralArea = sup,
-                            Status = "Active"
+                            Status = "Active",
+                            Geometry = gisGeometry
                         };
                         _context.Lots.Add(lot);
                         lotMap[(field.Id, lotKey)] = lot;
                         result.LotsCreated++;
+                        if (gisGeometry != null) result.GeometriesImported++;
                     }
                     else
                     {
                         if (lot.CadastralArea == 0)
                             lot.CadastralArea = sup;
+                        // Si la planilla trae GIS, manda sobre lo que hubiera: reimportar debe corregir.
+                        if (gisGeometry != null)
+                        {
+                            lot.Geometry = gisGeometry;
+                            result.GeometriesImported++;
+                        }
                     }
 
                     // 4. CampaignLot
@@ -327,7 +362,8 @@ public class LotExcelImportService : ILotExcelImportService
                             Id = Guid.NewGuid(),
                             CampaignId = campaignId,
                             LotId = lot.Id,
-                            ProductiveArea = sup
+                            ProductiveArea = sup,
+                            Geometry = gisGeometry
                         };
                         _context.CampaignLots.Add(campLot);
                         campLotMap[lot.Id] = campLot;
@@ -336,6 +372,8 @@ public class LotExcelImportService : ILotExcelImportService
                     else
                     {
                         campLot.ProductiveArea = sup;
+                        if (gisGeometry != null)
+                            campLot.Geometry = gisGeometry;
                     }
 
                     result.TotalHectares += sup;
@@ -398,7 +436,7 @@ public class LotExcelImportService : ILotExcelImportService
                     await tx.CommitAsync(ct);
 
                 result.Success = true;
-                result.Message = $"Se procesaron con éxito los datos: {result.FieldsCreated} campos creados, {result.LotsCreated} lotes creados, {result.CampaignLotsLinked} lotes asociados a la campaña y {result.RotationsCreated} rotaciones registradas ({result.TotalHectares:N2} ha totales).";
+                result.Message = $"Se procesaron con éxito los datos: {result.FieldsCreated} campos creados, {result.LotsCreated} lotes creados, {result.CampaignLotsLinked} lotes asociados a la campaña, {result.RotationsCreated} rotaciones registradas y {result.GeometriesImported} geometrías GIS importadas ({result.TotalHectares:N2} ha totales).";
                 return result;
             }
             catch (Exception ex)
@@ -430,7 +468,8 @@ public class LotExcelImportService : ILotExcelImportService
             "Cultivo Actual",
             "Fecha Desde",
             "Fecha Hasta",
-            "Notas"
+            "Notas",
+            "GIS (GeoJSON)"
         ];
 
         for (int i = 0; i < headers.Length; i++)
@@ -444,13 +483,15 @@ public class LotExcelImportService : ILotExcelImportService
         }
 
         // Example rows
-        var examples = new (string Campo, string Lote, decimal Sup, string Cultivo, string Desde, string Hasta, string Notas)[]
+        var ejemploSig = "{\"type\":\"Polygon\",\"coordinates\":[[[-58.51,-34.61],[-58.50,-34.61],[-58.50,-34.60],[-58.51,-34.60],[-58.51,-34.61]]]}";
+
+        var examples = new (string Campo, string Lote, decimal Sup, string Cultivo, string Desde, string Hasta, string Notas, string Gis)[]
         {
-            ("Bassi-Prieto", "Bassi", 67.0m, "Maíz tardío", "2026-11-01", "2027-07-01", ""),
-            ("Bassi-Prieto", "Lobianco", 27.0m, "Maíz tardío", "2026-11-01", "2027-07-01", ""),
-            ("Breit", "Breit", 155.0m, "Girasol", "2026-09-01", "2027-05-01", ""),
-            ("Corral", "Kiko", 43.0m, "Trigo", "2026-04-01", "2026-12-25", "Lote principal"),
-            ("La Casuarina", "30", 48.0m, "Maíz", "2026-09-01", "2027-05-01", "Superficie estimada")
+            ("Bassi-Prieto", "Bassi", 67.0m, "Maíz tardío", "2026-11-01", "2027-07-01", "", ""),
+            ("Bassi-Prieto", "Lobianco", 27.0m, "Maíz tardío", "2026-11-01", "2027-07-01", "", ""),
+            ("Breit", "Breit", 155.0m, "Girasol", "2026-09-01", "2027-05-01", "", ""),
+            ("Corral", "Kiko", 43.0m, "Trigo", "2026-04-01", "2026-12-25", "Lote principal", ""),
+            ("La Casuarina", "30", 48.0m, "Maíz", "2026-09-01", "2027-05-01", "Superficie estimada", ejemploSig)
         };
 
         for (int r = 0; r < examples.Length; r++)
@@ -463,6 +504,7 @@ public class LotExcelImportService : ILotExcelImportService
             ws.Cell(r + 2, 5).Value = ex.Desde;
             ws.Cell(r + 2, 6).Value = ex.Hasta;
             ws.Cell(r + 2, 7).Value = ex.Notas;
+            ws.Cell(r + 2, 8).Value = ex.Gis;
         }
 
         ws.Columns().AdjustToContents();
@@ -480,7 +522,8 @@ public class LotExcelImportService : ILotExcelImportService
             "3. La columna 'Superficie Declarada (ha)' debe ser un número mayor a cero.",
             "4. La columna 'Cultivo Actual' representa la rotación asignada a ese lote en la campaña.",
             "5. Si 'Fecha Desde' o 'Fecha Hasta' se dejan en blanco, el sistema asignará automáticamente las fechas de inicio y fin de la campaña.",
-            "6. Esta importación se efectúa dentro de la campaña activa en la que te encuentres al momento de importar."
+            "6. La columna 'GIS (GeoJSON)' es opcional: si se completa con un polígono GeoJSON (o WKT), el lote se importa con su geometría. Si se deja vacía, el lote queda sin GIS.",
+            "7. Esta importación se efectúa dentro de la campaña activa en la que te encuentres al momento de importar."
         ];
 
         for (int i = 0; i < instructions.Length; i++)
@@ -545,6 +588,7 @@ public class LotExcelImportService : ILotExcelImportService
                 else if ((text.Contains("desde") || text.Contains("inicio")) && indices.ColFechaDesde == 0) indices.ColFechaDesde = c;
                 else if ((text.Contains("hasta") || text.Contains("fin")) && indices.ColFechaHasta == 0) indices.ColFechaHasta = c;
                 else if ((text.Contains("nota") || text.Contains("obs")) && indices.ColNotas == 0) indices.ColNotas = c;
+                else if (EsColumnaGeometria(text) && indices.ColGis == 0) indices.ColGis = c;
             }
 
             if (indices.ColCampo > 0 && indices.ColLote > 0 && indices.ColSuperficie > 0)
@@ -554,6 +598,24 @@ public class LotExcelImportService : ILotExcelImportService
         }
 
         throw new InvalidOperationException("No se encontraron los encabezados obligatorios ('Campo', 'Lote', 'Superficie') en la hoja.");
+    }
+
+    /// <summary>
+    /// Detecta la columna con la geometría. La planilla AMSA trae "GIS (GeoJSON)" y además
+    /// columnas de apoyo "GIS - Nombre origen" / "GIS - Superficie (ha)" que no son la geometría,
+    /// por eso se excluyen explícitamente.
+    /// </summary>
+    private static bool EsColumnaGeometria(string headerLower)
+    {
+        if (headerLower.Contains("geojson") || headerLower.Contains("wkt") || headerLower.Contains("geometr"))
+            return true;
+
+        if (!headerLower.Contains("gis")) return false;
+
+        return !(headerLower.Contains("nombre")
+                 || headerLower.Contains("superficie")
+                 || headerLower.Contains("origen")
+                 || headerLower.Contains("area"));
     }
 
     private static string GetCellString(IXLCell cell)
@@ -656,6 +718,7 @@ public class LotExcelImportService : ILotExcelImportService
         public int ColFechaDesde { get; set; }
         public int ColFechaHasta { get; set; }
         public int ColNotas { get; set; }
+        public int ColGis { get; set; }
     }
 
     private static XLWorkbook OpenWorkbookSafely(Stream fileStream)
