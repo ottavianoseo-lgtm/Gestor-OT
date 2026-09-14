@@ -25,12 +25,16 @@ public class CampaignGeometryService : ICampaignGeometryService
 
         if (campaignId == Guid.Empty || lot.Geometry == null) return avisos;
 
+        var campaignExists = await _context.Campaigns.AnyAsync(c => c.Id == campaignId, ct);
+        if (!campaignExists) return avisos;
+
         // La superficie sale de PostGIS sobre el elipsoide, nunca del cliente.
         var areaHa = await _lotQuery.CalculateAreaFromWktAsync(new WKTWriter().Write(lot.Geometry), ct);
         var superficieReal = (decimal)areaHa;
 
-        var campaignLot = await _context.CampaignLots
-            .FirstOrDefaultAsync(cl => cl.CampaignId == campaignId && cl.LotId == lot.Id, ct);
+        var campaignLot = _context.CampaignLots.Local?.FirstOrDefault(cl => cl.CampaignId == campaignId && cl.LotId == lot.Id)
+            ?? await _context.CampaignLots
+                .FirstOrDefaultAsync(cl => cl.CampaignId == campaignId && cl.LotId == lot.Id, ct);
 
         if (campaignLot == null)
         {

@@ -216,4 +216,33 @@ public class LotBulkLinkTests
         Assert.Equal(LotLinkAction.Skip, p.SuggestedAction);
         Assert.Equal(0, result.ToCreate);
     }
+
+    [Fact]
+    public async Task CampaignGeometry_CampaniaInexistente_NoLanzaExcepcion()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var tenantId = Guid.NewGuid();
+        using var ctx = CreateContext(dbName, tenantId);
+
+        var lotQuery = new LotQueryService(ctx);
+        var campaignGeometry = new CampaignGeometryService(ctx, lotQuery);
+
+        var lot = new Lot
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenantId,
+            Name = "Lote 1",
+            Geometry = new NetTopologySuite.Geometries.GeometryFactory().CreatePolygon(new[]
+            {
+                new NetTopologySuite.Geometries.Coordinate(0, 0),
+                new NetTopologySuite.Geometries.Coordinate(1, 0),
+                new NetTopologySuite.Geometries.Coordinate(1, 1),
+                new NetTopologySuite.Geometries.Coordinate(0, 0)
+            })
+        };
+
+        // Campaña inexistente: no debe lanzar excepción de clave foránea ni fallar
+        var avisos = await campaignGeometry.ApplyAsync(Guid.NewGuid(), lot);
+        Assert.Empty(avisos);
+    }
 }

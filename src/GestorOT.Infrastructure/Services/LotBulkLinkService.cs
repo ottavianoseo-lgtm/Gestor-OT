@@ -247,10 +247,19 @@ public class LotBulkLinkService : ILotBulkLinkService
                         ex.Message.StartsWith(i.FeatureName, StringComparison.Ordinal) ? ex.Message : null)).ToList(),
                     new List<string> { ex.Message });
             }
-            catch (Exception)
+            catch (Exception ex)
             {
                 await transaction.RollbackAsync(ct);
-                throw;
+                _logger.LogError(ex, "Error al aplicar vinculación masiva en campo {FieldId}", request.FieldId);
+
+                return new LotBulkLinkResultDto(
+                    false, 0, 0, salteados, aAplicar.Count,
+                    aAplicar.Select(i => new LotBulkLinkItemResultDto(
+                        i.FeatureName,
+                        "Rejected",
+                        i.LotId,
+                        ex.Message)).ToList(),
+                    new List<string> { $"Error al procesar la vinculación: {ex.Message}" });
             }
         });
     }

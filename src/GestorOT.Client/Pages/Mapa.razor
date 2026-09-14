@@ -3,6 +3,8 @@
 @using GestorOT.Shared
 @using System.Net.Http.Json
 @using AntDesign
+@using System.IO
+@using System.IO.Compression
 @inject HttpClient Http
 @inject IJSRuntime JS
 @inject IMessageService Message
@@ -402,14 +404,12 @@
        Footer="@null"
        Width="500">
     <div style="margin-bottom: 8px; color: rgba(255,255,255,0.7); font-size: 13px;">
-        Seleccione un <strong>.zip</strong> con el shapefile, o un <strong>.geojson</strong> / <strong>.kml</strong>.
+        Seleccione uno o varios archivos <strong>.geojson</strong> / <strong>.kml</strong>, o un <strong>.zip</strong> / <strong>.kmz</strong>.
     </div>
     <div style="margin-bottom: 16px; color: rgba(255,255,255,0.45); font-size: 12px; line-height: 1.5;">
-        El shapefile son varios archivos juntos (<code>.shp</code>, <code>.shx</code>, <code>.dbf</code>,
-        <code>.prj</code>): mandalos zipeados sin convertir nada. El <code>.prj</code> es el que dice en qué
-        sistema de coordenadas vienen, y se usa para reproyectarlos.
+        Puede subir múltiples archivos GeoJSON a la vez, o un .zip que contenga varios archivos GeoJSON/KML. Si sube un shapefile (<code>.shp</code>, <code>.shx</code>, <code>.dbf</code>, <code>.prj</code>), asegúrese de incluir el archivo <code>.prj</code> para la reproyección.
     </div>
-    <InputFile OnChange="HandleFileImport" accept=".zip,.geojson,.json,.kml" style="margin-bottom: 16px;" />
+    <InputFile OnChange="HandleFileImport" accept=".zip,.kmz,.geojson,.json,.kml" multiple style="margin-bottom: 16px;" />
     @if (_importCrs != null)
     {
         <div style="margin-bottom: 12px; color: #2ECC71; font-size: 12px;">
@@ -432,7 +432,7 @@
     @if (_importLoading)
     {
         <div style="text-align: center; padding: 20px;">
-            <Spin Tip="Procesando archivo..." />
+            <Spin Tip="Procesando archivo(s)..." />
         </div>
     }
     @if (_importResults.Count > 0)
@@ -447,9 +447,8 @@
             </div>
 
             @* La conciliación masiva (OT-48) necesita saber a qué campo pertenecen los polígonos
-               ANTES de cruzar: el nombre de lote del .dbf suele ser solo un número ("1", "2") y
-               sin el campo colisiona entre establecimientos distintos. Por eso el selector va acá,
-               como paso previo obligatorio, y no dentro del modal de conciliación. *@
+               ANTES de cruzar: el nombre de lote suele ser solo un número ("1", "2") y
+               sin el campo colisiona entre establecimientos distintos. *@
             <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px; padding: 10px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px;">
                 <span style="font-size: 12px; color: rgba(255,255,255,0.6); white-space: nowrap;">Campo destino:</span>
                 <Select TItem="FieldDto" TItemValue="Guid"
@@ -470,67 +469,133 @@
                 </Button>
             </div>
 
-            @* Cuando el zip trae varios shapefiles, se agrupan para poder descartar uno entero
-               antes de vincular: el cliente suele mandar bundles duplicados (uno por lote) junto
-               al consolidado, y solo se quiere importar uno de los dos. *@
-            @foreach (var grupo in _importGroups)
+            @if (_importGroups.Count > 0)
             {
-                var descartado = _discardedGroups.Contains(grupo.Name);
-                var delGrupo = _importResults.Where(r => r.SourceShapefile == grupo.Name).ToList();
-
-                @if (_importGroups.Count > 1)
+                @foreach (var grupo in _importGroups)
                 {
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin: 10px 0 6px; padding: 6px 8px; background: rgba(255,255,255,0.03); border-radius: 6px;">
-                        <div>
-                            <span style="color: @(descartado ? "rgba(255,255,255,0.35)" : "#fff"); font-size: 13px; font-weight: 600;">@grupo.Name</span>
-                            <span style="color: rgba(255,255,255,0.4); font-size: 11px; margin-left: 6px;">
-                                @grupo.FeatureCount polígono(s) · @(grupo.SourceCrs ?? "sin .prj")
-                            </span>
+                    var descartado = _discardedGroups.Contains(grupo.Name);
+                    var delGrupo = _importResults.Where(r => r.SourceShapefile == grupo.Name).ToList();
+
+                    @if (_importGroups.Count > 1)
+                    {
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin: 10px 0 6px; padding: 6px 8px; background: rgba(255,255,255,0.03); border-radius: 6px;">
+                            <div>
+                                <span style="color: @(descartado ? "rgba(255,255,255,0.35)" : "#fff"); font-size: 13px; font-weight: 600;">@grupo.Name</span>
+                                <span style="color: rgba(255,255,255,0.4); font-size: 11px; margin-left: 6px;">
+                                    @grupo.FeatureCount polígono(s) · @(grupo.SourceCrs ?? "sin .prj")
+                                </span>
+                            </div>
+                            <Button Size="@ButtonSize.Small" OnClick="() => ToggleGroup(grupo.Name)"
+                                    Style="@($"border-radius: 6px; font-size: 11px; background: {(descartado ? "rgba(46,204,113,0.12)" : "rgba(231,76,60,0.12)")}; border-color: {(descartado ? "rgba(46,204,113,0.35)" : "rgba(231,76,60,0.35)")}; color: {(descartado ? "#2ECC71" : "#E74C3C")};")">
+                                @(descartado ? "Incluir" : "Descartar")
+                            </Button>
                         </div>
-                        <Button Size="@ButtonSize.Small" OnClick="() => ToggleGroup(grupo.Name)"
-                                Style="@($"border-radius: 6px; font-size: 11px; background: {(descartado ? "rgba(46,204,113,0.12)" : "rgba(231,76,60,0.12)")}; border-color: {(descartado ? "rgba(46,204,113,0.35)" : "rgba(231,76,60,0.35)")}; color: {(descartado ? "#2ECC71" : "#E74C3C")};")">
-                            @(descartado ? "Incluir" : "Descartar")
-                        </Button>
-                    </div>
+                    }
+
+                    @if (!descartado && grupo.AttributeColumns.Count > 0)
+                    {
+                        var columnaSeleccionada = _groupNameColumns.TryGetValue(grupo.Name, out var colSel) ? colSel : grupo.NameColumn;
+                        <div style="margin: 6px 0 10px; padding: 8px; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06); border-radius: 6px;">
+                            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
+                                <span style="font-size: 11px; color: rgba(255,255,255,0.55); white-space: nowrap;">Columna de nombre:</span>
+                                <Select TItemValue="string?" TItem="string"
+                                        Value="@columnaSeleccionada"
+                                        ValueChanged="@(async (string? v) => await OnNameColumnChanged(grupo.Name, v))"
+                                        Size="@InputSize.Small"
+                                        Style="flex: 1; min-width: 0;">
+                                    <SelectOption TItemValue="string?" TItem="string" Value="@((string?)null)" Label="Sin columna de nombre (autonumerar)" />
+                                    @foreach (var col in grupo.AttributeColumns)
+                                    {
+                                        <SelectOption TItemValue="string?" TItem="string" Value="@col" Label="@col" />
+                                    }
+                                </Select>
+                            </div>
+                            <div style="font-size: 11px; color: rgba(255,255,255,0.4);">
+                                Vista previa: @string.Join(", ", delGrupo.Take(5).Select(r => string.IsNullOrEmpty(r.Name) ? "(sin nombre)" : r.Name))@(delGrupo.Count > 5 ? "…" : "")
+                            </div>
+                        </div>
+                    }
+
+                    @if (!descartado)
+                    {
+                        @foreach (var result in delGrupo)
+                        {
+                            <div style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 10px; margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center;">
+                                <div style="display: flex; flex-direction: column;">
+                                    <span style="color: rgba(255,255,255,0.8); font-size: 13px;">@(string.IsNullOrEmpty(result.Name) ? "Sin nombre" : result.Name)</span>
+                                    @if (result.AreaHa > 0)
+                                    {
+                                        <span style="color: rgba(255,255,255,0.4); font-size: 11px;">@result.AreaHa.ToString("F1") ha</span>
+                                    }
+                                </div>
+                                <Button Size="@ButtonSize.Small" OnClick="() => LinkImportedToLot(result)"
+                                        Style="border-radius: 6px; background: #9B59B620; border-color: #9B59B640; color: #9B59B6; font-size: 11px;">
+                                    <Icon Type="link" Theme="IconThemeType.Outline" /> Vincular
+                                </Button>
+                            </div>
+                        }
+                    }
                 }
 
-                @if (!descartado && grupo.AttributeColumns.Count > 0)
+                var groupNames = _importGroups.Select(g => g.Name).ToHashSet();
+                var extraResults = VisibleImportResults.Where(r => r.SourceShapefile == null || !groupNames.Contains(r.SourceShapefile)).ToList();
+                @if (extraResults.Count > 0)
                 {
-                    var columnaSeleccionada = _groupNameColumns.TryGetValue(grupo.Name, out var colSel) ? colSel : grupo.NameColumn;
-                    <div style="margin: 6px 0 10px; padding: 8px; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06); border-radius: 6px;">
-                        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
-                            <span style="font-size: 11px; color: rgba(255,255,255,0.55); white-space: nowrap;">Columna de nombre:</span>
-                            <Select TItemValue="string?" TItem="string"
-                                    Value="@columnaSeleccionada"
-                                    ValueChanged="@(async (string? v) => await OnNameColumnChanged(grupo.Name, v))"
-                                    Size="@InputSize.Small"
-                                    Style="flex: 1; min-width: 0;">
-                                <SelectOption TItemValue="string?" TItem="string" Value="@((string?)null)" Label="Sin columna de nombre (autonumerar)" />
-                                @foreach (var col in grupo.AttributeColumns)
-                                {
-                                    <SelectOption TItemValue="string?" TItem="string" Value="@col" Label="@col" />
-                                }
-                            </Select>
-                        </div>
-                        <div style="font-size: 11px; color: rgba(255,255,255,0.4);">
-                            Vista previa: @string.Join(", ", delGrupo.Take(5).Select(r => string.IsNullOrEmpty(r.Name) ? "(sin nombre)" : r.Name))@(delGrupo.Count > 5 ? "…" : "")
-                        </div>
-                    </div>
-                }
-
-                @if (!descartado)
-                {
-                    @foreach (var result in delGrupo)
+                    <div style="font-weight: 600; color: rgba(255,255,255,0.7); margin: 12px 0 6px; font-size: 12px;">Otros polígonos importados:</div>
+                    @foreach (var result in extraResults)
                     {
                         <div style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 10px; margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center;">
-                            <span style="color: rgba(255,255,255,0.8); font-size: 13px;">@(string.IsNullOrEmpty(result.Name) ? "Sin nombre" : result.Name)</span>
+                            <div style="display: flex; flex-direction: column; overflow: hidden; padding-right: 8px;">
+                                <span style="color: rgba(255,255,255,0.85); font-size: 13px; font-weight: 500; text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">
+                                    @(string.IsNullOrEmpty(result.Name) ? "Sin nombre" : result.Name)
+                                </span>
+                                <div style="display: flex; gap: 8px; font-size: 11px; color: rgba(255,255,255,0.4);">
+                                    @if (!string.IsNullOrEmpty(result.SourceShapefile))
+                                    {
+                                        <span>@result.SourceShapefile</span>
+                                    }
+                                    @if (result.AreaHa > 0)
+                                    {
+                                        <span>@result.AreaHa.ToString("F1") ha</span>
+                                    }
+                                </div>
+                            </div>
                             <Button Size="@ButtonSize.Small" OnClick="() => LinkImportedToLot(result)"
-                                    Style="border-radius: 6px; background: #9B59B620; border-color: #9B59B640; color: #9B59B6; font-size: 11px;">
+                                    Style="border-radius: 6px; background: #9B59B620; border-color: #9B59B640; color: #9B59B6; font-size: 11px; flex-shrink: 0;">
                                 <Icon Type="link" Theme="IconThemeType.Outline" /> Vincular
                             </Button>
                         </div>
                     }
                 }
+            }
+            else
+            {
+                <div style="max-height: 360px; overflow-y: auto; padding-right: 4px;">
+                    @foreach (var result in VisibleImportResults)
+                    {
+                        <div style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 10px; margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center;">
+                            <div style="display: flex; flex-direction: column; overflow: hidden; padding-right: 8px;">
+                                <span style="color: rgba(255,255,255,0.85); font-size: 13px; font-weight: 500; text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">
+                                    @(string.IsNullOrEmpty(result.Name) ? "Sin nombre" : result.Name)
+                                </span>
+                                <div style="display: flex; gap: 8px; font-size: 11px; color: rgba(255,255,255,0.4);">
+                                    @if (!string.IsNullOrEmpty(result.SourceShapefile))
+                                    {
+                                        <span>@result.SourceShapefile</span>
+                                    }
+                                    @if (result.AreaHa > 0)
+                                    {
+                                        <span>@result.AreaHa.ToString("F1") ha</span>
+                                    }
+                                </div>
+                            </div>
+                            <Button Size="@ButtonSize.Small" OnClick="() => LinkImportedToLot(result)"
+                                    Style="border-radius: 6px; background: #9B59B620; border-color: #9B59B640; color: #9B59B6; font-size: 11px; flex-shrink: 0;">
+                                <Icon Type="link" Theme="IconThemeType.Outline" /> Vincular
+                            </Button>
+                        </div>
+                    }
+                </div>
             }
         </div>
     }
@@ -538,7 +603,7 @@
 
 <Modal Title="Crear o Vincular Lote desde Importación"
        Visible="_showLinkModal"
-       OnCancel="() => _showLinkModal = false"
+       OnCancel="CloseLinkModal"
        OnOk="SaveImportedGeometry"
        OkText="@(_importCreateNewLot ? "Crear y Vincular Lote" : "Vincular y Guardar")"
        ConfirmLoading="_savingGeometry"
@@ -1908,50 +1973,158 @@
         _importCrs = null;
         _importGroups.Clear();
         _discardedGroups.Clear();
+        _groupNameColumns.Clear();
         StateHasChanged();
 
         try
         {
-            var file = e.File;
-
-            // El shapefile es binario y son varios archivos, asi que no se puede parsear en el
-            // browser como el geojson: va al servidor, que lo lee y lo reproyecta con PostGIS.
-            if (file.Name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+            IReadOnlyList<IBrowserFile> files;
+            try
             {
-                await ImportShapefileAsync(file);
-                return;
+                files = e.GetMultipleFiles(maximumFileCount: 200);
+            }
+            catch
+            {
+                files = new List<IBrowserFile> { e.File };
             }
 
-            using var stream = file.OpenReadStream(maxAllowedSize: 10 * 1024 * 1024);
-            using var reader = new System.IO.StreamReader(stream);
-            var content = await reader.ReadToEndAsync();
+            var allResults = new List<ImportResult>();
 
-            string resultsJson;
-            if (file.Name.EndsWith(".kml", StringComparison.OrdinalIgnoreCase))
+            foreach (var file in files)
             {
-                resultsJson = await JS.InvokeAsync<string>("mapInterop.parseKmlFile", content);
-            }
-            else
-            {
-                resultsJson = await JS.InvokeAsync<string>("mapInterop.parseGeoJsonFile", content);
-            }
-
-            var parsed = System.Text.Json.JsonSerializer.Deserialize<List<ImportResult>>(resultsJson,
-                new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-
-            if (parsed != null && parsed.Count > 0)
-            {
-                _importResults = parsed;
-                foreach (var result in parsed)
+                try
                 {
-                    await JS.InvokeAsync<bool>("mapInterop.addImportedPolygon", result.Wkt, result.Name);
+                    if (file.Name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase) ||
+                        file.Name.EndsWith(".kmz", StringComparison.OrdinalIgnoreCase))
+                    {
+                        using var ms = new MemoryStream();
+                        using (var stream = file.OpenReadStream(maxAllowedSize: 64 * 1024 * 1024))
+                        {
+                            await stream.CopyToAsync(ms);
+                        }
+                        ms.Position = 0;
+
+                        using var archive = new ZipArchive(ms, ZipArchiveMode.Read, leaveOpen: true);
+                        bool hasShapefiles = archive.Entries.Any(entry => entry.Name.EndsWith(".shp", StringComparison.OrdinalIgnoreCase));
+
+                        if (hasShapefiles)
+                        {
+                            ms.Position = 0;
+                            await ImportShapefileStreamAsync(file.Name, ms, allResults);
+                        }
+                        else
+                        {
+                            var geoEntries = archive.Entries
+                                .Where(entry => !entry.FullName.StartsWith("__MACOSX", StringComparison.OrdinalIgnoreCase) &&
+                                                !string.IsNullOrEmpty(entry.Name) &&
+                                                (entry.Name.EndsWith(".geojson", StringComparison.OrdinalIgnoreCase) ||
+                                                 entry.Name.EndsWith(".json", StringComparison.OrdinalIgnoreCase) ||
+                                                 entry.Name.EndsWith(".kml", StringComparison.OrdinalIgnoreCase)))
+                                .ToList();
+
+                            if (geoEntries.Count == 0)
+                            {
+                                _importWarnings.Add($"El archivo '{file.Name}' no contiene archivos .shp, .geojson ni .kml válidos.");
+                                continue;
+                            }
+
+                            foreach (var entry in geoEntries)
+                            {
+                                try
+                                {
+                                    using var entryStream = entry.Open();
+                                    using var reader = new StreamReader(entryStream);
+                                    var content = await reader.ReadToEndAsync();
+                                    var entryDefaultName = Path.GetFileNameWithoutExtension(entry.Name);
+
+                                    string resultsJson;
+                                    if (entry.Name.EndsWith(".kml", StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        resultsJson = await JS.InvokeAsync<string>("mapInterop.parseKmlFile", content, entryDefaultName);
+                                    }
+                                    else
+                                    {
+                                        resultsJson = await JS.InvokeAsync<string>("mapInterop.parseGeoJsonFile", content, entryDefaultName);
+                                    }
+
+                                    var parsed = System.Text.Json.JsonSerializer.Deserialize<List<ImportResult>>(resultsJson,
+                                        new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+                                    if (parsed != null && parsed.Count > 0)
+                                    {
+                                        foreach (var r in parsed)
+                                        {
+                                            r.SourceShapefile = $"{file.Name} / {entry.Name}";
+                                            allResults.Add(r);
+                                        }
+                                    }
+                                    else
+                                    {
+                                        _importWarnings.Add($"No se encontraron geometrías válidas en '{entry.Name}' ({file.Name}).");
+                                    }
+                                }
+                                catch (Exception ex)
+                                {
+                                    _importWarnings.Add($"Error al leer '{entry.Name}' en '{file.Name}': {ex.Message}");
+                                }
+                            }
+                        }
+                    }
+                    else
+                    {
+                        using var stream = file.OpenReadStream(maxAllowedSize: 64 * 1024 * 1024);
+                        using var reader = new StreamReader(stream);
+                        var content = await reader.ReadToEndAsync();
+                        var fileDefaultName = Path.GetFileNameWithoutExtension(file.Name);
+
+                        string resultsJson;
+                        if (file.Name.EndsWith(".kml", StringComparison.OrdinalIgnoreCase))
+                        {
+                            resultsJson = await JS.InvokeAsync<string>("mapInterop.parseKmlFile", content, fileDefaultName);
+                        }
+                        else
+                        {
+                            resultsJson = await JS.InvokeAsync<string>("mapInterop.parseGeoJsonFile", content, fileDefaultName);
+                        }
+
+                        var parsed = System.Text.Json.JsonSerializer.Deserialize<List<ImportResult>>(resultsJson,
+                            new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+                        if (parsed != null && parsed.Count > 0)
+                        {
+                            foreach (var r in parsed)
+                            {
+                                r.SourceShapefile = file.Name;
+                                allResults.Add(r);
+                            }
+                        }
+                        else
+                        {
+                            _importWarnings.Add($"No se encontraron geometrías en '{file.Name}'.");
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _importWarnings.Add($"Error al procesar '{file.Name}': {ex.Message}");
+                }
+            }
+
+            _importResults = allResults;
+
+            await JS.InvokeVoidAsync("mapInterop.clearDrawn");
+            if (_importResults.Count > 0)
+            {
+                foreach (var feature in _importResults)
+                {
+                    await JS.InvokeAsync<bool>("mapInterop.addImportedPolygon", feature.Wkt, feature.Name);
                 }
                 await JS.InvokeAsync<bool>("mapInterop.fitImportedBounds");
-                Message.Success($"{parsed.Count} polígono(s) importado(s).");
+                Message.Success($"{_importResults.Count} polígono(s) importado(s).");
             }
             else
             {
-                Message.Warning("No se encontraron polígonos en el archivo.");
+                Message.Warning("No se encontraron polígonos válidos en los archivos seleccionados.");
             }
         }
         catch (Exception ex)
@@ -1998,62 +2171,75 @@
         await JS.InvokeAsync<bool>("mapInterop.fitImportedBounds");
     }
 
-    private async Task ImportShapefileAsync(IBrowserFile file)
+    private async Task ImportShapefileStreamAsync(string fileName, Stream stream, List<ImportResult> targetList)
     {
         using var content = new MultipartFormDataContent();
-        var fileContent = new StreamContent(file.OpenReadStream(maxAllowedSize: 64 * 1024 * 1024));
+        var fileContent = new StreamContent(stream);
         fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/zip");
-        content.Add(fileContent, "file", file.Name);
+        content.Add(fileContent, "file", fileName);
 
         var response = await Http.PostAsync("api/lots/import/shapefile", content);
 
         if (!response.IsSuccessStatusCode)
         {
             var detail = await response.Content.ReadAsStringAsync();
-            Message.Error(string.IsNullOrWhiteSpace(detail) ? "No se pudo leer el shapefile." : detail);
+            _importWarnings.Add($"Error en shapefile '{fileName}': {(string.IsNullOrWhiteSpace(detail) ? "No se pudo leer el shapefile." : detail)}");
             return;
         }
 
         var result = await response.Content.ReadFromJsonAsync<ShapefileImportResultDto>(AppJsonSerializerContext.Default.ShapefileImportResultDto);
         if (result == null)
         {
-            Message.Error("No se pudo leer la respuesta del servidor.");
+            _importWarnings.Add($"No se pudo leer la respuesta del servidor para '{fileName}'.");
             return;
         }
 
-        _importCrs = result.SourceCrs;
-        _importWarnings = result.Warnings ?? new();
-        _importGroups = result.Groups ?? new();
-        _discardedGroups.Clear();
-        _groupNameColumns.Clear();
+        if (_importCrs == null)
+        {
+            _importCrs = result.SourceCrs;
+        }
+        else if (result.SourceCrs != null && !_importCrs.Contains(result.SourceCrs))
+        {
+            _importCrs += $", {result.SourceCrs}";
+        }
+
+        if (result.Warnings != null)
+        {
+            _importWarnings.AddRange(result.Warnings);
+        }
+
+        if (result.Groups != null)
+        {
+            _importGroups.AddRange(result.Groups);
+            foreach (var grupo in result.Groups)
+            {
+                _groupNameColumns[grupo.Name] = grupo.NameColumn;
+            }
+        }
 
         if (result.Features.Count == 0)
         {
-            Message.Warning("No se encontraron polígonos en el shapefile.");
+            _importWarnings.Add($"No se encontraron polígonos en el shapefile '{fileName}'.");
             return;
         }
 
-        _importResults = result.Features
-            .Select(f => new ImportResult { Wkt = f.Wkt, Name = f.Name, SourceShapefile = f.SourceShapefile, Attributes = f.Attributes, AreaHa = f.AreaHa })
+        var features = result.Features
+            .Select(f => new ImportResult { Wkt = f.Wkt, Name = f.Name, SourceShapefile = f.SourceShapefile ?? fileName, Attributes = f.Attributes, AreaHa = f.AreaHa })
             .ToList();
 
-        // Se precarga con la deteccion automatica del backend y se recalculan los nombres con la
-        // misma logica que despues usa el selector manual: si la deteccion acerto, da el mismo
-        // resultado que ya trajo el backend (sin pasos extra); si no encontro columna, esto ya
-        // autonumera en vez de dejar las features sin nombre.
-        foreach (var grupo in _importGroups)
+        if (result.Groups != null)
         {
-            _groupNameColumns[grupo.Name] = grupo.NameColumn;
-            ApplyGroupNames(grupo.Name, grupo.NameColumn);
+            foreach (var grupo in result.Groups)
+            {
+                var featuresDelGrupo = features.Where(r => r.SourceShapefile == grupo.Name).ToList();
+                for (int i = 0; i < featuresDelGrupo.Count; i++)
+                {
+                    featuresDelGrupo[i].Name = ComputeFeatureName(grupo.Name, grupo.NameColumn, featuresDelGrupo[i].Attributes, i + 1);
+                }
+            }
         }
 
-        foreach (var feature in _importResults)
-        {
-            await JS.InvokeAsync<bool>("mapInterop.addImportedPolygon", feature.Wkt, feature.Name);
-        }
-        await JS.InvokeAsync<bool>("mapInterop.fitImportedBounds");
-
-        Message.Success($"{result.Features.Count} polígono(s) leído(s) del shapefile.");
+        targetList.AddRange(features);
     }
 
     /// <summary>
@@ -2278,52 +2464,79 @@
             var request = new LotBulkLinkRequestDto(_reconcileFieldId, items, campaignId, _reconcileCombineGeometry, overrideOverlap);
 
             var response = await Http.PostAsJsonAsync("api/lots/bulk-link", request, AppJsonSerializerContext.Default.LotBulkLinkRequestDto);
-            var result = await response.Content.ReadFromJsonAsync<LotBulkLinkResultDto>(AppJsonSerializerContext.Default.LotBulkLinkResultDto);
 
-            if (response.IsSuccessStatusCode && result is { Success: true })
+            if (response.IsSuccessStatusCode)
             {
-                Message.Success($"Vinculación aplicada: {result.Created} creado(s), {result.Updated} actualizado(s), {result.Skipped} omitido(s).");
-
-                MapBounds? savedBounds = null;
-                try { savedBounds = await JS.InvokeAsync<MapBounds?>("mapInterop.getCurrentBounds"); } catch { }
-
-                _reconcileSurfaceWarnings = result.SurfaceWarnings ?? new List<string>();
-
-                // Con avisos de superficie el modal queda abierto: si se cerrara solo, la
-                // inconsistencia pasaria desapercibida justo cuando hay que actuar sobre ella.
-                // Las filas ya no hacen falta, lo unico que queda en pantalla es el aviso.
-                if (_reconcileSurfaceWarnings.Count > 0)
+                LotBulkLinkResultDto? result = null;
+                try
                 {
-                    _reconcileRows.Clear();
+                    result = await response.Content.ReadFromJsonAsync<LotBulkLinkResultDto>(AppJsonSerializerContext.Default.LotBulkLinkResultDto);
+                }
+                catch { }
+
+                if (result is { Success: true })
+                {
+                    Message.Success($"Vinculación aplicada: {result.Created} creado(s), {result.Updated} actualizado(s), {result.Skipped} omitido(s).");
+
+                    MapBounds? savedBounds = null;
+                    try { savedBounds = await JS.InvokeAsync<MapBounds?>("mapInterop.getCurrentBounds"); } catch { }
+
+                    _reconcileSurfaceWarnings = result.SurfaceWarnings ?? new List<string>();
+
+                    // Con avisos de superficie el modal queda abierto: si se cerrara solo, la
+                    // inconsistencia pasaria desapercibida justo cuando hay que actuar sobre ella.
+                    // Las filas ya no hacen falta, lo unico que queda en pantalla es el aviso.
+                    if (_reconcileSurfaceWarnings.Count > 0)
+                    {
+                        _reconcileRows.Clear();
+                    }
+                    else
+                    {
+                        CloseReconcileModal();
+                    }
+
+                    _showImportModal = false;
+                    _importResults.Clear();
+                    _importGroups.Clear();
+                    _discardedGroups.Clear();
+                    _groupNameColumns.Clear();
+                    await ReloadMap(savedBounds);
                 }
                 else
                 {
-                    CloseReconcileModal();
+                    var msg = result?.OverlapWarnings != null && result.OverlapWarnings.Count > 0
+                        ? string.Join("; ", result.OverlapWarnings)
+                        : "No se pudo completar la vinculación.";
+                    Message.Error($"Error al aplicar la vinculación: {msg}");
                 }
-
-                _showImportModal = false;
-                _importResults.Clear();
-                _importGroups.Clear();
-                _discardedGroups.Clear();
-                _groupNameColumns.Clear();
-                await ReloadMap(savedBounds);
             }
-            else if (response.StatusCode == System.Net.HttpStatusCode.Conflict && result != null)
+            else if (response.StatusCode == System.Net.HttpStatusCode.Conflict)
             {
-                // El 409 no es un error: es "hay conflictos, decidí" (todo o nada, no quedó nada
+                LotBulkLinkResultDto? result = null;
+                try
+                {
+                    result = await response.Content.ReadFromJsonAsync<LotBulkLinkResultDto>(AppJsonSerializerContext.Default.LotBulkLinkResultDto);
+                }
+                catch { }
+
+                // El 409 no es un error de red: es "hay conflictos, decidí" (todo o nada, no quedó nada
                 // aplicado). Se agrupan en un solo aviso arriba de la tabla, no un modal por lote.
-                _reconcileOverlapWarnings = result.OverlapWarnings.Count > 0
+                _reconcileOverlapWarnings = result?.OverlapWarnings != null && result.OverlapWarnings.Count > 0
                     ? result.OverlapWarnings
                     : new List<string> { "Se detectaron conflictos al aplicar la vinculación." };
             }
             else
             {
-                Message.Error($"Error al aplicar la vinculación: {response.StatusCode}");
+                var errorDetail = await ExtractHttpErrorMessageAsync(response);
+                Message.Error($"Error al aplicar la vinculación: {errorDetail}");
             }
         }
         catch (Exception ex)
         {
-            Message.Error($"Error al aplicar la vinculación: {ex.Message}");
+            var msg = ex is System.Text.Json.JsonException
+                ? "La respuesta del servidor no tiene un formato válido."
+                : ex.Message;
+            Message.Error($"Error al aplicar la vinculación: {msg}");
         }
         finally
         {
@@ -2332,17 +2545,106 @@
         }
     }
 
+    private static async Task<string> ExtractHttpErrorMessageAsync(HttpResponseMessage response)
+    {
+        try
+        {
+            var content = await response.Content.ReadAsStringAsync();
+            if (!string.IsNullOrWhiteSpace(content))
+            {
+                content = content.Trim();
+                if (!content.StartsWith("<", StringComparison.Ordinal))
+                {
+                    try
+                    {
+                        using var doc = System.Text.Json.JsonDocument.Parse(content);
+                        if (doc.RootElement.TryGetProperty("detail", out var detail) && !string.IsNullOrWhiteSpace(detail.GetString()))
+                            return detail.GetString()!;
+                        if (doc.RootElement.TryGetProperty("message", out var msg) && !string.IsNullOrWhiteSpace(msg.GetString()))
+                            return msg.GetString()!;
+                        if (doc.RootElement.TryGetProperty("error", out var err) && !string.IsNullOrWhiteSpace(err.GetString()))
+                            return err.GetString()!;
+                        if (doc.RootElement.TryGetProperty("title", out var title) && !string.IsNullOrWhiteSpace(title.GetString()))
+                            return title.GetString()!;
+                    }
+                    catch
+                    {
+                        return content;
+                    }
+                }
+            }
+        }
+        catch { }
+
+        return response.StatusCode switch
+        {
+            System.Net.HttpStatusCode.BadRequest => "La solicitud contiene datos inválidos.",
+            System.Net.HttpStatusCode.NotFound => "El recurso solicitado no fue encontrado.",
+            System.Net.HttpStatusCode.Forbidden => "No tiene permisos para realizar esta operación.",
+            System.Net.HttpStatusCode.Unauthorized => "Sesión expirada o no autorizada.",
+            System.Net.HttpStatusCode.InternalServerError => "Error interno en el servidor. Intente nuevamente más tarde.",
+            _ => $"Error del servidor ({(int)response.StatusCode} {response.ReasonPhrase})."
+        };
+    }
+
     private bool _importCreateNewLot = true;
+
+    private ImportResult? _linkingResult;
 
     private void LinkImportedToLot(ImportResult result)
     {
+        _linkingResult = result;
         _importLinkWkt = result.Wkt;
-        _linkingLotId = Guid.Empty;
         _newLotName = result.Name ?? "";
-        _newLotFieldId = Guid.Empty;
-        _importCreateNewLot = true;
+
+        // Auto-detect target field if not selected:
+        Guid targetFieldId = _reconcileFieldId;
+        if (targetFieldId == Guid.Empty && result.Attributes != null)
+        {
+            var fieldAttr = result.Attributes.FirstOrDefault(a =>
+                a.Key.Equals("campo", StringComparison.OrdinalIgnoreCase) ||
+                a.Key.Equals("field", StringComparison.OrdinalIgnoreCase) ||
+                a.Key.Equals("establecimiento", StringComparison.OrdinalIgnoreCase)).Value;
+            if (!string.IsNullOrWhiteSpace(fieldAttr))
+            {
+                var matchField = _allFields.FirstOrDefault(f => string.Equals(f.Name?.Trim(), fieldAttr.Trim(), StringComparison.OrdinalIgnoreCase));
+                if (matchField != null) targetFieldId = matchField.Id;
+            }
+        }
+
+        _newLotFieldId = targetFieldId != Guid.Empty ? targetFieldId : Guid.Empty;
+
+        // Auto-detect existing lot with matching name:
+        var matchingLot = _allLots.FirstOrDefault(l =>
+            (_newLotFieldId == Guid.Empty || l.FieldId == _newLotFieldId) &&
+            !string.IsNullOrWhiteSpace(l.Name) &&
+            string.Equals(l.Name.Trim(), result.Name?.Trim(), StringComparison.OrdinalIgnoreCase));
+
+        if (matchingLot != null)
+        {
+            _linkingLotId = matchingLot.Id;
+            if (_newLotFieldId == Guid.Empty) _newLotFieldId = matchingLot.FieldId;
+            _importCreateNewLot = false;
+        }
+        else
+        {
+            _linkingLotId = Guid.Empty;
+            _importCreateNewLot = true;
+        }
+
         _showLinkModal = true;
         _showImportModal = false;
+    }
+
+    private void CloseLinkModal()
+    {
+        _showLinkModal = false;
+        _linkingResult = null;
+        _importLinkWkt = null;
+        if (_importResults.Count > 0)
+        {
+            _showImportModal = true;
+        }
     }
 
     private bool _linkModeCombine = true;
@@ -2440,7 +2742,34 @@
                     _newLotName = "";
                     _newLotFieldId = Guid.Empty;
                     _pendingOverrideOverlap = false;
+
+                    if (_linkingResult != null)
+                    {
+                        _importResults.Remove(_linkingResult);
+                        _linkingResult = null;
+                    }
+                    else if (!string.IsNullOrEmpty(_importLinkWkt))
+                    {
+                        var idx = _importResults.FindIndex(r => r.Wkt == _importLinkWkt);
+                        if (idx >= 0) _importResults.RemoveAt(idx);
+                    }
+
                     await ReloadMap(savedBounds);
+
+                    if (_importResults.Count > 0)
+                    {
+                        await JS.InvokeVoidAsync("mapInterop.clearDrawn");
+                        foreach (var r in VisibleImportResults)
+                        {
+                            await JS.InvokeAsync<bool>("mapInterop.addImportedPolygon", r.Wkt, r.Name);
+                        }
+                        _showImportModal = true;
+                    }
+                    else
+                    {
+                        _showImportModal = false;
+                        Message.Success("Se han vinculado todos los polígonos.");
+                    }
                 }
                 else if (response.StatusCode == System.Net.HttpStatusCode.Conflict)
                 {
@@ -2524,7 +2853,34 @@
                     _showLinkModal = false;
                     _importLinkWkt = null;
                     _linkingLotId = Guid.Empty;
+
+                    if (_linkingResult != null)
+                    {
+                        _importResults.Remove(_linkingResult);
+                        _linkingResult = null;
+                    }
+                    else if (!string.IsNullOrEmpty(_importLinkWkt))
+                    {
+                        var idx = _importResults.FindIndex(r => r.Wkt == _importLinkWkt);
+                        if (idx >= 0) _importResults.RemoveAt(idx);
+                    }
+
                     await ReloadMap(savedBounds);
+
+                    if (_importResults.Count > 0)
+                    {
+                        await JS.InvokeVoidAsync("mapInterop.clearDrawn");
+                        foreach (var r in VisibleImportResults)
+                        {
+                            await JS.InvokeAsync<bool>("mapInterop.addImportedPolygon", r.Wkt, r.Name);
+                        }
+                        _showImportModal = true;
+                    }
+                    else
+                    {
+                        _showImportModal = false;
+                        Message.Success("Se han vinculado todos los polígonos.");
+                    }
                 }
                 else if (response.StatusCode == System.Net.HttpStatusCode.Conflict)
                 {

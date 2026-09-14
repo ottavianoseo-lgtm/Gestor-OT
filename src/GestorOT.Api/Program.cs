@@ -88,7 +88,10 @@ if (app.Environment.IsDevelopment())
 }
 else
 {
-    app.UseExceptionHandler("/Error", createScopeForErrors: true);
+    app.UseWhen(context => !context.Request.Path.StartsWithSegments("/api"), appBuilder =>
+    {
+        appBuilder.UseExceptionHandler("/Error", createScopeForErrors: true);
+    });
 }
 
 // Solo para las rutas de la app, nunca para /api. Re-ejecutar el pipeline en /not-found hace

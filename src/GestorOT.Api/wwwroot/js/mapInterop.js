@@ -737,7 +737,7 @@ window.mapInterop = {
         }
     },
 
-    parseGeoJsonFile: function (geoJsonString) {
+    parseGeoJsonFile: function (geoJsonString, defaultName) {
         try {
             var geojson = JSON.parse(geoJsonString);
             var results = [];
@@ -751,53 +751,127 @@ window.mapInterop = {
                 features = [{ type: 'Feature', geometry: geojson, properties: {} }];
             }
 
+            function computeCoordsAreaHa(coords) {
+                if (!coords || !Array.isArray(coords) || coords.length < 3) return 0;
+                var area = 0;
+                for (var i = 0; i < coords.length; i++) {
+                    var j = (i + 1) % coords.length;
+                    var c1 = coords[i];
+                    var c2 = coords[j];
+                    if (!c1 || !c2 || isNaN(c1[0]) || isNaN(c1[1]) || isNaN(c2[0]) || isNaN(c2[1])) continue;
+                    var xi = c1[0] * Math.PI / 180;
+                    var yi = c1[1] * Math.PI / 180;
+                    var xj = c2[0] * Math.PI / 180;
+                    var yj = c2[1] * Math.PI / 180;
+                    area += (xj - xi) * (2 + Math.sin(yi) + Math.sin(yj));
+                }
+                area = Math.abs(area * 6371000 * 6371000 / 2);
+                return Math.round((area / 10000) * 100) / 100;
+            }
+
+            var featureCount = 0;
             features.forEach(function (feature) {
                 if (!feature || !feature.geometry || !feature.geometry.coordinates) return;
+                featureCount++;
 
-                var name = (feature.properties && (feature.properties.name || feature.properties.Name || feature.properties.NOMBRE || feature.properties.nombre || feature.properties.lote || feature.properties.Lote || feature.properties.LOTE)) || '';
+                var props = feature.properties || {};
+                var name = '';
+                var propKeys = Object.keys(props);
+                var preferredKeys = ['lote', 'lot', 'nombre', 'name', 'id', 'etiqueta', 'label', 'description', 'descripcion'];
+                for (var k = 0; k < preferredKeys.length; k++) {
+                    var pk = preferredKeys[k];
+                    var foundKey = propKeys.find(function (key) { return key.toLowerCase() === pk; });
+                    if (foundKey && props[foundKey] !== undefined && props[foundKey] !== null && String(props[foundKey]).trim() !== '') {
+                        name = String(props[foundKey]).trim();
+                        break;
+                    }
+                }
+
+                if (!name && propKeys.length > 0) {
+                    for (var p = 0; p < propKeys.length; p++) {
+                        var kName = propKeys[p].toLowerCase();
+                        if (kName === 'campo' || kName === 'field' || kName === 'establecimiento') continue;
+                        var val = props[propKeys[p]];
+                        if (val !== undefined && val !== null && typeof val !== 'object' && String(val).trim() !== '') {
+                            name = String(val).trim();
+                            break;
+                        }
+                    }
+                }
+
+                if (!name && defaultName) {
+                    name = features.length > 1 ? (defaultName + ' - ' + featureCount) : defaultName;
+                }
+
+                var attributes = {};
+                for (var key in props) {
+                    if (Object.prototype.hasOwnProperty.call(props, key) && props[key] !== null && typeof props[key] !== 'object') {
+                        attributes[key] = String(props[key]);
+                    }
+                }
 
                 if (feature.geometry.type === 'Polygon') {
-                    var coords = feature.geometry.coordinates && feature.geometry.coordinates[0];
-                    if (!coords || !Array.isArray(coords) || coords.length < 3) return;
-                    var wktCoords = [];
-                    coords.forEach(function (c) {
-                        if (Array.isArray(c) && c.length >= 2 && !isNaN(c[0]) && !isNaN(c[1])) {
-                            wktCoords.push(c[0].toFixed(8) + ' ' + c[1].toFixed(8));
+                    var rings = feature.geometry.coordinates;
+                    if (!rings || !Array.isArray(rings) || rings.length === 0) return;
+                    var ringStrings = [];
+                    var outerRingAreaHa = 0;
+                    rings.forEach(function (ring, rIdx) {
+                        if (!Array.isArray(ring) || ring.length < 3) return;
+                        var wktCoords = [];
+                        ring.forEach(function (c) {
+                            if (Array.isArray(c) && c.length >= 2 && !isNaN(c[0]) && !isNaN(c[1])) {
+                                wktCoords.push(Number(c[0]).toFixed(8) + ' ' + Number(c[1]).toFixed(8));
+                            }
+                        });
+                        if (wktCoords.length >= 3) {
+                            if (wktCoords[0] !== wktCoords[wktCoords.length - 1]) {
+                                wktCoords.push(wktCoords[0]);
+                            }
+                            if (rIdx === 0) {
+                                outerRingAreaHa = computeCoordsAreaHa(ring);
+                            }
+                            ringStrings.push('(' + wktCoords.join(', ') + ')');
                         }
                     });
-                    if (wktCoords.length >= 3) {
-                        if (wktCoords[0] !== wktCoords[wktCoords.length - 1]) {
-                            wktCoords.push(wktCoords[0]);
-                        }
-                        var wkt = 'POLYGON ((' + wktCoords.join(', ') + '))';
-                        results.push({ wkt: wkt, name: name });
+                    if (ringStrings.length > 0) {
+                        var wkt = 'POLYGON (' + ringStrings.join(', ') + ')';
+                        results.push({ wkt: wkt, name: name, attributes: attributes, areaHa: outerRingAreaHa });
                     }
                 } else if (feature.geometry.type === 'MultiPolygon') {
                     var polyStrings = [];
                     var polygons = feature.geometry.coordinates;
+                    var totalAreaHa = 0;
                     if (Array.isArray(polygons)) {
                         polygons.forEach(function (poly) {
-                            var outerRing = poly && poly[0];
-                            if (outerRing && Array.isArray(outerRing) && outerRing.length >= 3) {
+                            if (!Array.isArray(poly) || poly.length === 0) return;
+                            var ringStrings = [];
+                            poly.forEach(function (ring, rIdx) {
+                                if (!Array.isArray(ring) || ring.length < 3) return;
                                 var wktCoords = [];
-                                outerRing.forEach(function (c) {
+                                ring.forEach(function (c) {
                                     if (Array.isArray(c) && c.length >= 2 && !isNaN(c[0]) && !isNaN(c[1])) {
-                                        wktCoords.push(c[0].toFixed(8) + ' ' + c[1].toFixed(8));
+                                        wktCoords.push(Number(c[0]).toFixed(8) + ' ' + Number(c[1]).toFixed(8));
                                     }
                                 });
                                 if (wktCoords.length >= 3) {
                                     if (wktCoords[0] !== wktCoords[wktCoords.length - 1]) {
                                         wktCoords.push(wktCoords[0]);
                                     }
-                                    polyStrings.push('((' + wktCoords.join(', ') + '))');
+                                    if (rIdx === 0) {
+                                        totalAreaHa += computeCoordsAreaHa(ring);
+                                    }
+                                    ringStrings.push('(' + wktCoords.join(', ') + ')');
                                 }
+                            });
+                            if (ringStrings.length > 0) {
+                                polyStrings.push('(' + ringStrings.join(', ') + ')');
                             }
                         });
                     }
 
                     if (polyStrings.length > 0) {
                         var wkt = 'MULTIPOLYGON (' + polyStrings.join(', ') + ')';
-                        results.push({ wkt: wkt, name: name });
+                        results.push({ wkt: wkt, name: name, attributes: attributes, areaHa: Math.round(totalAreaHa * 100) / 100 });
                     }
                 }
             });
@@ -809,20 +883,60 @@ window.mapInterop = {
         }
     },
 
-    parseKmlFile: function (kmlString) {
+    parseKmlFile: function (kmlString, defaultName) {
         try {
             var parser = new DOMParser();
             var kml = parser.parseFromString(kmlString, 'text/xml');
             var results = [];
+
+            function computePointsAreaHa(points) {
+                if (!points || points.length < 3) return 0;
+                var area = 0;
+                for (var i = 0; i < points.length; i++) {
+                    var j = (i + 1) % points.length;
+                    var p1 = points[i].split(',');
+                    var p2 = points[j].split(',');
+                    if (p1.length < 2 || p2.length < 2) continue;
+                    var xi = parseFloat(p1[0]) * Math.PI / 180;
+                    var yi = parseFloat(p1[1]) * Math.PI / 180;
+                    var xj = parseFloat(p2[0]) * Math.PI / 180;
+                    var yj = parseFloat(p2[1]) * Math.PI / 180;
+                    if (isNaN(xi) || isNaN(yi) || isNaN(xj) || isNaN(yj)) continue;
+                    area += (xj - xi) * (2 + Math.sin(yi) + Math.sin(yj));
+                }
+                area = Math.abs(area * 6371000 * 6371000 / 2);
+                return Math.round((area / 10000) * 100) / 100;
+            }
 
             var placemarks = kml.getElementsByTagName('Placemark');
             for (var i = 0; i < placemarks.length; i++) {
                 var pm = placemarks[i];
                 var nameEl = pm.getElementsByTagName('name')[0];
                 var name = nameEl ? nameEl.textContent.trim() : '';
+                if (!name && defaultName) {
+                    name = placemarks.length > 1 ? (defaultName + ' - ' + (i + 1)) : defaultName;
+                }
+
+                var attributes = {};
+                var simpleDataElements = pm.getElementsByTagName('SimpleData');
+                for (var s = 0; s < simpleDataElements.length; s++) {
+                    var sName = simpleDataElements[s].getAttribute('name');
+                    if (sName) {
+                        attributes[sName] = simpleDataElements[s].textContent.trim();
+                    }
+                }
+                var dataElements = pm.getElementsByTagName('Data');
+                for (var d = 0; d < dataElements.length; d++) {
+                    var dName = dataElements[d].getAttribute('name');
+                    var valEl = dataElements[d].getElementsByTagName('value')[0];
+                    if (dName && valEl) {
+                        attributes[dName] = valEl.textContent.trim();
+                    }
+                }
 
                 var polygonElements = pm.getElementsByTagName('Polygon');
                 var polyStrings = [];
+                var totalAreaHa = 0;
 
                 if (polygonElements.length > 0) {
                     for (var p = 0; p < polygonElements.length; p++) {
@@ -840,6 +954,7 @@ window.mapInterop = {
                             if (wktCoords[0] !== wktCoords[wktCoords.length - 1]) {
                                 wktCoords.push(wktCoords[0]);
                             }
+                            totalAreaHa += computePointsAreaHa(points);
                             polyStrings.push('((' + wktCoords.join(', ') + '))');
                         }
                     }
@@ -857,6 +972,7 @@ window.mapInterop = {
                             if (wktCoords[0] !== wktCoords[wktCoords.length - 1]) {
                                 wktCoords.push(wktCoords[0]);
                             }
+                            totalAreaHa += computePointsAreaHa(points);
                             polyStrings.push('((' + wktCoords.join(', ') + '))');
                         }
                     }
@@ -864,10 +980,10 @@ window.mapInterop = {
 
                 if (polyStrings.length === 1) {
                     var wkt = 'POLYGON ' + polyStrings[0];
-                    results.push({ wkt: wkt, name: name });
+                    results.push({ wkt: wkt, name: name, attributes: attributes, areaHa: Math.round(totalAreaHa * 100) / 100 });
                 } else if (polyStrings.length > 1) {
                     var wkt = 'MULTIPOLYGON (' + polyStrings.join(', ') + ')';
-                    results.push({ wkt: wkt, name: name });
+                    results.push({ wkt: wkt, name: name, attributes: attributes, areaHa: Math.round(totalAreaHa * 100) / 100 });
                 }
             }
 
