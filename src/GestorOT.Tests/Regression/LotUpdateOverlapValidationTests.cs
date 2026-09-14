@@ -1,4 +1,5 @@
 using GestorOT.Api.Controllers;
+using GestorOT.Application.Interfaces;
 using GestorOT.Application.Services;
 using GestorOT.Domain.Entities;
 using GestorOT.Infrastructure.Data;
@@ -29,7 +30,9 @@ public class LotUpdateOverlapValidationTests
             context,
             queryService.Object,
             new Mock<IShapefileImportService>().Object,
-            new Mock<ILotBulkLinkService>().Object);
+            new Mock<ILotBulkLinkService>().Object,
+            new Mock<ICampaignGeometryService>().Object,
+            new Mock<ICampaignContextService>().Object);
     }
 
     private static async Task<(ApplicationDbContext Context, Lot Lot)> SeedLotAsync()
@@ -99,7 +102,9 @@ public class LotUpdateOverlapValidationTests
 
         var result = await controller.UpdateLot(lot.Id, dto, overrideOverlap: true);
 
-        Assert.IsType<NoContentResult>(result);
+        // Desde OT-49 devuelve 200 con los avisos de superficie en vez de 204. El cliente ya
+        // trataba cualquier 2xx como exito, asi que el cambio no rompe el contrato.
+        Assert.IsType<OkObjectResult>(result);
         query.Verify(s => s.CheckLotOverlapAsync(It.IsAny<string>(), It.IsAny<Guid>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()), Times.Never);
 
         var persisted = await context.Lots.AsNoTracking().FirstAsync(l => l.Id == lot.Id);

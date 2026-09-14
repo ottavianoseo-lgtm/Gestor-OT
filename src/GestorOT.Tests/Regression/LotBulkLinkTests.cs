@@ -65,8 +65,12 @@ public class LotBulkLinkTests
         return new Escenario(dbName, tenantId, campoA.Id, campoB.Id);
     }
 
-    private LotBulkLinkService CreateService(ApplicationDbContext ctx) =>
-        new(ctx, new LotQueryService(ctx), NullLogger<LotBulkLinkService>.Instance);
+    private LotBulkLinkService CreateService(ApplicationDbContext ctx)
+    {
+        var lotQuery = new LotQueryService(ctx);
+        return new LotBulkLinkService(
+            ctx, lotQuery, new CampaignGeometryService(ctx, lotQuery), NullLogger<LotBulkLinkService>.Instance);
+    }
 
     private static ShapefileFeatureDto Feature(string name) =>
         new(name, "POLYGON((0 0,1 0,1 1,0 1,0 0))", 10, new Dictionary<string, string>());

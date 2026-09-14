@@ -177,6 +177,7 @@ namespace GestorOT.Shared;
 [JsonSerializable(typeof(LotBulkLinkItemResultDto))]
 [JsonSerializable(typeof(List<LotBulkLinkItemResultDto>))]
 [JsonSerializable(typeof(LotBulkLinkResultDto))]
+[JsonSerializable(typeof(LotUpdateResultDto))]
 [JsonSourceGenerationOptions(
     PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,
     WriteIndented = false,

@@ -119,3 +119,15 @@ public record LotBulkLinkResultDto(
 {
     public LotBulkLinkResultDto() : this(false, 0, 0, 0, 0, new(), new()) { }
 }
+
+/// <summary>
+/// Respuesta del PUT de un lote. Solo trae avisos: la operacion ya se aplico. Existe porque
+/// guardar la geometria del año puede dejar labores excedidas o un desvio grande contra la
+/// catastral, y eso el operador lo tiene que ver (OT-49).
+/// </summary>
+public record LotUpdateResultDto(List<string> Warnings)
+{
+    // new List<string>() explicito: con new() el compilador no distingue entre la lista y
+    // el constructor de copia que genera el record.
+    public LotUpdateResultDto() : this(new List<string>()) { }
+}

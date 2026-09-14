@@ -1664,6 +1664,18 @@
             if (response.IsSuccessStatusCode)
             {
                 Message.Success($"Geometría guardada para '{lot.Name}'.");
+
+                // OT-49: guardar el polígono del año puede dejar labores excedidas o un desvío
+                // grande contra la catastral. Se avisa con warning y sin auto-cierre implícito:
+                // son cosas que el operador tiene que mirar, no errores que reintentar.
+                var updateResult = await response.Content.ReadFromJsonAsync<LotUpdateResultDto>(
+                    AppJsonSerializerContext.Default.LotUpdateResultDto);
+
+                foreach (var aviso in updateResult?.Warnings ?? new List<string>())
+                {
+                    Message.Warning(aviso, 8);
+                }
+
                 _drawnWkt = null;
                 _drawnArea = 0;
                 _drawnAreaIsEstimated = false;

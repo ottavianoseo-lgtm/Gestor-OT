@@ -17,17 +17,23 @@ public class LotsController : ControllerBase
     private readonly ILotQueryService _queryService;
     private readonly IShapefileImportService _shapefileImport;
     private readonly ILotBulkLinkService _bulkLinkService;
+    private readonly ICampaignGeometryService _campaignGeometry;
+    private readonly ICampaignContextService _campaignContext;
 
     public LotsController(
         IApplicationDbContext context,
         ILotQueryService queryService,
         IShapefileImportService shapefileImport,
-        ILotBulkLinkService bulkLinkService)
+        ILotBulkLinkService bulkLinkService,
+        ICampaignGeometryService campaignGeometry,
+        ICampaignContextService campaignContext)
     {
         _context = context;
         _queryService = queryService;
         _shapefileImport = shapefileImport;
         _bulkLinkService = bulkLinkService;
+        _campaignGeometry = campaignGeometry;
+        _campaignContext = campaignContext;
     }
 
     [HttpGet]
@@ -313,8 +319,23 @@ public class LotsController : ControllerBase
             lot.CadastralArea = dto.CadastralArea;
         }
 
+        // OT-49: el flujo de a uno tambien registra el poligono del año. La campaña sale del
+        // header X-Campaign-ID que el cliente ya manda en cada request, asi que no hace falta
+        // ningun parametro nuevo. Antes esto solo pasaba en la vinculacion masiva, con lo cual
+        // dibujar un lote a mano --que es el camino mas usado-- no dejaba registro de campaña.
+        var avisos = new List<string>();
+        if (!string.IsNullOrEmpty(dto.WktGeometry)
+            && _campaignContext.CurrentCampaignId is Guid campaignId
+            && campaignId != Guid.Empty)
+        {
+            avisos = await _campaignGeometry.ApplyAsync(campaignId, lot, ct);
+        }
+
         await _context.SaveChangesAsync();
-        return NoContent();
+
+        // 200 con los avisos en vez de 204: el cliente ya trata cualquier 2xx como exito, asi
+        // que no rompe a nadie, y permite mostrar lo que el operador tiene que revisar.
+        return Ok(new LotUpdateResultDto(avisos));
     }
 
     [HttpDelete("{id:guid}")]

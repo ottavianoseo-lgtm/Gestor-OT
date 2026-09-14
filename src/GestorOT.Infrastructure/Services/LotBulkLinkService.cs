@@ -14,15 +14,18 @@ public class LotBulkLinkService : ILotBulkLinkService
 {
     private readonly IApplicationDbContext _context;
     private readonly ILotQueryService _lotQuery;
+    private readonly ICampaignGeometryService _campaignGeometry;
     private readonly ILogger<LotBulkLinkService> _logger;
 
     public LotBulkLinkService(
         IApplicationDbContext context,
         ILotQueryService lotQuery,
+        ICampaignGeometryService campaignGeometry,
         ILogger<LotBulkLinkService> logger)
     {
         _context = context;
         _lotQuery = lotQuery;
+        _campaignGeometry = campaignGeometry;
         _logger = logger;
     }
 
@@ -284,66 +287,12 @@ public class LotBulkLinkService : ILotBulkLinkService
 
             if (request.CampaignId is not Guid campaignId || campaignId == Guid.Empty) continue;
 
-            var campaignLot = await _context.CampaignLots
-                .FirstOrDefaultAsync(cl => cl.CampaignId == campaignId && cl.LotId == lotId, ct);
-
-            // La geometria del año se persiste en el CampaignLot: es el poligono con el que
-            // efectivamente se trabajo esa campaña, y de el sale la superficie real. El lote
-            // conserva la suya, que es su identidad y no cambia de año a año.
-            if (campaignLot == null)
-            {
-                _context.CampaignLots.Add(new CampaignLot
-                {
-                    Id = Guid.NewGuid(),
-                    CampaignId = campaignId,
-                    LotId = lotId,
-                    ProductiveArea = (decimal)areaHa,
-                    Geometry = lot.Geometry
-                });
-            }
-            else
-            {
-                var anterior = campaignLot.ProductiveArea;
-
-                campaignLot.Geometry = lot.Geometry;
-                // La superficie real de la campania sale del poligono relevado.
-                campaignLot.ProductiveArea = (decimal)areaHa;
-
-                // Si la superficie baja, puede haber labores cargadas contra la superficie vieja.
-                if (campaignLot.ProductiveArea < anterior)
-                {
-                    surfaceWarnings.AddRange(
-                        await BuscarLaboresExcedidasAsync(campaignLot.Id, lot.Name, campaignLot.ProductiveArea, ct));
-                }
-            }
+            // La geometria del año y la superficie real las resuelve el servicio compartido,
+            // el mismo que usa el flujo de a uno: si cada camino decidiera por su cuenta,
+            // volveriamos a tener dos reglas distintas para lo mismo.
+            surfaceWarnings.AddRange(await _campaignGeometry.ApplyAsync(campaignId, lot, ct));
         }
 
         return surfaceWarnings;
-    }
-
-    /// <summary>
-    /// Labores de ese lote y campaña cuyas hectareas superan la superficie real nueva.
-    /// </summary>
-    private async Task<List<string>> BuscarLaboresExcedidasAsync(
-        Guid campaignLotId,
-        string lotName,
-        decimal superficieReal,
-        CancellationToken ct)
-    {
-        // Por CampaignLotId y no por lote + campaña: la labor ya apunta al CampaignLot, y ese
-        // es el vinculo que define contra que superficie se dimensiono.
-        var excedidas = await _context.Labors
-            .AsNoTracking()
-            .Where(l => l.CampaignLotId == campaignLotId && l.Hectares > superficieReal)
-            .Select(l => new { l.Hectares })
-            .ToListAsync(ct);
-
-        if (excedidas.Count == 0) return new List<string>();
-
-        return new List<string>
-        {
-            $"{lotName}: la superficie real quedo en {superficieReal:N2} ha y hay {excedidas.Count} labor(es) cargada(s) por encima " +
-            $"(hasta {excedidas.Max(e => e.Hectares):N2} ha). Se guardo igual: revisalas."
-        };
     }
 }
