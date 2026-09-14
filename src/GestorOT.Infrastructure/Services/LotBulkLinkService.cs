@@ -218,7 +218,7 @@ public class LotBulkLinkService : ILotBulkLinkService
 
                 // La superficie sale de PostGIS, no del cliente, y recien despues de persistir la
                 // geometria. Se hace en una segunda pasada por eso.
-                await AsignarSuperficiesAsync(resultados, request, writer, ct);
+                var surfaceWarnings = await AsignarSuperficiesAsync(resultados, request, writer, ct);
 
                 await _context.SaveChangesAsync(ct);
                 await transaction.CommitAsync(ct);
@@ -228,7 +228,7 @@ public class LotBulkLinkService : ILotBulkLinkService
                     request.FieldId, creados, actualizados, salteados);
 
                 return new LotBulkLinkResultDto(
-                    true, creados, actualizados, salteados, 0, resultados, overlapWarnings);
+                    true, creados, actualizados, salteados, 0, resultados, overlapWarnings, surfaceWarnings);
             }
             catch (InvalidOperationException ex)
             {
@@ -253,14 +253,21 @@ public class LotBulkLinkService : ILotBulkLinkService
     }
 
     /// <summary>
-    /// Calcula la superficie de cada lote tocado y, si hay campaña, crea o actualiza su CampaignLot.
+    /// Calcula la superficie de cada lote tocado y, si hay campaña, crea o actualiza su
+    /// CampaignLot guardando ademas la geometria del año (OT-49).
+    ///
+    /// Devuelve las labores que quedaron excedidas respecto de la superficie real nueva. No se
+    /// corrigen ni se bloquea el guardado: el poligono relevado es la evidencia y manda; lo que
+    /// no puede pasar es que la inconsistencia quede muda.
     /// </summary>
-    private async Task AsignarSuperficiesAsync(
+    private async Task<List<string>> AsignarSuperficiesAsync(
         List<LotBulkLinkItemResultDto> resultados,
         LotBulkLinkRequestDto request,
         WKTWriter writer,
         CancellationToken ct)
     {
+        var surfaceWarnings = new List<string>();
+
         foreach (var resultado in resultados)
         {
             if (resultado.LotId is not Guid lotId) continue;
@@ -280,6 +287,9 @@ public class LotBulkLinkService : ILotBulkLinkService
             var campaignLot = await _context.CampaignLots
                 .FirstOrDefaultAsync(cl => cl.CampaignId == campaignId && cl.LotId == lotId, ct);
 
+            // La geometria del año se persiste en el CampaignLot: es el poligono con el que
+            // efectivamente se trabajo esa campaña, y de el sale la superficie real. El lote
+            // conserva la suya, que es su identidad y no cambia de año a año.
             if (campaignLot == null)
             {
                 _context.CampaignLots.Add(new CampaignLot
@@ -287,14 +297,53 @@ public class LotBulkLinkService : ILotBulkLinkService
                     Id = Guid.NewGuid(),
                     CampaignId = campaignId,
                     LotId = lotId,
-                    ProductiveArea = (decimal)areaHa
+                    ProductiveArea = (decimal)areaHa,
+                    Geometry = lot.Geometry
                 });
             }
             else
             {
+                var anterior = campaignLot.ProductiveArea;
+
+                campaignLot.Geometry = lot.Geometry;
                 // La superficie real de la campania sale del poligono relevado.
                 campaignLot.ProductiveArea = (decimal)areaHa;
+
+                // Si la superficie baja, puede haber labores cargadas contra la superficie vieja.
+                if (campaignLot.ProductiveArea < anterior)
+                {
+                    surfaceWarnings.AddRange(
+                        await BuscarLaboresExcedidasAsync(campaignLot.Id, lot.Name, campaignLot.ProductiveArea, ct));
+                }
             }
         }
+
+        return surfaceWarnings;
+    }
+
+    /// <summary>
+    /// Labores de ese lote y campaña cuyas hectareas superan la superficie real nueva.
+    /// </summary>
+    private async Task<List<string>> BuscarLaboresExcedidasAsync(
+        Guid campaignLotId,
+        string lotName,
+        decimal superficieReal,
+        CancellationToken ct)
+    {
+        // Por CampaignLotId y no por lote + campaña: la labor ya apunta al CampaignLot, y ese
+        // es el vinculo que define contra que superficie se dimensiono.
+        var excedidas = await _context.Labors
+            .AsNoTracking()
+            .Where(l => l.CampaignLotId == campaignLotId && l.Hectares > superficieReal)
+            .Select(l => new { l.Hectares })
+            .ToListAsync(ct);
+
+        if (excedidas.Count == 0) return new List<string>();
+
+        return new List<string>
+        {
+            $"{lotName}: la superficie real quedo en {superficieReal:N2} ha y hay {excedidas.Count} labor(es) cargada(s) por encima " +
+            $"(hasta {excedidas.Max(e => e.Hectares):N2} ha). Se guardo igual: revisalas."
+        };
     }
 }

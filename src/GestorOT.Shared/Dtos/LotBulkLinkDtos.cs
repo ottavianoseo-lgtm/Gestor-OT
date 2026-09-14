@@ -108,7 +108,13 @@ public record LotBulkLinkResultDto(
     int Rejected,
     List<LotBulkLinkItemResultDto> Items,
     /// <summary>Solapamientos detectados, agrupados en una sola respuesta en vez de un modal por lote.</summary>
-    List<string> OverlapWarnings
+    List<string> OverlapWarnings,
+    /// <summary>
+    /// Labores que quedaron por encima de la superficie real del lote despues de guardar la
+    /// geometria de la campaña (OT-49). Se informan, no se corrigen: la geometria manda, pero
+    /// el operador tiene que enterarse. Aditivo con default para no romper el contrato previo.
+    /// </summary>
+    List<string>? SurfaceWarnings = null
 )
 {
     public LotBulkLinkResultDto() : this(false, 0, 0, 0, 0, new(), new()) { }

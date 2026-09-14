@@ -1,5 +1,6 @@
 using GestorOT.Application.Interfaces;
 using GestorOT.Application.Services;
+using GestorOT.Domain.Entities;
 using GestorOT.Shared;
 using GestorOT.Shared.Dtos;
 using Microsoft.EntityFrameworkCore;
@@ -77,9 +78,15 @@ public class LotQueryService : ILotQueryService
             .Where(l => l.Geometry != null)
             .ToListAsync(CancellationToken.None);
 
-        var cropByLot = campaignId.HasValue && campaignId.Value != Guid.Empty
-            ? await GetCropByLotAsync(campaignId.Value, ct)
-            : null;
+        var conCampania = campaignId.HasValue && campaignId.Value != Guid.Empty;
+
+        var cropByLot = conCampania ? await GetCropByLotAsync(campaignId!.Value, ct) : null;
+
+        // OT-49: con campaña elegida, el mapa muestra el poligono de ESE año cuando existe. Es
+        // lo que se trabajo realmente, y es coherente con que la superficie tambien salga de ahi.
+        // Sin campaña no se toca nada: el payload tiene que seguir siendo identico al de antes,
+        // que es un criterio de aceptacion fijado por test en OT-34.
+        var geometryByLot = conCampania ? await GetCampaignGeometryByLotAsync(campaignId!.Value, ct) : null;
 
         var features = lots.Select(l => BuildLotFeature(
             l.Id,
@@ -89,10 +96,45 @@ public class LotQueryService : ILotQueryService
             l.Field?.Name,
             areaMap.GetValueOrDefault(l.Id, 0),
             cropByLot is not null ? cropByLot.GetValueOrDefault(l.Id) : null,
-            l.Geometry != null ? ParseGeometry(l.Geometry) : null
+            ResolverGeometria(l, geometryByLot)
         )).ToList();
 
         return new GeoJsonFeatureCollection("FeatureCollection", features);
+    }
+
+    /// <summary>
+    /// La geometría del año si la campaña tiene una, y si no la del lote. Separado y estático
+    /// para poder fijar la regla por test sin necesitar base.
+    /// </summary>
+    internal static GeoJsonGeometry? ResolverGeometria(Lot lot, Dictionary<Guid, Geometry>? geometryByLot)
+    {
+        if (geometryByLot is not null
+            && geometryByLot.TryGetValue(lot.Id, out var deCampania)
+            && deCampania is not null)
+        {
+            return ParseGeometry(deCampania);
+        }
+
+        return lot.Geometry != null ? ParseGeometry(lot.Geometry) : null;
+    }
+
+    /// <summary>
+    /// Geometría de cada lote en una campaña, en una sola consulta. Solo devuelve los que
+    /// tienen polígono propio del año: el resto cae en el del lote.
+    /// </summary>
+    private async Task<Dictionary<Guid, Geometry>> GetCampaignGeometryByLotAsync(Guid campaignId, CancellationToken ct)
+    {
+        var geometrias = await _context.CampaignLots
+            .AsNoTracking()
+            .Where(cl => cl.CampaignId == campaignId && cl.Geometry != null)
+            .Select(cl => new { cl.LotId, cl.Geometry })
+            .ToListAsync(ct);
+
+        // Un lote puede aparecer una sola vez por campaña, pero si hubiera datos duplicados
+        // preferimos quedarnos con uno antes que romper la carga del mapa entero.
+        return geometrias
+            .GroupBy(g => g.LotId)
+            .ToDictionary(g => g.Key, g => g.First().Geometry!);
     }
 
     /// <summary>

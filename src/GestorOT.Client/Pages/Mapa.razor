@@ -636,6 +636,26 @@
             </div>
         </div>
 
+        @if (_reconcileSurfaceWarnings.Count > 0)
+        {
+            <Alert Type="@AlertType.Warning" ShowIcon="true" Style="margin-bottom: 14px;">
+                <MessageTemplate>
+                    <div style="font-weight: 600; margin-bottom: 6px;">Se aplicó, pero revisá estas labores.</div>
+                    <div style="font-size: 12px; margin-bottom: 6px; color: rgba(255,255,255,0.65);">
+                        La superficie real de la campaña bajó al guardar el polígono del año, y quedaron
+                        labores cargadas por encima. No se tocaron: el polígono manda, la corrección es tuya.
+                    </div>
+                    <ul style="margin: 0 0 8px; padding-left: 18px; font-size: 12px;">
+                        @foreach (var w in _reconcileSurfaceWarnings)
+                        {
+                            <li>@w</li>
+                        }
+                    </ul>
+                    <Button Size="@ButtonSize.Small" OnClick="CloseReconcileModal">Entendido</Button>
+                </MessageTemplate>
+            </Alert>
+        }
+
         @if (_reconcileOverlapWarnings.Count > 0)
         {
             <Alert Type="@AlertType.Error" ShowIcon="true" Style="margin-bottom: 14px;">
@@ -2075,6 +2095,13 @@
     private bool _reconcileApplying;
     private List<ReconcileRow> _reconcileRows = new();
     private List<string> _reconcileOverlapWarnings = new();
+
+    /// <summary>
+    /// OT-49: labores que quedaron por encima de la superficie real tras guardar la geometría
+    /// del año. Van aparte de los solapamientos porque significan lo contrario: acá sí se
+    /// aplicó todo, y lo que hay que hacer es revisar, no reintentar.
+    /// </summary>
+    private List<string> _reconcileSurfaceWarnings = new();
     private bool _reconcileCombineGeometry;
 
     /// <summary>
@@ -2120,6 +2147,7 @@
 
         _reconcileLoading = true;
         _reconcileOverlapWarnings.Clear();
+        _reconcileSurfaceWarnings.Clear();
         _reconcileRows.Clear();
         _showReconcileModal = true;
         _showImportModal = false;
@@ -2177,6 +2205,7 @@
         _showReconcileModal = false;
         _reconcileRows.Clear();
         _reconcileOverlapWarnings.Clear();
+        _reconcileSurfaceWarnings.Clear();
         _reconcileApplying = false;
 
         // Cancelar la conciliación no descarta el import: el operador puede querer ajustar la
@@ -2203,6 +2232,7 @@
 
         _reconcileApplying = true;
         _reconcileOverlapWarnings.Clear();
+        _reconcileSurfaceWarnings.Clear();
         StateHasChanged();
 
         try
@@ -2231,7 +2261,20 @@
                 MapBounds? savedBounds = null;
                 try { savedBounds = await JS.InvokeAsync<MapBounds?>("mapInterop.getCurrentBounds"); } catch { }
 
-                CloseReconcileModal();
+                _reconcileSurfaceWarnings = result.SurfaceWarnings ?? new List<string>();
+
+                // Con avisos de superficie el modal queda abierto: si se cerrara solo, la
+                // inconsistencia pasaria desapercibida justo cuando hay que actuar sobre ella.
+                // Las filas ya no hacen falta, lo unico que queda en pantalla es el aviso.
+                if (_reconcileSurfaceWarnings.Count > 0)
+                {
+                    _reconcileRows.Clear();
+                }
+                else
+                {
+                    CloseReconcileModal();
+                }
+
                 _showImportModal = false;
                 _importResults.Clear();
                 _importGroups.Clear();
