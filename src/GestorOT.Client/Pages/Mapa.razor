@@ -444,6 +444,30 @@
                 }
             </div>
 
+            @* La conciliación masiva (OT-48) necesita saber a qué campo pertenecen los polígonos
+               ANTES de cruzar: el nombre de lote del .dbf suele ser solo un número ("1", "2") y
+               sin el campo colisiona entre establecimientos distintos. Por eso el selector va acá,
+               como paso previo obligatorio, y no dentro del modal de conciliación. *@
+            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px; padding: 10px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px;">
+                <span style="font-size: 12px; color: rgba(255,255,255,0.6); white-space: nowrap;">Campo destino:</span>
+                <Select TItem="FieldDto" TItemValue="Guid"
+                        DataSource="_allFields"
+                        @bind-Value="_reconcileFieldId"
+                        LabelName="@nameof(FieldDto.Name)"
+                        ValueName="@nameof(FieldDto.Id)"
+                        Placeholder="Seleccionar campo"
+                        Size="@InputSize.Small"
+                        Style="flex: 1; min-width: 0;"
+                        EnableSearch />
+                <Button Type="@ButtonType.Primary" Size="@ButtonSize.Small"
+                        Disabled="@(_reconcileFieldId == Guid.Empty || !VisibleImportResults.Any() || _reconcileLoading)"
+                        Loading="_reconcileLoading"
+                        OnClick="OpenReconcileAsync"
+                        Style="border-radius: 6px; white-space: nowrap;">
+                    <Icon Type="database" Theme="IconThemeType.Outline" /> Conciliar con Lotes
+                </Button>
+            </div>
+
             @* Cuando el zip trae varios shapefiles, se agrupan para poder descartar uno entero
                antes de vincular: el cliente suele mandar bundles duplicados (uno por lote) junto
                al consolidado, y solo se quiere importar uno de los dos. *@
@@ -579,6 +603,141 @@
             }
         }
     </div>
+</Modal>
+
+@* Conciliación masiva (OT-48): además del "Vincular" polígono por polígono de arriba —que sigue
+   sirviendo para correcciones puntuales—, esta pantalla cruza TODAS las features visibles contra
+   los lotes del campo elegido y aplica todo en una sola confirmación. *@
+<Modal Title="Conciliar Lotes Importados"
+       Visible="_showReconcileModal"
+       OnCancel="CloseReconcileModal"
+       Footer="@null"
+       Width="920">
+    @if (_reconcileLoading)
+    {
+        <div style="text-align: center; padding: 30px;">
+            <Spin Tip="Cruzando contra los lotes del campo..." />
+        </div>
+    }
+    else if (_reconcileRows.Count > 0)
+    {
+        <div style="display: flex; gap: 10px; margin-bottom: 14px; flex-wrap: wrap;">
+            <div style="background: rgba(46,204,113,0.1); border: 1px solid rgba(46,204,113,0.3); border-radius: 8px; padding: 8px 14px; font-size: 12px; color: #2ECC71;">
+                <strong>@_reconcileRows.Count(r => r.Action == LotLinkAction.Link)</strong> a vincular
+            </div>
+            <div style="background: rgba(52,152,219,0.1); border: 1px solid rgba(52,152,219,0.3); border-radius: 8px; padding: 8px 14px; font-size: 12px; color: #3498DB;">
+                <strong>@_reconcileRows.Count(r => r.Action == LotLinkAction.Create)</strong> a crear
+            </div>
+            <div style="background: rgba(243,156,18,0.1); border: 1px solid rgba(243,156,18,0.3); border-radius: 8px; padding: 8px 14px; font-size: 12px; color: #F39C12;">
+                <strong>@_reconcileRows.Count(r => r.Proposal.Status == LotMatchStatus.Ambiguous)</strong> ambiguo(s)
+            </div>
+            <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 8px 14px; font-size: 12px; color: rgba(255,255,255,0.6);">
+                <strong>@_reconcileRows.Count(r => r.Action == LotLinkAction.Skip)</strong> se omiten
+            </div>
+        </div>
+
+        @if (_reconcileOverlapWarnings.Count > 0)
+        {
+            <Alert Type="@AlertType.Error" ShowIcon="true" Style="margin-bottom: 14px;">
+                <MessageTemplate>
+                    <div style="font-weight: 600; margin-bottom: 6px;">No se aplicó nada: hay conflictos que resolver.</div>
+                    <ul style="margin: 0 0 8px; padding-left: 18px; font-size: 12px;">
+                        @foreach (var w in _reconcileOverlapWarnings)
+                        {
+                            <li>@w</li>
+                        }
+                    </ul>
+                    <Button Size="@ButtonSize.Small" Danger Loading="_reconcileApplying"
+                            OnClick="() => ConfirmReconcileAsync(true)">
+                        Aplicar de todos modos (pisa los solapamientos)
+                    </Button>
+                </MessageTemplate>
+            </Alert>
+        }
+
+        <div style="max-height: 420px; overflow-y: auto; border: 1px solid rgba(255,255,255,0.08); border-radius: 8px;">
+            <div style="display: grid; grid-template-columns: 2fr 0.8fr 1fr 1.1fr 1.7fr 1.7fr; gap: 8px; padding: 8px 10px; background: rgba(255,255,255,0.05); font-size: 11px; color: rgba(255,255,255,0.5); text-transform: uppercase; position: sticky; top: 0;">
+                <span>Feature</span>
+                <span>Superficie</span>
+                <span>Estado</span>
+                <span>Acción</span>
+                <span>Lote destino</span>
+                <span>Aviso</span>
+            </div>
+            @foreach (var row in _reconcileRows)
+            {
+                <div style="display: grid; grid-template-columns: 2fr 0.8fr 1fr 1.1fr 1.7fr 1.7fr; gap: 8px; padding: 8px 10px; border-top: 1px solid rgba(255,255,255,0.06); align-items: center; font-size: 12px;">
+                    <div>
+                        <div style="color: #fff;">@(string.IsNullOrEmpty(row.Proposal.FeatureName) ? "(sin nombre)" : row.Proposal.FeatureName)</div>
+                        @if (!string.IsNullOrEmpty(row.Proposal.SourceShapefile))
+                        {
+                            <div style="color: rgba(255,255,255,0.4); font-size: 10px;">@row.Proposal.SourceShapefile</div>
+                        }
+                    </div>
+                    <div style="color: rgba(255,255,255,0.7);">@row.Proposal.AreaHa.ToString("0.00") ha</div>
+                    <div style="color: @ReconcileStatusColor(row.Proposal.Status); font-size: 11px; font-weight: 600;">
+                        @ReconcileStatusLabel(row.Proposal.Status)
+                    </div>
+                    <div>
+                        <Select TItemValue="LotLinkAction" TItem="string" @bind-Value="row.Action" Size="@InputSize.Small" Style="width: 100%;">
+                            <SelectOption TItemValue="LotLinkAction" TItem="string" Value="LotLinkAction.Link" Label="Vincular" />
+                            <SelectOption TItemValue="LotLinkAction" TItem="string" Value="LotLinkAction.Create" Label="Crear" />
+                            <SelectOption TItemValue="LotLinkAction" TItem="string" Value="LotLinkAction.Skip" Label="Omitir" />
+                        </Select>
+                    </div>
+                    <div>
+                        @if (row.Action == LotLinkAction.Link)
+                        {
+                            @if (row.Proposal.Candidates.Count > 1)
+                            {
+                                <Select TItem="LotCandidateDto" TItemValue="Guid" DataSource="row.Proposal.Candidates"
+                                        @bind-Value="row.SelectedLotId"
+                                        LabelName="@nameof(LotCandidateDto.Name)" ValueName="@nameof(LotCandidateDto.LotId)"
+                                        Placeholder="Elegir lote" Size="@InputSize.Small" Style="width: 100%;" />
+                            }
+                            else
+                            {
+                                <span style="color: rgba(255,255,255,0.75);">@(row.Proposal.MatchedLotName ?? "—")</span>
+                            }
+                        }
+                        else if (row.Action == LotLinkAction.Create)
+                        {
+                            <Input TValue="string" @bind-Value="row.NewLotName" Placeholder="@row.Proposal.FeatureName" Size="@InputSize.Small" />
+                        }
+                        else
+                        {
+                            <span style="color: rgba(255,255,255,0.35);">—</span>
+                        }
+                    </div>
+                    <div>
+                        @if (row.Action == LotLinkAction.Link && row.Proposal.TargetHasGeometry)
+                        {
+                            <span style="color: #F39C12; font-size: 11px;"><Icon Type="warning" Theme="IconThemeType.Outline" /> Pisa geometría existente</span>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+
+        @if (_reconcileRows.Any(r => r.Action == LotLinkAction.Link && r.Proposal.TargetHasGeometry))
+        {
+            <div style="margin-top: 12px;">
+                <Checkbox @bind-Checked="_reconcileCombineGeometry">
+                    Combinar con la geometría existente en vez de reemplazarla
+                </Checkbox>
+            </div>
+        }
+
+        <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px;">
+            <Button OnClick="CloseReconcileModal">Cancelar</Button>
+            <Button Type="@ButtonType.Primary"
+                    Disabled="@(ReconcileHasUnresolvedAmbiguous || _reconcileApplying)"
+                    Loading="_reconcileApplying"
+                    OnClick="() => ConfirmReconcileAsync(false)">
+                Aplicar vinculación masiva
+            </Button>
+        </div>
+    }
 </Modal>
 
 <Modal Title="⚠️ Advertencia de Superposición Espacial"
@@ -1148,6 +1307,13 @@
         /// volver a pedirle el archivo al backend (OT-50).
         /// </summary>
         public Dictionary<string, string>? Attributes { get; set; }
+
+        /// <summary>
+        /// Superficie que ya calculó el backend al leer el shapefile (ST_Area). Se necesita para
+        /// mandarla en <see cref="ShapefileFeatureDto"/> al pedir la conciliación masiva (OT-48):
+        /// no se recalcula en el cliente, para no mostrar un número distinto al de la tabla.
+        /// </summary>
+        public double AreaHa { get; set; }
     }
 
     private class MapBounds
@@ -1822,7 +1988,7 @@
         }
 
         _importResults = result.Features
-            .Select(f => new ImportResult { Wkt = f.Wkt, Name = f.Name, SourceShapefile = f.SourceShapefile, Attributes = f.Attributes })
+            .Select(f => new ImportResult { Wkt = f.Wkt, Name = f.Name, SourceShapefile = f.SourceShapefile, Attributes = f.Attributes, AreaHa = f.AreaHa })
             .ToList();
 
         // Se precarga con la deteccion automatica del backend y se recalculan los nombres con la
@@ -1887,6 +2053,214 @@
         }
 
         return attributes != null && attributes.TryGetValue(column, out var value) ? value : string.Empty;
+    }
+
+    // ---- Conciliación masiva (OT-48) ----------------------------------------------------
+    // Complementa al "Vincular" polígono por polígono de arriba (que sigue existiendo para
+    // correcciones puntuales): cruza TODAS las features visibles del import contra los lotes
+    // del campo elegido y aplica todo en una sola confirmación ("todo o nada" en el backend).
+
+    /// <summary>Fila editable de la tabla de conciliación: la propuesta del backend + lo que decidió el operador.</summary>
+    public class ReconcileRow
+    {
+        public LotMatchProposalDto Proposal { get; set; } = new();
+        public LotLinkAction Action { get; set; }
+        public Guid SelectedLotId { get; set; }
+        public string NewLotName { get; set; } = "";
+    }
+
+    private bool _showReconcileModal;
+    private Guid _reconcileFieldId;
+    private bool _reconcileLoading;
+    private bool _reconcileApplying;
+    private List<ReconcileRow> _reconcileRows = new();
+    private List<string> _reconcileOverlapWarnings = new();
+    private bool _reconcileCombineGeometry;
+
+    /// <summary>
+    /// Ambiguo sin resolver: el operador dejó la acción en "Vincular" (la propuesta ambigua
+    /// arranca en "Omitir", así que llegar acá significa que la cambió) pero todavía no eligió
+    /// cuál de los candidatos. Mientras haya una sola fila así, no se puede confirmar (paso 3 del plan).
+    /// </summary>
+    private bool ReconcileHasUnresolvedAmbiguous =>
+        _reconcileRows.Any(r => r.Action == LotLinkAction.Link && r.Proposal.Candidates.Count > 1 && r.SelectedLotId == Guid.Empty);
+
+    private static string ReconcileStatusLabel(LotMatchStatus status) => status switch
+    {
+        LotMatchStatus.ExactMatch => "Coincidencia exacta",
+        LotMatchStatus.Ambiguous => "Ambiguo",
+        _ => "Sin coincidencia"
+    };
+
+    private static string ReconcileStatusColor(LotMatchStatus status) => status switch
+    {
+        LotMatchStatus.ExactMatch => "#2ECC71",
+        LotMatchStatus.Ambiguous => "#F39C12",
+        _ => "rgba(255,255,255,0.5)"
+    };
+
+    /// <summary>
+    /// Pide la propuesta de conciliación (POST api/lots/match) para todas las features visibles
+    /// (respeta los shapefiles descartados) y abre la tabla. No persiste nada todavía.
+    /// </summary>
+    private async Task OpenReconcileAsync()
+    {
+        if (_reconcileFieldId == Guid.Empty)
+        {
+            Message.Warning("Elija primero el campo destino.");
+            return;
+        }
+
+        var visibles = VisibleImportResults.ToList();
+        if (visibles.Count == 0)
+        {
+            Message.Warning("No hay polígonos para conciliar.");
+            return;
+        }
+
+        _reconcileLoading = true;
+        _reconcileOverlapWarnings.Clear();
+        _reconcileRows.Clear();
+        _showReconcileModal = true;
+        _showImportModal = false;
+        StateHasChanged();
+
+        try
+        {
+            var features = visibles
+                .Select(r => new ShapefileFeatureDto(r.Name, r.Wkt, r.AreaHa, r.Attributes ?? new(), r.SourceShapefile))
+                .ToList();
+
+            var request = new LotMatchRequestDto(_reconcileFieldId, features);
+            var response = await Http.PostAsJsonAsync("api/lots/match", request, AppJsonSerializerContext.Default.LotMatchRequestDto);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var detail = await response.Content.ReadAsStringAsync();
+                Message.Error(string.IsNullOrWhiteSpace(detail) ? "No se pudo conciliar contra los lotes." : detail);
+                _showReconcileModal = false;
+                return;
+            }
+
+            var result = await response.Content.ReadFromJsonAsync<LotMatchResultDto>(AppJsonSerializerContext.Default.LotMatchResultDto);
+            if (result == null)
+            {
+                Message.Error("No se pudo leer la respuesta del servidor.");
+                _showReconcileModal = false;
+                return;
+            }
+
+            _reconcileRows = result.Proposals.Select(p => new ReconcileRow
+            {
+                Proposal = p,
+                Action = p.SuggestedAction,
+                // Precarga el candidato cuando hay uno solo (ExactMatch); en Ambiguous queda en
+                // blanco a propósito, para forzar a elegir.
+                SelectedLotId = p.Candidates.Count == 1 ? p.Candidates[0].LotId : (p.MatchedLotId ?? Guid.Empty),
+                NewLotName = p.FeatureName
+            }).ToList();
+        }
+        catch (Exception ex)
+        {
+            Message.Error($"Error al conciliar: {ex.Message}");
+            _showReconcileModal = false;
+        }
+        finally
+        {
+            _reconcileLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private void CloseReconcileModal()
+    {
+        _showReconcileModal = false;
+        _reconcileRows.Clear();
+        _reconcileOverlapWarnings.Clear();
+        _reconcileApplying = false;
+
+        // Cancelar la conciliación no descarta el import: el operador puede querer ajustar la
+        // columna de nombre (OT-50), descartar un grupo, o vincular algo suelto a mano antes de
+        // reintentar la conciliación masiva.
+        if (_importResults.Count > 0)
+        {
+            _showImportModal = true;
+        }
+    }
+
+    /// <summary>
+    /// Aplica todo en un solo POST a api/lots/bulk-link. Un 409 no es un error de red: es "hay
+    /// solapamientos, decidí" (paso 6 del plan), y se muestra agrupado en la misma tabla en vez
+    /// de un modal por lote.
+    /// </summary>
+    private async Task ConfirmReconcileAsync(bool overrideOverlap)
+    {
+        if (ReconcileHasUnresolvedAmbiguous)
+        {
+            Message.Warning("Hay filas ambiguas sin resolver: elija a qué lote vincular cada una.");
+            return;
+        }
+
+        _reconcileApplying = true;
+        _reconcileOverlapWarnings.Clear();
+        StateHasChanged();
+
+        try
+        {
+            var items = _reconcileRows.Select(r => new LotBulkLinkItemDto(
+                r.Proposal.FeatureName,
+                r.Proposal.Wkt,
+                r.Action,
+                r.Action == LotLinkAction.Link ? r.SelectedLotId : null,
+                r.Action == LotLinkAction.Create ? (string.IsNullOrWhiteSpace(r.NewLotName) ? null : r.NewLotName) : null
+            )).ToList();
+
+            Guid? campaignId = CampaignState.CurrentCampaign != null && CampaignState.CurrentCampaign.Id != Guid.Empty
+                ? CampaignState.CurrentCampaign.Id
+                : null;
+
+            var request = new LotBulkLinkRequestDto(_reconcileFieldId, items, campaignId, _reconcileCombineGeometry, overrideOverlap);
+
+            var response = await Http.PostAsJsonAsync("api/lots/bulk-link", request, AppJsonSerializerContext.Default.LotBulkLinkRequestDto);
+            var result = await response.Content.ReadFromJsonAsync<LotBulkLinkResultDto>(AppJsonSerializerContext.Default.LotBulkLinkResultDto);
+
+            if (response.IsSuccessStatusCode && result is { Success: true })
+            {
+                Message.Success($"Vinculación aplicada: {result.Created} creado(s), {result.Updated} actualizado(s), {result.Skipped} omitido(s).");
+
+                MapBounds? savedBounds = null;
+                try { savedBounds = await JS.InvokeAsync<MapBounds?>("mapInterop.getCurrentBounds"); } catch { }
+
+                CloseReconcileModal();
+                _showImportModal = false;
+                _importResults.Clear();
+                _importGroups.Clear();
+                _discardedGroups.Clear();
+                _groupNameColumns.Clear();
+                await ReloadMap(savedBounds);
+            }
+            else if (response.StatusCode == System.Net.HttpStatusCode.Conflict && result != null)
+            {
+                // El 409 no es un error: es "hay conflictos, decidí" (todo o nada, no quedó nada
+                // aplicado). Se agrupan en un solo aviso arriba de la tabla, no un modal por lote.
+                _reconcileOverlapWarnings = result.OverlapWarnings.Count > 0
+                    ? result.OverlapWarnings
+                    : new List<string> { "Se detectaron conflictos al aplicar la vinculación." };
+            }
+            else
+            {
+                Message.Error($"Error al aplicar la vinculación: {response.StatusCode}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Message.Error($"Error al aplicar la vinculación: {ex.Message}");
+        }
+        finally
+        {
+            _reconcileApplying = false;
+            StateHasChanged();
+        }
     }
 
     private bool _importCreateNewLot = true;
