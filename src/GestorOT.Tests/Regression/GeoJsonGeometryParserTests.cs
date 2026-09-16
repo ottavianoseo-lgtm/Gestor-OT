@@ -1,4 +1,4 @@
-using GestorOT.Infrastructure.Services;
+﻿using GestorOT.Infrastructure.Services;
 using NetTopologySuite.Geometries;
 using Xunit;
 
@@ -66,5 +66,81 @@ public class GeoJsonGeometryParserTests
     {
         Assert.False(GeoJsonGeometryParser.TryParse("esto no es un geojson", out _, out var error));
         Assert.False(string.IsNullOrWhiteSpace(error));
+    }
+
+    /// <summary>
+    /// Un cuadrado de 1x1 con un hueco de 0,2x0,2 adentro, pero escrito como dos polígonos
+    /// sueltos del MultiPolygon en vez de shell + anillo interior. Así sale el export de
+    /// shapefile de la planilla y OGC lo marca inválido ("nested shells").
+    /// </summary>
+    private const string AgujeroComoPoligonoSueltoJson =
+        "{\"type\":\"MultiPolygon\",\"coordinates\":["
+        + "[[[0,0],[1,0],[1,1],[0,1],[0,0]]],"
+        + "[[[0.4,0.4],[0.6,0.4],[0.6,0.6],[0.4,0.6],[0.4,0.4]]]"
+        + "]}";
+
+    /// <summary>Anillo cruzado en moño: ningún re-anidado lo salva, lo tiene que arreglar el fixer.</summary>
+    private const string AnilloCruzadoJson =
+        "{\"type\":\"Polygon\",\"coordinates\":[[[0,0],[1,1],[1,0],[0,1],[0,0]]]}";
+
+    [Fact]
+    public void AgujeroExportadoComoPoligonoSuelto_SeReAnidaComoAnilloInterior()
+    {
+        Assert.True(
+            GeoJsonGeometryParser.TryParse(AgujeroComoPoligonoSueltoJson, out var geometry, out var error, out var reparada),
+            error);
+
+        Assert.True(reparada);
+
+        var polygon = Assert.IsType<Polygon>(geometry);
+        Assert.True(polygon.IsValid);
+        Assert.Equal(1, polygon.NumInteriorRings);
+
+        // 1x1 menos el hueco de 0,2x0,2. Si se hubiera resuelto por unión en vez de por
+        // agujero, el área daría 1 y el lote quedaría con más superficie de la que tiene.
+        Assert.Equal(0.96, polygon.Area, 6);
+    }
+
+    [Fact]
+    public void AnilloCruzado_LoCorrigeElFixerYSigueSiendoPoligonal()
+    {
+        Assert.True(
+            GeoJsonGeometryParser.TryParse(AnilloCruzadoJson, out var geometry, out var error, out var reparada),
+            error);
+
+        Assert.True(reparada);
+        Assert.NotNull(geometry);
+        Assert.True(geometry!.IsValid);
+        Assert.True(geometry is Polygon or MultiPolygon);
+        Assert.Equal(4326, geometry.SRID);
+    }
+
+    [Fact]
+    public void GeometriaSana_NoSeMarcaComoReparada()
+    {
+        Assert.True(GeoJsonGeometryParser.TryParse(PolygonJson, out _, out _, out var reparada));
+        Assert.False(reparada);
+
+        Assert.True(GeoJsonGeometryParser.TryParse(MultiPolygonJson, out _, out _, out reparada));
+        Assert.False(reparada);
+    }
+
+    [Fact]
+    public void PolygonConAgujeroBienFormado_ConservaElAnilloInterior()
+    {
+        // El re-anidado no tiene que romper lo que ya viene bien: los anillos 1..n de un
+        // Polygon GeoJSON son agujeros por especificación y así deben quedar.
+        var conAgujero =
+            "{\"type\":\"Polygon\",\"coordinates\":["
+            + "[[0,0],[1,0],[1,1],[0,1],[0,0]],"
+            + "[[0.4,0.4],[0.6,0.4],[0.6,0.6],[0.4,0.6],[0.4,0.4]]"
+            + "]}";
+
+        Assert.True(GeoJsonGeometryParser.TryParse(conAgujero, out var geometry, out var error, out var reparada), error);
+
+        Assert.False(reparada);
+        var polygon = Assert.IsType<Polygon>(geometry);
+        Assert.Equal(1, polygon.NumInteriorRings);
+        Assert.Equal(0.96, polygon.Area, 6);
     }
 }

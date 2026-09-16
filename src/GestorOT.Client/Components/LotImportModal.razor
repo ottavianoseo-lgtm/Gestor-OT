@@ -1,4 +1,4 @@
-@using GestorOT.Shared
+﻿@using GestorOT.Shared
 @using GestorOT.Shared.Dtos
 @using System.Net.Http.Json
 @using AntDesign
@@ -125,8 +125,21 @@
             </div>
             <div style="background: rgba(255,255,255,0.03); padding: 14px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.08); text-align: center;">
                 <div style="color: rgba(255,255,255,0.5); font-size: 11px; text-transform: uppercase;">Con GIS</div>
-                <div style="font-size: 22px; font-weight: 700; color: #16A085;">@_summary.GeometryRows</div>
+                <div style="font-size: 22px; font-weight: 700; color: #16A085;">
+                    @_summary.GeometryRows
+                    @if (_summary.RepairedGeometryRows > 0)
+                    {
+                        <span style="font-size: 12px; color: #F39C12; margin-left: 4px;">(@_summary.RepairedGeometryRows normalizadas)</span>
+                    }
+                </div>
             </div>
+            @if (_summary.FieldsWithCodCentro > 0)
+            {
+                <div style="background: rgba(255,255,255,0.03); padding: 14px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.08); text-align: center;">
+                    <div style="color: rgba(255,255,255,0.5); font-size: 11px; text-transform: uppercase;">Centro ERP</div>
+                    <div style="font-size: 22px; font-weight: 700; color: #9B59B6;">@_summary.FieldsWithCodCentro <span style="font-size: 12px; color: rgba(255,255,255,0.5);">campos</span></div>
+                </div>
+            }
         </div>
 
         @if (_summary.NewCropsToCreate.Count > 0)
@@ -146,11 +159,22 @@
         }
         else if (_summary.WarningRows > 0)
         {
-            var warningItems = _summary.Rows.Where(r => r.Status == "Warning").Take(3).Select(r => $"Fila #{r.RowNumber} ({r.FieldName} - {r.LotName})");
+            var conFechas = _summary.Rows.Count(r => r.Status == "Warning" && !r.GeometryRepaired);
             <Alert Type="@AlertType.Warning" ShowIcon="true" Style="margin-bottom: 12px;">
                 <MessageTemplate>
-                    <strong>@_summary.WarningRows fila(s) con fechas ajustadas:</strong> @string.Join(", ", warningItems).
-                    Se les asignó automáticamente la fecha de inicio/fin de la campaña.
+                    <strong>@_summary.WarningRows fila(s) con advertencias.</strong> Se importan igual.
+                    @if (conFechas > 0)
+                    {
+                        <text> @conFechas sin fechas completas: se les asignó el rango de la campaña.</text>
+                    }
+                    @if (_summary.RepairedGeometryRows > 0)
+                    {
+                        <text>
+                            @_summary.RepairedGeometryRows con la geometría mal formada (típico de un export de shapefile:
+                            los agujeros vienen como polígonos sueltos): se normalizaron para poder usarlas. Contrastá su
+                            superficie contra la declarada.
+                        </text>
+                    }
                 </MessageTemplate>
             </Alert>
         }

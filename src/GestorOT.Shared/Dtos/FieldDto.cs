@@ -4,7 +4,8 @@ public record FieldDto(
     Guid Id,
     string Name,
     DateTime CreatedAt,
-    List<LotSummaryDto> Lots
+    List<LotSummaryDto> Lots,
+    long? CodCentro = null
 )
 {
     public FieldDto() : this(Guid.Empty, string.Empty, DateTime.MinValue, new List<LotSummaryDto>()) { }

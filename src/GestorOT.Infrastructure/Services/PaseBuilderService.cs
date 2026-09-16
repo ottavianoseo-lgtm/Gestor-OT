@@ -40,7 +40,7 @@ public sealed class PaseBuilderService : IPaseBuilderService
             .Include(l => l.Type)
             .Include(l => l.WorkOrder)
             .Include(l => l.Contact)
-            .Include(l => l.Lot)
+            .Include(l => l.Lot).ThenInclude(l => l!.Field)
             .Include(l => l.CampaignLot)
             .Include(l => l.Supplies).ThenInclude(s => s.Supply)
             .Where(l => l.TenantId == tenantId && l.WorkOrderId != null && workOrderIds.Contains(l.WorkOrderId.Value))
@@ -50,7 +50,7 @@ public sealed class PaseBuilderService : IPaseBuilderService
             .Include(l => l.Type)
             .Include(l => l.WorkOrder)
             .Include(l => l.Contact)
-            .Include(l => l.Lot)
+            .Include(l => l.Lot).ThenInclude(l => l!.Field)
             .Include(l => l.CampaignLot)
             .Include(l => l.Supplies).ThenInclude(s => s.Supply)
             .Where(l => l.TenantId == tenantId && laborIds.Contains(l.Id))
@@ -139,19 +139,23 @@ public sealed class PaseBuilderService : IPaseBuilderService
             }
 
             // El centro de costo es el lote, no el tipo de labor. Se resuelve como en
-            // Ganaderia (registro pisa plantilla): la campania pisa al lote, y el lote pisa a
-            // la config. Sin esto toda labor del mismo tipo imputaba al mismo centro sin
-            // importar donde se hizo, y el pase no servia para costo por lote.
+            // Ganaderia (registro pisa plantilla): la campania pisa al lote, el lote pisa al
+            // campo, y el campo pisa a la config. Sin esto toda labor del mismo tipo imputaba
+            // al mismo centro sin importar donde se hizo, y el pase no servia para costo por
+            // lote. El nivel campo esta porque en la operacion el centro se abre por campo:
+            // cargarlo ahi alcanza y el lote solo se completa cuando es una excepcion.
             long? codCentroDebe = labor.CampaignLot?.CodCentro
                 ?? labor.Lot?.CodCentro
+                ?? labor.Lot?.Field?.CodCentro
                 ?? config.CodCuentaDebeCentro;
             long? codCentroHaber = labor.CampaignLot?.CodCentro
                 ?? labor.Lot?.CodCentro
+                ?? labor.Lot?.Field?.CodCentro
                 ?? config.CodCuentaHaberCentro;
 
             if (!config.NoImputaCentro && codCentroDebe is null && codCentroHaber is null)
             {
-                warnings.Add($"Labor {labor.Id} ({labor.Type?.Name ?? "Sin Tipo"}) en lote {labor.Lot?.Name ?? "S/N"}: el comprobante imputa centro pero el lote no tiene centro asignado y la regla contable tampoco. Asignale el centro al lote.");
+                warnings.Add($"Labor {labor.Id} ({labor.Type?.Name ?? "Sin Tipo"}) en lote {labor.Lot?.Name ?? "S/N"}: el comprobante imputa centro pero ni el lote ni su campo tienen centro asignado, y la regla contable tampoco. Asignale el centro al campo (o al lote si es una excepcion).");
             }
 
             // Resolve ErpConcept for LaborType

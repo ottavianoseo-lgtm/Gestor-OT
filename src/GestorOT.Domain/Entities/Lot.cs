@@ -14,7 +14,8 @@ public class Lot : TenantEntity
     /// Cuenta del plan de centros del ERP a la que imputa este lote. Es el equivalente de
     /// Event.CodCentro en Ganadería: en agricultura el centro de costo es el lote, así que sin
     /// esto toda labor del mismo tipo imputa al mismo centro sin importar dónde se hizo.
-    /// Se puede pisar por campaña en <see cref="CampaignLot.CodCentro"/>.
+    /// En null se hereda el de <see cref="Field.CodCentro"/>. Se puede pisar por campaña en
+    /// <see cref="CampaignLot.CodCentro"/>.
     /// </summary>
     public long? CodCentro { get; set; }
     public Field? Field { get; set; }

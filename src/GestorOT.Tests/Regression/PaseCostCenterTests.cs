@@ -1,4 +1,4 @@
-using GestorOT.Domain.Entities;
+﻿using GestorOT.Domain.Entities;
 using GestorOT.Domain.Enums;
 using GestorOT.Infrastructure.Data;
 using GestorOT.Infrastructure.Services;
@@ -16,12 +16,16 @@ namespace GestorOT.Tests.Regression;
 /// en qué lote se hizo, y el pase no servía para costo por lote.
 ///
 /// La cadena replica la de Ganadería (el registro pisa la plantilla):
-///     CampaignLot.CodCentro  ??  Lot.CodCentro  ??  AccountConfiguration.CodCuentaDebeCentro
+///     CampaignLot.CodCentro ?? Lot.CodCentro ?? Field.CodCentro ?? AccountConfiguration.CodCuentaDebeCentro
+///
+/// El nivel campo existe porque en la operación el centro se abre por campo: cargarlo ahí
+/// alcanza para todos sus lotes y el lote solo se completa cuando es una excepción.
 /// </summary>
 public class PaseCostCenterTests
 {
     private const long CentroDelLote = 50101;
     private const long CentroDeLaCampania = 50202;
+    private const long CentroDelCampo = 50303;
     private const long CentroDeLaConfig = 50999;
 
     private ApplicationDbContext CreateContext(string dbName, Guid tenantId)
@@ -44,7 +48,13 @@ public class PaseCostCenterTests
         return new ApplicationDbContext(options, accessor);
     }
 
-    private record Seeded(Guid TenantId, Guid LaborConCentroDeLote, Guid LaborConCentroDeCampania, Guid LaborSinCentro);
+    private record Seeded(
+        Guid TenantId,
+        Guid LaborConCentroDeLote,
+        Guid LaborConCentroDeCampania,
+        Guid LaborSinCentro,
+        Guid LaborEnCampoConCentro,
+        Guid LaborQuePisaAlCampo);
 
     private Seeded Seed(string dbName)
     {
@@ -74,6 +84,15 @@ public class PaseCostCenterTests
         var loteConCentro = new Lot { Id = Guid.NewGuid(), TenantId = tenantId, FieldId = field.Id, Name = "Lote 1", CodCentro = CentroDelLote };
         var loteSinCentro = new Lot { Id = Guid.NewGuid(), TenantId = tenantId, FieldId = field.Id, Name = "Lote 2", CodCentro = null };
         ctx.Lots.AddRange(loteConCentro, loteSinCentro);
+
+        // Campo con centro propio: es lo que carga el importador desde la planilla. Sus lotes
+        // no necesitan centro salvo que sean la excepción.
+        var campoConCentro = new Field { Id = Guid.NewGuid(), TenantId = tenantId, Name = "La Manga", CodCentro = CentroDelCampo };
+        ctx.Fields.Add(campoConCentro);
+
+        var loteHeredero = new Lot { Id = Guid.NewGuid(), TenantId = tenantId, FieldId = campoConCentro.Id, Name = "7 loma", CodCentro = null };
+        var loteExcepcion = new Lot { Id = Guid.NewGuid(), TenantId = tenantId, FieldId = campoConCentro.Id, Name = "7 bajo", CodCentro = CentroDelLote };
+        ctx.Lots.AddRange(loteHeredero, loteExcepcion);
 
         var campaign = new Campaign { Id = Guid.NewGuid(), TenantId = tenantId, Name = "26/27" };
         ctx.Campaigns.Add(campaign);
@@ -106,11 +125,19 @@ public class PaseCostCenterTests
         var laborLote = NuevaLabor(loteConCentro.Id, null);
         var laborCampania = NuevaLabor(loteConCentro.Id, campaignLot.Id);
         var laborSinCentro = NuevaLabor(loteSinCentro.Id, null);
+        var laborHeredera = NuevaLabor(loteHeredero.Id, null);
+        var laborExcepcion = NuevaLabor(loteExcepcion.Id, null);
 
-        ctx.Labors.AddRange(laborLote, laborCampania, laborSinCentro);
+        ctx.Labors.AddRange(laborLote, laborCampania, laborSinCentro, laborHeredera, laborExcepcion);
         ctx.SaveChanges();
 
-        return new Seeded(tenantId, laborLote.Id, laborCampania.Id, laborSinCentro.Id);
+        return new Seeded(
+            tenantId,
+            laborLote.Id,
+            laborCampania.Id,
+            laborSinCentro.Id,
+            laborHeredera.Id,
+            laborExcepcion.Id);
     }
 
     private async Task<Dictionary<Guid, PaseImputacion>> GenerarPasesAsync(string dbName, Seeded seeded)
@@ -121,7 +148,14 @@ public class PaseCostCenterTests
         var result = await service.GenerarLoteAsync(
             seeded.TenantId,
             workOrderIds: null,
-            laborIds: new List<Guid> { seeded.LaborConCentroDeLote, seeded.LaborConCentroDeCampania, seeded.LaborSinCentro },
+            laborIds: new List<Guid>
+            {
+                seeded.LaborConCentroDeLote,
+                seeded.LaborConCentroDeCampania,
+                seeded.LaborSinCentro,
+                seeded.LaborEnCampoConCentro,
+                seeded.LaborQuePisaAlCampo
+            },
             descripcion: "test centros");
 
         Assert.True(result.Success, $"La generación falló: {result.Error}");
@@ -182,5 +216,30 @@ public class PaseCostCenterTests
         var otroLote = pases[seeded.LaborSinCentro].CodCuentaDebeCentro;
 
         Assert.NotEqual(unLote, otroLote);
+    }
+
+    [Fact]
+    public async Task Pase_HeredaElCentroDelCampo_CuandoElLoteNoTieneUnoPropio()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var seeded = Seed(dbName);
+
+        var pases = await GenerarPasesAsync(dbName, seeded);
+
+        var pase = pases[seeded.LaborEnCampoConCentro];
+        Assert.Equal(CentroDelCampo, pase.CodCuentaDebeCentro);
+        Assert.Equal(CentroDelCampo, pase.CodCuentaHaberCentro);
+    }
+
+    [Fact]
+    public async Task Pase_ElCentroDelLote_PisaAlDelCampo()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var seeded = Seed(dbName);
+
+        var pases = await GenerarPasesAsync(dbName, seeded);
+
+        var pase = pases[seeded.LaborQuePisaAlCampo];
+        Assert.Equal(CentroDelLote, pase.CodCuentaDebeCentro);
     }
 }

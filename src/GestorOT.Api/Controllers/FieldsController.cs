@@ -1,4 +1,4 @@
-using GestorOT.Application.Interfaces;
+﻿using GestorOT.Application.Interfaces;
 using GestorOT.Application.Services;
 using GestorOT.Domain.Entities;
 using GestorOT.Shared.Dtos;
@@ -42,7 +42,8 @@ public class FieldsController : ControllerBase
                     l.Name,
                     l.Status,
                     l.CadastralArea
-                )).ToList()
+                )).ToList(),
+                f.CodCentro
             ))
             .ToListAsync();
 
@@ -65,7 +66,8 @@ public class FieldsController : ControllerBase
                     l.Name,
                     l.Status,
                     l.CadastralArea
-                )).ToList()
+                )).ToList(),
+                f.CodCentro
             ))
             .FirstOrDefaultAsync();
 
@@ -82,7 +84,8 @@ public class FieldsController : ControllerBase
         {
             Id = Guid.NewGuid(),
             Name = dto.Name,
-            CreatedAt = DateTime.UtcNow
+            CreatedAt = DateTime.UtcNow,
+            CodCentro = dto.CodCentro
         };
 
         _context.Fields.Add(field);
@@ -92,7 +95,8 @@ public class FieldsController : ControllerBase
             field.Id,
             field.Name,
             field.CreatedAt,
-            new List<LotSummaryDto>()
+            new List<LotSummaryDto>(),
+            field.CodCentro
         );
 
         return CreatedAtAction(nameof(GetField), new { id = field.Id }, result);
@@ -106,6 +110,7 @@ public class FieldsController : ControllerBase
             return NotFound();
 
         field.Name = dto.Name;
+        field.CodCentro = dto.CodCentro;
 
         await _context.SaveChangesAsync();
         return NoContent();

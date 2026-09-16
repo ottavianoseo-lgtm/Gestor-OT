@@ -1,4 +1,4 @@
-@page "/fields"
+﻿@page "/fields"
 @using GestorOT.Shared.Dtos
 @using GestorOT.Shared
 @using System.Net.Http.Json
@@ -146,6 +146,18 @@
         <FormItem Label="Nombre del Campo">
             <Input @bind-Value="_formModel.Name" Placeholder="Ej: Estancia Santa Rosa" />
         </FormItem>
+        <FormItem Label="Centro de costo (ERP)">
+            <Select TItemValue="long?" TItem="ErpAccountDto" @bind-Value="_formModel.CodCentro"
+                    Placeholder="@(_centros.Count == 0 ? "Sin centros cargados desde el ERP" : "Buscar centro...")"
+                    AllowClear EnableSearch Loading="_loadingCentros"
+                    DataSource="@_centros"
+                    ItemLabel="x => x.DisplayName" ItemValue="x => (long?)x.CodCuenta"
+                    Style="width: 100%;" />
+            <div style="color: rgba(0,0,0,0.45); font-size: 11px; margin-top: 4px;">
+                Lo heredan todos los lotes del campo. Un lote solo necesita centro propio cuando
+                es una excepción al del campo.
+            </div>
+        </FormItem>
     </Form>
 </Modal>
 
@@ -161,6 +173,8 @@
     private Guid _editingId;
     private FieldFormModel _formModel = new();
     private Form<FieldFormModel>? _form;
+    private List<ErpAccountDto> _centros = new();
+    private bool _loadingCentros;
 
     private IEnumerable<FieldDto> FilteredFields =>
         _filterByCampaign && CampaignState.IsSelected
@@ -170,6 +184,7 @@
     public class FieldFormModel
     {
         public string Name { get; set; } = string.Empty;
+        public long? CodCentro { get; set; }
     }
 
     protected override async Task OnInitializedAsync()
@@ -232,19 +247,47 @@
         _isEditing = false;
         _formModel = new FieldFormModel();
         _modalVisible = true;
+        _ = LoadCentros();
     }
 
     private void OpenEditModal(FieldDto field)
     {
         _isEditing = true;
         _editingId = field.Id;
-        _formModel = new FieldFormModel { Name = field.Name };
+        _formModel = new FieldFormModel { Name = field.Name, CodCentro = field.CodCentro };
         _modalVisible = true;
+        _ = LoadCentros();
     }
 
     private void CloseModal()
     {
         _modalVisible = false;
+    }
+
+    /// <summary>
+    /// Se carga recién al abrir el modal: el plan de centros del ERP no hace falta para
+    /// listar campos y son varios cientos de cuentas.
+    /// </summary>
+    private async Task LoadCentros()
+    {
+        if (_centros.Count > 0 || _loadingCentros) return;
+
+        _loadingCentros = true;
+        StateHasChanged();
+        try
+        {
+            _centros = await Http.GetFromJsonAsync<List<ErpAccountDto>>("api/pases/erp/cuentas/centro") ?? new();
+        }
+        catch
+        {
+            // Sin centros el selector queda vacío; el resto del alta sigue funcionando.
+            _centros = new();
+        }
+        finally
+        {
+            _loadingCentros = false;
+            StateHasChanged();
+        }
     }
 
     private async Task SaveField()
@@ -262,7 +305,8 @@
                 _isEditing ? _editingId : Guid.Empty,
                 _formModel.Name,
                 DateTime.UtcNow,
-                new List<LotSummaryDto>()
+                new List<LotSummaryDto>(),
+                _formModel.CodCentro
             );
 
             HttpResponseMessage response;
