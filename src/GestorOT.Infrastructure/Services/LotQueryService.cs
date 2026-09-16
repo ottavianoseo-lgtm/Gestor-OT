@@ -431,34 +431,49 @@ public class LotQueryService : ILotQueryService
 
     private static GeoJsonGeometry? ParseGeometry(Geometry? geometry)
     {
-        if (geometry == null) return null;
+        if (geometry == null || geometry.IsEmpty) return null;
 
         if (geometry is Polygon polygon)
+            return new GeoJsonGeometry("Polygon", Anillos(polygon));
+
+        if (geometry is MultiPolygon multiPolygon)
         {
-            var coords = polygon.Coordinates;
-            var ring = coords.Select(c => new double[] { c.X, c.Y }).ToArray();
-            return new GeoJsonGeometry("Polygon", new double[][][] { ring });
-        }
-        else if (geometry is MultiPolygon multiPolygon)
-        {
-            var polyRings = new List<double[][]>();
+            var poligonos = new List<double[][][]>();
             for (int i = 0; i < multiPolygon.NumGeometries; i++)
             {
-                if (multiPolygon.GetGeometryN(i) is Polygon poly)
-                {
-                    var ring = poly.Coordinates.Select(c => new double[] { c.X, c.Y }).ToArray();
-                    polyRings.Add(ring);
-                }
+                if (multiPolygon.GetGeometryN(i) is Polygon poly && !poly.IsEmpty)
+                    poligonos.Add(Anillos(poly));
             }
-            return new GeoJsonGeometry("MultiPolygon", polyRings.ToArray());
+            return poligonos.Count > 0
+                ? new GeoJsonGeometry("MultiPolygon", poligonos.ToArray())
+                : null;
         }
-        else
-        {
-            var coords = geometry.Coordinates;
-            var ring = coords.Select(c => new double[] { c.X, c.Y }).ToArray();
-            return new GeoJsonGeometry("Polygon", new double[][][] { ring });
-        }
+
+        // La columna es poligonal: cualquier otra cosa es un dato roto y es preferible no
+        // dibujar nada antes que inventar un polígono con sus coordenadas sueltas.
+        return null;
     }
+
+    /// <summary>
+    /// Anillos de un polígono en el orden que pide GeoJSON: primero el exterior y después los
+    /// agujeros.
+    ///
+    /// Antes se usaba <c>polygon.Coordinates</c>, que devuelve el exterior y los interiores
+    /// concatenados en una sola lista. Emitido como un único anillo, el dibujo salta del borde
+    /// del lote a cada agujero y vuelve: son las astillas y líneas cruzadas que aparecían en el
+    /// mapa. Lo mismo con los MultiPolygon, que además salían con un nivel de anidado de menos
+    /// y el cliente los leía como un polígono cuyas partes eran agujeros.
+    /// </summary>
+    private static double[][][] Anillos(Polygon polygon)
+    {
+        var anillos = new List<double[][]> { Puntos(polygon.ExteriorRing) };
+        for (int i = 0; i < polygon.NumInteriorRings; i++)
+            anillos.Add(Puntos(polygon.GetInteriorRingN(i)));
+        return anillos.ToArray();
+    }
+
+    private static double[][] Puntos(LineString anillo)
+        => anillo.Coordinates.Select(c => new double[] { c.X, c.Y }).ToArray();
 
     public async Task<LotOverlapCheckResultDto> CheckLotOverlapAsync(string wkt, Guid fieldId, Guid? excludeLotId = null, CancellationToken ct = default)
     {

@@ -12,6 +12,14 @@ public class LotConfiguration : IEntityTypeConfiguration<Lot>
         builder.HasKey(e => e.Id);
         builder.Property(e => e.Name).IsRequired().HasMaxLength(200);
         builder.Property(e => e.Status).HasMaxLength(50);
+        builder.Property(e => e.ExternalErpId).HasMaxLength(100);
+
+        // Filtrado: la mayoría de los lotes no tiene id externo y todos esos NULL tienen que
+        // poder convivir. Con el índice, reimportar la planilla actualiza el mismo lote en vez
+        // de crear uno nuevo, y dos filas no pueden reclamar el mismo id.
+        builder.HasIndex(e => new { e.TenantId, e.ExternalErpId })
+            .IsUnique()
+            .HasFilter("\"ExternalErpId\" IS NOT NULL");
         builder.Property(e => e.Geometry).HasColumnType("geometry(Geometry, 4326)");
         builder.HasIndex(e => e.Geometry).HasMethod("GIST");
         builder.Property(e => e.CadastralArea).HasPrecision(18, 4);

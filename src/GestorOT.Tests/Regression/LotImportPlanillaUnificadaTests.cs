@@ -84,16 +84,15 @@ public class LotImportPlanillaUnificadaTests
         string[] headers =
         [
             "Campo", "Lote", "Superficie Declarada (ha)", "Cultivo Actual", "Fecha Desde",
-            "Fecha Hasta", "Notas", "GIS (GeoJSON)", "GIS - Nombre origen", "GIS - Superficie (ha)",
-            "Ciclo", "Centro ERP", "Estado"
+            "Fecha Hasta", "Notas", "lote_id", "Ciclo", "Centro ERP", "Estado"
         ];
         for (int i = 0; i < headers.Length; i++)
             ws.Cell(1, i + 1).Value = headers[i];
 
-        var filas = new (string Lote, decimal Sup, string Cultivo, string Desde, string Hasta, string Gis, string Ciclo)[]
+        var filas = new (string Lote, decimal Sup, string Cultivo, string Desde, string Hasta, string LoteId, string Ciclo)[]
         {
-            ("11L", 44, "Cebada", "2026-06-01", "2026-12-20", GisConAgujeroMalExportado, "Fina"),
-            ("11L", 44, "Soja 2", "2026-12-20", "2027-05-15", GisConAgujeroMalExportado, "Gruesa 2da"),
+            ("11L", 44, "Cebada", "2026-06-01", "2026-12-20", "LOTE_11L", "Fina"),
+            ("11L", 44, "Soja 2", "2026-12-20", "2027-05-15", "LOTE_11L", "Gruesa 2da"),
             ("Cerro1", 12, "", "", "", "", "")
         };
 
@@ -106,12 +105,10 @@ public class LotImportPlanillaUnificadaTests
             ws.Cell(r + 2, 4).Value = f.Cultivo;
             ws.Cell(r + 2, 5).Value = f.Desde;
             ws.Cell(r + 2, 6).Value = f.Hasta;
-            ws.Cell(r + 2, 8).Value = f.Gis;
-            ws.Cell(r + 2, 9).Value = f.Lote;
-            ws.Cell(r + 2, 10).Value = 45.24;
-            ws.Cell(r + 2, 11).Value = f.Ciclo;
-            ws.Cell(r + 2, 12).Value = CentroDeCiervoBlanco;
-            ws.Cell(r + 2, 13).Value = "OK";
+            ws.Cell(r + 2, 8).Value = f.LoteId;
+            ws.Cell(r + 2, 9).Value = f.Ciclo;
+            ws.Cell(r + 2, 10).Value = CentroDeCiervoBlanco;
+            ws.Cell(r + 2, 11).Value = "OK";
         }
 
         var ms = new MemoryStream();
@@ -121,7 +118,7 @@ public class LotImportPlanillaUnificadaTests
     }
 
     [Fact]
-    public async Task PreviewAsync_GeometriaMalExportada_EntraComoAdvertenciaYNoComoError()
+    public async Task PreviewAsync_ConLoteId_LeeCorrectamente()
     {
         var dbName = Guid.NewGuid().ToString();
         var tenantId = Guid.NewGuid();
@@ -133,15 +130,11 @@ public class LotImportPlanillaUnificadaTests
 
         var summary = await service.PreviewAsync(campaignId, stream);
 
-        // La regresión: con la geometría rechazada estas filas quedaban en Error y el modal
-        // deshabilitaba el botón Importar.
         Assert.Equal(0, summary.ErrorRows);
-        Assert.Equal(2, summary.GeometryRows);
-        Assert.Equal(2, summary.RepairedGeometryRows);
+        Assert.Equal(1, summary.RowsWithLoteId);
 
-        var conGis = summary.Rows.Where(r => r.HasGeometry).ToList();
-        Assert.All(conGis, r => Assert.Equal("Warning", r.Status));
-        Assert.All(conGis, r => Assert.Contains("normalizó", r.ValidationMessage!));
+        var lote11L = summary.Rows.First(r => r.LotName == "11L");
+        Assert.Equal("LOTE_11L", lote11L.ExternalErpId);
     }
 
     [Fact]
@@ -165,7 +158,7 @@ public class LotImportPlanillaUnificadaTests
     }
 
     [Fact]
-    public async Task ExecuteAsync_AsignaElCentroErpAlCampoYGuardaLaGeometriaNormalizada()
+    public async Task ExecuteAsync_AsignaElCentroErpAlCampoYGuardaLoteId()
     {
         var dbName = Guid.NewGuid().ToString();
         var tenantId = Guid.NewGuid();
@@ -192,13 +185,7 @@ public class LotImportPlanillaUnificadaTests
             Assert.Equal(CentroDeCiervoBlanco, campo.CodCentro);
 
             var lote = await context.Lots.SingleAsync(l => l.Name == "11L");
-            Assert.NotNull(lote.Geometry);
-            Assert.True(lote.Geometry!.IsValid);
-            Assert.Equal(4326, lote.Geometry.SRID);
-
-            // Cuadrado de 0,01 x 0,01 menos el hueco de 0,002 x 0,002. Si se hubiera resuelto
-            // por unión en vez de por agujero, el área daría 0,0001: el cuadrado entero.
-            Assert.Equal(0.000096, lote.Geometry.Area, 12);
+            Assert.Equal("LOTE_11L", lote.ExternalErpId);
 
             // Doble cultivo: dos rotaciones sobre el mismo CampaignLot.
             var campLot = await context.CampaignLots

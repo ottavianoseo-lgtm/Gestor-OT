@@ -2,10 +2,20 @@ using NetTopologySuite.Geometries;
 
 namespace GestorOT.Domain.Entities;
 
-public class Lot : TenantEntity
+public class Lot : TenantEntity, IExternalErpEntity
 {
     public Guid FieldId { get; set; }
     public string Name { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Identificador estable del lote fuera de la app: la columna "lote_id" de la planilla y el
+    /// atributo homónimo de los GeoJSON del relevamiento.
+    ///
+    /// Existe porque cruzar por nombre no alcanza: los lotes se llaman "1", "7 loma", "14 fina",
+    /// se renombran entre campañas y colisionan entre campos. Con el id, reimportar actualiza el
+    /// mismo lote y el GIS se vincula sin adivinar. Único por tenant cuando está cargado.
+    /// </summary>
+    public string? ExternalErpId { get; set; }
     public string Status { get; set; } = "Active";
     public Geometry? Geometry { get; set; }
     public decimal CadastralArea { get; set; }

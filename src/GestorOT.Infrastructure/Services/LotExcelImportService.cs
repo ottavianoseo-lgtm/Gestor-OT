@@ -1,4 +1,4 @@
-﻿using ClosedXML.Excel;
+using ClosedXML.Excel;
 using GestorOT.Application.Interfaces;
 using GestorOT.Domain.Entities;
 using GestorOT.Shared.Dtos;
@@ -47,10 +47,12 @@ public class LotExcelImportService : ILotExcelImportService
         var seenFields = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var seenLots = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var seenCentros = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var seenLoteIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var contadasPorLote = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var newCropsSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         int lastRow = worksheet.LastRowUsed()?.RowNumber() ?? headerRow;
+        var idsConflictivos = DetectarIdsConflictivos(worksheet, headers, headerRow, lastRow);
         int rowCounter = 0;
 
         for (int r = headerRow + 1; r <= lastRow; r++)
@@ -73,13 +75,10 @@ public class LotExcelImportService : ILotExcelImportService
             DateOnly? fechaHasta = headers.ColFechaHasta > 0 ? ParseDateCell(row.Cell(headers.ColFechaHasta)) : null;
             string? notas = headers.ColNotas > 0 ? GetCellString(row.Cell(headers.ColNotas)) : null;
 
-            // El GIS es opcional, pero si viene tiene que terminar en un polígono válido: mejor
-            // frenar en la vista previa que reventar al guardar en PostGIS. El parser normaliza
-            // lo que puede (agujeros exportados como shells, anillos auto-intersectados) y avisa
-            // cuáles tuvo que tocar.
-            string gisRaw = headers.ColGis > 0 ? GetCellString(row.Cell(headers.ColGis)) : string.Empty;
-            var gisValido = GeoJsonGeometryParser.TryParse(gisRaw, out var gisGeometry, out var gisError, out var gisReparada);
-
+            // La geometria ya no viaja en esta planilla: entra por el importador de GeoJSON del
+            // mapa, cruzada por lote_id. Aca solo se lee el id, que es lo que despues permite
+            // vincular el poligono sin adivinar por nombre.
+            string? loteId = headers.ColLoteId > 0 ? NormalizarLoteId(GetCellString(row.Cell(headers.ColLoteId))) : null;
             long? codCentro = headers.ColCentro > 0 ? ParseLongCell(row.Cell(headers.ColCentro)) : null;
 
             var (effStart, effEnd, hasDateWarning) = ResolveRotationDates(fechaDesde, fechaHasta, campaign);
@@ -94,8 +93,7 @@ public class LotExcelImportService : ILotExcelImportService
                 StartDate = effStart,
                 EndDate = effEnd,
                 Notes = string.IsNullOrWhiteSpace(notas) ? null : notas,
-                HasGeometry = gisGeometry != null,
-                GeometryRepaired = gisReparada,
+                ExternalErpId = loteId,
                 CodCentro = codCentro
             };
 
@@ -118,10 +116,10 @@ public class LotExcelImportService : ILotExcelImportService
                 rowDto.ValidationMessage = "La superficie debe ser un valor numérico mayor a cero.";
                 summary.ErrorRows++;
             }
-            else if (!gisValido)
+            else if (loteId != null && idsConflictivos.Contains(loteId))
             {
                 rowDto.Status = "Error";
-                rowDto.ValidationMessage = $"La geometría GIS no es válida: {gisError}.";
+                rowDto.ValidationMessage = $"El lote_id '{loteId}' aparece en la planilla asignado a más de un lote. Cada id tiene que identificar un solo lote.";
                 summary.ErrorRows++;
             }
             else
@@ -134,12 +132,30 @@ public class LotExcelImportService : ILotExcelImportService
                 else if (fieldExists && seenFields.Add(campoStr))
                     summary.ExistingFieldsCount++;
 
-                // Lot evaluation
+                // Lot evaluation. El id (sea Guid o ExternalErpId) manda sobre el nombre: es lo que
+                // permite vincular y renombrar un lote en la planilla sin que se cree uno nuevo.
                 var matchingField = existingFields.FirstOrDefault(f => f.Name.Equals(campoStr, StringComparison.OrdinalIgnoreCase));
-                var lotExists = matchingField != null && existingLots.Any(l => l.FieldId == matchingField.Id && l.Name.Equals(loteStr, StringComparison.OrdinalIgnoreCase));
+                Lot? lotePorId = null;
+                if (loteId != null)
+                {
+                    if (Guid.TryParse(loteId, out var parsedGuid) && parsedGuid != Guid.Empty)
+                        lotePorId = existingLots.FirstOrDefault(l => l.Id == parsedGuid);
+
+                    if (lotePorId == null)
+                        lotePorId = existingLots.FirstOrDefault(l => string.Equals(l.ExternalErpId, loteId, StringComparison.OrdinalIgnoreCase));
+                }
+
+                var lotePorNombre = matchingField != null
+                    ? existingLots.FirstOrDefault(l => l.FieldId == matchingField.Id && l.Name.Equals(loteStr, StringComparison.OrdinalIgnoreCase))
+                    : null;
+                var loteExistente = lotePorId ?? lotePorNombre;
+                var lotExists = loteExistente != null;
                 rowDto.IsLotNew = !lotExists;
 
-                var lotKey = $"{campoStr}_{loteStr}";
+                if (lotePorId != null && !lotePorId.Name.Equals(loteStr, StringComparison.OrdinalIgnoreCase))
+                    rowDto.RenamesLot = lotePorId.Name;
+
+                var lotKey = !string.IsNullOrWhiteSpace(loteId) ? $"id:{loteId}" : $"{campoStr}_{loteStr}";
                 if (rowDto.IsLotNew && seenLots.Add(lotKey))
                     summary.NewLotsCount++;
                 else if (lotExists && seenLots.Add(lotKey))
@@ -171,8 +187,11 @@ public class LotExcelImportService : ILotExcelImportService
                         avisos.Add("Inconsistencia en rango de fechas ajustada automáticamente.");
                 }
 
-                if (rowDto.GeometryRepaired)
-                    avisos.Add("La geometría GIS venía mal formada (agujeros exportados como polígonos sueltos o anillos cruzados) y se normalizó: contrastá la superficie contra la declarada.");
+                if (rowDto.RenamesLot != null)
+                    avisos.Add($"El lote_id '{loteId}' ya existe como \"{rowDto.RenamesLot}\": se le va a cambiar el nombre a \"{loteStr}\".");
+
+                if (loteId == null && headers.ColLoteId > 0)
+                    avisos.Add("Sin lote_id: el lote se cruza por nombre y no se va a poder vincular el GeoJSON automáticamente.");
 
                 if (avisos.Count > 0)
                 {
@@ -186,10 +205,8 @@ public class LotExcelImportService : ILotExcelImportService
                     summary.ValidRows++;
                 }
 
-                if (rowDto.HasGeometry)
-                    summary.GeometryRows++;
-                if (rowDto.GeometryRepaired)
-                    summary.RepairedGeometryRows++;
+                if (loteId != null && seenLoteIds.Add(loteId))
+                    summary.RowsWithLoteId++;
 
                 if (codCentro.HasValue && seenCentros.Add(campoStr))
                     summary.FieldsWithCodCentro++;
@@ -241,11 +258,26 @@ public class LotExcelImportService : ILotExcelImportService
                 fieldMap[f.Name.Trim().ToLowerInvariant()] = f;
         }
 
+        var lotById = new Dictionary<Guid, Lot>();
+        foreach (var l in existingLots)
+        {
+            lotById[l.Id] = l;
+        }
+
         var lotMap = new Dictionary<(Guid FieldId, string Name), Lot>();
         foreach (var l in existingLots)
         {
             if (!string.IsNullOrWhiteSpace(l.Name))
                 lotMap[(l.FieldId, l.Name.Trim().ToLowerInvariant())] = l;
+        }
+
+        // El id externo identifica al lote por encima del nombre: es lo que hace que renombrar
+        // un lote en la planilla actualice el mismo registro en vez de crear otro.
+        var lotByExternalId = new Dictionary<string, Lot>(StringComparer.OrdinalIgnoreCase);
+        foreach (var l in existingLots)
+        {
+            if (!string.IsNullOrWhiteSpace(l.ExternalErpId))
+                lotByExternalId[l.ExternalErpId.Trim()] = l;
         }
 
         var activityMap = new Dictionary<string, ErpActivity>(StringComparer.OrdinalIgnoreCase);
@@ -275,7 +307,6 @@ public class LotExcelImportService : ILotExcelImportService
         var affectedCampFields = new HashSet<CampaignField>();
         var centrosAsignados = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var hectareasContadas = new HashSet<Guid>();
-        var geometriasContadas = new HashSet<Guid>();
 
         var strategy = _context.Database.CreateExecutionStrategy();
         return await strategy.ExecuteAsync(async () =>
@@ -310,24 +341,7 @@ public class LotExcelImportService : ILotExcelImportService
                     var (fechaDesde, fechaHasta, _) = ResolveRotationDates(rawDesde, rawHasta, campaign);
                     string? notas = headers.ColNotas > 0 ? GetCellString(row.Cell(headers.ColNotas)) : null;
 
-                    // La vista previa ya validó las geometrías; acá se vuelven a leer para calcular el
-                    // lote. Si alguna no parsea (archivo cambiado entre preview y execute, o alguien
-                    // pegando directo contra la API sin pasar por el preview) se importa el lote sin
-                    // GIS en vez de abortar toda la importación, pero queda en el log: si no,
-                    // desaparecían geometrías en silencio.
-                    Geometry? gisGeometry = null;
-                    if (headers.ColGis > 0)
-                    {
-                        var gisRaw = GetCellString(row.Cell(headers.ColGis));
-                        if (!GeoJsonGeometryParser.TryParse(gisRaw, out gisGeometry, out var gisError))
-                        {
-                            gisGeometry = null;
-                            _logger.LogWarning(
-                                "Importación de lotes (campaña {CampaignId}, fila {Row}): el lote {Campo}/{Lote} se importa sin GIS porque la geometría no es utilizable: {Error}",
-                                campaignId, r, campoStr, loteStr, gisError);
-                        }
-                    }
-
+                    string? loteId = headers.ColLoteId > 0 ? NormalizarLoteId(GetCellString(row.Cell(headers.ColLoteId))) : null;
                     long? codCentro = headers.ColCentro > 0 ? ParseLongCell(row.Cell(headers.ColCentro)) : null;
 
                     // 1. Campo (Field)
@@ -372,36 +386,79 @@ public class LotExcelImportService : ILotExcelImportService
                     }
                     affectedCampFields.Add(campField);
 
-                    // 3. Lote (Lot)
+                    // 3. Lote (Lot). Se busca primero por Guid (lote_id como UUID), luego por ExternalErpId y recién después por nombre.
                     string lotKey = loteStr.Trim().ToLowerInvariant();
-                    if (!lotMap.TryGetValue((field.Id, lotKey), out var lot))
+                    Lot? lot = null;
+                    Guid? parsedLotGuid = null;
+
+                    if (loteId != null && Guid.TryParse(loteId, out var g) && g != Guid.Empty)
                     {
+                        parsedLotGuid = g;
+                        lotById.TryGetValue(g, out lot);
+                    }
+
+                    if (lot == null && loteId != null)
+                        lotByExternalId.TryGetValue(loteId, out lot);
+
+                    if (lot == null)
+                        lotMap.TryGetValue((field.Id, lotKey), out lot);
+
+                    if (lot == null)
+                    {
+                        // Si vino lote_id con formato UUID, se crea con ese ID exacto en vez de generar uno aleatorio.
+                        var newLotId = parsedLotGuid ?? Guid.NewGuid();
                         lot = new Lot
                         {
-                            Id = Guid.NewGuid(),
+                            Id = newLotId,
                             FieldId = field.Id,
                             Name = loteStr.Trim(),
                             CadastralArea = sup,
                             Status = "Active",
-                            Geometry = gisGeometry
+                            ExternalErpId = loteId
                         };
                         _context.Lots.Add(lot);
+                        lotById[lot.Id] = lot;
                         lotMap[(field.Id, lotKey)] = lot;
+                        if (loteId != null) lotByExternalId[loteId] = lot;
                         result.LotsCreated++;
-                        if (gisGeometry != null && geometriasContadas.Add(lot.Id))
-                            result.GeometriesImported++;
+                        if (loteId != null) result.LotIdsAssigned++;
                     }
                     else
                     {
                         if (lot.CadastralArea == 0)
                             lot.CadastralArea = sup;
-                        // Si la planilla trae GIS, manda sobre lo que hubiera: reimportar debe corregir.
-                        if (gisGeometry != null)
+
+                        // Encontrado por id: la planilla manda sobre el nombre y el campo. Es el
+                        // punto de tener un id estable, renombrar deja de duplicar.
+                        if (!lot.Name.Equals(loteStr.Trim(), StringComparison.OrdinalIgnoreCase))
                         {
-                            lot.Geometry = gisGeometry;
-                            if (geometriasContadas.Add(lot.Id))
-                                result.GeometriesImported++;
+                            _logger.LogInformation(
+                                "Importación de lotes (campaña {CampaignId}): el lote_id {LoteId} pasa de {Antes} a {Despues}",
+                                campaignId, loteId ?? lot.Id.ToString(), lot.Name, loteStr.Trim());
+                            lot.Name = loteStr.Trim();
+                            result.LotsRenamed++;
                         }
+
+                        if (lot.FieldId != field.Id)
+                        {
+                            _logger.LogWarning(
+                                "Importación de lotes (campaña {CampaignId}): el lote_id {LoteId} ({Lote}) se mueve de campo",
+                                campaignId, loteId ?? lot.Id.ToString(), lot.Name);
+                            lot.FieldId = field.Id;
+                            result.LotsMovedField++;
+                        }
+
+                        if (loteId != null && string.IsNullOrWhiteSpace(lot.ExternalErpId))
+                        {
+                            lot.ExternalErpId = loteId;
+                            lotByExternalId[loteId] = lot;
+                            result.LotIdsAssigned++;
+                        }
+
+                        lotById[lot.Id] = lot;
+                        lotMap[(field.Id, lot.Name.Trim().ToLowerInvariant())] = lot;
+                        if (loteId != null && !lotByExternalId.ContainsKey(loteId))
+                            lotByExternalId[loteId] = lot;
                     }
 
                     // 4. CampaignLot
@@ -412,8 +469,7 @@ public class LotExcelImportService : ILotExcelImportService
                             Id = Guid.NewGuid(),
                             CampaignId = campaignId,
                             LotId = lot.Id,
-                            ProductiveArea = sup,
-                            Geometry = gisGeometry
+                            ProductiveArea = sup
                         };
                         _context.CampaignLots.Add(campLot);
                         campLotMap[lot.Id] = campLot;
@@ -422,8 +478,6 @@ public class LotExcelImportService : ILotExcelImportService
                     else
                     {
                         campLot.ProductiveArea = sup;
-                        if (gisGeometry != null)
-                            campLot.Geometry = gisGeometry;
                     }
 
                     // Por lote: un lote con dos cultivos son dos filas con la misma superficie.
@@ -488,7 +542,7 @@ public class LotExcelImportService : ILotExcelImportService
                     await tx.CommitAsync(ct);
 
                 result.Success = true;
-                result.Message = $"Se procesaron con éxito los datos: {result.FieldsCreated} campos creados, {result.LotsCreated} lotes creados, {result.CampaignLotsLinked} lotes asociados a la campaña, {result.RotationsCreated} rotaciones registradas, {result.GeometriesImported} geometrías GIS importadas y {result.CodCentrosAssigned} campos con centro de costo asignado ({result.TotalHectares:N2} ha totales).";
+                result.Message = $"Se procesaron con éxito los datos: {result.FieldsCreated} campos creados, {result.LotsCreated} lotes creados, {result.CampaignLotsLinked} lotes asociados a la campaña, {result.RotationsCreated} rotaciones registradas, {result.LotIdsAssigned} lotes con lote_id y {result.CodCentrosAssigned} campos con centro de costo asignado ({result.TotalHectares:N2} ha totales).";
                 return result;
             }
             catch (Exception ex)
@@ -514,6 +568,7 @@ public class LotExcelImportService : ILotExcelImportService
         // Headers
         string[] headers =
         [
+            "lote_id",
             "Campo",
             "Lote",
             "Superficie Declarada (ha)",
@@ -521,7 +576,6 @@ public class LotExcelImportService : ILotExcelImportService
             "Fecha Desde",
             "Fecha Hasta",
             "Notas",
-            "GIS (GeoJSON)",
             "Centro ERP"
         ];
 
@@ -536,28 +590,26 @@ public class LotExcelImportService : ILotExcelImportService
         }
 
         // Example rows
-        var ejemploSig = "{\"type\":\"Polygon\",\"coordinates\":[[[-58.51,-34.61],[-58.50,-34.61],[-58.50,-34.60],[-58.51,-34.60],[-58.51,-34.61]]]}";
-
-        var examples = new (string Campo, string Lote, decimal Sup, string Cultivo, string Desde, string Hasta, string Notas, string Gis, string Centro)[]
+        var examples = new (string LoteId, string Campo, string Lote, decimal Sup, string Cultivo, string Desde, string Hasta, string Notas, string Centro)[]
         {
-            ("Bassi-Prieto", "Bassi", 67.0m, "Maíz tardío", "2026-11-01", "2027-07-01", "", "", "10120000"),
-            ("Bassi-Prieto", "Lobianco", 27.0m, "Maíz tardío", "2026-11-01", "2027-07-01", "", "", "10120000"),
-            ("Breit", "Breit", 155.0m, "Girasol", "2026-09-01", "2027-05-01", "", "", "10050000"),
-            ("Corral", "Kiko", 43.0m, "Trigo", "2026-04-01", "2026-12-25", "Lote principal", "", ""),
-            ("La Casuarina", "30", 48.0m, "Maíz", "2026-09-01", "2027-05-01", "Superficie estimada", ejemploSig, "10160000")
+            ("1001", "Bassi-Prieto", "Bassi", 67.0m, "Maíz tardío", "2026-11-01", "2027-07-01", "", "10120000"),
+            ("1002", "Bassi-Prieto", "Lobianco", 27.0m, "Maíz tardío", "2026-11-01", "2027-07-01", "", "10120000"),
+            ("1003", "Breit", "Breit", 155.0m, "Girasol", "2026-09-01", "2027-05-01", "", "10050000"),
+            ("1004", "Corral", "Kiko", 43.0m, "Trigo", "2026-04-01", "2026-12-25", "Lote principal", ""),
+            ("1005", "La Casuarina", "30", 48.0m, "Maíz", "2026-09-01", "2027-05-01", "Superficie estimada", "10160000")
         };
 
         for (int r = 0; r < examples.Length; r++)
         {
             var ex = examples[r];
-            ws.Cell(r + 2, 1).Value = ex.Campo;
-            ws.Cell(r + 2, 2).Value = ex.Lote;
-            ws.Cell(r + 2, 3).Value = ex.Sup;
-            ws.Cell(r + 2, 4).Value = ex.Cultivo;
-            ws.Cell(r + 2, 5).Value = ex.Desde;
-            ws.Cell(r + 2, 6).Value = ex.Hasta;
-            ws.Cell(r + 2, 7).Value = ex.Notas;
-            ws.Cell(r + 2, 8).Value = ex.Gis;
+            ws.Cell(r + 2, 1).Value = ex.LoteId;
+            ws.Cell(r + 2, 2).Value = ex.Campo;
+            ws.Cell(r + 2, 3).Value = ex.Lote;
+            ws.Cell(r + 2, 4).Value = ex.Sup;
+            ws.Cell(r + 2, 5).Value = ex.Cultivo;
+            ws.Cell(r + 2, 6).Value = ex.Desde;
+            ws.Cell(r + 2, 7).Value = ex.Hasta;
+            ws.Cell(r + 2, 8).Value = ex.Notas;
             ws.Cell(r + 2, 9).Value = ex.Centro;
         }
 
@@ -571,13 +623,13 @@ public class LotExcelImportService : ILotExcelImportService
 
         string[] instructions =
         [
-            "1. La columna 'Campo' es obligatoria. Si el campo ya existe en el sistema, se reutiliza; si no, se crea.",
-            "2. La columna 'Lote' es obligatoria. Se asocia al campo correspondiente.",
-            "3. La columna 'Superficie Declarada (ha)' debe ser un número mayor a cero.",
-            "4. La columna 'Cultivo Actual' representa la rotación asignada a ese lote en la campaña.",
-            "5. Si 'Fecha Desde' o 'Fecha Hasta' se dejan en blanco, el sistema asignará automáticamente las fechas de inicio y fin de la campaña.",
-            "6. La columna 'GIS (GeoJSON)' es opcional: si se completa con un polígono GeoJSON (o WKT), el lote se importa con su geometría. Si se deja vacía, el lote queda sin GIS.",
-            "7. Si la geometría viene mal formada (agujeros exportados como polígonos sueltos, anillos cruzados), el sistema la normaliza y marca la fila como advertencia en la vista previa.",
+            "1. La columna 'lote_id' es el identificador estable del lote. Con él, reimportar actualiza el mismo lote aunque le cambies el nombre, y el GeoJSON del relevamiento se vincula solo (usa el mismo valor en el atributo 'lote_id' de cada feature).",
+            "2. La columna 'Campo' es obligatoria. Si el campo ya existe en el sistema, se reutiliza; si no, se crea.",
+            "3. La columna 'Lote' es obligatoria. Se asocia al campo correspondiente.",
+            "4. La columna 'Superficie Declarada (ha)' debe ser un número mayor a cero. Es contra este valor que se compara la superficie del polígono cuando se carga el GIS.",
+            "5. La columna 'Cultivo Actual' representa la rotación asignada a ese lote en la campaña.",
+            "6. Si 'Fecha Desde' o 'Fecha Hasta' se dejan en blanco, el sistema asignará automáticamente las fechas de inicio y fin de la campaña.",
+            "7. La geometría NO va en esta planilla: se carga aparte, desde el importador de GeoJSON del mapa, cruzando por 'lote_id'.",
             "8. La columna 'Centro ERP' es opcional y se aplica al CAMPO, no al lote: es la cuenta del plan de centros a la que imputan los pases G4 de sus labores. Alcanza con repetirla en cada fila del mismo campo.",
             "9. Esta importación se efectúa dentro de la campaña activa en la que te encuentres al momento de importar."
         ];
@@ -637,14 +689,15 @@ public class LotExcelImportService : ILotExcelImportService
                 var text = row.Cell(c).GetString().Trim().ToLowerInvariant();
                 if (string.IsNullOrEmpty(text)) continue;
 
-                if (text.Contains("campo") && indices.ColCampo == 0) indices.ColCampo = c;
+                // lote_id va primero: contiene "lote" y si no, se lo lleva la columna del nombre.
+                if (text == "lote_id" && indices.ColLoteId == 0) indices.ColLoteId = c;
+                else if (text.Contains("campo") && indices.ColCampo == 0) indices.ColCampo = c;
                 else if (text.Contains("lote") && indices.ColLote == 0) indices.ColLote = c;
                 else if ((text.Contains("superficie") || text.Contains("hectarea") || text.Contains("(ha)")) && indices.ColSuperficie == 0) indices.ColSuperficie = c;
                 else if ((text.Contains("cultivo") || text.Contains("actividad")) && indices.ColCultivo == 0) indices.ColCultivo = c;
                 else if ((text.Contains("desde") || text.Contains("inicio")) && indices.ColFechaDesde == 0) indices.ColFechaDesde = c;
                 else if ((text.Contains("hasta") || text.Contains("fin")) && indices.ColFechaHasta == 0) indices.ColFechaHasta = c;
                 else if ((text.Contains("nota") || text.Contains("obs")) && indices.ColNotas == 0) indices.ColNotas = c;
-                else if (EsColumnaGeometria(text) && indices.ColGis == 0) indices.ColGis = c;
                 else if (text.Contains("centro") && indices.ColCentro == 0) indices.ColCentro = c;
             }
 
@@ -658,21 +711,58 @@ public class LotExcelImportService : ILotExcelImportService
     }
 
     /// <summary>
-    /// Detecta la columna con la geometría. La planilla AMSA trae "GIS (GeoJSON)" y además
-    /// columnas de apoyo "GIS - Nombre origen" / "GIS - Superficie (ha)" que no son la geometría,
-    /// por eso se excluyen explícitamente.
+    /// El id puede venir como texto o como número de Excel ("1234" vs 1234.0). Se normaliza para
+    /// que la planilla y el atributo lote_id del GeoJSON crucen aunque la celda esté formateada
+    /// distinto.
     /// </summary>
-    private static bool EsColumnaGeometria(string headerLower)
+    private static string? NormalizarLoteId(string? raw)
     {
-        if (headerLower.Contains("geojson") || headerLower.Contains("wkt") || headerLower.Contains("geometr"))
-            return true;
+        if (string.IsNullOrWhiteSpace(raw)) return null;
 
-        if (!headerLower.Contains("gis")) return false;
+        var texto = raw.Trim();
 
-        return !(headerLower.Contains("nombre")
-                 || headerLower.Contains("superficie")
-                 || headerLower.Contains("origen")
-                 || headerLower.Contains("area"));
+        // Excel devuelve los enteros como "1234" pero a veces como "1234.0" según el formato.
+        if (double.TryParse(texto, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var num)
+            && num == Math.Floor(num) && Math.Abs(num) < 1e15)
+        {
+            return ((long)num).ToString(System.Globalization.CultureInfo.InvariantCulture);
+        }
+
+        return texto;
+    }
+
+    /// <summary>
+    /// Los lote_id que la planilla usa para más de un lote. Un mismo id repetido en varias filas
+    /// del mismo lote es normal (doble cultivo son dos filas); apuntando a lotes distintos, no.
+    /// </summary>
+    private static HashSet<string> DetectarIdsConflictivos(IXLWorksheet ws, HeaderIndices headers, int headerRow, int lastRow)
+    {
+        var conflictivos = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (headers.ColLoteId <= 0) return conflictivos;
+
+        var porId = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        for (int r = headerRow + 1; r <= lastRow; r++)
+        {
+            var row = ws.Row(r);
+            if (row.IsEmpty()) continue;
+
+            var id = NormalizarLoteId(GetCellString(row.Cell(headers.ColLoteId)));
+            if (id == null) continue;
+
+            var clave = $"{GetCellString(row.Cell(headers.ColCampo))}|{GetCellString(row.Cell(headers.ColLote))}";
+            if (porId.TryGetValue(id, out var anterior))
+            {
+                if (!string.Equals(anterior, clave, StringComparison.OrdinalIgnoreCase))
+                    conflictivos.Add(id);
+            }
+            else
+            {
+                porId[id] = clave;
+            }
+        }
+
+        return conflictivos;
     }
 
     private static string GetCellString(IXLCell cell)
@@ -798,8 +888,8 @@ public class LotExcelImportService : ILotExcelImportService
         public int ColFechaDesde { get; set; }
         public int ColFechaHasta { get; set; }
         public int ColNotas { get; set; }
-        public int ColGis { get; set; }
         public int ColCentro { get; set; }
+        public int ColLoteId { get; set; }
     }
 
     private static XLWorkbook OpenWorkbookSafely(Stream fileStream)

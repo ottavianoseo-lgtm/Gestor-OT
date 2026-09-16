@@ -13,13 +13,17 @@ public class LotImportRowDto
     public bool IsFieldNew { get; set; }
     public bool IsLotNew { get; set; }
     public bool IsCropNew { get; set; }
-    /// <summary>La fila trae una geometría GIS válida (GeoJSON o WKT) para el lote.</summary>
-    public bool HasGeometry { get; set; }
     /// <summary>
-    /// La geometría venía topológicamente inválida y se normalizó para poder usarla. Entra
-    /// igual, pero conviene contrastarla contra la superficie declarada.
+    /// Identificador estable del lote (columna 'lote_id'). Es el mismo valor que después trae
+    /// el atributo homónimo de cada feature del GeoJSON, y lo que permite vincular el GIS sin
+    /// cruzar por nombre.
     /// </summary>
-    public bool GeometryRepaired { get; set; }
+    public string? ExternalErpId { get; set; }
+    /// <summary>
+    /// El lote_id ya existe con otro nombre: reimportar lo va a renombrar a lo que dice la
+    /// planilla, en vez de crear un lote nuevo. Trae el nombre anterior.
+    /// </summary>
+    public string? RenamesLot { get; set; }
     /// <summary>Centro de costo del ERP que la planilla asigna al campo de esta fila.</summary>
     public long? CodCentro { get; set; }
     public string Status { get; set; } = "Valid"; // "Valid", "Warning", "Error"
@@ -36,9 +40,8 @@ public class LotImportSummaryDto
     public int ExistingFieldsCount { get; set; }
     public int NewLotsCount { get; set; }
     public int ExistingLotsCount { get; set; }
-    public int GeometryRows { get; set; }
-    /// <summary>Filas cuya geometría hubo que normalizar para poder importarla.</summary>
-    public int RepairedGeometryRows { get; set; }
+    /// <summary>Lotes distintos de la planilla que traen lote_id cargado.</summary>
+    public int RowsWithLoteId { get; set; }
     /// <summary>Campos de la planilla que traen centro de costo del ERP.</summary>
     public int FieldsWithCodCentro { get; set; }
     /// <summary>
@@ -59,8 +62,12 @@ public class LotImportResultDto
     public int CampaignLotsLinked { get; set; }
     public int RotationsCreated { get; set; }
     public int CropsCreated { get; set; }
-    /// <summary>Lotes a los que se les guardó la geometría GIS en esta importación.</summary>
-    public int GeometriesImported { get; set; }
+    /// <summary>Lotes a los que se les grabó el lote_id de la planilla.</summary>
+    public int LotIdsAssigned { get; set; }
+    /// <summary>Lotes que se encontraron por lote_id y cambiaron de nombre.</summary>
+    public int LotsRenamed { get; set; }
+    /// <summary>Lotes que se encontraron por lote_id y la planilla movió a otro campo.</summary>
+    public int LotsMovedField { get; set; }
     /// <summary>Campos a los que se les asignó el centro de costo que traía la planilla.</summary>
     public int CodCentrosAssigned { get; set; }
     /// <summary>Superficie de la campaña sumada por lote, no por fila.</summary>

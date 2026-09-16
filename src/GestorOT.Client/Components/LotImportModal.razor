@@ -43,15 +43,16 @@
         <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 20px; margin-bottom: 20px;">
             <h4 style="color: #fff; margin-bottom: 8px; font-size: 15px;">Formato del archivo Excel (.xlsx)</h4>
             <p style="color: rgba(255,255,255,0.7); font-size: 13px; margin-bottom: 12px;">
-                El libro debe contener las columnas: <strong>Campo</strong>, <strong>Lote</strong>, <strong>Superficie Declarada (ha)</strong>, 
-                <strong>Cultivo Actual</strong>, <strong>Fecha Desde</strong>, <strong>Fecha Hasta</strong> y <strong>Notas</strong>.
-                Opcionalmente, <strong>GIS (GeoJSON)</strong> con el polígono del lote.
+                El libro debe contener las columnas: <strong>lote_id</strong>, <strong>Campo</strong>, <strong>Lote</strong>,
+                <strong>Superficie Declarada (ha)</strong>, <strong>Cultivo Actual</strong>, <strong>Fecha Desde</strong>,
+                <strong>Fecha Hasta</strong> y <strong>Notas</strong>. Opcionalmente, <strong>Centro ERP</strong>.
             </p>
             <ul style="color: rgba(255,255,255,0.6); font-size: 12px; padding-left: 20px; margin: 0;">
-                <li>Los campos y lotes existentes se reutilizan por nombre sin duplicarse.</li>
+                <li><strong>lote_id</strong> identifica al lote: con él, reimportar actualiza el mismo lote aunque le cambies el nombre.</li>
+                <li>Los campos y los lotes sin <strong>lote_id</strong> se reutilizan por nombre.</li>
                 <li>Si no se especifican fechas de inicio o fin, se asignarán por defecto las fechas de la campaña.</li>
                 <li>Los cultivos que no figuren en el catálogo se darán de alta automáticamente como actividades activas.</li>
-                <li>Si la columna <strong>GIS (GeoJSON)</strong> trae un polígono, el lote se importa con su geometría. Es opcional.</li>
+                <li>La geometría no va acá: se carga desde el importador de GeoJSON del mapa, cruzando por <strong>lote_id</strong>.</li>
             </ul>
         </div>
 
@@ -124,13 +125,10 @@
                 </div>
             </div>
             <div style="background: rgba(255,255,255,0.03); padding: 14px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.08); text-align: center;">
-                <div style="color: rgba(255,255,255,0.5); font-size: 11px; text-transform: uppercase;">Con GIS</div>
+                <div style="color: rgba(255,255,255,0.5); font-size: 11px; text-transform: uppercase;">Con lote_id</div>
                 <div style="font-size: 22px; font-weight: 700; color: #16A085;">
-                    @_summary.GeometryRows
-                    @if (_summary.RepairedGeometryRows > 0)
-                    {
-                        <span style="font-size: 12px; color: #F39C12; margin-left: 4px;">(@_summary.RepairedGeometryRows normalizadas)</span>
-                    }
+                    @_summary.RowsWithLoteId
+                    <span style="font-size: 12px; color: rgba(255,255,255,0.5); margin-left: 4px;">de @(_summary.NewLotsCount + _summary.ExistingLotsCount)</span>
                 </div>
             </div>
             @if (_summary.FieldsWithCodCentro > 0)
@@ -159,21 +157,19 @@
         }
         else if (_summary.WarningRows > 0)
         {
-            var conFechas = _summary.Rows.Count(r => r.Status == "Warning" && !r.GeometryRepaired);
+            var sinId = _summary.Rows.Count(r => r.Status == "Warning" && string.IsNullOrEmpty(r.ExternalErpId));
+            var renombrados = _summary.Rows.Count(r => r.RenamesLot != null);
             <Alert Type="@AlertType.Warning" ShowIcon="true" Style="margin-bottom: 12px;">
                 <MessageTemplate>
                     <strong>@_summary.WarningRows fila(s) con advertencias.</strong> Se importan igual.
-                    @if (conFechas > 0)
+                    <text> Revisá el detalle por fila.</text>
+                    @if (sinId > 0)
                     {
-                        <text> @conFechas sin fechas completas: se les asignó el rango de la campaña.</text>
+                        <text> @sinId sin lote_id: se cruzan por nombre y no se les va a poder vincular el GeoJSON automáticamente.</text>
                     }
-                    @if (_summary.RepairedGeometryRows > 0)
+                    @if (renombrados > 0)
                     {
-                        <text>
-                            @_summary.RepairedGeometryRows con la geometría mal formada (típico de un export de shapefile:
-                            los agujeros vienen como polígonos sueltos): se normalizaron para poder usarlas. Contrastá su
-                            superficie contra la declarada.
-                        </text>
+                        <text> @renombrados con un lote_id que ya existe con otro nombre: se van a renombrar, no a duplicar.</text>
                     }
                 </MessageTemplate>
             </Alert>
@@ -235,10 +231,10 @@
                     </span>
                 }
             </PropertyColumn>
-            <PropertyColumn Property="c => c.HasGeometry" Title="GIS" Width="80">
-                @if (context.HasGeometry)
+            <PropertyColumn Property="c => c.ExternalErpId" Title="lote_id" Width="100">
+                @if (!string.IsNullOrEmpty(context.ExternalErpId))
                 {
-                    <Tag Color="@("cyan")"><Icon Type="environment" Theme="IconThemeType.Outline" /> Sí</Tag>
+                    <Tag Color="@("cyan")">@context.ExternalErpId</Tag>
                 }
                 else
                 {
