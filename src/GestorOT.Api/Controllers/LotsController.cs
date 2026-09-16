@@ -17,6 +17,7 @@ public class LotsController : ControllerBase
     private readonly ILotQueryService _queryService;
     private readonly IShapefileImportService _shapefileImport;
     private readonly ILotBulkLinkService _bulkLinkService;
+    private readonly IGeoJsonZipImportService _geoJsonZipImport;
     private readonly ICampaignGeometryService _campaignGeometry;
     private readonly ICampaignContextService _campaignContext;
 
@@ -25,6 +26,7 @@ public class LotsController : ControllerBase
         ILotQueryService queryService,
         IShapefileImportService shapefileImport,
         ILotBulkLinkService bulkLinkService,
+        IGeoJsonZipImportService geoJsonZipImport,
         ICampaignGeometryService campaignGeometry,
         ICampaignContextService campaignContext)
     {
@@ -32,6 +34,7 @@ public class LotsController : ControllerBase
         _queryService = queryService;
         _shapefileImport = shapefileImport;
         _bulkLinkService = bulkLinkService;
+        _geoJsonZipImport = geoJsonZipImport;
         _campaignGeometry = campaignGeometry;
         _campaignContext = campaignContext;
     }
@@ -93,6 +96,42 @@ public class LotsController : ControllerBase
             // que subieron, no del servidor, asi que va 400 y no 500.
             return BadRequest("El archivo no se pudo abrir como .zip. Puede estar corrupto o incompleto.");
         }
+    }
+
+    /// <summary>
+    /// Lee un .zip de archivos .geojson (o GeoJSON suelto) con atributo lote_id y devuelve
+    /// la vista previa de vinculación directa contra los lotes del sistema.
+    /// </summary>
+    [HttpPost("import/geojson-zip/preview")]
+    [RequestSizeLimit(64 * 1024 * 1024)]
+    public async Task<ActionResult<GeoJsonZipPreviewResultDto>> PreviewGeoJsonZip(IFormFile file, CancellationToken ct)
+    {
+        if (file is null || file.Length == 0)
+            return BadRequest("No se recibió ningún archivo.");
+
+        try
+        {
+            await using var stream = file.OpenReadStream();
+            var result = await _geoJsonZipImport.PreviewZipAsync(stream, ct);
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            return BadRequest($"Error al procesar el archivo: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Aplica la vinculación directa de geometrías leídas de GeoJSON por lote_id.
+    /// </summary>
+    [HttpPost("import/geojson-zip/apply")]
+    public async Task<ActionResult<GeoJsonZipApplyResultDto>> ApplyGeoJsonZip(GeoJsonZipApplyRequestDto request, CancellationToken ct)
+    {
+        if (request.Items.Count == 0)
+            return BadRequest("No se recibieron geometrías para vincular.");
+
+        var result = await _geoJsonZipImport.ApplyAsync(request, ct);
+        return result.Success ? Ok(result) : StatusCode(500, result);
     }
 
     /// <summary>

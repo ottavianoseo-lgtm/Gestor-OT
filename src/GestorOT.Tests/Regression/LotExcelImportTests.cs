@@ -350,5 +350,66 @@ public class LotExcelImportTests
             Assert.Equal("Breit Nuevo", lot.Name);
         }
     }
+
+    private static string? FindRepoFile(string fileName)
+    {
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        for (var i = 0; i < 8 && dir != null; i++, dir = dir.Parent)
+        {
+            var candidate = Path.Combine(dir.FullName, fileName);
+            if (File.Exists(candidate)) return candidate;
+        }
+        return null;
+    }
+
+    [Fact]
+    public async Task PlanillaAmandReal_SiEstaPresente_LeeColumnaIdYUUIDsCorrectamente()
+    {
+        var path = FindRepoFile("Gestor-OT_Importacion_AMAND_26-27_UUID.xlsx");
+        if (path == null) return;
+
+        var dbName = Guid.NewGuid().ToString();
+        var tenantId = Guid.NewGuid();
+        var campaignId = await SeedCampaignAsync(dbName, tenantId);
+
+        using (var context = CreateContext(dbName, tenantId))
+        {
+            var service = new LotExcelImportService(context, NullLogger<LotExcelImportService>.Instance);
+            using var fileStream = File.OpenRead(path);
+
+            var summary = await service.PreviewAsync(campaignId, fileStream);
+
+            Assert.Equal(94, summary.TotalRows);
+            Assert.Equal(83, summary.NewLotsCount);
+            Assert.Equal(83, summary.RowsWithLoteId);
+            Assert.Equal(8, summary.NewFieldsCount);
+            Assert.Equal(0, summary.ErrorRows);
+        }
+
+        using (var context = CreateContext(dbName, tenantId))
+        {
+            var service = new LotExcelImportService(context, NullLogger<LotExcelImportService>.Instance);
+            using var fileStream = File.OpenRead(path);
+
+            var result = await service.ExecuteAsync(campaignId, fileStream);
+
+            Assert.True(result.Success);
+            Assert.Equal(8, result.FieldsCreated);
+            Assert.Equal(83, result.LotsCreated);
+            Assert.Equal(83, result.LotIdsAssigned);
+            Assert.Equal(83, result.CampaignLotsLinked);
+        }
+
+        using (var context = CreateContext(dbName, tenantId))
+        {
+            var lots = await context.Lots.ToListAsync();
+            Assert.Equal(83, lots.Count);
+            Assert.All(lots, l =>
+            {
+                Assert.NotEqual(Guid.Empty, l.Id);
+                Assert.False(string.IsNullOrWhiteSpace(l.ExternalErpId));
+            });
+        }
+    }
 }
 

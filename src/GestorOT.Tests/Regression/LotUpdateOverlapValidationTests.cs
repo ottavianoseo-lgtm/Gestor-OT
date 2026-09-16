@@ -31,6 +31,7 @@ public class LotUpdateOverlapValidationTests
             queryService.Object,
             new Mock<IShapefileImportService>().Object,
             new Mock<ILotBulkLinkService>().Object,
+            new Mock<IGeoJsonZipImportService>().Object,
             new Mock<ICampaignGeometryService>().Object,
             new Mock<ICampaignContextService>().Object);
     }

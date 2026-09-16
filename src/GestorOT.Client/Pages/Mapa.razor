@@ -609,6 +609,169 @@
     }
 </Modal>
 
+<Modal Title="Vinculación Directa de Geometrías GIS (por ID)"
+       Visible="_showGeoJsonZipModal"
+       OnCancel="() => _showGeoJsonZipModal = false"
+       Footer="@null"
+       Width="960">
+    @if (_geoJsonZipPreview != null)
+    {
+        <div style="display: flex; flex-direction: column; gap: 16px;">
+            <!-- Resumen superior -->
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px;">
+                <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 12px;">
+                    <div style="font-size: 11px; color: rgba(255,255,255,0.5); text-transform: uppercase;">Total en Archivo</div>
+                    <div style="font-size: 20px; font-weight: 700; color: #fff;">@_geoJsonZipPreview.TotalInZip</div>
+                </div>
+                <div style="background: rgba(46,204,113,0.08); border: 1px solid rgba(46,204,113,0.2); border-radius: 8px; padding: 12px;">
+                    <div style="font-size: 11px; color: #2ECC71; text-transform: uppercase;">Lotes Coincidentes</div>
+                    <div style="font-size: 20px; font-weight: 700; color: #2ECC71;">@_geoJsonZipPreview.MatchedCount</div>
+                </div>
+                @if (_geoJsonZipPreview.UnmatchedCount > 0)
+                {
+                    <div style="background: rgba(231,76,60,0.08); border: 1px solid rgba(231,76,60,0.2); border-radius: 8px; padding: 12px;">
+                        <div style="font-size: 11px; color: #E74C3C; text-transform: uppercase;">No Encontrados</div>
+                        <div style="font-size: 20px; font-weight: 700; color: #E74C3C;">@_geoJsonZipPreview.UnmatchedCount</div>
+                    </div>
+                }
+                <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 12px;">
+                    <div style="font-size: 11px; color: rgba(255,255,255,0.5); text-transform: uppercase;">Campos Abarcados</div>
+                    <div style="font-size: 20px; font-weight: 700; color: #3498DB;">@_geoJsonZipPreview.FieldsCovered.Count</div>
+                </div>
+                @if (_geoJsonZipPreview.WarningsCount > 0)
+                {
+                    <div style="background: rgba(241,196,15,0.08); border: 1px solid rgba(241,196,15,0.2); border-radius: 8px; padding: 12px;">
+                        <div style="font-size: 11px; color: #F1C40F; text-transform: uppercase;">Desvíos Sup. (>15%)</div>
+                        <div style="font-size: 20px; font-weight: 700; color: #F1C40F;">@_geoJsonZipPreview.WarningsCount</div>
+                    </div>
+                }
+            </div>
+
+            <!-- Campos abarcados badges -->
+            @if (_geoJsonZipPreview.FieldsCovered.Count > 0)
+            {
+                <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 12px; color: rgba(255,255,255,0.6);">
+                    <span>Campos detectados:</span>
+                    @foreach (var f in _geoJsonZipPreview.FieldsCovered)
+                    {
+                        <span style="background: rgba(52,152,219,0.15); color: #3498DB; border: 1px solid rgba(52,152,219,0.3); border-radius: 4px; padding: 2px 8px; font-size: 11px;">
+                            @f
+                        </span>
+                    }
+                </div>
+            }
+
+            <!-- Barra de búsqueda y selección -->
+            <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <Button Size="@ButtonSize.Small" OnClick="() => ToggleAllGeoJsonZipItems(true)">Seleccionar Todos</Button>
+                    <Button Size="@ButtonSize.Small" OnClick="() => ToggleAllGeoJsonZipItems(false)">Deseleccionar</Button>
+                    <span style="font-size: 12px; color: rgba(255,255,255,0.6);">
+                        @_selectedGeoJsonZipLotIds.Count seleccionados para vincular
+                    </span>
+                </div>
+                <Input TValue="string" @bind-Value="_geoJsonZipSearch" Placeholder="Filtrar por lote o campo..." Size="@InputSize.Small" Style="max-width: 250px;" />
+            </div>
+
+            <!-- Tabla de Lotes -->
+            <div style="max-height: 400px; overflow-y: auto; border: 1px solid rgba(255,255,255,0.08); border-radius: 8px;">
+                <table style="width: 100%; border-collapse: collapse; font-size: 12px; text-align: left;">
+                    <thead>
+                        <tr style="background: rgba(255,255,255,0.04); border-bottom: 1px solid rgba(255,255,255,0.08); position: sticky; top: 0; z-index: 1;">
+                            <th style="padding: 10px 12px; width: 40px;"></th>
+                            <th style="padding: 10px 12px;">Campo</th>
+                            <th style="padding: 10px 12px;">Lote</th>
+                            <th style="padding: 10px 12px;">Sup. GIS</th>
+                            <th style="padding: 10px 12px;">Sup. Declarada</th>
+                            <th style="padding: 10px 12px;">Desvío %</th>
+                            <th style="padding: 10px 12px;">Estado</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var item in _geoJsonZipPreview.Items.Where(i =>
+                            string.IsNullOrWhiteSpace(_geoJsonZipSearch) ||
+                            (i.LotName?.Contains(_geoJsonZipSearch, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                            (i.FieldName?.Contains(_geoJsonZipSearch, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                            i.LoteId.Contains(_geoJsonZipSearch, StringComparison.OrdinalIgnoreCase)))
+                        {
+                            var isSelected = item.LotId.HasValue && _selectedGeoJsonZipLotIds.Contains(item.LotId.Value);
+                            <tr style="border-bottom: 1px solid rgba(255,255,255,0.04); background: @(isSelected ? "rgba(46,204,113,0.03)" : "transparent");">
+                                <td style="padding: 8px 12px;">
+                                    @if (item.LotFound && item.LotId.HasValue)
+                                    {
+                                        <input type="checkbox"
+                                               checked="@isSelected"
+                                               @onchange="@((ChangeEventArgs e) => ToggleGeoJsonZipItem(item.LotId.Value, (bool)(e.Value ?? false)))" />
+                                    }
+                                </td>
+                                <td style="padding: 8px 12px; font-weight: 500;">@(item.FieldName ?? "-")</td>
+                                <td style="padding: 8px 12px;">
+                                    <div style="font-weight: 600;">@(item.LotName ?? item.LoteId)</div>
+                                    <div style="font-size: 10px; color: rgba(255,255,255,0.4); font-family: monospace;">@item.LoteId</div>
+                                </td>
+                                <td style="padding: 8px 12px;">@item.GisAreaHa.ToString("N1") ha</td>
+                                <td style="padding: 8px 12px;">@(item.DeclaredAreaHa.HasValue ? $"{item.DeclaredAreaHa.Value:N1} ha" : "-")</td>
+                                <td style="padding: 8px 12px;">
+                                    @if (item.DeviationPercent.HasValue)
+                                    {
+                                        var devAbs = Math.Abs(item.DeviationPercent.Value);
+                                        var devColor = devAbs > 0.15 ? "#E74C3C" : (devAbs > 0.05 ? "#F1C40F" : "#2ECC71");
+                                        <span style="color: @devColor; font-weight: 600;">
+                                            @item.DeviationPercent.Value.ToString("P1")
+                                        </span>
+                                    }
+                                    else
+                                    {
+                                        <span>-</span>
+                                    }
+                                </td>
+                                <td style="padding: 8px 12px;">
+                                    @if (!item.LotFound)
+                                    {
+                                        <span style="background: rgba(231,76,60,0.15); color: #E74C3C; border: 1px solid rgba(231,76,60,0.3); border-radius: 4px; padding: 2px 6px; font-size: 11px;">
+                                            No Encontrado
+                                        </span>
+                                    }
+                                    else if (!string.IsNullOrEmpty(item.Warning))
+                                    {
+                                        <span style="background: rgba(241,196,15,0.15); color: #F1C40F; border: 1px solid rgba(241,196,15,0.3); border-radius: 4px; padding: 2px 6px; font-size: 11px;" title="@item.Warning">
+                                            @item.Warning
+                                        </span>
+                                    }
+                                    else if (item.HasExistingGeometry)
+                                    {
+                                        <span style="background: rgba(52,152,219,0.15); color: #3498DB; border: 1px solid rgba(52,152,219,0.3); border-radius: 4px; padding: 2px 6px; font-size: 11px;">
+                                            Actualiza Geometría
+                                        </span>
+                                    }
+                                    else
+                                    {
+                                        <span style="background: rgba(46,204,113,0.15); color: #2ECC71; border: 1px solid rgba(46,204,113,0.3); border-radius: 4px; padding: 2px 6px; font-size: 11px;">
+                                            ✓ Listo para vincular
+                                        </span>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Botones de Acción -->
+            <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px;">
+                <Button OnClick="() => _showGeoJsonZipModal = false">Cancelar</Button>
+                <Button Type="@ButtonType.Primary"
+                        Loading="_geoJsonZipApplying"
+                        Disabled="@(_selectedGeoJsonZipLotIds.Count == 0)"
+                        OnClick="ApplyGeoJsonZipAsync"
+                        Style="border-radius: 6px;">
+                    <Icon Type="check" /> Vincular @_selectedGeoJsonZipLotIds.Count Geometrías
+                </Button>
+            </div>
+        </div>
+    }
+</Modal>
+
 <Modal Title="Crear o Vincular Lote desde Importación"
        Visible="_showLinkModal"
        OnCancel="CloseLinkModal"
@@ -2167,6 +2330,44 @@
                                 continue;
                             }
 
+                            // Si es un zip con geojson, intentamos la importación directa por UUID (Gestor-OT GIS)
+                            var hasGeoJson = geoEntries.Any(e => e.Name.EndsWith(".geojson", StringComparison.OrdinalIgnoreCase) || e.Name.EndsWith(".json", StringComparison.OrdinalIgnoreCase));
+                            if (hasGeoJson && file.Name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+                            {
+                                try
+                                {
+                                    ms.Position = 0;
+                                    using var previewContent = new MultipartFormDataContent();
+                                    var streamCopy = new MemoryStream(ms.ToArray());
+                                    var fileContent = new StreamContent(streamCopy);
+                                    fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/zip");
+                                    previewContent.Add(fileContent, "file", file.Name);
+
+                                    var previewResp = await Http.PostAsync("api/lots/import/geojson-zip/preview", previewContent);
+                                    if (previewResp.IsSuccessStatusCode)
+                                    {
+                                        var previewData = await previewResp.Content.ReadFromJsonAsync<GeoJsonZipPreviewResultDto>(
+                                            AppJsonSerializerContext.Default.GeoJsonZipPreviewResultDto);
+
+                                        if (previewData != null && previewData.MatchedCount > 0)
+                                        {
+                                            _geoJsonZipPreview = previewData;
+                                            _selectedGeoJsonZipLotIds = new HashSet<Guid>(
+                                                previewData.Items.Where(i => i.LotFound && i.LotId.HasValue).Select(i => i.LotId!.Value));
+                                            _showGeoJsonZipModal = true;
+                                            _showImportModal = false;
+                                            _importLoading = false;
+                                            StateHasChanged();
+                                            return;
+                                        }
+                                    }
+                                }
+                                catch (Exception)
+                                {
+                                    // Continuar con el parser legado si falla el preview
+                                }
+                            }
+
                             foreach (var entry in geoEntries)
                             {
                                 try
@@ -2288,6 +2489,82 @@
     /// que puede ser null); null en este diccionario significa "Sin columna de nombre" -> autonumerar.
     /// </summary>
     private Dictionary<string, string?> _groupNameColumns = new();
+
+    private bool _showGeoJsonZipModal = false;
+    private bool _geoJsonZipApplying = false;
+    private GeoJsonZipPreviewResultDto? _geoJsonZipPreview;
+    private HashSet<Guid> _selectedGeoJsonZipLotIds = new();
+    private string _geoJsonZipSearch = "";
+
+    private void ToggleAllGeoJsonZipItems(bool selectAll)
+    {
+        if (_geoJsonZipPreview == null) return;
+        if (selectAll)
+        {
+            _selectedGeoJsonZipLotIds = new HashSet<Guid>(
+                _geoJsonZipPreview.Items.Where(i => i.LotFound && i.LotId.HasValue).Select(i => i.LotId!.Value));
+        }
+        else
+        {
+            _selectedGeoJsonZipLotIds.Clear();
+        }
+    }
+
+    private void ToggleGeoJsonZipItem(Guid lotId, bool selected)
+    {
+        if (selected) _selectedGeoJsonZipLotIds.Add(lotId);
+        else _selectedGeoJsonZipLotIds.Remove(lotId);
+    }
+
+    private async Task ApplyGeoJsonZipAsync()
+    {
+        if (_geoJsonZipPreview == null || _selectedGeoJsonZipLotIds.Count == 0) return;
+
+        _geoJsonZipApplying = true;
+        try
+        {
+            var campaignId = CampaignState.CurrentCampaign?.Id;
+            var itemsToApply = _geoJsonZipPreview.Items
+                .Where(i => i.LotFound && i.LotId.HasValue && _selectedGeoJsonZipLotIds.Contains(i.LotId.Value))
+                .Select(i => new GeoJsonZipApplyItemDto(i.LotId!.Value, i.Wkt, i.GisAreaHa))
+                .ToList();
+
+            var request = new GeoJsonZipApplyRequestDto(itemsToApply, campaignId);
+            var response = await Http.PostAsJsonAsync("api/lots/import/geojson-zip/apply",
+                request, AppJsonSerializerContext.Default.GeoJsonZipApplyRequestDto);
+
+            if (response.IsSuccessStatusCode)
+            {
+                var result = await response.Content.ReadFromJsonAsync<GeoJsonZipApplyResultDto>(
+                    AppJsonSerializerContext.Default.GeoJsonZipApplyResultDto);
+
+                if (result != null && result.Success)
+                {
+                    Message.Success($"Se vincularon {result.LinkedCount} geometrías exitosamente.");
+                    _showGeoJsonZipModal = false;
+                    _geoJsonZipPreview = null;
+                    await ReloadMap();
+                }
+                else
+                {
+                    Message.Error(result?.Error ?? "Error al vincular geometrías.");
+                }
+            }
+            else
+            {
+                var error = await response.Content.ReadAsStringAsync();
+                Message.Error($"Error al aplicar geometrías: {error}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Message.Error($"Error: {ex.Message}");
+        }
+        finally
+        {
+            _geoJsonZipApplying = false;
+        }
+    }
 
     /// <summary>Polígonos de los grupos que el usuario no descartó.</summary>
     private IEnumerable<ImportResult> VisibleImportResults =>

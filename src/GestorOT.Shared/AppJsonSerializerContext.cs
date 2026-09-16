@@ -178,6 +178,13 @@ namespace GestorOT.Shared;
 [JsonSerializable(typeof(List<LotBulkLinkItemResultDto>))]
 [JsonSerializable(typeof(LotBulkLinkResultDto))]
 [JsonSerializable(typeof(LotUpdateResultDto))]
+[JsonSerializable(typeof(GeoJsonZipFeaturePreviewDto))]
+[JsonSerializable(typeof(List<GeoJsonZipFeaturePreviewDto>))]
+[JsonSerializable(typeof(GeoJsonZipPreviewResultDto))]
+[JsonSerializable(typeof(GeoJsonZipApplyItemDto))]
+[JsonSerializable(typeof(List<GeoJsonZipApplyItemDto>))]
+[JsonSerializable(typeof(GeoJsonZipApplyRequestDto))]
+[JsonSerializable(typeof(GeoJsonZipApplyResultDto))]
 [JsonSourceGenerationOptions(
     PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,
     WriteIndented = false,

@@ -44,6 +44,7 @@ public class LotGeometryDeletionTests
             query.Object,
             new Mock<IShapefileImportService>().Object,
             new Mock<ILotBulkLinkService>().Object,
+            new Mock<IGeoJsonZipImportService>().Object,
             new CampaignGeometryService(context, query.Object),
             campaignContext.Object);
     }

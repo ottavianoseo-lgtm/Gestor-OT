@@ -78,6 +78,7 @@ public static class ServiceExtensions
             services.AddScoped<ILotQueryService, LotQueryService>();
             services.AddScoped<IShapefileImportService, ShapefileImportService>();
             services.AddScoped<ILotBulkLinkService, LotBulkLinkService>();
+            services.AddScoped<IGeoJsonZipImportService, GeoJsonZipImportService>();
             services.AddScoped<ICampaignGeometryService, CampaignGeometryService>();
             services.AddScoped<IDashboardQueryService, DashboardQueryService>();
             services.AddScoped<IAuditLogQueryService, AuditLogQueryService>();

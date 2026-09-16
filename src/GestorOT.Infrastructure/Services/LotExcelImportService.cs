@@ -690,7 +690,7 @@ public class LotExcelImportService : ILotExcelImportService
                 if (string.IsNullOrEmpty(text)) continue;
 
                 // lote_id va primero: contiene "lote" y si no, se lo lleva la columna del nombre.
-                if (text == "lote_id" && indices.ColLoteId == 0) indices.ColLoteId = c;
+                if ((text == "lote_id" || text == "id" || text == "uuid" || text == "id_lote" || text == "lote id") && indices.ColLoteId == 0) indices.ColLoteId = c;
                 else if (text.Contains("campo") && indices.ColCampo == 0) indices.ColCampo = c;
                 else if (text.Contains("lote") && indices.ColLote == 0) indices.ColLote = c;
                 else if ((text.Contains("superficie") || text.Contains("hectarea") || text.Contains("(ha)")) && indices.ColSuperficie == 0) indices.ColSuperficie = c;
