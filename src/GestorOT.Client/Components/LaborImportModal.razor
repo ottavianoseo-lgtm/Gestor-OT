@@ -1,18 +1,17 @@
 @using GestorOT.Shared
 @using GestorOT.Shared.Dtos
-@using GestorOT.Domain.Enums
 @using System.Net.Http.Json
-@using System.Text.Json
 @using AntDesign
 @inject HttpClient Http
 @inject IMessageService Message
+@inject NavigationManager Nav
 @inject IJSRuntime Js
 
 <Modal Visible="@Visible"
        Title="@("Importación Masiva de Labores e Insumos")"
        OnCancel="HandleClose"
        Footer="@null"
-       Width="1100"
+       Width="800"
        Style="top: 20px;">
 
     @if (CampaignId == Guid.Empty)
@@ -28,7 +27,7 @@
     }
     else if (_step == 1)
     {
-        <!-- STEP 1: CARGA DE ARCHIVO & DESCARGA DE TEMPLATE -->
+        <!-- STEP 1: CARGA DE ARCHIVO -->
         <div style="margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; background: rgba(46, 204, 113, 0.08); padding: 12px 16px; border-radius: 8px; border: 1px solid rgba(46, 204, 113, 0.25);">
             <div style="display: flex; align-items: center; gap: 8px;">
                 <Icon Type="calendar" Theme="IconThemeType.Outline" Style="color: #2ECC71; font-size: 18px;" />
@@ -48,9 +47,9 @@
                 Podés subir tanto nuestro <strong>Template Estándar Gestor-OT</strong> como la planilla nativa <strong>AMSA / CREA</strong>.
             </p>
             <ul style="color: rgba(255,255,255,0.6); font-size: 12px; padding-left: 20px; margin: 0; line-height: 1.8;">
-                <li><strong>Agrupación automática:</strong> Una fila con Tipo <code>Labor</code> o <code>Siembra</code> inicia la labor; las filas siguientes (Herbicida, Fertilizante, Coadyuvante, etc.) se asignan como su receta de insumos.</li>
-                <li><strong>Asociación al Lote:</strong> Cada labor se vincula directamente al lote en esta campaña, heredando automáticamente el cultivo y rotación activa.</li>
-                <li><strong>Reconciliación de Insumos:</strong> En el siguiente paso podrás verificar el semáforo de insumos, corregir cualquier coincidencia y el sistema aprenderá tus elecciones permanentemente.</li>
+                <li><strong>Importación directa:</strong> todo lo que haga match completo (lote, labor, insumos, responsable y proveedor) se importa en el acto, sin pasos intermedios.</li>
+                <li><strong>Lo que no matchee</strong> queda en la sección <strong>Importaciones Pendientes</strong> con la misma vista de conciliación, para matchearlo a mano cuando quieras. Nada pendiente es una labor todavía.</li>
+                <li><strong>Sin re-subidas:</strong> ya no hace falta corregir la planilla y subirla entera por unas pocas filas con problemas.</li>
             </ul>
         </div>
 
@@ -76,7 +75,7 @@
             @if (_isProcessing)
             {
                 <div style="margin-top: 20px;">
-                    <Spin Tip="Analizando labores, lotes e insumos..." />
+                    <Spin Tip="Importando filas con match completo..." />
                 </div>
             }
         </div>
@@ -85,533 +84,87 @@
             <Button OnClick="HandleClose">Cancelar</Button>
         </div>
     }
-    else if (_step == 2 && _preview != null)
+    else if (_step == 2 && _uploadResult != null)
     {
-        <!-- STEP 2: VISTA PREVIA Y RECONCILIACIÓN -->
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-            <div>
-                <h3 style="color: #fff; margin: 0; font-size: 18px;">Reconciliación y Vista Previa</h3>
-                <span style="color: rgba(255,255,255,0.6); font-size: 13px;">Archivo: <strong>@_selectedFileName</strong> &bull; Campaña: <strong>@CampaignName</strong></span>
-            </div>
-            <Button Size="@ButtonSize.Small" OnClick="ResetImport" Style="border-radius: 6px;">
-                <Icon Type="rollback" /> Cambiar Archivo
-            </Button>
-        </div>
-
-        <!-- Metric Cards -->
-        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px;">
-            <div style="background: rgba(46, 204, 113, 0.1); border: 1px solid rgba(46, 204, 113, 0.3); border-radius: 8px; padding: 12px 16px; text-align: center;">
-                <div style="font-size: 24px; font-weight: 700; color: #2ECC71;">@_preview.TotalLabors</div>
-                <div style="font-size: 12px; color: rgba(255,255,255,0.7); text-transform: uppercase;">Labores Detectadas</div>
-            </div>
-            <div style="background: rgba(52, 152, 219, 0.1); border: 1px solid rgba(52, 152, 219, 0.3); border-radius: 8px; padding: 12px 16px; text-align: center;">
-                <div style="font-size: 24px; font-weight: 700; color: #3498DB;">@_preview.TotalSupplies</div>
-                <div style="font-size: 12px; color: rgba(255,255,255,0.7); text-transform: uppercase;">Aplicaciones Insumos</div>
-            </div>
-            <div style="background: rgba(155, 89, 182, 0.1); border: 1px solid rgba(155, 89, 182, 0.3); border-radius: 8px; padding: 12px 16px; text-align: center;">
-                <div style="font-size: 24px; font-weight: 700; color: #9B59B6;">@_preview.TotalHectares.ToString("N1") ha</div>
-                <div style="font-size: 12px; color: rgba(255,255,255,0.7); text-transform: uppercase;">Superficie Total</div>
-            </div>
-            <div style="background: @(_preview.UnmatchedSuppliesCount > 0 ? "rgba(231, 76, 60, 0.1)" : "rgba(46, 204, 113, 0.1)"); border: 1px solid @(_preview.UnmatchedSuppliesCount > 0 ? "rgba(231, 76, 60, 0.3)" : "rgba(46, 204, 113, 0.3)"); border-radius: 8px; padding: 12px 16px; text-align: center;">
-                <div style="font-size: 24px; font-weight: 700; color: @(_preview.UnmatchedSuppliesCount > 0 ? "#E74C3C" : "#2ECC71");">
-                    @_preview.UnmatchedSuppliesCount / @_preview.UniqueSuppliesCount
-                </div>
-                <div style="font-size: 12px; color: rgba(255,255,255,0.7); text-transform: uppercase;">Insumos a Revisar</div>
-            </div>
-        </div>
-
-        @if (!string.IsNullOrEmpty(_errorMessage))
+        <!-- STEP 2: RESULTADO -->
+        @if (_uploadResult.DuplicateOfBatchId.HasValue)
         {
-            <Alert Type="@AlertType.Error" Message="@_errorMessage" ShowIcon="true" Style="margin-bottom: 16px;" />
-        }
-
-        <!-- Tabs -->
-        <Tabs DefaultActiveKey="reconciliation">
-            <!-- TAB 1: RECONCILIACIÓN DE INSUMOS -->
-            <TabPane Key="reconciliation">
-                <TabTemplate>
-                    <span>
-                        <Icon Type="tags" /> Reconciliación de Insumos
-                        @if (_preview.UnmatchedSuppliesCount > 0)
-                        {
-                            <Badge Count="@_preview.UnmatchedSuppliesCount" Style="margin-left: 6px; background-color: #E74C3C;" />
-                        }
-                        else
-                        {
-                            <Icon Type="check-circle" Theme="IconThemeType.Fill" Style="color: #2ECC71; margin-left: 6px;" />
-                        }
-                    </span>
-                </TabTemplate>
-                <ChildContent>
-                    <div style="margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center;">
-                        <span style="font-size: 13px; color: rgba(255,255,255,0.7);">
-                            Verificá cómo machea cada insumo de la planilla con tu catálogo. Podés corregir sugerencias o crear productos nuevos.
-                        </span>
-                        <div style="display: flex; gap: 8px;">
-                            <Button Size="@ButtonSize.Small" OnClick="AcceptAllHighConfidence" Style="border-radius: 6px; font-size: 12px;">
-                                <Icon Type="check" /> Confirmar sugerencias altas
-                            </Button>
-                        </div>
-                    </div>
-
-                    <div style="max-height: 420px; overflow-y: auto; border: 1px solid rgba(255,255,255,0.1); border-radius: 8px;">
-                        <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
-                            <thead style="background: rgba(255,255,255,0.06); position: sticky; top: 0; z-index: 1;">
-                                <tr style="border-bottom: 1px solid rgba(255,255,255,0.1); text-align: left;">
-                                    <th style="padding: 10px 12px; color: rgba(255,255,255,0.8);">Insumo en Excel</th>
-                                    <th style="padding: 10px 12px; color: rgba(255,255,255,0.8); width: 120px;">Uso y Dosis</th>
-                                    <th style="padding: 10px 12px; color: rgba(255,255,255,0.8); width: 150px;">Certeza / Semáforo</th>
-                                    <th style="padding: 10px 12px; color: rgba(255,255,255,0.8);">Mapeo en Gestor-OT</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                @foreach (var map in _preview.SupplyMappings)
-                                {
-                                    <tr style="border-bottom: 1px solid rgba(255,255,255,0.05); background: @(map.ConfidenceLevel == "None" ? "rgba(231, 76, 60, 0.05)" : "transparent");">
-                                        <td style="padding: 10px 12px;">
-                                            <strong style="color: #fff; display: block;">@map.RawName</strong>
-                                            <span style="font-size: 11px; color: rgba(255,255,255,0.5);">@map.DetectedCategory &bull; @map.DetectedUnit</span>
-                                        </td>
-                                        <td style="padding: 10px 12px; color: rgba(255,255,255,0.8);">
-                                            <span>@map.Occurrences veces</span><br />
-                                            <span style="font-size: 11px; color: rgba(255,255,255,0.5);">Prom: @map.AverageDose @map.DetectedUnit</span>
-                                        </td>
-                                        <td style="padding: 10px 12px;">
-                                            @if (map.IsFromAlias)
-                                            {
-                                                <Tag Color="@("green")"><Icon Type="check-circle" /> Alias Guardado (100%)</Tag>
-                                            }
-                                            else if (map.Confidence >= 0.85)
-                                            {
-                                                <Tag Color="@("green")"><Icon Type="check" /> Exacto (@((int)(map.Confidence * 100))%)</Tag>
-                                            }
-                                            else if (map.Confidence >= 0.70)
-                                            {
-                                                <Tag Color="@("orange")"><Icon Type="question-circle" /> Sugerido (@((int)(map.Confidence * 100))%)</Tag>
-                                            }
-                                            else
-                                            {
-                                                <Tag Color="@("red")"><Icon Type="close-circle" /> Sin coincidencia</Tag>
-                                            }
-                                        </td>
-                                        <td style="padding: 10px 12px;">
-                                            <div style="display: flex; gap: 8px; align-items: center;">
-                                                <RadioGroup TValue="string" Value="@map.Action" Size="@InputSize.Small" OnChange="@(val => OnActionChanged(map, val))">
-                                                    <Radio RadioButton Value="@("Match")">Asignar Existente</Radio>
-                                                    <Radio RadioButton Value="@("CreateNew")">+ Crear Nuevo</Radio>
-                                                    <Radio RadioButton Value="@("Ignore")">Ignorar</Radio>
-                                                </RadioGroup>
-                                            </div>
-
-                                            @if (map.Action == "Match")
-                                            {
-                                                <div style="margin-top: 6px;">
-                                                    <Select TItem="InventoryDto" TItemValue="Guid?"
-                                                            @bind-Value="map.MatchedSupplyId"
-                                                            DataSource="@_inventoryList"
-                                                            LabelName="@nameof(InventoryDto.ItemName)"
-                                                            ValueName="@nameof(InventoryDto.Id)"
-                                                            Placeholder="Seleccionar insumo de inventario..."
-                                                            EnableSearch="true"
-                                                            Style="width: 100%;"
-                                                            OnSelectedItemChanged="@(item => OnSupplySelected(map, item))" />
-                                                </div>
-                                            }
-                                            else if (map.Action == "CreateNew")
-                                            {
-                                                <div style="margin-top: 6px; display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 6px;">
-                                                    <Input @bind-Value="map.NewItemName" Placeholder="Nombre del insumo" Size="@InputSize.Small" />
-                                                    <Input @bind-Value="map.NewCategory" Placeholder="Categoría" Size="@InputSize.Small" />
-                                                    <Input @bind-Value="map.NewUnit" Placeholder="Unidad (l/kg)" Size="@InputSize.Small" />
-                                                </div>
-                                            }
-                                        </td>
-                                    </tr>
-                                }
-                            </tbody>
-                        </table>
-                    </div>
-                </ChildContent>
-            </TabPane>
-
-            <!-- TAB 2: RECONCILIACIÓN DE TIPOS DE LABOR -->
-            <TabPane Key="labor-types">
-                <TabTemplate>
-                    <span>
-                        <Icon Type="tool" /> Reconciliación de Labores (@_preview.LaborTypeMappings.Count)
-                        @if (_preview.UnmatchedLaborTypesCount > 0)
-                        {
-                            <Tag Color="@("orange")" Style="margin-left: 6px; font-size: 11px;">@_preview.UnmatchedLaborTypesCount a revisar</Tag>
-                        }
-                        else
-                        {
-                            <Icon Type="check-circle" Theme="IconThemeType.Fill" Style="color: #2ECC71; margin-left: 6px;" />
-                        }
-                    </span>
-                </TabTemplate>
-                <ChildContent>
-                    <div style="margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center;">
-                        <span style="font-size: 13px; color: rgba(255,255,255,0.7);">
-                            Verificá cómo machea cada Tipo de Labor de la planilla con el catálogo oficial del ERP. Podés confirmar las sugerencias o seleccionar el concepto correspondiente. El sistema memorizará la asociación automáticamente.
-                        </span>
-                        <div style="display: flex; gap: 8px;">
-                            <Button Size="@ButtonSize.Small" OnClick="AcceptAllHighConfidenceLaborTypes" Style="border-radius: 6px; font-size: 12px;">
-                                <Icon Type="check" /> Confirmar sugerencias altas
-                            </Button>
-                        </div>
-                    </div>
-
-                    <div style="max-height: 420px; overflow-y: auto; border: 1px solid rgba(255,255,255,0.1); border-radius: 8px;">
-                        <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
-                            <thead style="background: rgba(255,255,255,0.06); position: sticky; top: 0; z-index: 1;">
-                                <tr style="border-bottom: 1px solid rgba(255,255,255,0.1); text-align: left;">
-                                    <th style="padding: 10px 12px; color: rgba(255,255,255,0.8);">Labor en Excel</th>
-                                    <th style="padding: 10px 12px; color: rgba(255,255,255,0.8); width: 120px;">Ocurrencias</th>
-                                    <th style="padding: 10px 12px; color: rgba(255,255,255,0.8); width: 160px;">Certeza / Semáforo</th>
-                                    <th style="padding: 10px 12px; color: rgba(255,255,255,0.8);">Concepto ERP en Gestor-OT</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                @foreach (var map in _preview.LaborTypeMappings)
-                                {
-                                    <tr style="border-bottom: 1px solid rgba(255,255,255,0.05); background: @(map.ConfidenceLevel == "None" ? "rgba(231, 76, 60, 0.05)" : "transparent");">
-                                        <td style="padding: 10px 12px;">
-                                            <strong style="color: #fff; display: block;">@map.RawName</strong>
-                                        </td>
-                                        <td style="padding: 10px 12px; color: rgba(255,255,255,0.8);">
-                                            <span>@map.Occurrences labores</span>
-                                        </td>
-                                        <td style="padding: 10px 12px;">
-                                            @if (map.IsFromAlias)
-                                            {
-                                                <Tag Color="@("cyan")"><Icon Type="star" /> Alias Memorizado</Tag>
-                                            }
-                                            else if (map.Confidence >= 1.0 && map.MatchedLaborTypeId.HasValue)
-                                            {
-                                                <Tag Color="@("green")"><Icon Type="check" /> Exacto (100%)</Tag>
-                                            }
-                                            else if (map.SuggestedLaborTypeId.HasValue && !map.MatchedLaborTypeId.HasValue)
-                                            {
-                                                <Tag Color="@("orange")"><Icon Type="bulb" /> Sugerencia (@((int)(map.Confidence * 100))%)</Tag>
-                                            }
-                                            else if (map.SuggestedLaborTypeId.HasValue && map.MatchedLaborTypeId == map.SuggestedLaborTypeId)
-                                            {
-                                                <Tag Color="@("green")"><Icon Type="check" /> Sugerencia Aceptada</Tag>
-                                            }
-                                            else if (map.MatchedLaborTypeId.HasValue)
-                                            {
-                                                <Tag Color="@("blue")"><Icon Type="link" /> Asignado</Tag>
-                                            }
-                                            else
-                                            {
-                                                <Tag Color="@("red")"><Icon Type="close-circle" /> Sin coincidencia</Tag>
-                                            }
-                                        </td>
-                                        <td style="padding: 10px 12px;">
-                                            <div style="display: flex; flex-direction: column; gap: 6px;">
-                                                @if (map.SuggestedLaborTypeId.HasValue && !map.MatchedLaborTypeId.HasValue)
-                                                {
-                                                    <div>
-                                                        <Button Size="@ButtonSize.Small" Type="@ButtonType.Dashed" OnClick="@(() => AcceptSuggestion(map))" Style="color: #F39C12; border-color: #F39C12; font-size: 12px;">
-                                                            <Icon Type="check" /> Sugerido: Vincular con '@map.SuggestedLaborTypeName'
-                                                        </Button>
-                                                    </div>
-                                                }
-                                                @{
-                                                    var modeFilter = ModeForMapping(map);
-                                                }
-                                                <Select TItem="LaborTypeDto" TItemValue="Guid?"
-                                                        @bind-Value="map.MatchedLaborTypeId"
-                                                        DataSource="@LaborTypesFor(map)"
-                                                        ItemLabel="x => x.DisplayName"
-                                                        ItemValue="x => (Guid?)x.Id"
-                                                        Placeholder="Seleccionar concepto del ERP..."
-                                                        EnableSearch="true"
-                                                        Style="width: 100%;"
-                                                        OnSelectedItemChanged="@(item => OnLaborTypeSelected(map, item))" />
-                                                @if (modeFilter is not null)
-                                                {
-                                                    <span style="font-size: 10px; color: rgba(255,255,255,0.45);">
-                                                        Filtrado a tareas @(modeFilter == LaborExecutionMode.Contractor ? "de contratista" : "propias"),
-                                                        según la columna Contratista del Excel
-                                                    </span>
-                                                }
-                                                else
-                                                {
-                                                    <span style="font-size: 10px; color: #F39C12;">
-                                                        Este nombre aparece en filas propias y de contratista: se muestran todas las tareas
-                                                    </span>
-                                                }
-                                            </div>
-                                        </td>
-                                    </tr>
-                                }
-                            </tbody>
-                        </table>
-                    </div>
-                </ChildContent>
-            </TabPane>
-
-            <!-- TAB: RECONCILIACIÓN DE PROVEEDORES DE INSUMOS (OT-26) -->
-            @if (_preview.SupplierMappings.Count > 0)
-            {
-                <TabPane Key="suppliers">
-                    <TabTemplate>
-                        <span>
-                            <Icon Type="shop" /> Proveedores de Insumos (@_preview.SupplierMappings.Count)
-                            @if (_preview.UnmatchedSuppliersCount > 0)
-                            {
-                                <Badge Count="@_preview.UnmatchedSuppliersCount" Style="margin-left: 6px; background-color: #F39C12;" />
-                            }
-                            else
-                            {
-                                <Icon Type="check-circle" Theme="IconThemeType.Fill" Style="color: #2ECC71; margin-left: 6px;" />
-                            }
-                        </span>
-                    </TabTemplate>
-                    <ChildContent>
-                        <div style="margin-bottom: 12px;">
-                            <span style="font-size: 13px; color: rgba(255,255,255,0.7);">
-                                Nombres detectados en la columna "Contr/Prove" de las filas de insumo. Podés vincularlos a un contacto existente;
-                                si dejás alguno sin vincular, el insumo se importa igual pero sin proveedor asignado.
-                            </span>
-                        </div>
-
-                        <div style="max-height: 420px; overflow-y: auto; border: 1px solid rgba(255,255,255,0.1); border-radius: 8px;">
-                            <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
-                                <thead style="background: rgba(255,255,255,0.06); position: sticky; top: 0; z-index: 1;">
-                                    <tr style="border-bottom: 1px solid rgba(255,255,255,0.1); text-align: left;">
-                                        <th style="padding: 10px 12px; color: rgba(255,255,255,0.8);">Proveedor en Excel</th>
-                                        <th style="padding: 10px 12px; color: rgba(255,255,255,0.8); width: 100px;">Ocurrencias</th>
-                                        <th style="padding: 10px 12px; color: rgba(255,255,255,0.8); width: 150px;">Certeza</th>
-                                        <th style="padding: 10px 12px; color: rgba(255,255,255,0.8);">Contacto en Gestor-OT</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    @foreach (var map in _preview.SupplierMappings)
-                                    {
-                                        <tr style="border-bottom: 1px solid rgba(255,255,255,0.05); background: @(map.ConfidenceLevel == "None" ? "rgba(243, 156, 18, 0.05)" : "transparent");">
-                                            <td style="padding: 10px 12px;">
-                                                <strong style="color: #fff;">@map.RawName</strong>
-                                            </td>
-                                            <td style="padding: 10px 12px; color: rgba(255,255,255,0.8);">
-                                                @map.Occurrences
-                                            </td>
-                                            <td style="padding: 10px 12px;">
-                                                @if (map.ConfidenceLevel == "High")
-                                                {
-                                                    <Tag Color="@("green")"><Icon Type="check" /> Coincidencia</Tag>
-                                                }
-                                                else
-                                                {
-                                                    <Tag Color="@("orange")"><Icon Type="question-circle" /> Sin coincidencia</Tag>
-                                                }
-                                            </td>
-                                            <td style="padding: 10px 12px;">
-                                                <Select TItem="ContactDto" TItemValue="Guid?"
-                                                        @bind-Value="map.MatchedContactId"
-                                                        DataSource="@_contactsList"
-                                                        LabelName="@nameof(ContactDto.FullName)"
-                                                        ValueName="@nameof(ContactDto.Id)"
-                                                        Placeholder="Sin proveedor asignado"
-                                                        AllowClear="true"
-                                                        EnableSearch="true"
-                                                        Style="width: 100%;"
-                                                        OnSelectedItemChanged="@(item => OnSupplierSelected(map, item))" />
-                                            </td>
-                                        </tr>
-                                    }
-                                </tbody>
-                            </table>
-                        </div>
-                    </ChildContent>
-                </TabPane>
-            }
-
-            <!-- TAB 3: LABORES DETECTADAS -->
-            <TabPane Key="labors">
-                <TabTemplate>
-                    <span><Icon Type="unordered-list" /> Labores Detectadas (@_preview.TotalLabors)</span>
-                </TabTemplate>
-                <ChildContent>
-                    <div style="max-height: 420px; overflow-y: auto; border: 1px solid rgba(255,255,255,0.1); border-radius: 8px;">
-                        <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
-                            <thead style="background: rgba(255,255,255,0.06); position: sticky; top: 0; z-index: 1;">
-                                <tr style="border-bottom: 1px solid rgba(255,255,255,0.1); text-align: left;">
-                                    <th style="padding: 8px 12px; color: rgba(255,255,255,0.8); width: 90px;">Fecha</th>
-                                    <th style="padding: 8px 12px; color: rgba(255,255,255,0.8);">Establecimiento / Lote</th>
-                                    <th style="padding: 8px 12px; color: rgba(255,255,255,0.8);">Labor y Sup.</th>
-                                    <th style="padding: 8px 12px; color: rgba(255,255,255,0.8);">Receta de Insumos</th>
-                                    <th style="padding: 8px 12px; color: rgba(255,255,255,0.8); width: 140px;">Responsable</th>
-                                    <th style="padding: 8px 12px; color: rgba(255,255,255,0.8); width: 100px;">Modo</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                @foreach (var labor in _preview.Labors)
-                                {
-                                    <tr style="border-bottom: 1px solid rgba(255,255,255,0.05); vertical-align: top;">
-                                        <td style="padding: 8px 12px; color: rgba(255,255,255,0.7);">
-                                            @(labor.Date?.ToString("dd/MM/yyyy") ?? "-")
-                                        </td>
-                                        <td style="padding: 8px 12px;">
-                                            <strong style="color: #fff;">@labor.LotName</strong>
-                                            @if (!string.IsNullOrWhiteSpace(labor.FieldName))
-                                            {
-                                                <span style="font-size: 11px; color: rgba(255,255,255,0.5); display: block;">@labor.FieldName</span>
-                                            }
-                                            @if (!labor.LotId.HasValue)
-                                            {
-                                                <Tag Color="@("red")" Style="font-size: 10px; margin-top: 2px;">Lote no encontrado</Tag>
-                                            }
-                                        </td>
-                                        <td style="padding: 8px 12px;">
-                                            <span style="color: #2ECC71; font-weight: 600;">@labor.LaborTypeName</span>
-                                            <span style="font-size: 11px; color: rgba(255,255,255,0.6); display: block;">@labor.Hectares.ToString("N1") ha</span>
-                                        </td>
-                                        <td style="padding: 8px 12px;">
-                                            @if (labor.Supplies.Count == 0)
-                                            {
-                                                <span style="color: rgba(255,255,255,0.4); font-style: italic;">Sin insumos</span>
-                                            }
-                                            else
-                                            {
-                                                <ul style="margin: 0; padding-left: 16px; color: rgba(255,255,255,0.8); font-size: 12px;">
-                                                    @foreach (var s in labor.Supplies)
-                                                    {
-                                                        <li>
-                                                            <strong>@s.SupplyName:</strong> @s.Dose @s.Unit
-                                                            @if (!string.IsNullOrWhiteSpace(s.SupplierRawName))
-                                                            {
-                                                                <span style="color: rgba(255,255,255,0.5);">
-                                                                    &bull; Prov: @(s.MatchedSupplierName ?? s.SupplierRawName)
-                                                                    @if (!s.SupplierContactId.HasValue)
-                                                                    {
-                                                                        <Icon Type="warning" Style="color: #F39C12; font-size: 11px; margin-left: 2px;" />
-                                                                    }
-                                                                </span>
-                                                            }
-                                                        </li>
-                                                    }
-                                                </ul>
-                                            }
-                                        </td>
-                                        <td style="padding: 8px 12px;">
-                                            @if (!string.IsNullOrWhiteSpace(labor.MatchedContactName))
-                                            {
-                                                <span style="color: #fff; font-weight: 500;">@labor.MatchedContactName</span>
-                                                <Tag Color="@(labor.IsExternalBilling ? "orange" : "green")" Style="font-size: 10px; margin-top: 2px; display: block; width: fit-content;">
-                                                    @(labor.IsExternalBilling ? "Contratista" : "Propio")
-                                                </Tag>
-                                            }
-                                            else if (!string.IsNullOrWhiteSpace(labor.Contractor))
-                                            {
-                                                <span style="color: rgba(255,255,255,0.8);">@labor.Contractor</span>
-                                                <Tag Color="@(labor.IsExternalBilling ? "orange" : "default")" Style="font-size: 10px; margin-top: 2px; display: block; width: fit-content;">
-                                                    @(labor.IsExternalBilling ? "Contratista" : "Propio")
-                                                </Tag>
-                                            }
-                                            else
-                                            {
-                                                <span style="color: rgba(255,255,255,0.3);">—</span>
-                                            }
-                                        </td>
-                                        <td style="padding: 8px 12px;">
-                                            <Tag Color="@(labor.Mode == "Realized" ? "blue" : "default")">
-                                                @(labor.Mode == "Realized" ? "Realizada" : "Planeada")
-                                            </Tag>
-                                        </td>
-                                    </tr>
-                                }
-                            </tbody>
-                        </table>
-                    </div>
-                </ChildContent>
-            </TabPane>
-
-            <!-- TAB 3: DIAGNÓSTICO -->
-            @if (_preview.Diagnostics.Count > 0)
-            {
-                <TabPane Key="diagnostics">
-                    <TabTemplate>
-                        <span><Icon Type="warning" Style="color: #F39C12;" /> Diagnósticos (@_preview.Diagnostics.Count)</span>
-                    </TabTemplate>
-                    <ChildContent>
-                        <div style="background: rgba(243, 156, 18, 0.08); border: 1px solid rgba(243, 156, 18, 0.2); border-radius: 8px; padding: 16px;">
-                            <ul style="margin: 0; padding-left: 20px; color: rgba(255,255,255,0.85); font-size: 13px; line-height: 1.8;">
-                                @foreach (var d in _preview.Diagnostics)
-                                {
-                                    <li>@d</li>
-                                }
-                            </ul>
-                        </div>
-                    </ChildContent>
-                </TabPane>
-            }
-        </Tabs>
-
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 20px;">
-            <Button OnClick="ResetImport">Cancelar</Button>
-            <Button Type="@ButtonType.Primary"
-                    Loading="@_isProcessing"
-                    OnClick="ExecuteImport"
-                    Style="background: #2ECC71; border-color: #2ECC71; font-weight: 600; padding: 0 24px;">
-                <Icon Type="check" /> Confirmar e Importar Labores
-            </Button>
-        </div>
-    }
-    else if (_step == 3 && _result != null)
-    {
-        <!-- STEP 3: RESULTADO EXITOSO -->
-        <div style="text-align: center; padding: 30px 20px;">
-            <Icon Type="check-circle" Theme="IconThemeType.Fill" Style="font-size: 56px; color: #2ECC71; margin-bottom: 16px;" />
-            <h3 style="color: #fff; font-size: 20px; margin-bottom: 8px;">¡Importación de Labores Finalizada!</h3>
-            <p style="color: rgba(255,255,255,0.7); font-size: 14px; max-width: 500px; margin: 0 auto 24px auto;">
-                Las labores y sus recetas de insumos se importaron y asociaron correctamente a los lotes en la campaña <strong>@CampaignName</strong>.
-            </p>
-
-            <div style="display: grid; grid-template-columns: repeat(@(_result.LaborsUpdated > 0 ? 5 : 4), 1fr); gap: 12px; max-width: 750px; margin: 0 auto 24px auto;">
-                <div style="background: rgba(255,255,255,0.05); padding: 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1);">
-                    <div style="font-size: 22px; font-weight: 700; color: #2ECC71;">@_result.LaborsCreated</div>
-                    <div style="font-size: 11px; color: rgba(255,255,255,0.6);">Labores Creadas</div>
+            <div style="text-align: center; padding: 30px 20px;">
+                <Icon Type="warning" Theme="IconThemeType.Fill" Style="font-size: 56px; color: #F39C12; margin-bottom: 16px;" />
+                <h3 style="color: #fff; font-size: 20px; margin-bottom: 8px;">Este archivo ya se había subido</h3>
+                <p style="color: rgba(255,255,255,0.7); font-size: 14px; max-width: 500px; margin: 0 auto 24px auto;">
+                    <strong>@_uploadResult.DuplicateFileName</strong> se subió el @_uploadResult.DuplicateUploadedAt?.ToString("dd/MM/yyyy HH:mm")
+                    (@_uploadResult.PendingRows fila(s) todavía pendientes). No se importó nada para no duplicar.
+                </p>
+                <div style="display: flex; gap: 8px; justify-content: center;">
+                    <Button OnClick="GoToPending" Style="border-radius: 8px;">
+                        <Icon Type="inbox" /> Ver lote existente
+                    </Button>
+                    <Button Type="@ButtonType.Primary" Loading="@_isProcessing" OnClick="() => UploadSelectedFile(force: true)"
+                            Style="background: #F39C12; border-color: #F39C12; font-weight: 600; border-radius: 8px;">
+                        Subir igual
+                    </Button>
+                    <Button OnClick="ResetImport" Style="border-radius: 8px;">Cancelar</Button>
                 </div>
-                @if (_result.LaborsUpdated > 0)
-                {
+            </div>
+        }
+        else
+        {
+            <div style="text-align: center; padding: 30px 20px;">
+                <Icon Type="check-circle" Theme="IconThemeType.Fill" Style="font-size: 56px; color: #2ECC71; margin-bottom: 16px;" />
+                <h3 style="color: #fff; font-size: 20px; margin-bottom: 8px;">¡Importación procesada!</h3>
+                <p style="color: rgba(255,255,255,0.7); font-size: 14px; max-width: 520px; margin: 0 auto 24px auto;">
+                    Las filas con match completo se importaron en la campaña <strong>@CampaignName</strong>.
+                    @if (_uploadResult.PendingRows > 0)
+                    {
+                        <span>Las <strong>@_uploadResult.PendingRows</strong> restantes quedaron en <strong>Importaciones Pendientes</strong> para matchearlas a mano.</span>
+                    }
+                </p>
+
+                <div style="display: grid; grid-template-columns: repeat(@(_uploadResult.PendingRows > 0 ? 3 : 2), 1fr); gap: 12px; max-width: 560px; margin: 0 auto 24px auto;">
                     <div style="background: rgba(255,255,255,0.05); padding: 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1);">
-                        <div style="font-size: 22px; font-weight: 700; color: #1ABC9C;">@_result.LaborsUpdated</div>
-                        <div style="font-size: 11px; color: rgba(255,255,255,0.6);">Labores Actualizadas</div>
+                        <div style="font-size: 22px; font-weight: 700; color: #2ECC71;">@(_uploadResult.LaborsCreated + _uploadResult.LaborsUpdated)</div>
+                        <div style="font-size: 11px; color: rgba(255,255,255,0.6);">Labores Importadas</div>
+                    </div>
+                    <div style="background: rgba(255,255,255,0.05); padding: 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1);">
+                        <div style="font-size: 22px; font-weight: 700; color: #3498DB;">@_uploadResult.SuppliesCreated</div>
+                        <div style="font-size: 11px; color: rgba(255,255,255,0.6);">Insumos Asignados</div>
+                    </div>
+                    @if (_uploadResult.PendingRows > 0)
+                    {
+                        <div style="background: rgba(243,156,18,0.08); padding: 12px; border-radius: 8px; border: 1px solid rgba(243,156,18,0.3);">
+                            <div style="font-size: 22px; font-weight: 700; color: #F39C12;">@_uploadResult.PendingRows</div>
+                            <div style="font-size: 11px; color: rgba(255,255,255,0.6);">A Revisión</div>
+                        </div>
+                    }
+                </div>
+
+                @if (_uploadResult.Errors.Count > 0)
+                {
+                    <div style="text-align: left; max-width: 560px; margin: 0 auto 20px auto; background: rgba(231, 76, 60, 0.1); border: 1px solid rgba(231, 76, 60, 0.2); border-radius: 8px; padding: 12px;">
+                        <div style="color: #E74C3C; font-weight: 600; font-size: 13px; margin-bottom: 6px;">Observaciones:</div>
+                        <ul style="margin: 0; padding-left: 16px; font-size: 12px; color: rgba(255,255,255,0.8);">
+                            @foreach (var err in _uploadResult.Errors.Take(5))
+                            {
+                                <li>@err</li>
+                            }
+                        </ul>
                     </div>
                 }
-                <div style="background: rgba(255,255,255,0.05); padding: 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1);">
-                    <div style="font-size: 22px; font-weight: 700; color: #3498DB;">@_result.SuppliesCreated</div>
-                    <div style="font-size: 11px; color: rgba(255,255,255,0.6);">Insumos Asignados</div>
-                </div>
-                <div style="background: rgba(255,255,255,0.05); padding: 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1);">
-                    <div style="font-size: 22px; font-weight: 700; color: #F39C12;">@_result.NewSuppliesCreated</div>
-                    <div style="font-size: 11px; color: rgba(255,255,255,0.6);">Insumos Nuevos</div>
-                </div>
-                <div style="background: rgba(255,255,255,0.05); padding: 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1);">
-                    <div style="font-size: 22px; font-weight: 700; color: #9B59B6;">@_result.AliasesLearned</div>
-                    <div style="font-size: 11px; color: rgba(255,255,255,0.6);">Alias Memorizados</div>
+
+                <div style="display: flex; gap: 8px; justify-content: center;">
+                    @if (_uploadResult.PendingRows > 0)
+                    {
+                        <Button Type="@ButtonType.Primary" OnClick="GoToPending" Style="background: #F39C12; border-color: #F39C12; font-weight: 600; padding: 0 30px; border-radius: 8px;">
+                            <Icon Type="inbox" /> Revisar pendientes
+                        </Button>
+                    }
+                    <Button Type="@(_uploadResult.PendingRows > 0 ? ButtonType.Default : ButtonType.Primary)" OnClick="FinishAndClose" Style="font-weight: 600; padding: 0 30px; border-radius: 8px;">
+                        Finalizar
+                    </Button>
                 </div>
             </div>
-
-            @if (_result.Errors.Count > 0)
-            {
-                <div style="text-align: left; max-width: 650px; margin: 0 auto 20px auto; background: rgba(231, 76, 60, 0.1); border: 1px solid rgba(231, 76, 60, 0.2); border-radius: 8px; padding: 12px;">
-                    <div style="color: #E74C3C; font-weight: 600; font-size: 13px; margin-bottom: 6px;">Observaciones:</div>
-                    <ul style="margin: 0; padding-left: 16px; font-size: 12px; color: rgba(255,255,255,0.8);">
-                        @foreach (var err in _result.Errors.Take(5))
-                        {
-                            <li>@err</li>
-                        }
-                    </ul>
-                </div>
-            }
-
-            <Button Type="@ButtonType.Primary" OnClick="FinishAndClose" Style="background: #2ECC71; border-color: #2ECC71; font-weight: 600; padding: 0 30px;">
-                Finalizar y Ver Labores
-            </Button>
-        </div>
+        }
     }
 
 </Modal>
@@ -628,98 +181,7 @@
     private string? _errorMessage;
     private string _selectedFileName = string.Empty;
     private byte[]? _fileBytes;
-    private LaborImportPreviewDto? _preview;
-    private LaborImportResultDto? _result;
-    private List<InventoryDto> _inventoryList = new();
-    private List<LaborTypeDto> _laborTypesList = new();
-    private List<ContactDto> _contactsList = new();
-
-    /// <summary>
-    /// Modo al que se puede acotar el mapeo de un nombre del Excel. Se deduce de las filas
-    /// que usan ese nombre: si todas son propias o todas de contratista, se acota a ese modo;
-    /// si el nombre aparece en las dos, devuelve null y no se filtra nada, porque acotarlo
-    /// esconde la mitad de las opciones válidas.
-    /// </summary>
-    private LaborExecutionMode? ModeForMapping(LaborImportTypeMappingDto map)
-    {
-        if (_preview == null) return null;
-
-        var rows = _preview.Labors
-            .Where(l => string.Equals(l.LaborTypeName?.Trim(), map.RawName?.Trim(),
-                StringComparison.OrdinalIgnoreCase))
-            .ToList();
-
-        if (rows.Count == 0) return null;
-
-        var external = rows.Select(l => l.IsExternalBilling).Distinct().ToList();
-        if (external.Count != 1) return null;
-
-        return external[0] ? LaborExecutionMode.Contractor : LaborExecutionMode.Own;
-    }
-
-    private List<LaborTypeDto> LaborTypesFor(LaborImportTypeMappingDto map)
-    {
-        var mode = ModeForMapping(map);
-        if (mode is null) return _laborTypesList;
-
-        var matching = _laborTypesList
-            .Where(t => t.ExecutionMode.MatchesFilter(mode.Value))
-            .ToList();
-
-        // La tarea ya vinculada nunca se cae de la lista, aunque no coincida con el modo:
-        // si no está, el select se ve vacío y parece que se perdió el mapeo.
-        if (map.MatchedLaborTypeId.HasValue && matching.All(t => t.Id != map.MatchedLaborTypeId.Value))
-        {
-            var current = _laborTypesList.FirstOrDefault(t => t.Id == map.MatchedLaborTypeId.Value);
-            if (current != null)
-            {
-                matching.Insert(0, current);
-            }
-        }
-
-        return matching;
-    }
-
-    protected override async Task OnInitializedAsync()
-    {
-        await Task.WhenAll(LoadInventory(), LoadLaborTypes(), LoadContacts());
-    }
-
-    private async Task LoadInventory()
-    {
-        try
-        {
-            _inventoryList = await Http.GetFromJsonAsync<List<InventoryDto>>("api/inventory", AppJsonSerializerContext.Default.ListInventoryDto) ?? new();
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Error al cargar inventario: {ex.Message}");
-        }
-    }
-
-    private async Task LoadLaborTypes()
-    {
-        try
-        {
-            _laborTypesList = await Http.GetFromJsonAsync<List<LaborTypeDto>>("api/labor-types", AppJsonSerializerContext.Default.ListLaborTypeDto) ?? new();
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Error al cargar tipos de labor: {ex.Message}");
-        }
-    }
-
-    private async Task LoadContacts()
-    {
-        try
-        {
-            _contactsList = await Http.GetFromJsonAsync<List<ContactDto>>("api/catalogs/contacts", AppJsonSerializerContext.Default.ListContactDto) ?? new();
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Error al cargar contactos: {ex.Message}");
-        }
-    }
+    private LaborImportUploadResultDto? _uploadResult;
 
     private async Task DownloadTemplate()
     {
@@ -739,151 +201,25 @@
         if (file == null) return;
 
         _errorMessage = null;
-        _isProcessing = true;
-        StateHasChanged();
 
-        try
+        var maxSize = 20 * 1024 * 1024; // 20MB
+        if (file.Size > maxSize)
         {
-            var maxSize = 20 * 1024 * 1024; // 20MB
-            if (file.Size > maxSize)
-            {
-                _errorMessage = "El archivo supera el límite de 20 MB.";
-                _isProcessing = false;
-                return;
-            }
-
-            _selectedFileName = file.Name;
-            using var ms = new MemoryStream();
-            await file.OpenReadStream(maxSize).CopyToAsync(ms);
-            _fileBytes = ms.ToArray();
-
-            // Send to Preview API
-            using var content = new MultipartFormDataContent();
-            var fileContent = new ByteArrayContent(_fileBytes);
-            fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-            content.Add(fileContent, "file", _selectedFileName);
-
-            var response = await Http.PostAsync($"api/campaigns/{CampaignId}/labors/import/preview", content);
-
-            if (response.IsSuccessStatusCode)
-            {
-                _preview = await response.Content.ReadFromJsonAsync<LaborImportPreviewDto>(
-                    AppJsonSerializerContext.Default.LaborImportPreviewDto);
-
-                if (_preview != null)
-                {
-                    _step = 2;
-                }
-                else
-                {
-                    _errorMessage = "No se pudieron obtener los datos de la vista previa.";
-                }
-            }
-            else
-            {
-                var errorText = await response.Content.ReadAsStringAsync();
-                _errorMessage = string.IsNullOrWhiteSpace(errorText) ? "Error al procesar el archivo Excel." : errorText;
-            }
-        }
-        catch (Exception ex)
-        {
-            _errorMessage = $"Ocurrió un error: {ex.Message}";
-        }
-        finally
-        {
-            _isProcessing = false;
-            StateHasChanged();
-        }
-    }
-
-    private void OnActionChanged(LaborImportSupplyMappingDto map, object? val)
-    {
-        map.Action = val?.ToString() ?? "Match";
-        if (map.Action == "CreateNew")
-        {
-            map.NewItemName ??= map.RawName;
-            map.NewCategory ??= (!string.IsNullOrWhiteSpace(map.DetectedCategory) ? map.DetectedCategory : "Insumos");
-            map.NewUnit ??= (!string.IsNullOrWhiteSpace(map.DetectedUnit) ? map.DetectedUnit : "unidad");
-        }
-    }
-
-    private void OnSupplySelected(LaborImportSupplyMappingDto map, InventoryDto? selected)
-    {
-        if (selected != null)
-        {
-            map.MatchedSupplyId = selected.Id;
-            map.MatchedSupplyName = selected.ItemName;
-            map.Confidence = 1.0;
-            map.ConfidenceLevel = "High";
-        }
-    }
-
-    private void AcceptAllHighConfidence()
-    {
-        if (_preview == null) return;
-        foreach (var map in _preview.SupplyMappings)
-        {
-            if (map.Confidence >= 0.70 && map.MatchedSupplyId.HasValue)
-            {
-                map.Action = "Match";
-            }
-        }
-        Message.Success("Sugerencias de insumos confirmadas.");
-    }
-
-    private void OnSupplierSelected(LaborImportSupplierMappingDto map, ContactDto? selected)
-    {
-        map.MatchedContactId = selected?.Id;
-        map.MatchedContactName = selected?.FullName;
-        map.Confidence = selected != null ? 1.0 : 0.0;
-        map.ConfidenceLevel = selected != null ? "High" : "None";
-        map.Action = "Match";
-    }
-
-    private void OnLaborTypeSelected(LaborImportTypeMappingDto map, LaborTypeDto? selected)
-    {
-        if (selected != null)
-        {
-            map.MatchedLaborTypeId = selected.Id;
-            map.MatchedLaborTypeName = selected.Name;
-            map.Confidence = 1.0;
-            map.ConfidenceLevel = "High";
-        }
-    }
-
-    private void AcceptSuggestion(LaborImportTypeMappingDto map)
-    {
-        if (map.SuggestedLaborTypeId.HasValue)
-        {
-            map.MatchedLaborTypeId = map.SuggestedLaborTypeId;
-            map.MatchedLaborTypeName = map.SuggestedLaborTypeName;
-        }
-    }
-
-    private void AcceptAllHighConfidenceLaborTypes()
-    {
-        if (_preview == null) return;
-        foreach (var map in _preview.LaborTypeMappings)
-        {
-            if (map.SuggestedLaborTypeId.HasValue && !map.MatchedLaborTypeId.HasValue)
-            {
-                map.MatchedLaborTypeId = map.SuggestedLaborTypeId;
-                map.MatchedLaborTypeName = map.SuggestedLaborTypeName;
-            }
-        }
-        Message.Success("Sugerencias de tipos de labor vinculadas.");
-    }
-
-    private async Task ExecuteImport()
-    {
-        if (_fileBytes == null || _preview == null) return;
-
-        var unassignedLaborTypes = _preview.LaborTypeMappings.Where(m => !m.MatchedLaborTypeId.HasValue).ToList();
-        if (unassignedLaborTypes.Count > 0)
-        {
-            _errorMessage = $"Debés vincular cada labor de la planilla a un concepto del ERP. Sin asignar: {string.Join(", ", unassignedLaborTypes.Select(m => $"'{m.RawName}'"))}.";
+            _errorMessage = "El archivo supera el límite de 20 MB.";
             return;
         }
+
+        _selectedFileName = file.Name;
+        using var ms = new MemoryStream();
+        await file.OpenReadStream(maxSize).CopyToAsync(ms);
+        _fileBytes = ms.ToArray();
+
+        await UploadSelectedFile(force: false);
+    }
+
+    private async Task UploadSelectedFile(bool force)
+    {
+        if (_fileBytes == null) return;
 
         _errorMessage = null;
         _isProcessing = true;
@@ -895,37 +231,31 @@
             var fileContent = new ByteArrayContent(_fileBytes);
             fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
             content.Add(fileContent, "file", _selectedFileName);
+            content.Add(new StringContent(force ? "true" : "false"), "force");
 
-            string mappingsJson = JsonSerializer.Serialize(_preview.SupplyMappings, AppJsonSerializerContext.Default.ListLaborImportSupplyMappingDto);
-            content.Add(new StringContent(mappingsJson), "mappingsJson");
-
-            string laborTypeMappingsJson = JsonSerializer.Serialize(_preview.LaborTypeMappings, AppJsonSerializerContext.Default.ListLaborImportTypeMappingDto);
-            content.Add(new StringContent(laborTypeMappingsJson), "laborTypeMappingsJson");
-
-            string supplierMappingsJson = JsonSerializer.Serialize(_preview.SupplierMappings, AppJsonSerializerContext.Default.ListLaborImportSupplierMappingDto);
-            content.Add(new StringContent(supplierMappingsJson), "supplierMappingsJson");
-
-            var response = await Http.PostAsync($"api/campaigns/{CampaignId}/labors/import/execute", content);
+            var response = await Http.PostAsync($"api/campaigns/{CampaignId}/labors/import/upload", content);
 
             if (response.IsSuccessStatusCode)
             {
-                _result = await response.Content.ReadFromJsonAsync<LaborImportResultDto>(
-                    AppJsonSerializerContext.Default.LaborImportResultDto);
+                _uploadResult = await response.Content.ReadFromJsonAsync<LaborImportUploadResultDto>(
+                    AppJsonSerializerContext.Default.LaborImportUploadResultDto);
 
-                if (_result != null && _result.Success)
+                if (_uploadResult != null)
                 {
-                    _step = 3;
-                    Message.Success("¡Labores importadas exitosamente!");
+                    _step = 2;
+                    if (!_uploadResult.DuplicateOfBatchId.HasValue && _uploadResult.Success)
+                        Message.Success("¡Importación procesada!");
+                    await OnLaborsImported.InvokeAsync();
                 }
                 else
                 {
-                    _errorMessage = _result?.Errors.FirstOrDefault() ?? "No se pudieron guardar las labores.";
+                    _errorMessage = "No se pudo procesar el archivo.";
                 }
             }
             else
             {
                 var errorText = await response.Content.ReadAsStringAsync();
-                _errorMessage = string.IsNullOrWhiteSpace(errorText) ? "Error al guardar las labores importadas." : errorText;
+                _errorMessage = string.IsNullOrWhiteSpace(errorText) ? "Error al procesar el archivo Excel." : errorText;
             }
         }
         catch (Exception ex)
@@ -939,11 +269,16 @@
         }
     }
 
+    private void GoToPending()
+    {
+        Nav.NavigateTo("/importaciones-pendientes");
+        _ = HandleClose();
+    }
+
     private async Task ResetImport()
     {
         _step = 1;
-        _preview = null;
-        _result = null;
+        _uploadResult = null;
         _errorMessage = null;
         _fileBytes = null;
         _selectedFileName = string.Empty;

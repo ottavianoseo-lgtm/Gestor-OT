@@ -85,6 +85,14 @@ else if (!string.IsNullOrEmpty(Loading.SuccessMessage))
                                 <Badge Count="_unassignedCount" Style="margin-left: 8px;" />
                             }
                         </MenuItem>
+                        <MenuItem Key="21" RouterLink="/importaciones-pendientes" Style="@MenuItemStyle">
+                            <Icon Type="inbox" Theme="IconThemeType.Outline" />
+                            <span>Importaciones Pendientes</span>
+                            @if (_pendingImportCount > 0)
+                            {
+                                <Badge Count="_pendingImportCount" Style="margin-left: 8px; background-color: #F39C12;" />
+                            }
+                        </MenuItem>
                     </ChildContent>
                 </SubMenu>
 
@@ -192,6 +200,7 @@ else if (!string.IsNullOrEmpty(Loading.SuccessMessage))
     private bool _collapsed = false;
     private string[] _selectedKeys = Array.Empty<string>();
     private int _unassignedCount;
+    private int _pendingImportCount;
     private const string MenuItemStyle = "font-size: 13px;";
 
     private bool IsDashboard => Nav.Uri == Nav.BaseUri || Nav.Uri == Nav.BaseUri.TrimEnd('/');
@@ -203,12 +212,18 @@ else if (!string.IsNullOrEmpty(Loading.SuccessMessage))
     protected override void OnInitialized()
     {
         TenantState.OnChange += StateHasChanged;
-        CampaignState.OnChange += StateHasChanged;
+        CampaignState.OnChange += OnCampaignChanged;
         Loading.OnChange += StateHasChanged;
         AuthState.OnChange += StateHasChanged;
         
         Nav.LocationChanged += OnLocationChanged;
         UpdateSelectedKey(Nav.Uri);
+    }
+
+    private void OnCampaignChanged()
+    {
+        _ = LoadPendingImportCount();
+        StateHasChanged();
     }
 
     private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
@@ -226,6 +241,7 @@ else if (!string.IsNullOrEmpty(Loading.SuccessMessage))
             var p when p.StartsWith("/planner") => new[] { "10" },
             var p when p.StartsWith("/workorders") => new[] { "4" },
             var p when p.StartsWith("/labores-sueltas") => new[] { "11" },
+            var p when p.StartsWith("/importaciones-pendientes") => new[] { "21" },
             var p when p.StartsWith("/planeamiento-original") => new[] { "16" },
             var p when p.StartsWith("/campaigns") => new[] { "9" },
             var p when p.StartsWith("/estrategias") => new[] { "7" },
@@ -250,6 +266,7 @@ else if (!string.IsNullOrEmpty(Loading.SuccessMessage))
         {
             await CheckAuthAndRedirectAsync();
             await LoadUnassignedCount();
+            await LoadPendingImportCount();
         }
     }
 
@@ -308,10 +325,30 @@ else if (!string.IsNullOrEmpty(Loading.SuccessMessage))
         }
     }
 
+    private async Task LoadPendingImportCount()
+    {
+        try
+        {
+            var campaignId = CampaignState.CurrentCampaign?.Id;
+            if (campaignId == null || campaignId == Guid.Empty)
+            {
+                _pendingImportCount = 0;
+                return;
+            }
+            var count = await Http.GetFromJsonAsync<int>($"api/campaigns/{campaignId}/labors/import/pending-count");
+            _pendingImportCount = count;
+            StateHasChanged();
+        }
+        catch (HttpRequestException ex)
+        {
+            Console.Error.WriteLine($"Error loading pending import count: {ex.Message}");
+        }
+    }
+
     public void Dispose()
     {
         TenantState.OnChange -= StateHasChanged;
-        CampaignState.OnChange -= StateHasChanged;
+        CampaignState.OnChange -= OnCampaignChanged;
         Loading.OnChange -= StateHasChanged;
         AuthState.OnChange -= StateHasChanged;
         Nav.LocationChanged -= OnLocationChanged;

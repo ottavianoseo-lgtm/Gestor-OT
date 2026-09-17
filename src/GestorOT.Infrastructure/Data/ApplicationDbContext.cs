@@ -52,6 +52,8 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
     public DbSet<AccountConfiguration> AccountConfigurations => Set<AccountConfiguration>();
     public DbSet<SupplyAlias> SupplyAliases => Set<SupplyAlias>();
     public DbSet<LaborTypeAlias> LaborTypeAliases => Set<LaborTypeAlias>();
+    public DbSet<LaborImportBatch> LaborImportBatches => Set<LaborImportBatch>();
+    public DbSet<LaborImportPendingRow> LaborImportPendingRows => Set<LaborImportPendingRow>();
 
     /// <summary>
     /// El alcance de la request, resuelto una sola vez acá para que el filtro global y el
@@ -119,6 +121,16 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
         });
 
         modelBuilder.Entity<Contact>(entity =>
+        {
+            entity.HasQueryFilter(e => IsCrossTenantAllowed || e.TenantId == CurrentTenantId);
+        });
+
+        modelBuilder.Entity<LaborImportBatch>(entity =>
+        {
+            entity.HasQueryFilter(e => IsCrossTenantAllowed || e.TenantId == CurrentTenantId);
+        });
+
+        modelBuilder.Entity<LaborImportPendingRow>(entity =>
         {
             entity.HasQueryFilter(e => IsCrossTenantAllowed || e.TenantId == CurrentTenantId);
         });

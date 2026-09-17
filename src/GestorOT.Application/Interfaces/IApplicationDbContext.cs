@@ -38,6 +38,8 @@ public interface IApplicationDbContext
     DbSet<AccountConfiguration> AccountConfigurations { get; }
     DbSet<SupplyAlias> SupplyAliases { get; }
     DbSet<LaborTypeAlias> LaborTypeAliases { get; }
+    DbSet<LaborImportBatch> LaborImportBatches { get; }
+    DbSet<LaborImportPendingRow> LaborImportPendingRows { get; }
     DatabaseFacade Database { get; }
     Guid CurrentTenantId { get; }
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);

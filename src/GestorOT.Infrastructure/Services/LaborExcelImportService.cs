@@ -1,5 +1,7 @@
 using System.Globalization;
+using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using ClosedXML.Excel;
 using GestorOT.Application.Interfaces;
@@ -76,38 +78,8 @@ public class LaborExcelImportService : ILaborExcelImportService
         // Match supply providers (OT-26)
         var (supplierMappings, unmatchedSuppliersCount) = BuildSupplierMappings(parsedLabors);
 
-        // Link matched supplies back to parsed items for preview
-        var mappingDict = new Dictionary<string, LaborImportSupplyMappingDto>(StringComparer.OrdinalIgnoreCase);
-        foreach (var m in supplyMappings)
-        {
-            mappingDict[m.RawName.Trim()] = m;
-        }
-        foreach (var labor in parsedLabors)
-        {
-            foreach (var sup in labor.Supplies)
-            {
-                if (mappingDict.TryGetValue(sup.SupplyName.Trim(), out var map))
-                {
-                    sup.MatchedSupplyId = map.MatchedSupplyId;
-                    sup.MatchedSupplyName = map.MatchedSupplyName;
-                }
-            }
-        }
-
-        // Link matched labor types back to parsed items for preview
-        var laborTypeMappingDict = new Dictionary<string, LaborImportTypeMappingDto>(StringComparer.OrdinalIgnoreCase);
-        foreach (var ltm in laborTypeMappings)
-        {
-            laborTypeMappingDict[ltm.RawName.Trim()] = ltm;
-        }
-        foreach (var labor in parsedLabors)
-        {
-            if (laborTypeMappingDict.TryGetValue(labor.LaborTypeName.Trim(), out var ltm) && ltm.MatchedLaborTypeId.HasValue)
-            {
-                labor.LaborTypeId = ltm.MatchedLaborTypeId;
-                labor.Warnings.Clear(); // Cleared if matched
-            }
-        }
+        // Link matched supplies and labor types back to parsed items for preview
+        ApplyMappingsToLabors(parsedLabors, supplyMappings, laborTypeMappings);
 
         var diagnostics = new List<string>();
         int unknownLots = parsedLabors.Count(l => !l.LotId.HasValue);
@@ -190,12 +162,7 @@ public class LaborExcelImportService : ILaborExcelImportService
 
         var parsedLabors = ParseLaborsFromWorksheet(worksheet, columnConfig, campaignLots, existingLaborTypes, existingContacts);
 
-        int laborsCreated = 0;
-        int laborsUpdated = 0;
-        int suppliesCreated = 0;
-        int newInventoriesCreated = 0;
-        int aliasesLearned = 0;
-        var errors = new List<string>();
+        var counters = new ImportCounters();
 
         var strategy = _context.Database.CreateExecutionStrategy();
         await strategy.ExecuteAsync(async () =>
@@ -204,305 +171,14 @@ public class LaborExcelImportService : ILaborExcelImportService
             Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction? tx = isRelational ? await _context.Database.BeginTransactionAsync(ct) : null;
             try
             {
-                // 1. Process Supply Mappings (Creations and Aliases)
-                var resolvedSupplies = new Dictionary<string, Guid>(StringComparer.OrdinalIgnoreCase);
-
-                foreach (var map in mappings)
-                {
-                    if (string.Equals(map.Action, "Ignore", StringComparison.OrdinalIgnoreCase))
-                    {
-                        continue;
-                    }
-
-                    Guid? targetSupplyId = map.MatchedSupplyId;
-
-                    if (string.Equals(map.Action, "CreateNew", StringComparison.OrdinalIgnoreCase) || !targetSupplyId.HasValue)
-                    {
-                        string itemName = !string.IsNullOrWhiteSpace(map.NewItemName) ? map.NewItemName.Trim() : map.RawName.Trim();
-                        string category = !string.IsNullOrWhiteSpace(map.NewCategory) ? map.NewCategory.Trim() : (!string.IsNullOrWhiteSpace(map.DetectedCategory) ? map.DetectedCategory.Trim() : "Insumos");
-                        string unit = !string.IsNullOrWhiteSpace(map.NewUnit) ? map.NewUnit.Trim() : (!string.IsNullOrWhiteSpace(map.DetectedUnit) ? map.DetectedUnit.Trim() : "unidad");
-
-                        var newInventory = new Inventory
-                        {
-                            Id = Guid.NewGuid(),
-                            TenantId = _context.CurrentTenantId,
-                            ItemName = itemName,
-                            Category = category,
-                            Unit = unit,
-                            UnitA = unit,
-                            CurrentStock = 0,
-                            ReorderLevel = 0,
-                            ConversionFactor = 1
-                        };
-                        _context.Inventories.Add(newInventory);
-                        targetSupplyId = newInventory.Id;
-                        newInventoriesCreated++;
-                    }
-
-                    if (targetSupplyId.HasValue)
-                    {
-                        resolvedSupplies[map.RawName.Trim()] = targetSupplyId.Value;
-
-                        // Check if alias already exists for this tenant
-                        string normRaw = NormalizeString(map.RawName);
-                        bool aliasExists = existingAliases.Any(a => string.Equals(a.NormalizedName, normRaw, StringComparison.OrdinalIgnoreCase));
-                        if (!aliasExists)
-                        {
-                            var newAlias = new SupplyAlias
-                            {
-                                Id = Guid.NewGuid(),
-                                TenantId = _context.CurrentTenantId,
-                                RawName = map.RawName.Trim(),
-                                NormalizedName = normRaw,
-                                SupplyId = targetSupplyId.Value,
-                                CreatedAt = DateTime.UtcNow
-                            };
-                            _context.SupplyAliases.Add(newAlias);
-                            existingAliases.Add(newAlias);
-                            aliasesLearned++;
-                        }
-                    }
-                }
-
-                // 2. Process Labor Type Mappings (Learns aliases, NEVER creates new LaborType without ERP)
-                var laborTypesByName = new Dictionary<string, LaborType>(StringComparer.OrdinalIgnoreCase);
-                foreach (var lt in existingLaborTypes)
-                {
-                    string norm = NormalizeString(lt.Name);
-                    if (!string.IsNullOrWhiteSpace(norm) && !laborTypesByName.ContainsKey(norm))
-                    {
-                        laborTypesByName[norm] = lt;
-                    }
-                }
-
-                var resolvedLaborTypes = new Dictionary<string, Guid>(StringComparer.OrdinalIgnoreCase);
-                if (laborTypeMappings != null)
-                {
-                    foreach (var ltm in laborTypeMappings)
-                    {
-                        if (ltm.MatchedLaborTypeId.HasValue)
-                        {
-                            var targetLtId = ltm.MatchedLaborTypeId.Value;
-                            resolvedLaborTypes[ltm.RawName.Trim()] = targetLtId;
-
-                            // Learn alias if not already existing
-                            string normRaw = NormalizeString(ltm.RawName);
-                            bool aliasExists = existingLaborTypeAliases.Any(a => string.Equals(a.NormalizedName, normRaw, StringComparison.OrdinalIgnoreCase));
-                            if (!aliasExists)
-                            {
-                                var newAlias = new LaborTypeAlias
-                                {
-                                    Id = Guid.NewGuid(),
-                                    TenantId = _context.CurrentTenantId,
-                                    RawName = ltm.RawName.Trim(),
-                                    NormalizedName = normRaw,
-                                    LaborTypeId = targetLtId,
-                                    CreatedAt = DateTime.UtcNow
-                                };
-                                _context.LaborTypeAliases.Add(newAlias);
-                                existingLaborTypeAliases.Add(newAlias);
-                                aliasesLearned++;
-                            }
-                        }
-                    }
-                }
-
-                // 2b. Resolve supply provider overrides confirmed by the user in preview (OT-26).
-                // Un proveedor sin vincular no bloquea nada: el LaborSupply se crea igual, solo
-                // sin SupplierContactId (ver trampa del plan: nombre no resuelto no aborta el import).
-                var resolvedSuppliers = new Dictionary<string, Guid?>(StringComparer.OrdinalIgnoreCase);
-                if (supplierMappings != null)
-                {
-                    foreach (var sm in supplierMappings)
-                    {
-                        if (string.Equals(sm.Action, "Ignore", StringComparison.OrdinalIgnoreCase))
-                        {
-                            resolvedSuppliers[sm.RawName.Trim()] = null;
-                            continue;
-                        }
-                        resolvedSuppliers[sm.RawName.Trim()] = sm.MatchedContactId;
-                    }
-                }
+                // 1+2. Mappings de conciliación (núcleo compartido con subida directa y lotes pendientes)
+                var resolved = ProcessImportMappings(mappings, laborTypeMappings, supplierMappings,
+                    existingAliases, existingLaborTypes, existingLaborTypeAliases,
+                    counters, autoCreateUnmatchedSupplies: true);
 
                 // 3. Process Labors & Supplies
-                foreach (var parsedLabor in parsedLabors)
-                {
-                    if (!parsedLabor.LotId.HasValue || !parsedLabor.CampaignLotId.HasValue)
-                    {
-                        errors.Add($"Labor en fila {parsedLabor.RowIndex}: El lote '{parsedLabor.LotName}' no pertenece a la campaña. Se omitió.");
-                        continue;
-                    }
-
-                    // Resolve LaborType strictly from mapped or existing ERP concepts
-                    string laborTypeName = !string.IsNullOrWhiteSpace(parsedLabor.LaborTypeName) ? parsedLabor.LaborTypeName.Trim() : "Labor General";
-                    Guid? targetLaborTypeId = null;
-
-                    if (resolvedLaborTypes.TryGetValue(laborTypeName, out var mappedLtId))
-                    {
-                        targetLaborTypeId = mappedLtId;
-                    }
-                    else
-                    {
-                        string normLt = NormalizeString(laborTypeName);
-                        var aliasMatch = existingLaborTypeAliases.FirstOrDefault(a => string.Equals(a.NormalizedName, normLt, StringComparison.OrdinalIgnoreCase));
-                        if (aliasMatch != null)
-                        {
-                            targetLaborTypeId = aliasMatch.LaborTypeId;
-                        }
-                        else if (laborTypesByName.TryGetValue(normLt, out var laborType))
-                        {
-                            targetLaborTypeId = laborType.Id;
-                        }
-                    }
-
-                    if (!targetLaborTypeId.HasValue)
-                    {
-                        errors.Add($"Labor en fila {parsedLabor.RowIndex}: El tipo de labor '{laborTypeName}' no está vinculado a ningún concepto del ERP. Se omitió.");
-                        continue;
-                    }
-
-                    var campaignLot = campaignLots.FirstOrDefault(cl => cl.Id == parsedLabor.CampaignLotId.Value);
-
-                    // Deducir modo por la fecha: si es pasada o igual a hoy, es Realizada; si es a futuro, Planeada
-                    bool isRealized = false;
-                    if (parsedLabor.Date.HasValue)
-                    {
-                        isRealized = parsedLabor.Date.Value.Date <= DateTime.UtcNow.Date;
-                    }
-                    else
-                    {
-                        isRealized = string.Equals(parsedLabor.Mode, "Realized", StringComparison.OrdinalIgnoreCase);
-                    }
-
-                    var laborMode = isRealized ? LaborMode.Realized : LaborMode.Planned;
-                    var laborStatus = isRealized ? LaborStatus.Realized : LaborStatus.Planned;
-
-                    // Check if labor already exists (deduplication on re-import: same Lot + Date + LaborType)
-                    Labor? existingLabor = null;
-                    if (parsedLabor.Date.HasValue)
-                    {
-                        var targetDate = parsedLabor.Date.Value.Date;
-                        existingLabor = existingLabors.FirstOrDefault(l =>
-                            l.CampaignLotId == parsedLabor.CampaignLotId.Value &&
-                            l.LaborTypeId == targetLaborTypeId.Value &&
-                            ((l.ExecutionDate.HasValue && l.ExecutionDate.Value.Date == targetDate) ||
-                             (l.EstimatedDate.HasValue && l.EstimatedDate.Value.Date == targetDate)));
-                    }
-
-                    Labor laborToSave;
-                    if (existingLabor != null)
-                    {
-                        existingLabor.Hectares = parsedLabor.Hectares;
-                        existingLabor.EffectiveArea = parsedLabor.Hectares;
-                        existingLabor.ContactId = parsedLabor.ContactId;
-                        existingLabor.IsExternalBilling = parsedLabor.IsExternalBilling;
-                        existingLabor.ExecutionDate = parsedLabor.Date;
-                        existingLabor.EstimatedDate = parsedLabor.Date;
-                        existingLabor.Mode = laborMode;
-                        existingLabor.Status = laborStatus;
-                        existingLabor.Notes = string.IsNullOrWhiteSpace(parsedLabor.Contractor) 
-                            ? "Importado desde Excel" 
-                            : $"Importado desde Excel. Contratista/Equipo: {parsedLabor.Contractor}";
-
-                        // Replace supplies
-                        var oldSupplies = existingLabor.Supplies.ToList();
-                        if (oldSupplies.Count > 0)
-                        {
-                            _context.LaborSupplies.RemoveRange(oldSupplies);
-                        }
-
-                        laborToSave = existingLabor;
-                        laborsUpdated++;
-                    }
-                    else
-                    {
-                        // Resolve ErpActivityId from the active rotation for this lot at the labor date
-                        Guid? resolvedActivityId = null;
-                        if (campaignLot != null && parsedLabor.Date.HasValue)
-                        {
-                            var laborDate = DateOnly.FromDateTime(parsedLabor.Date.Value);
-                            var activeRotation = campaignLot.Rotations
-                                .FirstOrDefault(r => r.StartDate <= laborDate && r.EndDate >= laborDate);
-                            resolvedActivityId = activeRotation?.ErpActivityId;
-                        }
-
-                        laborToSave = new Labor
-                        {
-                            Id = Guid.NewGuid(),
-                            TenantId = _context.CurrentTenantId,
-                            LotId = parsedLabor.LotId.Value,
-                            CampaignLotId = parsedLabor.CampaignLotId.Value,
-                            ErpActivityId = resolvedActivityId,
-                            LaborTypeId = targetLaborTypeId.Value,
-                            ContactId = parsedLabor.ContactId,
-                            IsExternalBilling = parsedLabor.IsExternalBilling,
-                            ExecutionDate = parsedLabor.Date,
-                            EstimatedDate = parsedLabor.Date,
-                            Hectares = parsedLabor.Hectares,
-                            EffectiveArea = parsedLabor.Hectares,
-                            Rate = 1,
-                            RateUnit = "ha",
-                            PlannedDose = 1,
-                            RealizedDose = isRealized ? 1 : null,
-                            Mode = laborMode,
-                            Status = laborStatus,
-                            Priority = LaborPriority.Regular,
-                            CreatedAt = DateTime.UtcNow,
-                            Notes = string.IsNullOrWhiteSpace(parsedLabor.Contractor) 
-                                ? "Importado desde Excel" 
-                                : $"Importado desde Excel. Contratista/Equipo: {parsedLabor.Contractor}"
-                        };
-
-                        _context.Labors.Add(laborToSave);
-                        existingLabors.Add(laborToSave);
-                        laborsCreated++;
-                    }
-
-                    int mixOrder = 1;
-                    foreach (var sup in parsedLabor.Supplies)
-                    {
-                        if (!resolvedSupplies.TryGetValue(sup.SupplyName.Trim(), out var supplyId))
-                        {
-                            continue; // Ignored or unmapped
-                        }
-
-                        decimal plannedDose = sup.Dose;
-                        decimal totalQty = sup.Total ?? (sup.Dose * laborToSave.Hectares);
-                        string supplyUnit = !string.IsNullOrWhiteSpace(sup.Unit)
-                            ? sup.Unit
-                            : (existingInventories.FirstOrDefault(i => i.Id == supplyId)?.Unit ?? "unidad");
-
-                        // Proveedor del insumo (OT-26): preferir la corrección del usuario en
-                        // preview; si no la hay, usar el matcheo automático hecho al parsear.
-                        Guid? supplierContactId = null;
-                        if (!string.IsNullOrWhiteSpace(sup.SupplierRawName))
-                        {
-                            supplierContactId = resolvedSuppliers.TryGetValue(sup.SupplierRawName.Trim(), out var overrideId)
-                                ? overrideId
-                                : sup.SupplierContactId;
-                        }
-
-                        var laborSupply = new LaborSupply
-                        {
-                            Id = Guid.NewGuid(),
-                            TenantId = _context.CurrentTenantId,
-                            LaborId = laborToSave.Id,
-                            SupplyId = supplyId,
-                            PlannedHectares = laborToSave.Hectares,
-                            RealHectares = isRealized ? laborToSave.Hectares : null,
-                            PlannedDose = plannedDose,
-                            RealDose = isRealized ? plannedDose : null,
-                            PlannedTotal = totalQty,
-                            RealTotal = isRealized ? totalQty : null,
-                            UnitOfMeasure = supplyUnit,
-                            TankMixOrder = mixOrder++,
-                            SupplierContactId = supplierContactId
-                        };
-
-                        _context.LaborSupplies.Add(laborSupply);
-                        suppliesCreated++;
-                    }
-                }
+                ImportParsedLaborList(parsedLabors, resolved, campaignLots, existingLabors,
+                    existingInventories, existingLaborTypeAliases, counters);
 
                 await _context.SaveChangesAsync(ct);
                 if (tx != null) await tx.CommitAsync(ct);
@@ -521,16 +197,1136 @@ public class LaborExcelImportService : ILaborExcelImportService
 
         return new LaborImportResultDto
         {
-            LaborsCreated = laborsCreated,
-            LaborsUpdated = laborsUpdated,
-            SuppliesCreated = suppliesCreated,
-            NewSuppliesCreated = newInventoriesCreated,
+            LaborsCreated = counters.LaborsCreated,
+            LaborsUpdated = counters.LaborsUpdated,
+            SuppliesCreated = counters.SuppliesCreated,
+            NewSuppliesCreated = counters.NewInventories,
             NewLaborTypesCreated = 0,
-            AliasesLearned = aliasesLearned,
-            Errors = errors,
-            Success = (laborsCreated + laborsUpdated) > 0
+            AliasesLearned = counters.AliasesLearned,
+            Errors = counters.Errors,
+            Success = (counters.LaborsCreated + counters.LaborsUpdated) > 0
         };
     }
+
+    #region Núcleo de importación compartido (ejecución directa y lotes pendientes)
+
+    private sealed class ImportCounters
+    {
+        public int LaborsCreated;
+        public int LaborsUpdated;
+        public int SuppliesCreated;
+        public int NewInventories;
+        public int AliasesLearned;
+        public List<string> Errors = new();
+    }
+
+    private sealed record ResolvedImportMappings(
+        Dictionary<string, Guid> Supplies,
+        Dictionary<string, Guid> LaborTypes,
+        Dictionary<string, LaborType> LaborTypesByName,
+        Dictionary<string, Guid?> Suppliers);
+
+    /// <summary>
+    /// Procesa los mappings de conciliación: crea insumos nuevos, aprende alias y
+    /// resuelve los diccionarios que usa la importación de labores. Con
+    /// autoCreateUnmatchedSupplies en false (subida directa y lotes pendientes),
+    /// un insumo con "Match" pero sin coincidencia NO crea inventario: queda sin
+    /// resolver y la fila va a revisión en vez de contaminar el catálogo.
+    /// </summary>
+    private ResolvedImportMappings ProcessImportMappings(
+        List<LaborImportSupplyMappingDto> mappings,
+        List<LaborImportTypeMappingDto>? laborTypeMappings,
+        List<LaborImportSupplierMappingDto>? supplierMappings,
+        List<SupplyAlias> existingAliases,
+        List<LaborType> existingLaborTypes,
+        List<LaborTypeAlias> existingLaborTypeAliases,
+        ImportCounters counters,
+        bool autoCreateUnmatchedSupplies)
+    {
+        // 1. Process Supply Mappings (Creations and Aliases)
+        var resolvedSupplies = new Dictionary<string, Guid>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var map in mappings)
+        {
+            if (string.Equals(map.Action, "Ignore", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            Guid? targetSupplyId = map.MatchedSupplyId;
+
+            if (string.Equals(map.Action, "CreateNew", StringComparison.OrdinalIgnoreCase)
+                || (!targetSupplyId.HasValue && autoCreateUnmatchedSupplies))
+            {
+                string itemName = !string.IsNullOrWhiteSpace(map.NewItemName) ? map.NewItemName.Trim() : map.RawName.Trim();
+                string category = !string.IsNullOrWhiteSpace(map.NewCategory) ? map.NewCategory.Trim() : (!string.IsNullOrWhiteSpace(map.DetectedCategory) ? map.DetectedCategory.Trim() : "Insumos");
+                string unit = !string.IsNullOrWhiteSpace(map.NewUnit) ? map.NewUnit.Trim() : (!string.IsNullOrWhiteSpace(map.DetectedUnit) ? map.DetectedUnit.Trim() : "unidad");
+
+                var newInventory = new Inventory
+                {
+                    Id = Guid.NewGuid(),
+                    TenantId = _context.CurrentTenantId,
+                    ItemName = itemName,
+                    Category = category,
+                    Unit = unit,
+                    UnitA = unit,
+                    CurrentStock = 0,
+                    ReorderLevel = 0,
+                    ConversionFactor = 1
+                };
+                _context.Inventories.Add(newInventory);
+                targetSupplyId = newInventory.Id;
+                counters.NewInventories++;
+            }
+
+            if (targetSupplyId.HasValue)
+            {
+                resolvedSupplies[map.RawName.Trim()] = targetSupplyId.Value;
+
+                // Check if alias already exists for this tenant
+                string normRaw = NormalizeString(map.RawName);
+                bool aliasExists = existingAliases.Any(a => string.Equals(a.NormalizedName, normRaw, StringComparison.OrdinalIgnoreCase));
+                if (!aliasExists)
+                {
+                    var newAlias = new SupplyAlias
+                    {
+                        Id = Guid.NewGuid(),
+                        TenantId = _context.CurrentTenantId,
+                        RawName = map.RawName.Trim(),
+                        NormalizedName = normRaw,
+                        SupplyId = targetSupplyId.Value,
+                        CreatedAt = DateTime.UtcNow
+                    };
+                    _context.SupplyAliases.Add(newAlias);
+                    existingAliases.Add(newAlias);
+                    counters.AliasesLearned++;
+                }
+            }
+        }
+
+        // 2. Process Labor Type Mappings (Learns aliases, NEVER creates new LaborType without ERP)
+        var laborTypesByName = new Dictionary<string, LaborType>(StringComparer.OrdinalIgnoreCase);
+        foreach (var lt in existingLaborTypes)
+        {
+            string norm = NormalizeString(lt.Name);
+            if (!string.IsNullOrWhiteSpace(norm) && !laborTypesByName.ContainsKey(norm))
+            {
+                laborTypesByName[norm] = lt;
+            }
+        }
+
+        var resolvedLaborTypes = new Dictionary<string, Guid>(StringComparer.OrdinalIgnoreCase);
+        if (laborTypeMappings != null)
+        {
+            foreach (var ltm in laborTypeMappings)
+            {
+                if (ltm.MatchedLaborTypeId.HasValue)
+                {
+                    var targetLtId = ltm.MatchedLaborTypeId.Value;
+                    resolvedLaborTypes[ltm.RawName.Trim()] = targetLtId;
+
+                    // Learn alias if not already existing
+                    string normRaw = NormalizeString(ltm.RawName);
+                    bool aliasExists = existingLaborTypeAliases.Any(a => string.Equals(a.NormalizedName, normRaw, StringComparison.OrdinalIgnoreCase));
+                    if (!aliasExists)
+                    {
+                        var newAlias = new LaborTypeAlias
+                        {
+                            Id = Guid.NewGuid(),
+                            TenantId = _context.CurrentTenantId,
+                            RawName = ltm.RawName.Trim(),
+                            NormalizedName = normRaw,
+                            LaborTypeId = targetLtId,
+                            CreatedAt = DateTime.UtcNow
+                        };
+                        _context.LaborTypeAliases.Add(newAlias);
+                        existingLaborTypeAliases.Add(newAlias);
+                        counters.AliasesLearned++;
+                    }
+                }
+            }
+        }
+
+        // 2b. Resolve supply provider overrides confirmed by the user in preview (OT-26).
+        // Un proveedor sin vincular no bloquea nada: el LaborSupply se crea igual, solo
+        // sin SupplierContactId (ver trampa del plan: nombre no resuelto no aborta el import).
+        var resolvedSuppliers = new Dictionary<string, Guid?>(StringComparer.OrdinalIgnoreCase);
+        if (supplierMappings != null)
+        {
+            foreach (var sm in supplierMappings)
+            {
+                if (string.Equals(sm.Action, "Ignore", StringComparison.OrdinalIgnoreCase))
+                {
+                    resolvedSuppliers[sm.RawName.Trim()] = null;
+                    continue;
+                }
+                resolvedSuppliers[sm.RawName.Trim()] = sm.MatchedContactId;
+            }
+        }
+
+        return new ResolvedImportMappings(resolvedSupplies, resolvedLaborTypes, laborTypesByName, resolvedSuppliers);
+    }
+
+    /// <summary>
+    /// Importa una lista de labores ya parseadas (crea o actualiza por
+    /// deduplicación lote+fecha+tipo) con sus recetas de insumos. Devuelve las
+    /// labores persistidas por fila para trazabilidad. No hace SaveChanges.
+    /// </summary>
+    private List<(int RowIndex, Guid LaborId)> ImportParsedLaborList(
+        List<LaborImportParsedLaborDto> parsedLabors,
+        ResolvedImportMappings resolved,
+        List<CampaignLot> campaignLots,
+        List<Labor> existingLabors,
+        List<Inventory> existingInventories,
+        List<LaborTypeAlias> existingLaborTypeAliases,
+        ImportCounters counters)
+    {
+        var imported = new List<(int RowIndex, Guid LaborId)>();
+
+        // 3. Process Labors & Supplies
+        foreach (var parsedLabor in parsedLabors)
+        {
+            if (!parsedLabor.LotId.HasValue || !parsedLabor.CampaignLotId.HasValue)
+            {
+                counters.Errors.Add($"Labor en fila {parsedLabor.RowIndex}: El lote '{parsedLabor.LotName}' no pertenece a la campaña. Se omitió.");
+                continue;
+            }
+
+            // Resolve LaborType strictly from mapped or existing ERP concepts
+            string laborTypeName = !string.IsNullOrWhiteSpace(parsedLabor.LaborTypeName) ? parsedLabor.LaborTypeName.Trim() : "Labor General";
+            Guid? targetLaborTypeId = null;
+
+            if (resolved.LaborTypes.TryGetValue(laborTypeName, out var mappedLtId))
+            {
+                targetLaborTypeId = mappedLtId;
+            }
+            else
+            {
+                string normLt = NormalizeString(laborTypeName);
+                var aliasMatch = existingLaborTypeAliases.FirstOrDefault(a => string.Equals(a.NormalizedName, normLt, StringComparison.OrdinalIgnoreCase));
+                if (aliasMatch != null)
+                {
+                    targetLaborTypeId = aliasMatch.LaborTypeId;
+                }
+                else if (resolved.LaborTypesByName.TryGetValue(normLt, out var laborType))
+                {
+                    targetLaborTypeId = laborType.Id;
+                }
+            }
+
+            if (!targetLaborTypeId.HasValue)
+            {
+                counters.Errors.Add($"Labor en fila {parsedLabor.RowIndex}: El tipo de labor '{laborTypeName}' no está vinculado a ningún concepto del ERP. Se omitió.");
+                continue;
+            }
+
+            var campaignLot = campaignLots.FirstOrDefault(cl => cl.Id == parsedLabor.CampaignLotId.Value);
+
+            // Deducir modo por la fecha: si es pasada o igual a hoy, es Realizada; si es a futuro, Planeada
+            bool isRealized = false;
+            if (parsedLabor.Date.HasValue)
+            {
+                isRealized = parsedLabor.Date.Value.Date <= DateTime.UtcNow.Date;
+            }
+            else
+            {
+                isRealized = string.Equals(parsedLabor.Mode, "Realized", StringComparison.OrdinalIgnoreCase);
+            }
+
+            var laborMode = isRealized ? LaborMode.Realized : LaborMode.Planned;
+            var laborStatus = isRealized ? LaborStatus.Realized : LaborStatus.Planned;
+
+            // Check if labor already exists (deduplication on re-import: same Lot + Date + LaborType)
+            Labor? existingLabor = null;
+            if (parsedLabor.Date.HasValue)
+            {
+                var targetDate = parsedLabor.Date.Value.Date;
+                existingLabor = existingLabors.FirstOrDefault(l =>
+                    l.CampaignLotId == parsedLabor.CampaignLotId.Value &&
+                    l.LaborTypeId == targetLaborTypeId.Value &&
+                    ((l.ExecutionDate.HasValue && l.ExecutionDate.Value.Date == targetDate) ||
+                     (l.EstimatedDate.HasValue && l.EstimatedDate.Value.Date == targetDate)));
+            }
+
+            Labor laborToSave;
+            if (existingLabor != null)
+            {
+                existingLabor.Hectares = parsedLabor.Hectares;
+                existingLabor.EffectiveArea = parsedLabor.Hectares;
+                existingLabor.ContactId = parsedLabor.ContactId;
+                existingLabor.IsExternalBilling = parsedLabor.IsExternalBilling;
+                existingLabor.ExecutionDate = parsedLabor.Date;
+                existingLabor.EstimatedDate = parsedLabor.Date;
+                existingLabor.Mode = laborMode;
+                existingLabor.Status = laborStatus;
+                existingLabor.Notes = string.IsNullOrWhiteSpace(parsedLabor.Contractor)
+                    ? "Importado desde Excel"
+                    : $"Importado desde Excel. Contratista/Equipo: {parsedLabor.Contractor}";
+
+                // Replace supplies
+                var oldSupplies = existingLabor.Supplies.ToList();
+                if (oldSupplies.Count > 0)
+                {
+                    _context.LaborSupplies.RemoveRange(oldSupplies);
+                }
+
+                laborToSave = existingLabor;
+                counters.LaborsUpdated++;
+            }
+            else
+            {
+                // Resolve ErpActivityId from the active rotation for this lot at the labor date
+                Guid? resolvedActivityId = null;
+                if (campaignLot != null && parsedLabor.Date.HasValue)
+                {
+                    var laborDate = DateOnly.FromDateTime(parsedLabor.Date.Value);
+                    var activeRotation = campaignLot.Rotations
+                        .FirstOrDefault(r => r.StartDate <= laborDate && r.EndDate >= laborDate);
+                    resolvedActivityId = activeRotation?.ErpActivityId;
+                }
+
+                laborToSave = new Labor
+                {
+                    Id = Guid.NewGuid(),
+                    TenantId = _context.CurrentTenantId,
+                    LotId = parsedLabor.LotId.Value,
+                    CampaignLotId = parsedLabor.CampaignLotId.Value,
+                    ErpActivityId = resolvedActivityId,
+                    LaborTypeId = targetLaborTypeId.Value,
+                    ContactId = parsedLabor.ContactId,
+                    IsExternalBilling = parsedLabor.IsExternalBilling,
+                    ExecutionDate = parsedLabor.Date,
+                    EstimatedDate = parsedLabor.Date,
+                    Hectares = parsedLabor.Hectares,
+                    EffectiveArea = parsedLabor.Hectares,
+                    Rate = 1,
+                    RateUnit = "ha",
+                    PlannedDose = 1,
+                    RealizedDose = isRealized ? 1 : null,
+                    Mode = laborMode,
+                    Status = laborStatus,
+                    Priority = LaborPriority.Regular,
+                    CreatedAt = DateTime.UtcNow,
+                    Notes = string.IsNullOrWhiteSpace(parsedLabor.Contractor)
+                        ? "Importado desde Excel"
+                        : $"Importado desde Excel. Contratista/Equipo: {parsedLabor.Contractor}"
+                };
+
+                _context.Labors.Add(laborToSave);
+                existingLabors.Add(laborToSave);
+                counters.LaborsCreated++;
+            }
+
+            int mixOrder = 1;
+            foreach (var sup in parsedLabor.Supplies)
+            {
+                if (!resolved.Supplies.TryGetValue(sup.SupplyName.Trim(), out var supplyId))
+                {
+                    continue; // Ignored or unmapped
+                }
+
+                decimal plannedDose = sup.Dose;
+                decimal totalQty = sup.Total ?? (sup.Dose * laborToSave.Hectares);
+                string supplyUnit = !string.IsNullOrWhiteSpace(sup.Unit)
+                    ? sup.Unit
+                    : (existingInventories.FirstOrDefault(i => i.Id == supplyId)?.Unit ?? "unidad");
+
+                // Proveedor del insumo (OT-26): preferir la corrección del usuario en
+                // preview; si no la hay, usar el matcheo automático hecho al parsear.
+                Guid? supplierContactId = null;
+                if (!string.IsNullOrWhiteSpace(sup.SupplierRawName))
+                {
+                    supplierContactId = resolved.Suppliers.TryGetValue(sup.SupplierRawName.Trim(), out var overrideId)
+                        ? overrideId
+                        : sup.SupplierContactId;
+                }
+
+                var laborSupply = new LaborSupply
+                {
+                    Id = Guid.NewGuid(),
+                    TenantId = _context.CurrentTenantId,
+                    LaborId = laborToSave.Id,
+                    SupplyId = supplyId,
+                    PlannedHectares = laborToSave.Hectares,
+                    RealHectares = isRealized ? laborToSave.Hectares : null,
+                    PlannedDose = plannedDose,
+                    RealDose = isRealized ? plannedDose : null,
+                    PlannedTotal = totalQty,
+                    RealTotal = isRealized ? totalQty : null,
+                    UnitOfMeasure = supplyUnit,
+                    TankMixOrder = mixOrder++,
+                    SupplierContactId = supplierContactId
+                };
+
+                _context.LaborSupplies.Add(laborSupply);
+                counters.SuppliesCreated++;
+            }
+
+            imported.Add((parsedLabor.RowIndex, laborToSave.Id));
+        }
+
+        return imported;
+    }
+
+    /// <summary>
+    /// Los mismos valores que MatchContact considera "propio" y por los que no
+    /// exige un contacto vinculado.
+    /// </summary>
+    private static bool IsPropioLike(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return true;
+        string norm = NormalizeString(raw);
+        return norm == "propio" || norm == "equipo propio" || norm == "personal propio" || norm == "propia";
+    }
+
+    /// <summary>
+    /// Verde estricto: la fila hizo full match y se puede importar sola al subir
+    /// el Excel (lote + tipo + todos los insumos + responsable/proveedor).
+    /// </summary>
+    private static bool IsGreenRow(LaborImportParsedLaborDto labor)
+    {
+        if (!labor.LotId.HasValue || !labor.CampaignLotId.HasValue || labor.Errors.Count > 0)
+            return false;
+        if (!labor.LaborTypeId.HasValue)
+            return false;
+        foreach (var s in labor.Supplies)
+        {
+            if (!s.MatchedSupplyId.HasValue)
+                return false;
+            if (!string.IsNullOrWhiteSpace(s.SupplierRawName)
+                && !IsPropioLike(s.SupplierRawName)
+                && !s.SupplierContactId.HasValue)
+                return false;
+        }
+        if (!string.IsNullOrWhiteSpace(labor.Contractor) && !labor.ContactId.HasValue && !IsPropioLike(labor.Contractor))
+            return false;
+        return true;
+    }
+
+    /// <summary>
+    /// Chequea si una fila pendiente ya es importable con los mappings actuales
+    /// del batch (teniendo en cuenta decisiones explícitas como Ignorar).
+    /// </summary>
+    private static bool IsRowImportable(
+        LaborImportParsedLaborDto labor,
+        ResolvedImportMappings resolved,
+        List<LaborTypeAlias> existingLaborTypeAliases,
+        List<LaborImportSupplyMappingDto> supplyMappings,
+        List<LaborImportSupplierMappingDto> supplierMappings,
+        out string? reason)
+    {
+        reason = null;
+        if (!labor.LotId.HasValue || !labor.CampaignLotId.HasValue || labor.Errors.Count > 0)
+        {
+            reason = $"el lote '{labor.LotName}' no está en la campaña";
+            return false;
+        }
+
+        string laborTypeName = !string.IsNullOrWhiteSpace(labor.LaborTypeName) ? labor.LaborTypeName.Trim() : "Labor General";
+        bool typeOk = resolved.LaborTypes.ContainsKey(laborTypeName)
+            || existingLaborTypeAliases.Any(a => string.Equals(a.NormalizedName, NormalizeString(laborTypeName), StringComparison.OrdinalIgnoreCase))
+            || resolved.LaborTypesByName.ContainsKey(NormalizeString(laborTypeName));
+        if (!typeOk)
+        {
+            reason = $"el tipo '{laborTypeName}' no está vinculado a un concepto del ERP";
+            return false;
+        }
+
+        foreach (var s in labor.Supplies)
+        {
+            if (string.IsNullOrWhiteSpace(s.SupplyName))
+                continue;
+            if (resolved.Supplies.ContainsKey(s.SupplyName.Trim()))
+                continue;
+            var map = supplyMappings.FirstOrDefault(m => string.Equals(m.RawName.Trim(), s.SupplyName.Trim(), StringComparison.OrdinalIgnoreCase));
+            if (map != null && string.Equals(map.Action, "Ignore", StringComparison.OrdinalIgnoreCase))
+                continue;
+            reason = $"el insumo '{s.SupplyName}' no está vinculado a inventario";
+            return false;
+        }
+
+        foreach (var s in labor.Supplies)
+        {
+            if (string.IsNullOrWhiteSpace(s.SupplierRawName) || IsPropioLike(s.SupplierRawName))
+                continue;
+            var map = supplierMappings.FirstOrDefault(m => string.Equals(m.RawName.Trim(), s.SupplierRawName!.Trim(), StringComparison.OrdinalIgnoreCase));
+            if (map != null)
+                continue; // vinculado o explícitamente ignorado
+            if (s.SupplierContactId.HasValue)
+                continue;
+            reason = $"el proveedor '{s.SupplierRawName}' no está vinculado al padrón";
+            return false;
+        }
+
+        if (!string.IsNullOrWhiteSpace(labor.Contractor) && !labor.ContactId.HasValue && !IsPropioLike(labor.Contractor))
+        {
+            reason = $"el responsable '{labor.Contractor}' no está vinculado al padrón";
+            return false;
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Vincula los mappings automáticos a las filas parseadas (mismo código que
+    /// usa la vista previa, para que subir y ver pendiente coincidan).
+    /// </summary>
+    private static void ApplyMappingsToLabors(
+        List<LaborImportParsedLaborDto> parsedLabors,
+        List<LaborImportSupplyMappingDto> supplyMappings,
+        List<LaborImportTypeMappingDto> laborTypeMappings)
+    {
+        var mappingDict = new Dictionary<string, LaborImportSupplyMappingDto>(StringComparer.OrdinalIgnoreCase);
+        foreach (var m in supplyMappings)
+        {
+            mappingDict[m.RawName.Trim()] = m;
+        }
+        foreach (var labor in parsedLabors)
+        {
+            foreach (var sup in labor.Supplies)
+            {
+                if (mappingDict.TryGetValue(sup.SupplyName.Trim(), out var map))
+                {
+                    sup.MatchedSupplyId = map.MatchedSupplyId;
+                    sup.MatchedSupplyName = map.MatchedSupplyName;
+                }
+            }
+        }
+
+        var laborTypeMappingDict = new Dictionary<string, LaborImportTypeMappingDto>(StringComparer.OrdinalIgnoreCase);
+        foreach (var ltm in laborTypeMappings)
+        {
+            laborTypeMappingDict[ltm.RawName.Trim()] = ltm;
+        }
+        foreach (var labor in parsedLabors)
+        {
+            if (laborTypeMappingDict.TryGetValue(labor.LaborTypeName.Trim(), out var ltm) && ltm.MatchedLaborTypeId.HasValue)
+            {
+                labor.LaborTypeId = ltm.MatchedLaborTypeId;
+                labor.Warnings.Clear(); // Cleared if matched
+            }
+        }
+    }
+
+    #endregion
+
+    #region Lotes de importación pendientes (sección Importaciones pendientes)
+
+    private static readonly JsonSerializerOptions BatchJsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        PropertyNameCaseInsensitive = true
+    };
+
+    private static string ComputeSha256(byte[] bytes)
+    {
+        byte[] hash = SHA256.HashData(bytes);
+        return Convert.ToHexString(hash);
+    }
+
+    private static LaborImportPendingRow ToPendingRow(LaborImportBatch batch, LaborImportParsedLaborDto labor)
+    {
+        return new LaborImportPendingRow
+        {
+            Id = Guid.NewGuid(),
+            TenantId = batch.TenantId,
+            BatchId = batch.Id,
+            RowIndex = labor.RowIndex,
+            Date = labor.Date,
+            FieldName = labor.FieldName,
+            LotName = labor.LotName,
+            LotId = labor.LotId,
+            CampaignLotId = labor.CampaignLotId,
+            Hectares = labor.Hectares,
+            LaborTypeName = labor.LaborTypeName,
+            LaborTypeId = labor.LaborTypeId,
+            Contractor = labor.Contractor,
+            ContactId = labor.ContactId,
+            MatchedContactName = labor.MatchedContactName,
+            IsExternalBilling = labor.IsExternalBilling,
+            SuppliesJson = JsonSerializer.Serialize(labor.Supplies, BatchJsonOptions),
+            ErrorsJson = JsonSerializer.Serialize(labor.Errors, BatchJsonOptions),
+            WarningsJson = JsonSerializer.Serialize(labor.Warnings, BatchJsonOptions),
+            Resolution = LaborImportRowResolution.Unresolved
+        };
+    }
+
+    private static LaborImportParsedLaborDto ToParsedLabor(LaborImportPendingRow row)
+    {
+        List<LaborImportParsedItemDto> supplies;
+        List<string> errors;
+        List<string> warnings;
+        try { supplies = JsonSerializer.Deserialize<List<LaborImportParsedItemDto>>(row.SuppliesJson, BatchJsonOptions) ?? new(); }
+        catch { supplies = new(); }
+        try { errors = JsonSerializer.Deserialize<List<string>>(row.ErrorsJson, BatchJsonOptions) ?? new(); }
+        catch { errors = new(); }
+        try { warnings = JsonSerializer.Deserialize<List<string>>(row.WarningsJson, BatchJsonOptions) ?? new(); }
+        catch { warnings = new(); }
+
+        return new LaborImportParsedLaborDto
+        {
+            RowIndex = row.RowIndex,
+            Date = row.Date,
+            FieldName = row.FieldName,
+            LotName = row.LotName,
+            LotId = row.LotId,
+            CampaignLotId = row.CampaignLotId,
+            Hectares = row.Hectares,
+            LaborTypeName = row.LaborTypeName,
+            LaborTypeId = row.LaborTypeId,
+            Contractor = row.Contractor,
+            ContactId = row.ContactId,
+            MatchedContactName = row.MatchedContactName,
+            IsExternalBilling = row.IsExternalBilling,
+            Mode = "Realized",
+            Status = "Realized",
+            Supplies = supplies,
+            Errors = errors,
+            Warnings = warnings
+        };
+    }
+
+    private static List<T> FromBatchJson<T>(string json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return new();
+        try { return JsonSerializer.Deserialize<List<T>>(json, BatchJsonOptions) ?? new(); }
+        catch { return new(); }
+    }
+
+    private static LaborImportBatchDto ToBatchDto(LaborImportBatch batch)
+    {
+        return new LaborImportBatchDto(
+            batch.Id, batch.CampaignId, batch.Campaign?.Name, batch.FileName,
+            batch.UploadedAt, batch.UploadedBy, batch.Status.ToString(),
+            batch.TotalRows, batch.ImportedCount, batch.PendingCount, batch.ExcludedCount);
+    }
+
+    private async Task<LaborImportBatchDetailDto?> BuildBatchDetailAsync(Guid batchId, CancellationToken ct)
+    {
+        var batch = await _context.LaborImportBatches
+            .Include(b => b.Campaign)
+            .Include(b => b.Rows)
+            .FirstOrDefaultAsync(b => b.Id == batchId, ct);
+        if (batch == null) return null;
+
+        var supplyMappings = FromBatchJson<LaborImportSupplyMappingDto>(batch.SupplyMappingsJson);
+        var laborTypeMappings = FromBatchJson<LaborImportTypeMappingDto>(batch.LaborTypeMappingsJson);
+        var supplierMappings = FromBatchJson<LaborImportSupplierMappingDto>(batch.SupplierMappingsJson);
+
+        var orderedRows = batch.Rows.OrderBy(r => r.RowIndex).ToList();
+        var labors = orderedRows.Select(ToParsedLabor).ToList();
+        var states = orderedRows
+            .Select(r => new LaborImportRowStateDto(r.RowIndex, r.Resolution.ToString(), r.ResultLaborId))
+            .ToList();
+
+        var diagnostics = new List<string>();
+        int pendingRows = orderedRows.Count(r => r.Resolution == LaborImportRowResolution.Unresolved);
+        if (pendingRows > 0)
+            diagnostics.Add($"{pendingRows} fila(s) pendientes de match manual.");
+        foreach (var err in orderedRows.SelectMany(r => r.ErrorsJson != "[]" ? FromBatchJson<string>(r.ErrorsJson) : new List<string>()).Distinct().Take(10))
+            diagnostics.Add(err);
+
+        var preview = new LaborImportPreviewDto
+        {
+            TotalLabors = labors.Count,
+            TotalSupplies = labors.Sum(l => l.Supplies.Count),
+            TotalHectares = labors.Sum(l => l.Hectares),
+            UniqueSuppliesCount = supplyMappings.Count,
+            UnmatchedSuppliesCount = supplyMappings.Count(m => !m.MatchedSupplyId.HasValue && !string.Equals(m.Action, "Ignore", StringComparison.OrdinalIgnoreCase)),
+            UniqueLaborTypesCount = laborTypeMappings.Count,
+            UnmatchedLaborTypesCount = laborTypeMappings.Count(m => !m.MatchedLaborTypeId.HasValue),
+            UnmatchedSuppliersCount = supplierMappings.Count(m => !m.MatchedContactId.HasValue && !string.Equals(m.Action, "Ignore", StringComparison.OrdinalIgnoreCase)),
+            Labors = labors,
+            SupplyMappings = supplyMappings,
+            LaborTypeMappings = laborTypeMappings,
+            SupplierMappings = supplierMappings,
+            Diagnostics = diagnostics,
+            CanProceed = pendingRows > 0
+        };
+
+        return new LaborImportBatchDetailDto(ToBatchDto(batch), preview, states);
+    }
+
+    private static void UpdateBatchCounters(LaborImportBatch batch)
+    {
+        batch.ImportedCount = batch.Rows.Count(r => r.Resolution == LaborImportRowResolution.Imported);
+        batch.ExcludedCount = batch.Rows.Count(r => r.Resolution == LaborImportRowResolution.Excluded);
+        batch.PendingCount = batch.Rows.Count(r => r.Resolution == LaborImportRowResolution.Unresolved);
+        batch.Status = batch.PendingCount == 0 ? LaborImportBatchStatus.Completed : LaborImportBatchStatus.Pending;
+    }
+
+    public async Task<LaborImportUploadResultDto> UploadAsync(
+        Guid campaignId, Stream fileStream, string fileName, string? uploadedBy, bool force = false, CancellationToken ct = default)
+    {
+        var campaign = await _context.Campaigns.FirstOrDefaultAsync(c => c.Id == campaignId, ct);
+        if (campaign == null)
+            throw new InvalidOperationException("La campaña especificada no existe.");
+
+        using var ms = new MemoryStream();
+        await fileStream.CopyToAsync(ms, ct);
+        byte[] bytes = ms.ToArray();
+        if (bytes.Length == 0)
+            throw new InvalidOperationException("El archivo está vacío.");
+        string fileHash = ComputeSha256(bytes);
+
+        if (!force)
+        {
+            var duplicate = await _context.LaborImportBatches
+                .Where(b => b.CampaignId == campaignId && b.FileHash == fileHash)
+                .OrderByDescending(b => b.UploadedAt)
+                .FirstOrDefaultAsync(ct);
+            if (duplicate != null)
+            {
+                return new LaborImportUploadResultDto
+                {
+                    DuplicateOfBatchId = duplicate.Id,
+                    DuplicateFileName = duplicate.FileName,
+                    DuplicateUploadedAt = duplicate.UploadedAt,
+                    PendingRows = duplicate.PendingCount,
+                    Success = false,
+                    Errors = new List<string> { $"Este archivo ya se subió el {duplicate.UploadedAt:dd/MM/yyyy HH:mm} ({duplicate.PendingCount} fila(s) pendientes, {duplicate.ImportedCount} importadas)." }
+                };
+            }
+        }
+
+        using var workbook = OpenWorkbookSafely(new MemoryStream(bytes));
+        var worksheet = FindLaborWorksheet(workbook);
+        var columnConfig = DetectColumns(worksheet);
+
+        var campaignLots = await _context.CampaignLots
+            .Include(cl => cl.Lot)
+            .ThenInclude(l => l!.Field)
+            .Include(cl => cl.Rotations)
+            .Where(cl => cl.CampaignId == campaignId)
+            .ToListAsync(ct);
+
+        var existingAliases = await _context.SupplyAliases
+            .Include(a => a.Supply)
+            .ToListAsync(ct);
+        var existingInventories = await _context.Inventories.ToListAsync(ct);
+        var existingLaborTypeAliases = await _context.LaborTypeAliases
+            .Include(a => a.LaborType)
+            .ToListAsync(ct);
+        var existingLaborTypes = await _context.LaborTypes.ToListAsync(ct);
+        var existingContacts = await _context.Contacts.ToListAsync(ct);
+
+        var parsedLabors = ParseLaborsFromWorksheet(worksheet, columnConfig, campaignLots, existingLaborTypes, existingContacts);
+        if (parsedLabors.Count == 0)
+        {
+            return new LaborImportUploadResultDto
+            {
+                Success = false,
+                Errors = new List<string> { "No se detectaron labores en el archivo." }
+            };
+        }
+
+        var (supplyMappings, _) = BuildSupplyMappings(parsedLabors, existingAliases, existingInventories);
+        var (laborTypeMappings, _) = BuildLaborTypeMappings(parsedLabors, existingLaborTypeAliases, existingLaborTypes);
+        var (supplierMappings, _) = BuildSupplierMappings(parsedLabors);
+        ApplyMappingsToLabors(parsedLabors, supplyMappings, laborTypeMappings);
+
+        var green = parsedLabors.Where(IsGreenRow).ToList();
+        var pending = parsedLabors.Where(l => !IsGreenRow(l)).ToList();
+
+        var campaignLotIds = campaignLots.Select(cl => cl.Id).ToHashSet();
+        var existingLabors = await _context.Labors
+            .Include(l => l.Supplies)
+            .Where(l => l.CampaignLotId.HasValue && campaignLotIds.Contains(l.CampaignLotId.Value))
+            .ToListAsync(ct);
+
+        var counters = new ImportCounters();
+        LaborImportBatch? batch = null;
+
+        var strategy = _context.Database.CreateExecutionStrategy();
+        await strategy.ExecuteAsync(async () =>
+        {
+            var isRelational = _context.Database.IsRelational();
+            Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction? tx = isRelational ? await _context.Database.BeginTransactionAsync(ct) : null;
+            try
+            {
+                if (green.Count > 0)
+                {
+                    // Sin CreateNew implícito: lo verde ya hizo full match, así que
+                    // procesar mappings solo vincula y aprende alias, no crea nada nuevo.
+                    var resolved = ProcessImportMappings(supplyMappings, laborTypeMappings, supplierMappings,
+                        existingAliases, existingLaborTypes, existingLaborTypeAliases,
+                        counters, autoCreateUnmatchedSupplies: false);
+                    ImportParsedLaborList(green, resolved, campaignLots, existingLabors,
+                        existingInventories, existingLaborTypeAliases, counters);
+                }
+
+                if (pending.Count > 0)
+                {
+                    batch = new LaborImportBatch
+                    {
+                        Id = Guid.NewGuid(),
+                        TenantId = _context.CurrentTenantId,
+                        CampaignId = campaignId,
+                        FileName = fileName,
+                        FileHash = fileHash,
+                        UploadedAt = DateTime.UtcNow,
+                        UploadedBy = uploadedBy,
+                        Status = LaborImportBatchStatus.Pending,
+                        TotalRows = pending.Count,
+                        ImportedCount = 0,
+                        PendingCount = pending.Count,
+                        ExcludedCount = 0,
+                        SupplyMappingsJson = JsonSerializer.Serialize(supplyMappings, BatchJsonOptions),
+                        LaborTypeMappingsJson = JsonSerializer.Serialize(laborTypeMappings, BatchJsonOptions),
+                        SupplierMappingsJson = JsonSerializer.Serialize(supplierMappings, BatchJsonOptions)
+                    };
+                    _context.LaborImportBatches.Add(batch);
+                    foreach (var p in pending)
+                        _context.LaborImportPendingRows.Add(ToPendingRow(batch, p));
+                }
+
+                await _context.SaveChangesAsync(ct);
+                if (tx != null) await tx.CommitAsync(ct);
+            }
+            catch (Exception ex)
+            {
+                if (tx != null) await tx.RollbackAsync(ct);
+                _logger.LogError(ex, "Error durante la subida directa de labores.");
+                throw;
+            }
+            finally
+            {
+                if (tx != null) await tx.DisposeAsync();
+            }
+        });
+
+        return new LaborImportUploadResultDto
+        {
+            LaborsCreated = counters.LaborsCreated,
+            LaborsUpdated = counters.LaborsUpdated,
+            SuppliesCreated = counters.SuppliesCreated,
+            NewSuppliesCreated = counters.NewInventories,
+            AliasesLearned = counters.AliasesLearned,
+            PendingBatchId = batch?.Id,
+            PendingRows = pending.Count,
+            Errors = counters.Errors,
+            Success = (counters.LaborsCreated + counters.LaborsUpdated) > 0 || pending.Count > 0
+        };
+    }
+
+    public async Task<List<LaborImportBatchDto>> GetBatchesAsync(Guid campaignId, CancellationToken ct = default)
+    {
+        return await _context.LaborImportBatches
+            .Include(b => b.Campaign)
+            .Where(b => b.CampaignId == campaignId)
+            .OrderByDescending(b => b.UploadedAt)
+            .Select(b => new LaborImportBatchDto(
+                b.Id, b.CampaignId, b.Campaign != null ? b.Campaign.Name : null, b.FileName,
+                b.UploadedAt, b.UploadedBy, b.Status.ToString(),
+                b.TotalRows, b.ImportedCount, b.PendingCount, b.ExcludedCount))
+            .ToListAsync(ct);
+    }
+
+    public Task<LaborImportBatchDetailDto?> GetBatchDetailAsync(Guid batchId, CancellationToken ct = default)
+        => BuildBatchDetailAsync(batchId, ct);
+
+    public async Task SaveBatchMappingsAsync(Guid batchId, LaborImportBatchMappingsDto mappings, CancellationToken ct = default)
+    {
+        var batch = await _context.LaborImportBatches.FirstOrDefaultAsync(b => b.Id == batchId, ct);
+        if (batch == null)
+            throw new InvalidOperationException("Lote de importación no encontrado.");
+        if (batch.Status == LaborImportBatchStatus.Completed)
+            throw new InvalidOperationException("El lote ya está completo y no admite cambios.");
+
+        batch.SupplyMappingsJson = JsonSerializer.Serialize(mappings.SupplyMappings ?? new(), BatchJsonOptions);
+        batch.LaborTypeMappingsJson = JsonSerializer.Serialize(mappings.LaborTypeMappings ?? new(), BatchJsonOptions);
+        batch.SupplierMappingsJson = JsonSerializer.Serialize(mappings.SupplierMappings ?? new(), BatchJsonOptions);
+        await _context.SaveChangesAsync(ct);
+    }
+
+    public async Task<LaborImportBatchResolveResultDto> ImportBatchRowsAsync(Guid batchId, List<int>? rowIndexes, CancellationToken ct = default)
+    {
+        var batch = await _context.LaborImportBatches
+            .Include(b => b.Rows)
+            .FirstOrDefaultAsync(b => b.Id == batchId, ct);
+        if (batch == null)
+            throw new InvalidOperationException("Lote de importación no encontrado.");
+        if (batch.Status == LaborImportBatchStatus.Completed)
+            throw new InvalidOperationException("El lote ya está completo.");
+
+        var targets = batch.Rows
+            .Where(r => r.Resolution == LaborImportRowResolution.Unresolved
+                && (rowIndexes == null || rowIndexes.Contains(r.RowIndex)))
+            .OrderBy(r => r.RowIndex)
+            .ToList();
+        if (targets.Count == 0)
+        {
+            return new LaborImportBatchResolveResultDto
+            {
+                Success = false,
+                BatchCompleted = batch.Status == LaborImportBatchStatus.Completed,
+                Errors = new List<string> { "No hay filas pendientes para importar en esta selección." }
+            };
+        }
+
+        var supplyMappings = FromBatchJson<LaborImportSupplyMappingDto>(batch.SupplyMappingsJson);
+        var laborTypeMappings = FromBatchJson<LaborImportTypeMappingDto>(batch.LaborTypeMappingsJson);
+        var supplierMappings = FromBatchJson<LaborImportSupplierMappingDto>(batch.SupplierMappingsJson);
+
+        var parsed = targets.Select(ToParsedLabor).ToList();
+        ApplyMappingsToLabors(parsed, supplyMappings, laborTypeMappings);
+
+        var campaignLots = await _context.CampaignLots
+            .Include(cl => cl.Lot)
+            .Include(cl => cl.Rotations)
+            .Where(cl => cl.CampaignId == batch.CampaignId)
+            .ToListAsync(ct);
+        var existingLaborTypes = await _context.LaborTypes.ToListAsync(ct);
+        var existingLaborTypeAliases = await _context.LaborTypeAliases.Include(a => a.LaborType).ToListAsync(ct);
+        var existingAliases = await _context.SupplyAliases.Include(a => a.Supply).ToListAsync(ct);
+        var existingInventories = await _context.Inventories.ToListAsync(ct);
+
+        var campaignLotIds = campaignLots.Select(cl => cl.Id).ToHashSet();
+        var existingLabors = await _context.Labors
+            .Include(l => l.Supplies)
+            .Where(l => l.CampaignLotId.HasValue && campaignLotIds.Contains(l.CampaignLotId.Value))
+            .ToListAsync(ct);
+
+        var counters = new ImportCounters();
+        var resolved = ProcessImportMappings(supplyMappings, laborTypeMappings, supplierMappings,
+            existingAliases, existingLaborTypes, existingLaborTypeAliases,
+            counters, autoCreateUnmatchedSupplies: false);
+
+        var importable = new List<LaborImportParsedLaborDto>();
+        var resolveErrors = new List<string>();
+        foreach (var p in parsed)
+        {
+            if (IsRowImportable(p, resolved, existingLaborTypeAliases, supplyMappings, supplierMappings, out var reason))
+                importable.Add(p);
+            else
+                resolveErrors.Add($"Fila {p.RowIndex}: todavía sin match ({reason}). Vinculá el concepto o descartá la fila.");
+        }
+
+        var strategy = _context.Database.CreateExecutionStrategy();
+        List<(int RowIndex, Guid LaborId)> importedPairs = new();
+        await strategy.ExecuteAsync(async () =>
+        {
+            var isRelational = _context.Database.IsRelational();
+            Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction? tx = isRelational ? await _context.Database.BeginTransactionAsync(ct) : null;
+            try
+            {
+                if (importable.Count > 0)
+                {
+                    importedPairs = ImportParsedLaborList(importable, resolved, campaignLots, existingLabors,
+                        existingInventories, existingLaborTypeAliases, counters);
+                    var importedByRow = importedPairs.ToDictionary(x => x.RowIndex, x => x.LaborId);
+                    foreach (var t in targets)
+                    {
+                        if (importedByRow.TryGetValue(t.RowIndex, out var laborId))
+                        {
+                            t.Resolution = LaborImportRowResolution.Imported;
+                            t.ResultLaborId = laborId;
+                            t.ResolvedAt = DateTime.UtcNow;
+                        }
+                    }
+                }
+
+                UpdateBatchCounters(batch);
+                await _context.SaveChangesAsync(ct);
+                if (tx != null) await tx.CommitAsync(ct);
+            }
+            catch (Exception ex)
+            {
+                if (tx != null) await tx.RollbackAsync(ct);
+                _logger.LogError(ex, "Error al importar filas del lote {BatchId}.", batchId);
+                throw;
+            }
+            finally
+            {
+                if (tx != null) await tx.DisposeAsync();
+            }
+        });
+
+        resolveErrors.AddRange(counters.Errors);
+        return new LaborImportBatchResolveResultDto
+        {
+            Imported = importedPairs.Count,
+            Excluded = 0,
+            BatchCompleted = batch.Status == LaborImportBatchStatus.Completed,
+            Errors = resolveErrors,
+            Success = importedPairs.Count > 0
+        };
+    }
+
+    public async Task<LaborImportBatchResolveResultDto> DiscardBatchRowsAsync(Guid batchId, List<int>? rowIndexes, CancellationToken ct = default)
+    {
+        var batch = await _context.LaborImportBatches
+            .Include(b => b.Rows)
+            .FirstOrDefaultAsync(b => b.Id == batchId, ct);
+        if (batch == null)
+            throw new InvalidOperationException("Lote de importación no encontrado.");
+        if (batch.Status == LaborImportBatchStatus.Completed)
+            throw new InvalidOperationException("El lote ya está completo.");
+
+        var targets = batch.Rows
+            .Where(r => r.Resolution == LaborImportRowResolution.Unresolved
+                && (rowIndexes == null || rowIndexes.Contains(r.RowIndex)))
+            .ToList();
+        if (targets.Count == 0)
+        {
+            return new LaborImportBatchResolveResultDto
+            {
+                Success = false,
+                BatchCompleted = batch.Status == LaborImportBatchStatus.Completed,
+                Errors = new List<string> { "No hay filas pendientes para descartar en esta selección." }
+            };
+        }
+
+        foreach (var t in targets)
+        {
+            t.Resolution = LaborImportRowResolution.Excluded;
+            t.ResolvedAt = DateTime.UtcNow;
+        }
+        UpdateBatchCounters(batch);
+        await _context.SaveChangesAsync(ct);
+
+        return new LaborImportBatchResolveResultDto
+        {
+            Imported = 0,
+            Excluded = targets.Count,
+            BatchCompleted = batch.Status == LaborImportBatchStatus.Completed,
+            Success = true
+        };
+    }
+
+    /// <summary>
+    /// Re-evalúa los matches automáticos de un lote contra el estado actual de
+    /// los catálogos (por si se dio de alta el lote, el insumo o el contacto en
+    /// el padrón después de subir el archivo). No pisa decisiones manuales.
+    /// </summary>
+    public async Task<LaborImportBatchDetailDto?> ReevaluateBatchAsync(Guid batchId, CancellationToken ct = default)
+    {
+        var batch = await _context.LaborImportBatches
+            .Include(b => b.Rows)
+            .FirstOrDefaultAsync(b => b.Id == batchId, ct);
+        if (batch == null) return null;
+        if (batch.Status == LaborImportBatchStatus.Completed)
+            return await BuildBatchDetailAsync(batchId, ct);
+
+        var supplyMappings = FromBatchJson<LaborImportSupplyMappingDto>(batch.SupplyMappingsJson);
+        var laborTypeMappings = FromBatchJson<LaborImportTypeMappingDto>(batch.LaborTypeMappingsJson);
+        var supplierMappings = FromBatchJson<LaborImportSupplierMappingDto>(batch.SupplierMappingsJson);
+
+        var unresolved = batch.Rows.Where(r => r.Resolution == LaborImportRowResolution.Unresolved).ToList();
+        var parsed = unresolved.Select(ToParsedLabor).ToList();
+
+        var existingAliases = await _context.SupplyAliases.Include(a => a.Supply).ToListAsync(ct);
+        var existingInventories = await _context.Inventories.ToListAsync(ct);
+        var existingLaborTypeAliases = await _context.LaborTypeAliases.Include(a => a.LaborType).ToListAsync(ct);
+        var existingLaborTypes = await _context.LaborTypes.ToListAsync(ct);
+        var existingContacts = await _context.Contacts.ToListAsync(ct);
+
+        var (freshSupplies, _) = BuildSupplyMappings(parsed, existingAliases, existingInventories);
+        var (freshTypes, _) = BuildLaborTypeMappings(parsed, existingLaborTypeAliases, existingLaborTypes);
+
+        var freshSuppliesByName = freshSupplies.ToDictionary(m => m.RawName.Trim(), m => m, StringComparer.OrdinalIgnoreCase);
+        foreach (var map in supplyMappings)
+        {
+            if (map.MatchedSupplyId.HasValue || !string.Equals(map.Action, "Match", StringComparison.OrdinalIgnoreCase) || !string.IsNullOrWhiteSpace(map.NewItemName))
+                continue; // decisión manual o alta personalizada: no se toca
+            if (freshSuppliesByName.TryGetValue(map.RawName.Trim(), out var fresh) && fresh.MatchedSupplyId.HasValue)
+            {
+                map.MatchedSupplyId = fresh.MatchedSupplyId;
+                map.MatchedSupplyName = fresh.MatchedSupplyName;
+                map.Confidence = fresh.Confidence;
+                map.ConfidenceLevel = fresh.ConfidenceLevel;
+                map.IsFromAlias = fresh.IsFromAlias;
+            }
+        }
+
+        var freshTypesByName = freshTypes.ToDictionary(m => m.RawName.Trim(), m => m, StringComparer.OrdinalIgnoreCase);
+        foreach (var map in laborTypeMappings)
+        {
+            if (map.MatchedLaborTypeId.HasValue)
+                continue;
+            if (freshTypesByName.TryGetValue(map.RawName.Trim(), out var fresh))
+            {
+                if (fresh.MatchedLaborTypeId.HasValue)
+                {
+                    map.MatchedLaborTypeId = fresh.MatchedLaborTypeId;
+                    map.MatchedLaborTypeName = fresh.MatchedLaborTypeName;
+                    map.Confidence = fresh.Confidence;
+                    map.ConfidenceLevel = fresh.ConfidenceLevel;
+                    map.IsFromAlias = fresh.IsFromAlias;
+                }
+                map.SuggestedLaborTypeId = fresh.SuggestedLaborTypeId;
+                map.SuggestedLaborTypeName = fresh.SuggestedLaborTypeName;
+            }
+        }
+
+        // Proveedores: re-match automático donde el usuario no decidió nada.
+        foreach (var row in unresolved)
+        {
+            var supplies = FromBatchJson<LaborImportParsedItemDto>(row.SuppliesJson);
+            bool changed = false;
+            foreach (var s in supplies)
+            {
+                if (string.IsNullOrWhiteSpace(s.SupplierRawName) || s.SupplierContactId.HasValue)
+                    continue;
+                var sm = supplierMappings.FirstOrDefault(m => string.Equals(m.RawName.Trim(), s.SupplierRawName!.Trim(), StringComparison.OrdinalIgnoreCase));
+                if (sm != null && (!string.Equals(sm.Action, "Match", StringComparison.OrdinalIgnoreCase) || sm.MatchedContactId.HasValue))
+                    continue;
+                var (contactId, matchedName, _) = MatchContact(s.SupplierRawName, existingContacts);
+                if (contactId.HasValue)
+                {
+                    s.SupplierContactId = contactId;
+                    s.MatchedSupplierName = matchedName;
+                    changed = true;
+                }
+            }
+            if (changed)
+                row.SuppliesJson = JsonSerializer.Serialize(supplies, BatchJsonOptions);
+
+            // Responsable: no tiene capa de mapping, se re-matchea directo en la fila.
+            if (!string.IsNullOrWhiteSpace(row.Contractor) && !row.ContactId.HasValue && !IsPropioLike(row.Contractor))
+            {
+                var (contactId, matchedName, isExternal) = MatchContact(row.Contractor, existingContacts);
+                if (contactId.HasValue)
+                {
+                    row.ContactId = contactId;
+                    row.MatchedContactName = matchedName;
+                    row.IsExternalBilling = isExternal;
+                }
+            }
+
+            // Tipo por nombre exacto o alias nuevo (la vinculación por mapping
+            // se resuelve al importar; esto es solo para mostrar la fila al día).
+            if (!row.LaborTypeId.HasValue && !string.IsNullOrWhiteSpace(row.LaborTypeName))
+            {
+                string normLt = NormalizeString(row.LaborTypeName);
+                var aliasMatch = existingLaborTypeAliases.FirstOrDefault(a => string.Equals(a.NormalizedName, normLt, StringComparison.OrdinalIgnoreCase));
+                if (aliasMatch != null)
+                    row.LaborTypeId = aliasMatch.LaborTypeId;
+                else
+                {
+                    var exact = existingLaborTypes.FirstOrDefault(t => string.Equals(NormalizeString(t.Name), normLt, StringComparison.OrdinalIgnoreCase));
+                    if (exact != null)
+                        row.LaborTypeId = exact.Id;
+                }
+            }
+        }
+
+        batch.SupplyMappingsJson = JsonSerializer.Serialize(supplyMappings, BatchJsonOptions);
+        batch.LaborTypeMappingsJson = JsonSerializer.Serialize(laborTypeMappings, BatchJsonOptions);
+        batch.SupplierMappingsJson = JsonSerializer.Serialize(supplierMappings, BatchJsonOptions);
+        await _context.SaveChangesAsync(ct);
+
+        return await BuildBatchDetailAsync(batchId, ct);
+    }
+
+    public async Task<int> GetPendingCountAsync(Guid campaignId, CancellationToken ct = default)
+    {
+        return await _context.LaborImportBatches
+            .Where(b => b.CampaignId == campaignId && b.Status == LaborImportBatchStatus.Pending)
+            .SumAsync(b => b.PendingCount, ct);
+    }
+
+    #endregion
 
     public Task<(byte[] Bytes, string FileName)> GenerateTemplateAsync(CancellationToken ct = default)
     {
