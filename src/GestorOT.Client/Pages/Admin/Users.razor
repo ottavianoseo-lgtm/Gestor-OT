@@ -306,6 +306,7 @@
             foreach (ContactRole role in Enum.GetValues(typeof(ContactRole)))
             {
                 if (role == ContactRole.SuperAdmin && !isSuperAdmin) continue;
+                if (role == ContactRole.Supplier) continue; // modalidad de padrón, no rol de usuario
                 yield return role;
             }
         }

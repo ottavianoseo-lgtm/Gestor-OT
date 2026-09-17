@@ -8,6 +8,8 @@ public enum ContactRole
     InternalStaff = 0,
     [Display(Name = "Contratista")]
     Contractor = 1,
+    [Display(Name = "Proveedor")]
+    Supplier = 4,
     [Display(Name = "Agrónomo")]
     Agronomist = 2,
     [Display(Name = "Administrador")]

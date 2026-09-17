@@ -58,9 +58,16 @@ else
                             {
                                 ContactRole.InternalStaff => "Propio",
                                 ContactRole.Contractor => "Contratista",
+                                ContactRole.Supplier => "Proveedor",
                                 _ => "Activo"
                             };
-                            <Tag Color="@(contact?.Role == ContactRole.Contractor ? "orange" : "green")">@modalityLabel</Tag>
+                            var modalityColor = contact?.Role switch
+                            {
+                                ContactRole.Contractor => "orange",
+                                ContactRole.Supplier => "blue",
+                                _ => "green"
+                            };
+                            <Tag Color="@modalityColor">@modalityLabel</Tag>
                         }
                     </div>
                     <div class="person-actions">
@@ -81,6 +88,7 @@ else
                                         Style="width: 140px;">
                                     <SelectOption TItemValue="ContactRole" TItem="ContactRole" Value="@ContactRole.InternalStaff" Label="Propio" />
                                     <SelectOption TItemValue="ContactRole" TItem="ContactRole" Value="@ContactRole.Contractor" Label="Contratista" />
+                                    <SelectOption TItemValue="ContactRole" TItem="ContactRole" Value="@ContactRole.Supplier" Label="Proveedor" />
                                 </Select>
                             }
                         }
@@ -112,12 +120,14 @@ else
                         {
                             ContactRole.InternalStaff => "Propio",
                             ContactRole.Contractor => "Contratista",
+                            ContactRole.Supplier => "Proveedor",
                             _ => context.Role.GetDisplayName()
                         };
                         var roleColor = context.Role switch
                         {
                             ContactRole.InternalStaff => "#2ECC71",
                             ContactRole.Contractor => "#E67E22",
+                            ContactRole.Supplier => "#3498DB",
                             _ => "#95A5A6"
                         };
                     }
@@ -128,6 +138,7 @@ else
                                 Style="width: 120px;" Trigger="click">
                             <SelectOption TItemValue="ContactRole" TItem="ContactRole" Value="@ContactRole.InternalStaff" Label="Propio" />
                             <SelectOption TItemValue="ContactRole" TItem="ContactRole" Value="@ContactRole.Contractor" Label="Contratista" />
+                            <SelectOption TItemValue="ContactRole" TItem="ContactRole" Value="@ContactRole.Supplier" Label="Proveedor" />
                         </Select>
                     </div>
                 </Column>
@@ -150,6 +161,7 @@ else
             <Select TItemValue="ContactRole" TItem="ContactRole" @bind-Value="_selectedRole" Style="width: 100%;">
                 <SelectOption TItemValue="ContactRole" TItem="ContactRole" Value="@ContactRole.InternalStaff" Label="Propio" />
                 <SelectOption TItemValue="ContactRole" TItem="ContactRole" Value="@ContactRole.Contractor" Label="Contratista" />
+                <SelectOption TItemValue="ContactRole" TItem="ContactRole" Value="@ContactRole.Supplier" Label="Proveedor" />
             </Select>
         </div>
         <div style="text-align: right;">
