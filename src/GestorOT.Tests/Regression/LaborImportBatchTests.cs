@@ -214,6 +214,9 @@ public class LaborImportBatchTests
         supplyMap.NewItemName = "Urea Granulada";
         supplyMap.NewCategory = "Fertilizante";
         supplyMap.NewUnit = "kg";
+        // Sin Confirmed=true (lo que hace la UI cuando el usuario toca el radio o el
+        // dropdown) el matcheador no crea el insumo solo: no tiene código ERP.
+        supplyMap.Confirmed = true;
         await service.SaveBatchMappingsAsync(upload.PendingBatchId.Value, new LaborImportBatchMappingsDto
         {
             SupplyMappings = detail.Preview.SupplyMappings,
@@ -233,6 +236,41 @@ public class LaborImportBatchTests
         Assert.Single(labor.Supplies);
         Assert.Equal("Urea Granulada", context.Inventories.Single(i => i.ItemName == "Urea Granulada").ItemName);
         Assert.Equal(0, await service.GetPendingCountAsync(campaignId));
+    }
+
+    /// <summary>
+    /// El insumo sin match queda "CreateNew" por default del algoritmo (por debajo de
+    /// 0.70 de similitud), pero nadie tocó esa fila en la conciliación (Confirmed sigue
+    /// en false). Importar sin guardar un match a mano no debe crear el insumo solo:
+    /// no tiene código ERP. La fila queda pendiente, no se crea inventario ni labor.
+    /// </summary>
+    [Fact]
+    public async Task BatchWorkflow_UnconfirmedCreateNewSupply_NeverCreatesInventory()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var tenantId = Guid.NewGuid();
+        using var context = CreateContext(dbName, tenantId);
+        var campaignId = SeedBase(context, tenantId, out _);
+        var service = new LaborExcelImportService(context, NullLogger<LaborExcelImportService>.Instance);
+
+        using var stream = BuildExcel(
+            LaborRow("2026-01-12", "Lote 2", "Pulverización"),
+            SupplyRow("2026-01-12", "Lote 2", "Fertilizante", "Urea Granulada", 120, "kg"));
+
+        var upload = await service.UploadAsync(campaignId, stream, "sin-confirmar.xlsx", "tester");
+        Assert.NotNull(upload.PendingBatchId);
+        Assert.Equal(0, context.Labors.Count());
+        var inventoryCountAfterUpload = context.Inventories.Count();
+
+        // Sin pasar por la conciliación: se importa todo lo pendiente tal cual llegó.
+        var resolve = await service.ImportBatchRowsAsync(upload.PendingBatchId.Value, null);
+
+        Assert.False(resolve.Success);
+        Assert.Equal(0, resolve.Imported);
+        Assert.Contains(resolve.Errors, e => e.Contains("Urea Granulada") && e.Contains("no está vinculado a inventario"));
+        Assert.Equal(0, context.Labors.Count());
+        Assert.Equal(inventoryCountAfterUpload, context.Inventories.Count());
+        Assert.Equal(1, await service.GetPendingCountAsync(campaignId));
     }
 
     [Fact]

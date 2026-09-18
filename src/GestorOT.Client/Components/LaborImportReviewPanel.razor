@@ -632,6 +632,9 @@ else
     private async Task OnActionChanged(LaborImportSupplyMappingDto map, object? val)
     {
         map.Action = val?.ToString() ?? "Match";
+        // El usuario tocó la fila a mano: recién acá "CreateNew" puede crear inventario
+        // al importar. El default del algoritmo llega con Confirmed=false.
+        map.Confirmed = true;
         if (map.Action == "CreateNew")
         {
             map.NewItemName ??= map.RawName;
@@ -649,6 +652,7 @@ else
             map.MatchedSupplyName = selected.ItemName;
             map.Confidence = 1.0;
             map.ConfidenceLevel = "High";
+            map.Confirmed = true;
         }
         await NotifyMappingsChanged();
     }
@@ -661,6 +665,7 @@ else
             if (map.Confidence >= 0.70 && map.MatchedSupplyId.HasValue)
             {
                 map.Action = "Match";
+                map.Confirmed = true;
             }
         }
         Message.Success("Sugerencias de insumos confirmadas.");

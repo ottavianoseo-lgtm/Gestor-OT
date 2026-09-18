@@ -17,6 +17,13 @@ public record LaborImportSupplyMappingDto
     public string? NewItemName { get; set; }
     public string? NewCategory { get; set; }
     public string? NewUnit { get; set; }
+    /// <summary>
+    /// true solo si una persona tocó esta fila en la conciliación (radio, dropdown o
+    /// "Confirmar sugerencias altas"). "CreateNew" es el default del algoritmo para lo
+    /// que no llega a 0.70 de similitud: sin este flag en true, el insumo nunca se crea
+    /// solo, porque no tiene código ERP.
+    /// </summary>
+    public bool Confirmed { get; set; }
 }
 
 public record LaborImportParsedItemDto

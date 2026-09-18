@@ -227,11 +227,14 @@ public class LaborExcelImportService : ILaborExcelImportService
         Dictionary<string, Guid?> Suppliers);
 
     /// <summary>
-    /// Procesa los mappings de conciliación: crea insumos nuevos, aprende alias y
-    /// resuelve los diccionarios que usa la importación de labores. Con
-    /// autoCreateUnmatchedSupplies en false (subida directa y lotes pendientes),
-    /// un insumo con "Match" pero sin coincidencia NO crea inventario: queda sin
-    /// resolver y la fila va a revisión en vez de contaminar el catálogo.
+    /// Procesa los mappings de conciliación: aprende alias y resuelve los
+    /// diccionarios que usa la importación de labores. Crear insumo nuevo requiere
+    /// autoCreateUnmatchedSupplies=true (wizard viejo, sin UI que lo dispare hoy) o
+    /// un mapping "CreateNew" con Confirmed=true (una persona lo eligió a mano en la
+    /// conciliación y guardó). El default del algoritmo para lo que no llega a 0.70
+    /// de similitud también es "CreateNew" pero con Confirmed=false: sin retoque
+    /// humano no crea nada, el insumo queda sin resolver y la fila va a revisión en
+    /// vez de contaminar el catálogo con ítems sin código ERP.
     /// </summary>
     private ResolvedImportMappings ProcessImportMappings(
         List<LaborImportSupplyMappingDto> mappings,
@@ -255,8 +258,14 @@ public class LaborExcelImportService : ILaborExcelImportService
 
             Guid? targetSupplyId = map.MatchedSupplyId;
 
-            if (string.Equals(map.Action, "CreateNew", StringComparison.OrdinalIgnoreCase)
-                || (!targetSupplyId.HasValue && autoCreateUnmatchedSupplies))
+            // El matcheador nunca crea insumos por su cuenta: no tienen código ERP. Si
+            // "CreateNew" quedó así por default del algoritmo (map.Confirmed en false,
+            // nadie tocó la fila en la conciliación), no se crea nada: el insumo queda
+            // sin resolver y la fila va a revisión, igual que un insumo sin match. Solo
+            // se crea cuando una persona lo confirmó explícitamente (radio + Guardar
+            // matches) o cuando autoCreateUnmatchedSupplies=true (wizard viejo).
+            bool explicitCreate = string.Equals(map.Action, "CreateNew", StringComparison.OrdinalIgnoreCase) && map.Confirmed;
+            if (!targetSupplyId.HasValue && (explicitCreate || autoCreateUnmatchedSupplies))
             {
                 string itemName = !string.IsNullOrWhiteSpace(map.NewItemName) ? map.NewItemName.Trim() : map.RawName.Trim();
                 string category = !string.IsNullOrWhiteSpace(map.NewCategory) ? map.NewCategory.Trim() : (!string.IsNullOrWhiteSpace(map.DetectedCategory) ? map.DetectedCategory.Trim() : "Insumos");
