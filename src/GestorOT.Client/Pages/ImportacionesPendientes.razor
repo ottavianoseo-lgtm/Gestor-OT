@@ -122,12 +122,23 @@ else if (_detail != null)
         <Alert Type="@AlertType.Error" Message="@_actionError" ShowIcon="true" Style="margin-bottom: 16px;" />
     }
 
-    <LaborImportReviewPanel Preview="_detail.Preview"
-                            RowStates="_rowStates"
-                            ShowSelection="@(_detail.Batch.Status != "Completed")"
-                            SelectedRows="_selectedRows"
-                            SelectedRowsChanged="OnSelectedRowsChanged"
-                            OnMappingsChanged="OnMappingsChanged" />
+    <ErrorBoundary @ref="_panelBoundary">
+        <ChildContent>
+            <LaborImportReviewPanel Preview="_detail.Preview"
+                                    RowStates="_rowStates"
+                                    ShowSelection="@(_detail.Batch.Status != "Completed")"
+                                    SelectedRows="_selectedRows"
+                                    SelectedRowsChanged="OnSelectedRowsChanged"
+                                    OnMappingsChanged="OnMappingsChanged" />
+        </ChildContent>
+        <ErrorContent Context="ex">
+            <Alert Type="@AlertType.Error"
+                   Message="No se pudo dibujar la vista de conciliación"
+                   Description="@($"{ex.GetType().Name}: {ex.Message}")"
+                   ShowIcon="true" Style="margin-bottom: 16px;" />
+            <pre style="max-height: 240px; overflow: auto; font-size: 11px; color: rgba(255,255,255,0.6); background: rgba(0,0,0,0.3); padding: 12px; border-radius: 8px;">@ex.StackTrace</pre>
+        </ErrorContent>
+    </ErrorBoundary>
 
     @if (_detail.Batch.Status != "Completed")
     {
@@ -160,6 +171,7 @@ else if (_detail != null)
     private bool _busy = false;
     private bool _mappingsDirty = false;
     private string? _actionError;
+    private ErrorBoundary? _panelBoundary;
 
     protected override async Task OnInitializedAsync()
     {
@@ -214,6 +226,7 @@ else if (_detail != null)
         _selectedRows = new();
         _mappingsDirty = false;
         _actionError = null;
+        _panelBoundary?.Recover();
         _loading = true;
         try
         {
