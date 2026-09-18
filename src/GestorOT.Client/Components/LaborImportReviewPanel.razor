@@ -12,23 +12,57 @@
 }
 else
 {
-    <Tabs DefaultActiveKey="reconciliation">
+    <div style="font-size: 12px; color: rgba(255,255,255,0.5); margin-bottom: 8px;">
+        @Preview.TotalLabors labores · @Preview.SupplyMappings.Count insumos ·
+        @Preview.LaborTypeMappings.Count tipos de labor · @Preview.SupplierMappings.Count proveedores
+    </div>
+
+    <div style="display: flex; gap: 4px; border-bottom: 1px solid rgba(255,255,255,0.12); margin-bottom: 16px; flex-wrap: wrap;">
+        <button type="button" style="@TabStyle("reconciliation")" @onclick='() => _activeTab = "reconciliation"'>
+            <Icon Type="tags" /> Reconciliación de Insumos
+            @if (Preview.UnmatchedSuppliesCount > 0)
+            {
+                <span style="@BadgeStyle("#E74C3C")">@Preview.UnmatchedSuppliesCount</span>
+            }
+            else
+            {
+                <Icon Type="check-circle" Theme="IconThemeType.Fill" Style="color: #2ECC71; margin-left: 6px;" />
+            }
+        </button>
+        <button type="button" style="@TabStyle("labor-types")" @onclick='() => _activeTab = "labor-types"'>
+            <Icon Type="tool" /> Reconciliación de Labores (@Preview.LaborTypeMappings.Count)
+            @if (Preview.UnmatchedLaborTypesCount > 0)
+            {
+                <span style="@BadgeStyle("#F39C12")">@Preview.UnmatchedLaborTypesCount</span>
+            }
+            else
+            {
+                <Icon Type="check-circle" Theme="IconThemeType.Fill" Style="color: #2ECC71; margin-left: 6px;" />
+            }
+        </button>
+        @if (Preview.SupplierMappings.Count > 0)
+        {
+            <button type="button" style="@TabStyle("suppliers")" @onclick='() => _activeTab = "suppliers"'>
+                <Icon Type="shop" /> Proveedores de Insumos (@Preview.SupplierMappings.Count)
+                @if (Preview.UnmatchedSuppliersCount > 0)
+                {
+                    <span style="@BadgeStyle("#F39C12")">@Preview.UnmatchedSuppliersCount</span>
+                }
+            </button>
+        }
+        <button type="button" style="@TabStyle("labors")" @onclick='() => _activeTab = "labors"'>
+            <Icon Type="unordered-list" /> Labores Detectadas (@Preview.TotalLabors)
+        </button>
+        @if (Preview.Diagnostics.Count > 0)
+        {
+            <button type="button" style="@TabStyle("diagnostics")" @onclick='() => _activeTab = "diagnostics"'>
+                <Icon Type="warning" Style="color: #F39C12;" /> Diagnósticos (@Preview.Diagnostics.Count)
+            </button>
+        }
+    </div>
         <!-- TAB 1: RECONCILIACIÓN DE INSUMOS -->
-        <TabPane Key="reconciliation">
-            <TabTemplate>
-                <span>
-                    <Icon Type="tags" /> Reconciliación de Insumos
-                    @if (Preview.UnmatchedSuppliesCount > 0)
-                    {
-                        <Badge Count="@Preview.UnmatchedSuppliesCount" Style="margin-left: 6px; background-color: #E74C3C;" />
-                    }
-                    else
-                    {
-                        <Icon Type="check-circle" Theme="IconThemeType.Fill" Style="color: #2ECC71; margin-left: 6px;" />
-                    }
-                </span>
-            </TabTemplate>
-            <ChildContent>
+        @if (_activeTab == "reconciliation")
+        {
                 <div style="margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center;">
                     <span style="font-size: 13px; color: rgba(255,255,255,0.7);">
                         Verificá cómo machea cada insumo de la planilla con tu catálogo. Podés corregir sugerencias o crear productos nuevos.
@@ -117,25 +151,11 @@ else
                         </tbody>
                     </table>
                 </div>
-            </ChildContent>
-        </TabPane>
+        }
 
         <!-- TAB 2: RECONCILIACIÓN DE TIPOS DE LABOR -->
-        <TabPane Key="labor-types">
-            <TabTemplate>
-                <span>
-                    <Icon Type="tool" /> Reconciliación de Labores (@Preview.LaborTypeMappings.Count)
-                    @if (Preview.UnmatchedLaborTypesCount > 0)
-                    {
-                        <Tag Color="@("orange")" Style="margin-left: 6px; font-size: 11px;">@Preview.UnmatchedLaborTypesCount a revisar</Tag>
-                    }
-                    else
-                    {
-                        <Icon Type="check-circle" Theme="IconThemeType.Fill" Style="color: #2ECC71; margin-left: 6px;" />
-                    }
-                </span>
-            </TabTemplate>
-            <ChildContent>
+        @if (_activeTab == "labor-types")
+        {
                 <div style="margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center;">
                     <span style="font-size: 13px; color: rgba(255,255,255,0.7);">
                         Verificá cómo machea cada Tipo de Labor de la planilla con el catálogo oficial del ERP. Podés confirmar las sugerencias o seleccionar el concepto correspondiente. El sistema memorizará la asociación automáticamente.
@@ -235,27 +255,13 @@ else
                         </tbody>
                     </table>
                 </div>
-            </ChildContent>
-        </TabPane>
+        }
 
         <!-- TAB: RECONCILIACIÓN DE PROVEEDORES DE INSUMOS (OT-26) -->
         @if (Preview.SupplierMappings.Count > 0)
         {
-            <TabPane Key="suppliers">
-                <TabTemplate>
-                    <span>
-                        <Icon Type="shop" /> Proveedores de Insumos (@Preview.SupplierMappings.Count)
-                        @if (Preview.UnmatchedSuppliersCount > 0)
-                        {
-                            <Badge Count="@Preview.UnmatchedSuppliersCount" Style="margin-left: 6px; background-color: #F39C12;" />
-                        }
-                        else
-                        {
-                            <Icon Type="check-circle" Theme="IconThemeType.Fill" Style="color: #2ECC71; margin-left: 6px;" />
-                        }
-                    </span>
-                </TabTemplate>
-                <ChildContent>
+            @if (_activeTab == "suppliers")
+            {
                     <div style="margin-bottom: 12px;">
                         <span style="font-size: 13px; color: rgba(255,255,255,0.7);">
                             Nombres detectados en la columna "Contr/Prove" de las filas de insumo. Podés vincularlos a un contacto existente;
@@ -310,16 +316,12 @@ else
                             </tbody>
                         </table>
                     </div>
-                </ChildContent>
-            </TabPane>
+            }
         }
 
         <!-- TAB: LABORES DETECTADAS -->
-        <TabPane Key="labors">
-            <TabTemplate>
-                <span><Icon Type="unordered-list" /> Labores Detectadas (@Preview.TotalLabors)</span>
-            </TabTemplate>
-            <ChildContent>
+        @if (_activeTab == "labors")
+        {
                 <div style="max-height: 420px; overflow-y: auto; border: 1px solid rgba(255,255,255,0.1); border-radius: 8px;">
                     <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
                         <thead style="background: rgba(255,255,255,0.06); position: sticky; top: 0; z-index: 1;">
@@ -468,17 +470,13 @@ else
                         </tbody>
                     </table>
                 </div>
-            </ChildContent>
-        </TabPane>
+        }
 
         <!-- TAB: DIAGNÓSTICO -->
         @if (Preview.Diagnostics.Count > 0)
         {
-            <TabPane Key="diagnostics">
-                <TabTemplate>
-                    <span><Icon Type="warning" Style="color: #F39C12;" /> Diagnósticos (@Preview.Diagnostics.Count)</span>
-                </TabTemplate>
-                <ChildContent>
+            @if (_activeTab == "diagnostics")
+            {
                     <div style="background: rgba(243, 156, 18, 0.08); border: 1px solid rgba(243, 156, 18, 0.2); border-radius: 8px; padding: 16px;">
                         <ul style="margin: 0; padding-left: 20px; color: rgba(255,255,255,0.85); font-size: 13px; line-height: 1.8;">
                             @foreach (var d in Preview.Diagnostics)
@@ -487,10 +485,8 @@ else
                             }
                         </ul>
                     </div>
-                </ChildContent>
-            </TabPane>
+            }
         }
-    </Tabs>
 }
 
 @code {
@@ -505,6 +501,27 @@ else
     private List<InventoryDto> _inventoryList = new();
     private List<LaborTypeDto> _laborTypesList = new();
     private List<ContactDto> _contactsList = new();
+    private string _activeTab = "reconciliation";
+
+    /// <summary>
+    /// Tab strip propio: AntDesign Tabs se montaba sin dibujar nada en esta
+    /// pantalla, asi que las secciones se muestran con un @if y estos estilos.
+    /// </summary>
+    private string TabStyle(string key)
+    {
+        bool active = _activeTab == key;
+        return "background: transparent; border: none; border-bottom: 2px solid "
+            + (active ? "#2ECC71" : "transparent")
+            + "; color: " + (active ? "#fff" : "rgba(255,255,255,0.6)")
+            + "; font-size: 13px; font-weight: " + (active ? "600" : "500")
+            + "; padding: 10px 14px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;";
+    }
+
+    private static string BadgeStyle(string color)
+    {
+        return "background: " + color + "; color: #fff; font-size: 11px; font-weight: 700;"
+            + " border-radius: 10px; padding: 0 7px; margin-left: 6px; line-height: 18px; display: inline-block;";
+    }
 
     protected override async Task OnInitializedAsync()
     {
