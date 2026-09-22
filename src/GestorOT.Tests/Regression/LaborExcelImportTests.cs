@@ -1,4 +1,4 @@
-using ClosedXML.Excel;
+﻿using ClosedXML.Excel;
 using GestorOT.Domain.Entities;
 using GestorOT.Domain.Enums;
 using GestorOT.Infrastructure.Data;
@@ -980,5 +980,198 @@ public class LaborExcelImportTests
         var dbLabor = await context2.Labors.Include(l => l.Supplies).FirstAsync();
         var dbSupply = Assert.Single(dbLabor.Supplies);
         Assert.Null(dbSupply.SupplierContactId);
+    }
+
+    /// <summary>
+    /// Los mappings de un lote pendiente se congelan al subir el archivo, pero el
+    /// catálogo sigue vivo. La FK SupplyAliases -> Inventories es ON DELETE CASCADE:
+    /// borrar el insumo se lleva el alias en silencio y deja el MatchedSupplyId
+    /// apuntando a la nada. Al importar los pendientes, el alias se recreaba con ese
+    /// id muerto y la violación de FK volteaba la transacción entera, sin importar
+    /// ninguna fila. Ahora el mapping colgado manda su fila a revisión y el resto pasa.
+    /// </summary>
+    [Fact]
+    public async Task ImportBatchRowsAsync_WhenMappedInventoryWasDeleted_SendsRowToReviewInsteadOfFailingWholeBatch()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var tenantId = Guid.NewGuid();
+        var campaignId = Guid.NewGuid();
+        var ureaId = Guid.NewGuid();
+
+        using (var context = CreateContext(dbName, tenantId))
+        {
+            var campaign = new Campaign { Id = campaignId, TenantId = tenantId, Name = "2026-2027", IsActive = true };
+            var field = new Field { Id = Guid.NewGuid(), TenantId = tenantId, Name = "Establecimiento Norte" };
+            var lot1 = new Lot { Id = Guid.NewGuid(), TenantId = tenantId, FieldId = field.Id, Name = "Lote 1" };
+            var lot2 = new Lot { Id = Guid.NewGuid(), TenantId = tenantId, FieldId = field.Id, Name = "Lote 2" };
+
+            // Ninguno de los dos entra a la campaña: las dos labores quedan pendientes
+            // en el lote, que es el escenario donde el mapping se congela.
+            context.Campaigns.Add(campaign);
+            context.Fields.Add(field);
+            context.Lots.AddRange(lot1, lot2);
+            context.Inventories.AddRange(
+                new Inventory { Id = Guid.NewGuid(), TenantId = tenantId, ItemName = "Glifosato 66%", Category = "Herbicida", Unit = "litros" },
+                new Inventory { Id = Guid.NewGuid(), TenantId = tenantId, ItemName = "Aceite Mineral", Category = "Coadyuvante", Unit = "litros" },
+                new Inventory { Id = ureaId, TenantId = tenantId, ItemName = "Urea Granulada", Category = "Fertilizante", Unit = "kg" });
+            context.LaborTypes.AddRange(
+                new LaborType { Id = Guid.NewGuid(), TenantId = tenantId, Name = "Pulverización", ExternalErpId = "ERP-1" },
+                new LaborType { Id = Guid.NewGuid(), TenantId = tenantId, Name = "Fertilización", ExternalErpId = "ERP-2" });
+            await context.SaveChangesAsync();
+        }
+
+        Guid batchId;
+        using (var context = CreateContext(dbName, tenantId))
+        {
+            var service = new LaborExcelImportService(context, NullLogger<LaborExcelImportService>.Instance);
+            using var stream = CreateSampleStandardExcelStream();
+            var upload = await service.UploadAsync(campaignId, stream, "labores.xlsx", "tester");
+            Assert.NotNull(upload.PendingBatchId);
+            batchId = upload.PendingBatchId!.Value;
+        }
+
+        // El catálogo se mueve debajo del lote: se borra el insumo y el CASCADE de la
+        // FK se lleva el alias aprendido.
+        using (var context = CreateContext(dbName, tenantId))
+        {
+            var urea = await context.Inventories.FirstAsync(i => i.Id == ureaId);
+            context.SupplyAliases.RemoveRange(await context.SupplyAliases.Where(a => a.SupplyId == ureaId).ToListAsync());
+            context.Inventories.Remove(urea);
+            await context.SaveChangesAsync();
+        }
+
+        using (var context = CreateContext(dbName, tenantId))
+        {
+            var service = new LaborExcelImportService(context, NullLogger<LaborExcelImportService>.Instance);
+
+            // Antes reventaba con DbUpdateException por FK_SupplyAliases_Inventories_SupplyId.
+            var result = await service.ImportBatchRowsAsync(batchId, null);
+
+            Assert.Contains(result.Errors, e => e.Contains("Urea Granulada"));
+
+            // Y sobre todo: no quedó ningún alias apuntando al insumo borrado.
+            Assert.False(await context.SupplyAliases.AnyAsync(a => a.SupplyId == ureaId));
+        }
+    }
+
+    /// <summary>
+    /// Mismo modo de falla que el insumo congelado, por el lado de Contacts: el
+    /// proveedor vinculado en la conciliación se borra y el MatchedContactId del
+    /// lote queda muerto. Escribirlo en LaborSupply.SupplierContactId violaba el FK
+    /// y volteaba la transacción. Un proveedor sin vincular nunca bloqueó una fila,
+    /// así que la degradación correcta es importar sin proveedor.
+    /// </summary>
+    [Fact]
+    public async Task ImportBatchRowsAsync_WhenMappedSupplierContactWasDeleted_ImportsWithoutSupplierInsteadOfFailing()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var tenantId = Guid.NewGuid();
+        var campaignId = Guid.NewGuid();
+        var supplierContactId = Guid.NewGuid();
+
+        using (var context = CreateContext(dbName, tenantId))
+        {
+            var campaign = new Campaign { Id = campaignId, TenantId = tenantId, Name = "2026-2027", IsActive = true };
+            var field = new Field { Id = Guid.NewGuid(), TenantId = tenantId, Name = "Campo Norte" };
+            var lot1 = new Lot { Id = Guid.NewGuid(), TenantId = tenantId, FieldId = field.Id, Name = "Lote 1" };
+            var cl1 = new CampaignLot { Id = Guid.NewGuid(), TenantId = tenantId, CampaignId = campaignId, LotId = lot1.Id };
+
+            context.Campaigns.Add(campaign);
+            context.Fields.Add(field);
+            context.Lots.Add(lot1);
+            context.CampaignLots.Add(cl1);
+            context.Inventories.Add(new Inventory { Id = Guid.NewGuid(), TenantId = tenantId, ItemName = "Glifosato 66%", Category = "Herbicida", Unit = "litros" });
+            context.LaborTypes.Add(new LaborType { Id = Guid.NewGuid(), TenantId = tenantId, Name = "Pulverización", ExternalErpId = "ERP-1" });
+            await context.SaveChangesAsync();
+        }
+
+        using var stream = new MemoryStream();
+        using (var wb = new ClosedXML.Excel.XLWorkbook())
+        {
+            var ws = wb.Worksheets.Add("Labores e Insumos");
+            string[] headers = ["Fecha", "Establecimiento", "Lote", "Superficie (ha)", "Tipo", "Labor o Insumo", "Dosis", "Unidad", "Contratista", "Modo", "Notas"];
+            for (int i = 0; i < headers.Length; i++) ws.Cell(1, i + 1).Value = headers[i];
+
+            ws.Cell(2, 1).Value = "2026-02-20";
+            ws.Cell(2, 2).Value = "Campo Norte";
+            ws.Cell(2, 3).Value = "Lote 1";
+            ws.Cell(2, 4).Value = 50;
+            ws.Cell(2, 5).Value = "Labor";
+            ws.Cell(2, 6).Value = "Pulverización";
+            ws.Cell(2, 7).Value = 1;
+            ws.Cell(2, 8).Value = "ha";
+            ws.Cell(2, 9).Value = "Propio";
+
+            // Proveedor del insumo: no existe en el padrón, así que la fila queda pendiente.
+            ws.Cell(3, 1).Value = "2026-02-20";
+            ws.Cell(3, 2).Value = "Campo Norte";
+            ws.Cell(3, 3).Value = "Lote 1";
+            ws.Cell(3, 4).Value = 50;
+            ws.Cell(3, 5).Value = "Herbicida";
+            ws.Cell(3, 6).Value = "Glifosato 66%";
+            ws.Cell(3, 7).Value = 2.5;
+            ws.Cell(3, 8).Value = "litros";
+            ws.Cell(3, 9).Value = "Lartirigoyen";
+
+            wb.SaveAs(stream);
+        }
+        stream.Position = 0;
+
+        Guid batchId;
+        using (var context = CreateContext(dbName, tenantId))
+        {
+            var service = new LaborExcelImportService(context, NullLogger<LaborExcelImportService>.Instance);
+            var upload = await service.UploadAsync(campaignId, stream, "labores.xlsx", "tester");
+            Assert.NotNull(upload.PendingBatchId);
+            batchId = upload.PendingBatchId!.Value;
+        }
+
+        // El usuario da de alta el proveedor y lo vincula en la conciliación.
+        using (var context = CreateContext(dbName, tenantId))
+        {
+            context.Contacts.Add(new Contact
+            {
+                Id = supplierContactId,
+                TenantId = tenantId,
+                FullName = "Lartirigoyen",
+                Role = ContactRole.Contractor
+            });
+            await context.SaveChangesAsync();
+
+            var service = new LaborExcelImportService(context, NullLogger<LaborExcelImportService>.Instance);
+            var detail = await service.GetBatchDetailAsync(batchId);
+            Assert.NotNull(detail);
+            await service.SaveBatchMappingsAsync(batchId, new LaborImportBatchMappingsDto
+            {
+                SupplyMappings = detail!.Preview.SupplyMappings,
+                LaborTypeMappings = detail.Preview.LaborTypeMappings,
+                SupplierMappings = new List<LaborImportSupplierMappingDto>
+                {
+                    new() { RawName = "Lartirigoyen", MatchedContactId = supplierContactId, MatchedContactName = "Lartirigoyen", Action = "Match" }
+                }
+            });
+        }
+
+        // Y después alguien borra el contacto.
+        using (var context = CreateContext(dbName, tenantId))
+        {
+            context.Contacts.Remove(await context.Contacts.FirstAsync(c => c.Id == supplierContactId));
+            await context.SaveChangesAsync();
+        }
+
+        using (var context = CreateContext(dbName, tenantId))
+        {
+            var service = new LaborExcelImportService(context, NullLogger<LaborExcelImportService>.Instance);
+
+            // Antes reventaba con DbUpdateException por el FK contra Contacts.
+            var result = await service.ImportBatchRowsAsync(batchId, null);
+
+            Assert.True(result.Success);
+            Assert.Equal(1, result.Imported);
+
+            var dbLabor = await context.Labors.Include(l => l.Supplies).SingleAsync();
+            var dbSupply = Assert.Single(dbLabor.Supplies);
+            Assert.Null(dbSupply.SupplierContactId);
+        }
     }
 }

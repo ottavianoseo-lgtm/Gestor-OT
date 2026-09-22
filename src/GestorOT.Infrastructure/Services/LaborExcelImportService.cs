@@ -174,11 +174,11 @@ public class LaborExcelImportService : ILaborExcelImportService
                 // 1+2. Mappings de conciliación (núcleo compartido con subida directa y lotes pendientes)
                 var resolved = ProcessImportMappings(mappings, laborTypeMappings, supplierMappings,
                     existingAliases, existingLaborTypes, existingLaborTypeAliases,
-                    counters, autoCreateUnmatchedSupplies: true);
+                    existingInventories, existingContacts, counters, autoCreateUnmatchedSupplies: true);
 
                 // 3. Process Labors & Supplies
                 ImportParsedLaborList(parsedLabors, resolved, campaignLots, existingLabors,
-                    existingInventories, existingLaborTypeAliases, counters);
+                    existingInventories, existingContacts, existingLaborTypeAliases, counters);
 
                 await _context.SaveChangesAsync(ct);
                 if (tx != null) await tx.CommitAsync(ct);
@@ -243,9 +243,21 @@ public class LaborExcelImportService : ILaborExcelImportService
         List<SupplyAlias> existingAliases,
         List<LaborType> existingLaborTypes,
         List<LaborTypeAlias> existingLaborTypeAliases,
+        List<Inventory> existingInventories,
+        List<Contact> existingContacts,
         ImportCounters counters,
         bool autoCreateUnmatchedSupplies)
     {
+        // Los mappings de un lote pendiente se congelan cuando se sube el archivo, pero
+        // el catálogo sigue vivo: un insumo borrado (o un re-sync del ERP que recrea la
+        // fila con otro Id) deja el MatchedSupplyId apuntando a la nada. Si ese id se
+        // usa igual, el insert del SupplyAlias viola el FK contra Inventories y se cae
+        // la transacción entera, sin importar ninguna fila. Validamos contra el catálogo
+        // actual y mandamos a revisión lo que quedó colgado.
+        var validSupplyIds = existingInventories.Select(i => i.Id).ToHashSet();
+        var validLaborTypeIds = existingLaborTypes.Select(lt => lt.Id).ToHashSet();
+        var validContactIds = existingContacts.Select(c => c.Id).ToHashSet();
+
         // 1. Process Supply Mappings (Creations and Aliases)
         var resolvedSupplies = new Dictionary<string, Guid>(StringComparer.OrdinalIgnoreCase);
 
@@ -257,6 +269,15 @@ public class LaborExcelImportService : ILaborExcelImportService
             }
 
             Guid? targetSupplyId = map.MatchedSupplyId;
+
+            if (targetSupplyId.HasValue && !validSupplyIds.Contains(targetSupplyId.Value))
+            {
+                _logger.LogWarning(
+                    "El mapping de insumo '{RawName}' apunta al inventario {SupplyId}, que ya no existe. Queda sin resolver.",
+                    map.RawName, targetSupplyId.Value);
+                counters.Errors.Add($"El insumo '{map.RawName}' estaba vinculado a un ítem de inventario que ya no existe. Volvé a vincularlo en la conciliación.");
+                continue;
+            }
 
             // El matcheador nunca crea insumos por su cuenta: no tienen código ERP. Si
             // "CreateNew" quedó así por default del algoritmo (map.Confirmed en false,
@@ -284,6 +305,11 @@ public class LaborExcelImportService : ILaborExcelImportService
                     ConversionFactor = 1
                 };
                 _context.Inventories.Add(newInventory);
+                // Se suma al catálogo en memoria: el alias que viene abajo lo da por
+                // válido y ImportParsedLaborList resuelve su unidad en vez de caer al
+                // "unidad" por default.
+                existingInventories.Add(newInventory);
+                validSupplyIds.Add(newInventory.Id);
                 targetSupplyId = newInventory.Id;
                 counters.NewInventories++;
             }
@@ -332,6 +358,18 @@ public class LaborExcelImportService : ILaborExcelImportService
                 if (ltm.MatchedLaborTypeId.HasValue)
                 {
                     var targetLtId = ltm.MatchedLaborTypeId.Value;
+
+                    // Mismo riesgo que el insumo congelado: si la labor type ya no está,
+                    // el alias viola el FK y voltea la transacción.
+                    if (!validLaborTypeIds.Contains(targetLtId))
+                    {
+                        _logger.LogWarning(
+                            "El mapping de labor '{RawName}' apunta al tipo {LaborTypeId}, que ya no existe. Queda sin resolver.",
+                            ltm.RawName, targetLtId);
+                        counters.Errors.Add($"La labor '{ltm.RawName}' estaba vinculada a un tipo que ya no existe. Volvé a vincularla en la conciliación.");
+                        continue;
+                    }
+
                     resolvedLaborTypes[ltm.RawName.Trim()] = targetLtId;
 
                     // Learn alias if not already existing
@@ -369,6 +407,20 @@ public class LaborExcelImportService : ILaborExcelImportService
                     resolvedSuppliers[sm.RawName.Trim()] = null;
                     continue;
                 }
+
+                // Contacto borrado desde que se congeló el mapping: el FK de
+                // LaborSupply.SupplierContactId reventaría la transacción. Acá no
+                // bloquea la fila (un proveedor sin vincular nunca lo hizo), solo
+                // se importa sin proveedor.
+                if (sm.MatchedContactId.HasValue && !validContactIds.Contains(sm.MatchedContactId.Value))
+                {
+                    _logger.LogWarning(
+                        "El mapping de proveedor '{RawName}' apunta al contacto {ContactId}, que ya no existe. Se importa sin proveedor.",
+                        sm.RawName, sm.MatchedContactId.Value);
+                    resolvedSuppliers[sm.RawName.Trim()] = null;
+                    continue;
+                }
+
                 resolvedSuppliers[sm.RawName.Trim()] = sm.MatchedContactId;
             }
         }
@@ -387,10 +439,18 @@ public class LaborExcelImportService : ILaborExcelImportService
         List<CampaignLot> campaignLots,
         List<Labor> existingLabors,
         List<Inventory> existingInventories,
+        List<Contact> existingContacts,
         List<LaborTypeAlias> existingLaborTypeAliases,
         ImportCounters counters)
     {
         var imported = new List<(int RowIndex, Guid LaborId)>();
+
+        // Las filas de un lote pendiente guardan el contacto que matcheó al subir el
+        // archivo. Si desde entonces lo borraron, escribirlo revienta el FK y voltea
+        // la transacción; importar sin responsable/proveedor es la degradación
+        // esperada (un nombre sin resolver nunca abortó el import).
+        var validContactIds = existingContacts.Select(c => c.Id).ToHashSet();
+        Guid? LiveContact(Guid? id) => id.HasValue && validContactIds.Contains(id.Value) ? id : null;
 
         // 3. Process Labors & Supplies
         foreach (var parsedLabor in parsedLabors)
@@ -462,7 +522,7 @@ public class LaborExcelImportService : ILaborExcelImportService
             {
                 existingLabor.Hectares = parsedLabor.Hectares;
                 existingLabor.EffectiveArea = parsedLabor.Hectares;
-                existingLabor.ContactId = parsedLabor.ContactId;
+                existingLabor.ContactId = LiveContact(parsedLabor.ContactId);
                 existingLabor.IsExternalBilling = parsedLabor.IsExternalBilling;
                 existingLabor.ExecutionDate = parsedLabor.Date;
                 existingLabor.EstimatedDate = parsedLabor.Date;
@@ -502,7 +562,7 @@ public class LaborExcelImportService : ILaborExcelImportService
                     CampaignLotId = parsedLabor.CampaignLotId.Value,
                     ErpActivityId = resolvedActivityId,
                     LaborTypeId = targetLaborTypeId.Value,
-                    ContactId = parsedLabor.ContactId,
+                    ContactId = LiveContact(parsedLabor.ContactId),
                     IsExternalBilling = parsedLabor.IsExternalBilling,
                     ExecutionDate = parsedLabor.Date,
                     EstimatedDate = parsedLabor.Date,
@@ -547,7 +607,7 @@ public class LaborExcelImportService : ILaborExcelImportService
                 {
                     supplierContactId = resolved.Suppliers.TryGetValue(sup.SupplierRawName.Trim(), out var overrideId)
                         ? overrideId
-                        : sup.SupplierContactId;
+                        : LiveContact(sup.SupplierContactId);
                 }
 
                 var laborSupply = new LaborSupply
@@ -959,9 +1019,9 @@ public class LaborExcelImportService : ILaborExcelImportService
                     // procesar mappings solo vincula y aprende alias, no crea nada nuevo.
                     var resolved = ProcessImportMappings(supplyMappings, laborTypeMappings, supplierMappings,
                         existingAliases, existingLaborTypes, existingLaborTypeAliases,
-                        counters, autoCreateUnmatchedSupplies: false);
+                        existingInventories, existingContacts, counters, autoCreateUnmatchedSupplies: false);
                     ImportParsedLaborList(green, resolved, campaignLots, existingLabors,
-                        existingInventories, existingLaborTypeAliases, counters);
+                        existingInventories, existingContacts, existingLaborTypeAliases, counters);
                 }
 
                 if (pending.Count > 0)
@@ -1089,6 +1149,7 @@ public class LaborExcelImportService : ILaborExcelImportService
         var existingLaborTypeAliases = await _context.LaborTypeAliases.Include(a => a.LaborType).ToListAsync(ct);
         var existingAliases = await _context.SupplyAliases.Include(a => a.Supply).ToListAsync(ct);
         var existingInventories = await _context.Inventories.ToListAsync(ct);
+        var existingContacts = await _context.Contacts.ToListAsync(ct);
 
         var campaignLotIds = campaignLots.Select(cl => cl.Id).ToHashSet();
         var existingLabors = await _context.Labors
@@ -1099,7 +1160,7 @@ public class LaborExcelImportService : ILaborExcelImportService
         var counters = new ImportCounters();
         var resolved = ProcessImportMappings(supplyMappings, laborTypeMappings, supplierMappings,
             existingAliases, existingLaborTypes, existingLaborTypeAliases,
-            counters, autoCreateUnmatchedSupplies: false);
+            existingInventories, existingContacts, counters, autoCreateUnmatchedSupplies: false);
 
         var importable = new List<LaborImportParsedLaborDto>();
         var resolveErrors = new List<string>();
@@ -1122,7 +1183,7 @@ public class LaborExcelImportService : ILaborExcelImportService
                 if (importable.Count > 0)
                 {
                     importedPairs = ImportParsedLaborList(importable, resolved, campaignLots, existingLabors,
-                        existingInventories, existingLaborTypeAliases, counters);
+                        existingInventories, existingContacts, existingLaborTypeAliases, counters);
                     var importedByRow = importedPairs.ToDictionary(x => x.RowIndex, x => x.LaborId);
                     foreach (var t in targets)
                     {
