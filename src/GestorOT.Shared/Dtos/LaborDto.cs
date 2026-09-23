@@ -21,6 +21,15 @@ public record LaborDto
     public decimal Hectares { get; set; }
     public decimal EffectiveArea { get; set; }
     public DateTime CreatedAt { get; set; }
+
+    /// <summary>
+    /// Fecha que ve el usuario en las grillas: la de ejecución, o la estimada si todavía
+    /// no se ejecutó. CreatedAt (cuándo se cargó el registro) es el último recurso y no
+    /// tiene nada que ver con la labor en el campo (OT-59).
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public DateTime DisplayDate => ExecutionDate ?? EstimatedDate ?? CreatedAt;
+
     public decimal Rate { get; set; }
     public string RateUnit { get; set; } = "ha";
     public string? LotName { get; set; }

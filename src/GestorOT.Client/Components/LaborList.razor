@@ -24,7 +24,8 @@
             </div>
         </PropertyColumn>
 
-        <PropertyColumn Property="l => l.CreatedAt" Title="Fecha" Sortable Format="dd/MM/yyyy" />
+        @* La fecha de la labor es cuando se ejecuta/planea, no cuando se cargó el registro (OT-59). *@
+        <PropertyColumn Property="l => l.DisplayDate" Title="Fecha" Sortable Format="dd/MM/yyyy" />
         <PropertyColumn Property="l => l.LotName" Title="Lote" Sortable />
         <PropertyColumn Property="l => l.FieldName" Title="Campo" Sortable />
         <PropertyColumn Property="l => l.AssignedTo" Title="Responsable" Sortable />
