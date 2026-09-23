@@ -1,4 +1,4 @@
-using System.Text.Json.Serialization;
+﻿using System.Text.Json.Serialization;
 using GestorOT.Shared.Dtos;
 
 namespace GestorOT.Shared;
@@ -148,6 +148,8 @@ namespace GestorOT.Shared;
 [JsonSerializable(typeof(LaborImportUploadResultDto))]
 [JsonSerializable(typeof(LaborImportBatchResolveResultDto))]
 [JsonSerializable(typeof(LaborImportBatchMappingsDto))]
+[JsonSerializable(typeof(LaborImportRowEditDto))]
+[JsonSerializable(typeof(LaborImportRowSupplyEditDto))]
 [JsonSerializable(typeof(LaborImportBatchRowsRequestDto))]
 [JsonSerializable(typeof(LaborImportResultDto))]
 [JsonSerializable(typeof(ErpGroupSummaryDto))]

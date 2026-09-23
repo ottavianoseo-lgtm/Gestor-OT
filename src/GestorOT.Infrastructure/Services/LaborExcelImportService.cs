@@ -225,7 +225,8 @@ public class LaborExcelImportService : ILaborExcelImportService
         Dictionary<string, Guid> Supplies,
         Dictionary<string, Guid> LaborTypes,
         Dictionary<string, LaborType> LaborTypesByName,
-        Dictionary<string, Guid?> Suppliers);
+        Dictionary<string, Guid?> Suppliers,
+        HashSet<Guid> LaborTypeIds);
 
     /// <summary>
     /// Procesa los mappings de conciliación: aprende alias y resuelve los
@@ -426,7 +427,7 @@ public class LaborExcelImportService : ILaborExcelImportService
             }
         }
 
-        return new ResolvedImportMappings(resolvedSupplies, resolvedLaborTypes, laborTypesByName, resolvedSuppliers);
+        return new ResolvedImportMappings(resolvedSupplies, resolvedLaborTypes, laborTypesByName, resolvedSuppliers, validLaborTypeIds);
     }
 
     /// <summary>
@@ -466,7 +467,14 @@ public class LaborExcelImportService : ILaborExcelImportService
             string laborTypeName = !string.IsNullOrWhiteSpace(parsedLabor.LaborTypeName) ? parsedLabor.LaborTypeName.Trim() : "Labor General";
             Guid? targetLaborTypeId = null;
 
-            if (resolved.LaborTypes.TryGetValue(laborTypeName, out var mappedLtId))
+            // Lo que una persona eligió en la fila manda sobre el matcheo por nombre:
+            // si corrigió el tipo en la conciliación, resolverlo de nuevo por el nombre
+            // crudo del Excel le pisaría la decisión.
+            if (parsedLabor.LaborTypeId.HasValue && resolved.LaborTypeIds.Contains(parsedLabor.LaborTypeId.Value))
+            {
+                targetLaborTypeId = parsedLabor.LaborTypeId;
+            }
+            else if (resolved.LaborTypes.TryGetValue(laborTypeName, out var mappedLtId))
             {
                 targetLaborTypeId = mappedLtId;
             }
@@ -523,7 +531,7 @@ public class LaborExcelImportService : ILaborExcelImportService
             {
                 existingLabor.Hectares = parsedLabor.Hectares;
                 existingLabor.EffectiveArea = parsedLabor.Hectares;
-                existingLabor.ContactId = LiveContact(parsedLabor.ContactId);
+                existingLabor.ContactId = null;
                 existingLabor.IsExternalBilling = parsedLabor.IsExternalBilling;
                 existingLabor.ExecutionDate = parsedLabor.Date;
                 existingLabor.EstimatedDate = parsedLabor.Date;
@@ -563,7 +571,7 @@ public class LaborExcelImportService : ILaborExcelImportService
                     CampaignLotId = parsedLabor.CampaignLotId.Value,
                     ErpActivityId = resolvedActivityId,
                     LaborTypeId = targetLaborTypeId.Value,
-                    ContactId = LiveContact(parsedLabor.ContactId),
+                    ContactId = null,
                     IsExternalBilling = parsedLabor.IsExternalBilling,
                     ExecutionDate = parsedLabor.Date,
                     EstimatedDate = parsedLabor.Date,
@@ -590,7 +598,14 @@ public class LaborExcelImportService : ILaborExcelImportService
             int mixOrder = 1;
             foreach (var sup in parsedLabor.Supplies)
             {
-                if (!resolved.Supplies.TryGetValue(sup.SupplyName.Trim(), out var supplyId))
+                // Igual que con el tipo: el insumo que alguien eligió en la fila manda
+                // sobre el matcheo por nombre del lote.
+                Guid supplyId;
+                if (sup.MatchedSupplyId.HasValue && existingInventories.Any(i => i.Id == sup.MatchedSupplyId.Value))
+                {
+                    supplyId = sup.MatchedSupplyId.Value;
+                }
+                else if (!resolved.Supplies.TryGetValue(sup.SupplyName.Trim(), out supplyId))
                 {
                     // Un insumo sin resolver no puede desaparecer callado: la labor se
                     // importa igual pero queda constancia de qué se perdió, que es como
@@ -675,8 +690,6 @@ public class LaborExcelImportService : ILaborExcelImportService
                 && !s.SupplierContactId.HasValue)
                 return false;
         }
-        if (!string.IsNullOrWhiteSpace(labor.Contractor) && !labor.ContactId.HasValue && !IsPropioLike(labor.Contractor))
-            return false;
         return true;
     }
 
@@ -700,7 +713,8 @@ public class LaborExcelImportService : ILaborExcelImportService
         }
 
         string laborTypeName = !string.IsNullOrWhiteSpace(labor.LaborTypeName) ? labor.LaborTypeName.Trim() : "Labor General";
-        bool typeOk = resolved.LaborTypes.ContainsKey(laborTypeName)
+        bool typeOk = (labor.LaborTypeId.HasValue && resolved.LaborTypeIds.Contains(labor.LaborTypeId.Value))
+            || resolved.LaborTypes.ContainsKey(laborTypeName)
             || existingLaborTypeAliases.Any(a => string.Equals(a.NormalizedName, NormalizeString(laborTypeName), StringComparison.OrdinalIgnoreCase))
             || resolved.LaborTypesByName.ContainsKey(NormalizeString(laborTypeName));
         if (!typeOk)
@@ -712,6 +726,8 @@ public class LaborExcelImportService : ILaborExcelImportService
         foreach (var s in labor.Supplies)
         {
             if (string.IsNullOrWhiteSpace(s.SupplyName))
+                continue;
+            if (s.MatchedSupplyId.HasValue)
                 continue;
             if (resolved.Supplies.ContainsKey(s.SupplyName.Trim()))
                 continue;
@@ -735,12 +751,7 @@ public class LaborExcelImportService : ILaborExcelImportService
             return false;
         }
 
-        if (!string.IsNullOrWhiteSpace(labor.Contractor) && !labor.ContactId.HasValue && !IsPropioLike(labor.Contractor))
-        {
-            reason = $"el responsable '{labor.Contractor}' no está vinculado al padrón";
-            return false;
-        }
-
+        // El responsable no se importa nunca, asi que tampoco traba la fila.
         return true;
     }
 
@@ -762,7 +773,7 @@ public class LaborExcelImportService : ILaborExcelImportService
         {
             foreach (var sup in labor.Supplies)
             {
-                if (mappingDict.TryGetValue(sup.SupplyName.Trim(), out var map))
+                if (mappingDict.TryGetValue(sup.SupplyName.Trim(), out var map) && map.MatchedSupplyId.HasValue)
                 {
                     sup.MatchedSupplyId = map.MatchedSupplyId;
                     sup.MatchedSupplyName = map.MatchedSupplyName;
@@ -1231,6 +1242,102 @@ public class LaborExcelImportService : ILaborExcelImportService
         };
     }
 
+    /// <summary>
+    /// Guarda lo que una persona corrigió sobre una fila pendiente desde el
+    /// formulario de labor. No importa nada: la fila queda pendiente, pero ya con
+    /// lote, tipo, responsable e insumos resueltos a mano, y eso pisa el matcheo
+    /// por nombre cuando después se la importe. Todo id que venga se valida contra
+    /// el catálogo antes de escribirlo: un id muerto acá volteaba el lote entero.
+    /// </summary>
+    public async Task<LaborImportBatchDetailDto?> UpdatePendingRowAsync(Guid batchId, int rowIndex, LaborImportRowEditDto edit, CancellationToken ct = default)
+    {
+        var batch = await _context.LaborImportBatches
+            .Include(b => b.Rows)
+            .FirstOrDefaultAsync(b => b.Id == batchId, ct);
+        if (batch == null)
+            throw new InvalidOperationException("Lote de importación no encontrado.");
+
+        var row = batch.Rows.FirstOrDefault(r => r.RowIndex == rowIndex);
+        if (row == null)
+            throw new InvalidOperationException($"La fila {rowIndex} no pertenece a este lote.");
+        if (row.Resolution != LaborImportRowResolution.Unresolved)
+            throw new InvalidOperationException("La fila ya fue importada o descartada.");
+
+        if (edit.CampaignLotId.HasValue)
+        {
+            var campaignLot = await _context.CampaignLots
+                .FirstOrDefaultAsync(cl => cl.Id == edit.CampaignLotId.Value && cl.CampaignId == batch.CampaignId, ct);
+            if (campaignLot == null)
+                throw new InvalidOperationException("El lote elegido no pertenece a la campaña del lote de importación.");
+
+            row.CampaignLotId = campaignLot.Id;
+            row.LotId = campaignLot.LotId;
+        }
+
+        if (edit.LaborTypeId.HasValue)
+        {
+            bool typeExists = await _context.LaborTypes.AnyAsync(lt => lt.Id == edit.LaborTypeId.Value, ct);
+            if (!typeExists)
+                throw new InvalidOperationException("El tipo de labor elegido no existe.");
+            row.LaborTypeId = edit.LaborTypeId;
+        }
+
+        // El responsable de la labor no se importa: se asigna despues desde la labor.
+        row.ContactId = null;
+        row.MatchedContactName = null;
+
+        row.IsExternalBilling = edit.IsExternalBilling;
+        row.Date = edit.Date;
+        row.Hectares = edit.Hectares;
+
+        var previous = FromBatchJson<LaborImportParsedItemDto>(row.SuppliesJson);
+        var validSupplyIds = await _context.Inventories
+            .Where(i => edit.Supplies.Select(s => s.SupplyId).Contains(i.Id))
+            .Select(i => new { i.Id, i.ItemName })
+            .ToListAsync(ct);
+        var validContactIds = await _context.Contacts
+            .Where(c => edit.Supplies.Select(s => s.SupplierContactId).Contains(c.Id))
+            .Select(c => new { c.Id, c.FullName })
+            .ToListAsync(ct);
+
+        var supplies = new List<LaborImportParsedItemDto>();
+        foreach (var s in edit.Supplies)
+        {
+            // El nombre crudo del Excel no se pierde aunque la persona cambie el ítem:
+            // es lo que después aprende el alias y lo que deja rastro de qué decía la
+            // planilla.
+            var before = previous.FirstOrDefault(p => string.Equals(p.SupplyName.Trim(), s.SupplyName.Trim(), StringComparison.OrdinalIgnoreCase));
+            var inventory = validSupplyIds.FirstOrDefault(i => s.SupplyId.HasValue && i.Id == s.SupplyId.Value);
+            var supplier = validContactIds.FirstOrDefault(c => s.SupplierContactId.HasValue && c.Id == s.SupplierContactId.Value);
+
+            supplies.Add(new LaborImportParsedItemDto
+            {
+                SupplyName = s.SupplyName.Trim(),
+                Dose = s.Dose,
+                Unit = s.Unit,
+                Total = s.Total,
+                Category = before?.Category ?? string.Empty,
+                MatchedSupplyId = inventory?.Id,
+                MatchedSupplyName = inventory?.ItemName,
+                SupplierRawName = before?.SupplierRawName,
+                SupplierContactId = supplier?.Id,
+                MatchedSupplierName = supplier?.FullName
+            });
+        }
+
+        row.SuppliesJson = JsonSerializer.Serialize(supplies, BatchJsonOptions);
+
+        // Los errores de parseo ("lote no encontrado") dejan de valer en cuanto
+        // alguien eligió el lote a mano; si no se limpian, la fila queda bloqueada
+        // para siempre aunque esté completa.
+        if (row.LotId.HasValue && row.CampaignLotId.HasValue)
+            row.ErrorsJson = JsonSerializer.Serialize(new List<string>(), BatchJsonOptions);
+
+        await _context.SaveChangesAsync(ct);
+
+        return await GetBatchDetailAsync(batchId, ct);
+    }
+
     public async Task<LaborImportBatchResolveResultDto> DiscardBatchRowsAsync(Guid batchId, List<int>? rowIndexes, CancellationToken ct = default)
     {
         var batch = await _context.LaborImportBatches
@@ -1359,18 +1466,6 @@ public class LaborExcelImportService : ILaborExcelImportService
             }
             if (changed)
                 row.SuppliesJson = JsonSerializer.Serialize(supplies, BatchJsonOptions);
-
-            // Responsable: no tiene capa de mapping, se re-matchea directo en la fila.
-            if (!string.IsNullOrWhiteSpace(row.Contractor) && !row.ContactId.HasValue && !IsPropioLike(row.Contractor))
-            {
-                var (contactId, matchedName, isExternal) = MatchContact(row.Contractor, existingContacts);
-                if (contactId.HasValue)
-                {
-                    row.ContactId = contactId;
-                    row.MatchedContactName = matchedName;
-                    row.IsExternalBilling = isExternal;
-                }
-            }
 
             // Tipo por nombre exacto o alias nuevo (la vinculación por mapping
             // se resuelve al importar; esto es solo para mostrar la fila al día).
@@ -1740,7 +1835,10 @@ public class LaborExcelImportService : ILaborExcelImportService
                     laborTypeId = lt.Id;
                 }
 
-                var (contactId, matchedContactName, isExternalBilling) = MatchContact(contractor, contacts);
+                // La labor no lleva responsable: por decisión del negocio se importa
+                // siempre en null y se asigna despues desde la labor, si hace falta.
+                // El texto crudo queda en Contractor y en las notas para trazabilidad.
+                bool isExternalBilling = !IsPropioLike(contractor) && !string.IsNullOrWhiteSpace(contractor);
 
                 currentLabor = new LaborImportParsedLaborDto
                 {
@@ -1754,8 +1852,8 @@ public class LaborExcelImportService : ILaborExcelImportService
                     LaborTypeName = producLabor,
                     LaborTypeId = laborTypeId,
                     Contractor = contractor,
-                    ContactId = contactId,
-                    MatchedContactName = matchedContactName,
+                    ContactId = null,
+                    MatchedContactName = null,
                     IsExternalBilling = isExternalBilling,
                     Mode = mode,
                     Status = mode,
@@ -1780,7 +1878,6 @@ public class LaborExcelImportService : ILaborExcelImportService
                     bool orphanRealized = !orphanDate.HasValue || orphanDate.Value.Date <= DateTime.UtcNow.Date;
                     string orphanMode = orphanRealized ? "Realized" : "Planned";
 
-                    var (orphanContactId, orphanMatchedName, orphanExternal) = MatchContact(supplyRowContractorRaw, contacts);
 
                     currentLabor = new LaborImportParsedLaborDto
                     {
@@ -1791,9 +1888,9 @@ public class LaborExcelImportService : ILaborExcelImportService
                         Hectares = ReadSuperficie(row, cfg),
                         LaborTypeName = "Labor General",
                         Contractor = supplyRowContractorRaw,
-                        ContactId = orphanContactId,
-                        MatchedContactName = orphanMatchedName,
-                        IsExternalBilling = orphanExternal,
+                        ContactId = null,
+                        MatchedContactName = null,
+                        IsExternalBilling = false,
                         Mode = orphanMode,
                         Status = orphanMode,
                         Supplies = new List<LaborImportParsedItemDto>()

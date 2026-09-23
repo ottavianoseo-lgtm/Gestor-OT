@@ -1,4 +1,4 @@
-@using GestorOT.Shared
+﻿@using GestorOT.Shared
 @using GestorOT.Shared.Dtos
 @using GestorOT.Domain.Enums
 @using System.Net.Http.Json
@@ -461,6 +461,14 @@ else
                                             {
                                                 <Tag Color="@("orange")">Pendiente</Tag>
                                             }
+                                            @if (state == "Unresolved" && BatchId.HasValue)
+                                            {
+                                                <Button Size="@ButtonSize.Small" Type="@ButtonType.Link"
+                                                        OnClick="@(() => OpenRow(labor))"
+                                                        Style="padding: 0; height: auto; font-size: 11px;">
+                                                    Revisar
+                                                </Button>
+                                            }
                                         </td>
                                     }
                                 </tr>
@@ -493,6 +501,23 @@ else
     </Tabs>
 }
 
+<Drawer Closable="true"
+        Width="720"
+        Visible="@(_editingRow != null)"
+        Title="@($"Fila {_editingRow?.RowIndex} — {_editingRow?.LotName}")"
+        OnClose="@(_ => CloseRow())">
+    @if (_editingRow != null && _seed != null)
+    {
+        <Alert Type="@AlertType.Info"
+               Message="@($"Del Excel: lote '{_editingRow.LotName}', labor '{_editingRow.LaborTypeName}', responsable '{_editingRow.Contractor}'")"
+               Description="Se guarda la corrección en la fila; la importación sigue siendo un paso aparte."
+               ShowIcon="true" Style="margin-bottom: 16px;" />
+        <LaborEditorForm Seed="@_seed"
+                         SaveLabel="Guardar cambios de la fila"
+                         OnModelEdited="SaveRow" />
+    }
+</Drawer>
+
 @code {
     [Parameter] public LaborImportPreviewDto? Preview { get; set; }
     /// <summary>Estado de resolución por fila (RowIndex → Unresolved/Imported/Excluded). Null = sin columna de estado.</summary>
@@ -501,6 +526,12 @@ else
     [Parameter] public HashSet<int> SelectedRows { get; set; } = new();
     [Parameter] public EventCallback<HashSet<int>> SelectedRowsChanged { get; set; }
     [Parameter] public EventCallback OnMappingsChanged { get; set; }
+    /// <summary>Lote al que pertenecen las filas. Sin esto no se puede guardar una corrección.</summary>
+    [Parameter] public Guid? BatchId { get; set; }
+    [Parameter] public EventCallback OnRowSaved { get; set; }
+
+    private LaborImportParsedLaborDto? _editingRow;
+    private LaborDto? _seed;
 
     private List<InventoryDto> _inventoryList = new();
     private List<LaborTypeDto> _laborTypesList = new();
@@ -537,9 +568,7 @@ else
 
     private bool HasUnlinkedRefs(LaborImportParsedLaborDto labor)
     {
-        if (!string.IsNullOrWhiteSpace(labor.Contractor) && !labor.ContactId.HasValue
-            && !IsPropioLike(labor.Contractor))
-            return true;
+        // El responsable no se importa, asi que no cuenta como referencia sin vincular.
         // "Propio" no es un proveedor del padron: marcar la fila por eso hacia que
         // apareciera "sin vincular" en filas que estaban completas.
         return labor.Supplies.Any(s => !string.IsNullOrWhiteSpace(s.SupplierRawName)
@@ -721,5 +750,96 @@ else
         }
         Message.Success("Sugerencias de tipos de labor vinculadas.");
         await NotifyMappingsChanged();
+    }
+
+    /// <summary>
+    /// Abre la fila pendiente en el formulario de labor de verdad, precargado con lo
+    /// que se pudo leer del Excel. Lo que no matcheó queda vacío para que se elija a
+    /// mano, y de paso corren las validaciones del formulario (superficie contra el
+    /// lote, fecha contra la rotación, rol del contacto) que la importación directa
+    /// no hace.
+    /// </summary>
+    private void OpenRow(LaborImportParsedLaborDto labor)
+    {
+        _editingRow = labor;
+        _seed = new LaborDto
+        {
+            LotId = labor.LotId ?? Guid.Empty,
+            CampaignLotId = labor.CampaignLotId,
+            LaborTypeId = labor.LaborTypeId ?? Guid.Empty,
+            ContactId = labor.ContactId,
+            IsExternalBilling = labor.IsExternalBilling,
+            Hectares = labor.Hectares,
+            EffectiveArea = labor.Hectares,
+            ExecutionDate = labor.Date,
+            EstimatedDate = labor.Date,
+            Status = labor.Status,
+            Mode = labor.Mode,
+            Supplies = labor.Supplies.Select(s => new LaborSupplyDto
+            {
+                SupplyId = s.MatchedSupplyId ?? Guid.Empty,
+                PlannedDose = s.Dose,
+                UnitOfMeasure = s.Unit,
+                PlannedTotal = s.Total ?? 0
+            }).ToList()
+        };
+    }
+
+    private void CloseRow()
+    {
+        _editingRow = null;
+        _seed = null;
+    }
+
+    private async Task SaveRow(LaborDto edited)
+    {
+        if (_editingRow == null || !BatchId.HasValue) return;
+
+        // Los insumos se emparejan por posición: el formulario no conoce el nombre
+        // crudo del Excel ni el proveedor (LaborSupplyDto no lo tiene), y los dos hay
+        // que arrastrarlos de la fila original para no perderlos al guardar.
+        var original = _editingRow.Supplies;
+        var supplies = edited.Supplies
+            .Select((s, i) => new LaborImportRowSupplyEditDto
+            {
+                SupplyName = i < original.Count ? original[i].SupplyName : string.Empty,
+                SupplyId = s.SupplyId == Guid.Empty ? null : s.SupplyId,
+                Dose = s.PlannedDose,
+                Unit = s.UnitOfMeasure ?? string.Empty,
+                Total = s.PlannedTotal,
+                SupplierContactId = i < original.Count ? original[i].SupplierContactId : null
+            })
+            .ToList();
+
+        var payload = new LaborImportRowEditDto
+        {
+            Date = edited.ExecutionDate ?? edited.EstimatedDate,
+            CampaignLotId = edited.CampaignLotId,
+            Hectares = edited.Hectares,
+            LaborTypeId = edited.LaborTypeId == Guid.Empty ? null : edited.LaborTypeId,
+            ContactId = edited.ContactId,
+            IsExternalBilling = edited.IsExternalBilling,
+            Supplies = supplies
+        };
+
+        try
+        {
+            var response = await Http.PutAsJsonAsync(
+                $"api/labors/import/batches/{BatchId.Value}/rows/{_editingRow.RowIndex}", payload);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                Message.Error(await response.Content.ReadAsStringAsync());
+                return;
+            }
+
+            Message.Success($"Fila {_editingRow.RowIndex} guardada.");
+            CloseRow();
+            await OnRowSaved.InvokeAsync();
+        }
+        catch (Exception ex)
+        {
+            Message.Error($"No se pudo guardar la fila: {ex.Message}");
+        }
     }
 }

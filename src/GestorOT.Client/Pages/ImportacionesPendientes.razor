@@ -1,4 +1,4 @@
-@page "/importaciones-pendientes"
+﻿@page "/importaciones-pendientes"
 @using GestorOT.Shared
 @using GestorOT.Shared.Dtos
 @using System.Net.Http.Json
@@ -129,7 +129,9 @@ else if (_detail != null)
                                     ShowSelection="@(_detail.Batch.Status != "Completed")"
                                     SelectedRows="_selectedRows"
                                     SelectedRowsChanged="OnSelectedRowsChanged"
-                                    OnMappingsChanged="OnMappingsChanged" />
+                                    OnMappingsChanged="OnMappingsChanged"
+                                    BatchId="_selectedBatchId"
+                                    OnRowSaved="@(() => OpenBatch(_selectedBatchId!.Value))" />
         </ChildContent>
         <ErrorContent Context="ex">
             <Alert Type="@AlertType.Error"

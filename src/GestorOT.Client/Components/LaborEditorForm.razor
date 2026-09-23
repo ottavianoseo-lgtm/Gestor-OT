@@ -1,4 +1,4 @@
-@using GestorOT.Shared.Dtos
+﻿@using GestorOT.Shared.Dtos
 @using GestorOT.Shared
 @using GestorOT.Domain.Enums
 @using System.Net.Http.Json
@@ -339,12 +339,15 @@
             }
             <Button Type="@ButtonType.Primary" HtmlType="submit" Loading="_loading" Block="false"
                     Style="flex: 2; height: 45px; border-radius: 8px; font-weight: 600;">
-                <Icon Type="save" /> Guardar Labor
+                <Icon Type="save" /> @SaveLabel
             </Button>
         </div>
     </Form>
 
-    <LaborAttachments @ref="_attachmentsRef" LaborId="@LaborId" />
+    @if (Seed == null)
+    {
+        <LaborAttachments @ref="_attachmentsRef" LaborId="@LaborId" />
+    }
 </Card>
 
 <Modal Title="Cerrar sin guardar" Visible="_confirmCancelVisible" OnCancel="() => _confirmCancelVisible = false" Footer="null">
@@ -370,6 +373,16 @@
     [Parameter] public string? InitialStatus { get; set; }
     [Parameter] public bool ForceOriginalPlan { get; set; }
     [Parameter] public EventCallback OnSaved { get; set; }
+
+    /// <summary>
+    /// Precarga el formulario con una labor que todavía no existe en la base: lo usa
+    /// la conciliación de importaciones para abrir una fila pendiente con lo que se
+    /// pudo leer del Excel. Con Seed puesto, Guardar no crea la labor: devuelve el
+    /// modelo editado por OnModelEdited y quien lo abrió decide qué hacer con él.
+    /// </summary>
+    [Parameter] public LaborDto? Seed { get; set; }
+    [Parameter] public EventCallback<LaborDto> OnModelEdited { get; set; }
+    [Parameter] public string SaveLabel { get; set; } = "Guardar Labor";
 
     private LaborDto _model = new();
     private List<CampaignLotDto> _lots = new();
@@ -559,7 +572,16 @@
 
         await LoadCatalogs();
 
-        if (LaborId != Guid.Empty)
+        if (Seed != null)
+        {
+            // La labor no existe todavía: no hay nada que ir a buscar a la API, pero
+            // sí corren las mismas validaciones que al editar una labor de verdad.
+            _model = Seed;
+            var seedDate = _model.EstimatedDate ?? _model.ExecutionDate;
+            if (seedDate.HasValue) await CheckRotation(seedDate.Value);
+            CheckHectaresWarning(_model.Hectares);
+        }
+        else if (LaborId != Guid.Empty)
         {
             await LoadLabor();
             // CheckRotation on load: use EstimatedDate, fall back to ExecutionDate (for realized labors)
@@ -1168,6 +1190,13 @@
             }
 
             Console.WriteLine($"[LaborEditorForm] Submitting Labor: Id={LaborId}, WorkOrderId={_model.WorkOrderId}, LotId={_model.LotId}, Hectares={_model.Hectares}");
+
+            if (Seed != null)
+            {
+                await OnModelEdited.InvokeAsync(_model);
+                _loading = false;
+                return;
+            }
 
             HttpResponseMessage response;
             if (LaborId == Guid.Empty)

@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using GestorOT.Application.Interfaces;
 using GestorOT.Shared;
 using GestorOT.Shared.Dtos;
@@ -219,6 +219,31 @@ public class LaborImportController : ControllerBase
         {
             _logger.LogError(ex, "Error al importar filas del lote {BatchId}", batchId);
             return StatusCode(500, "Error al importar filas: " + ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// Guarda las correcciones de una fila pendiente hechas desde el formulario de
+    /// labor. No la importa: eso sigue siendo un paso aparte y explícito.
+    /// </summary>
+    [HttpPut("labors/import/batches/{batchId:guid}/rows/{rowIndex:int}")]
+    public async Task<ActionResult<LaborImportBatchDetailDto>> UpdatePendingRow(
+        Guid batchId, int rowIndex, [FromBody] LaborImportRowEditDto edit, CancellationToken ct)
+    {
+        try
+        {
+            var detail = await _importService.UpdatePendingRowAsync(batchId, rowIndex, edit, ct);
+            if (detail == null) return NotFound("Lote de importación no encontrado.");
+            return Ok(detail);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error al guardar la fila {RowIndex} del lote {BatchId}", rowIndex, batchId);
+            return StatusCode(500, "Error al guardar la fila: " + ex.Message);
         }
     }
 

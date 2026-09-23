@@ -1,4 +1,4 @@
-namespace GestorOT.Shared.Dtos;
+﻿namespace GestorOT.Shared.Dtos;
 
 public record LaborImportBatchDto(
     Guid Id,
@@ -34,6 +34,32 @@ public record LaborImportBatchDetailDto(
 )
 {
     public LaborImportBatchDetailDto() : this(new LaborImportBatchDto(), new LaborImportPreviewDto(), new()) { }
+}
+
+/// <summary>
+/// Correcciones que una persona hizo sobre una fila pendiente abriéndola en el
+/// formulario de labor. Lo que viene acá pisa el matcheo automático por nombre:
+/// es una decisión explícita, no una sugerencia.
+/// </summary>
+public record LaborImportRowEditDto
+{
+    public DateTime? Date { get; init; }
+    public Guid? CampaignLotId { get; init; }
+    public decimal Hectares { get; init; }
+    public Guid? LaborTypeId { get; init; }
+    public Guid? ContactId { get; init; }
+    public bool IsExternalBilling { get; init; }
+    public List<LaborImportRowSupplyEditDto> Supplies { get; init; } = new();
+}
+
+public record LaborImportRowSupplyEditDto
+{
+    public string SupplyName { get; init; } = string.Empty;
+    public Guid? SupplyId { get; init; }
+    public decimal Dose { get; init; }
+    public string Unit { get; init; } = string.Empty;
+    public decimal? Total { get; init; }
+    public Guid? SupplierContactId { get; init; }
 }
 
 /// <summary>

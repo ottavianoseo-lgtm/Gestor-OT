@@ -277,7 +277,7 @@ public class LaborExcelImportTests
     }
 
     [Fact]
-    public async Task LaborExcelImport_MatchesContractorContact_AndSetsContactIdAndIsExternalBilling()
+    public async Task LaborExcelImport_NeverSetsLaborContact_ButKeepsExternalBillingFlag()
     {
         var dbName = Guid.NewGuid().ToString();
         var tenantId = Guid.NewGuid();
@@ -328,10 +328,12 @@ public class LaborExcelImportTests
             Assert.Null(laborPropio.ContactId);
             Assert.False(laborPropio.IsExternalBilling);
 
-            // Labor 2 ("Don Carlos" matching contact)
+            // Labor 2 ("Don Carlos"): el responsable NO se importa aunque el contacto
+            // exista en el padrón; se asigna después desde la labor. Lo que sí queda es
+            // que la labor es de un tercero y el texto crudo de la planilla.
             var laborCarlos = preview.Labors[1];
-            Assert.Equal(contractorContactId, laborCarlos.ContactId);
-            Assert.Equal("Don Carlos", laborCarlos.MatchedContactName);
+            Assert.Null(laborCarlos.ContactId);
+            Assert.Equal("Don Carlos", laborCarlos.Contractor);
             Assert.True(laborCarlos.IsExternalBilling);
 
             // Execute import
@@ -348,7 +350,7 @@ public class LaborExcelImportTests
             Assert.False(dbLabors[0].IsExternalBilling);
 
             // Labor 2 in DB
-            Assert.Equal(contractorContactId, dbLabors[1].ContactId);
+            Assert.Null(dbLabors[1].ContactId);
             Assert.True(dbLabors[1].IsExternalBilling);
         }
     }
@@ -1302,17 +1304,17 @@ public class LaborExcelImportTests
     }
 
     /// <summary>
-    /// La planilla escribe el responsable como "Nombre Apellido" y el padron lo tiene
+    /// La planilla escribe el proveedor como "Nombre Apellido" y el padron lo tiene
     /// como "APELLIDO NOMBRE" (o con un segundo nombre de mas). Sin matcheo por
-    /// palabras la fila quedaba trabada en conciliacion sin forma de resolverla: el
-    /// panel tiene solapa para proveedores de insumos, no para el responsable.
+    /// palabras el insumo se importaba sin proveedor y la fila quedaba trabada en
+    /// conciliacion.
     /// </summary>
     [Theory]
     [InlineData("Daniel Paiuzza", "PAIUZZA DANIEL")]
     [InlineData("Luis Gismondi", "GISMONDI LUIS OSCAR")]
     [InlineData("Marcos Lamattina", "Lamattina, Marcos Daniel")]
     [InlineData("Serv. Agrop.", "SERVICIOS AGROPECUARIOS S.R.L.")]
-    public async Task PreviewAsync_MatchesContactWithInvertedOrSurnameFirstName(string enPlanilla, string enPadron)
+    public async Task PreviewAsync_MatchesSupplierWithInvertedOrSurnameFirstName(string enPlanilla, string enPadron)
     {
         var dbName = Guid.NewGuid().ToString();
         var tenantId = Guid.NewGuid();
@@ -1339,18 +1341,18 @@ public class LaborExcelImportTests
 
             var preview = await service.PreviewAsync(campaignId, stream);
 
-            var labor = Assert.Single(preview.Labors);
-            Assert.NotNull(labor.ContactId);
-            Assert.Equal(enPadron, labor.MatchedContactName);
+            var supply = Assert.Single(Assert.Single(preview.Labors).Supplies);
+            Assert.NotNull(supply.SupplierContactId);
+            Assert.Equal(enPadron, supply.MatchedSupplierName);
         }
     }
 
     /// <summary>
     /// Con dos contactos igual de parecidos no se elige ninguno: la fila va a
-    /// conciliacion en vez de atribuirle la labor a la persona equivocada.
+    /// conciliacion en vez de atribuirle el insumo al proveedor equivocado.
     /// </summary>
     [Fact]
-    public async Task PreviewAsync_WhenTwoContactsMatchEquallyWell_LeavesItUnlinked()
+    public async Task PreviewAsync_WhenTwoSupplierContactsMatchEquallyWell_LeavesItUnlinked()
     {
         var dbName = Guid.NewGuid().ToString();
         var tenantId = Guid.NewGuid();
@@ -1376,7 +1378,7 @@ public class LaborExcelImportTests
 
             var preview = await service.PreviewAsync(campaignId, stream);
 
-            Assert.Null(Assert.Single(preview.Labors).ContactId);
+            Assert.Null(Assert.Single(Assert.Single(preview.Labors).Supplies).SupplierContactId);
         }
     }
 
@@ -1389,12 +1391,19 @@ public class LaborExcelImportTests
         for (int i = 0; i < headers.Length; i++)
             ws.Cell(1, i + 1).Value = headers[i];
 
-        object[] row = ["2026-01-10", "Establecimiento Norte", "Lote 1", 50, "Labor", "Pulverización", 1, "ha", contractor, "", ""];
-        for (int c = 0; c < row.Length; c++)
+        object[][] rows =
+        [
+            ["2026-01-10", "Establecimiento Norte", "Lote 1", 50, "Labor", "Pulverización", 1, "ha", "Propio", "", ""],
+            ["2026-01-10", "Establecimiento Norte", "Lote 1", 50, "Herbicida", "Glifosato 66%", 2, "litros", contractor, "", ""]
+        ];
+        for (int r = 0; r < rows.Length; r++)
         {
-            var cell = ws.Cell(2, c + 1);
-            if (row[c] is int iVal) cell.Value = iVal;
-            else cell.Value = row[c].ToString();
+            for (int c = 0; c < rows[r].Length; c++)
+            {
+                var cell = ws.Cell(r + 2, c + 1);
+                if (rows[r][c] is int iVal) cell.Value = iVal;
+                else cell.Value = rows[r][c].ToString();
+            }
         }
 
         var ms = new MemoryStream();

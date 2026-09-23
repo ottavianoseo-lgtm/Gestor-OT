@@ -1,4 +1,4 @@
-using ClosedXML.Excel;
+﻿using ClosedXML.Excel;
 using GestorOT.Domain.Entities;
 using GestorOT.Domain.Enums;
 using GestorOT.Infrastructure.Data;
@@ -308,25 +308,164 @@ public class LaborImportBatchTests
         var campaignId = SeedBase(context, tenantId, out _);
         var service = new LaborExcelImportService(context, NullLogger<LaborExcelImportService>.Instance);
 
+        // El proveedor del insumo no está en el padrón: la fila queda pendiente.
         using var stream = BuildExcel(
-            LaborRow("2026-01-13", "Lote 2", "Pulverización", "Nuevo Proveedor SA"),
-            SupplyRow("2026-01-13", "Lote 2", "Herbicida", "Glifosato 66%", 2.5, "litros"));
+            LaborRow("2026-01-13", "Lote 2", "Pulverización"),
+            SupplyRow("2026-01-13", "Lote 2", "Herbicida", "Glifosato 66%", 2.5, "litros", "Nuevo Proveedor SA"));
         var upload = await service.UploadAsync(campaignId, stream, "reevaluar.xlsx", "tester");
         Assert.NotNull(upload.PendingBatchId);
         Assert.Equal(1, upload.PendingRows);
 
         // Se da de alta el contacto en el padrón después de subir el archivo
-        context.Contacts.Add(new Contact { Id = Guid.NewGuid(), TenantId = tenantId, FullName = "Nuevo Proveedor SA", Role = ContactRole.Contractor });
+        context.Contacts.Add(new Contact { Id = Guid.NewGuid(), TenantId = tenantId, FullName = "Nuevo Proveedor SA", Role = ContactRole.Supplier });
         context.SaveChanges();
 
         var detail = await service.ReevaluateBatchAsync(upload.PendingBatchId.Value);
         Assert.NotNull(detail);
-        var row = detail.Preview.Labors.Single();
-        Assert.NotNull(row.ContactId);
-        Assert.Equal("Nuevo Proveedor SA", row.MatchedContactName);
+        var supply = Assert.Single(detail.Preview.Labors.Single().Supplies);
+        Assert.NotNull(supply.SupplierContactId);
+        Assert.Equal("Nuevo Proveedor SA", supply.MatchedSupplierName);
 
         var resolve = await service.ImportBatchRowsAsync(upload.PendingBatchId.Value, null);
         Assert.True(resolve.Success);
         Assert.Equal(1, resolve.Imported);
+
+        // El responsable de la labor nunca se setea, aunque el contacto exista.
+        Assert.Null(context.Labors.Single().ContactId);
+    }
+
+    /// <summary>
+    /// Una fila que quedó pendiente porque no matcheó ni el tipo ni el insumo se
+    /// resuelve abriéndola y eligiendo a mano: lo elegido tiene que pisar el matcheo
+    /// por nombre del lote, que es el que la dejó pendiente en primer lugar.
+    /// </summary>
+    [Fact]
+    public async Task UpdatePendingRow_ThenImport_UsesTheChosenTypeAndSupply()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var tenantId = Guid.NewGuid();
+        using var context = CreateContext(dbName, tenantId);
+        var campaignId = SeedBase(context, tenantId, out _);
+
+        var tipoElegido = new LaborType { Id = Guid.NewGuid(), TenantId = tenantId, Name = "Fertilización" };
+        var insumoElegido = new Inventory { Id = Guid.NewGuid(), TenantId = tenantId, ItemName = "Urea Granulada", Category = "Fertilizante", Unit = "kg" };
+        context.LaborTypes.Add(tipoElegido);
+        context.Inventories.Add(insumoElegido);
+        await context.SaveChangesAsync();
+
+        var service = new LaborExcelImportService(context, NullLogger<LaborExcelImportService>.Instance);
+
+        using var stream = BuildExcel(
+            LaborRow("2026-01-10", "Lote 1", "Fert. voleo XZ"),
+            SupplyRow("2026-01-10", "Lote 1", "Fertilizante", "UREA 46 GRAN", 120, "kg"));
+
+        var upload = await service.UploadAsync(campaignId, stream, "pendiente.xlsx", "tester");
+        Assert.Equal(1, upload.PendingRows);
+        Assert.Equal(0, upload.LaborsCreated);
+        var batchId = upload.PendingBatchId!.Value;
+
+        var campaignLot = context.CampaignLots.First(cl => cl.CampaignId == campaignId);
+        var rowIndex = context.LaborImportPendingRows.Single().RowIndex;
+
+        var detail = await service.UpdatePendingRowAsync(batchId, rowIndex, new LaborImportRowEditDto
+        {
+            Date = new DateTime(2026, 1, 10),
+            CampaignLotId = campaignLot.Id,
+            Hectares = 42,
+            LaborTypeId = tipoElegido.Id,
+            Supplies =
+            [
+                new LaborImportRowSupplyEditDto
+                {
+                    SupplyName = "UREA 46 GRAN",
+                    SupplyId = insumoElegido.Id,
+                    Dose = 120,
+                    Unit = "kg"
+                }
+            ]
+        });
+
+        Assert.NotNull(detail);
+
+        var result = await service.ImportBatchRowsAsync(batchId, null);
+
+        Assert.True(result.Success);
+        Assert.Equal(1, result.Imported);
+
+        var labor = context.Labors.Include(l => l.Supplies).Single();
+        Assert.Equal(tipoElegido.Id, labor.LaborTypeId);
+        Assert.Equal(42, labor.Hectares);
+        var supply = Assert.Single(labor.Supplies);
+        Assert.Equal(insumoElegido.Id, supply.SupplyId);
+    }
+
+    /// <summary>
+    /// El error de parseo "el lote no está en la campaña" deja de valer en cuanto
+    /// alguien elige el lote a mano. Si no se limpia, la fila queda trabada para
+    /// siempre aunque esté completa.
+    /// </summary>
+    [Fact]
+    public async Task UpdatePendingRow_WithLotChosenByHand_ClearsTheParsingErrorAndImports()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var tenantId = Guid.NewGuid();
+        using var context = CreateContext(dbName, tenantId);
+        var campaignId = SeedBase(context, tenantId, out _);
+        var service = new LaborExcelImportService(context, NullLogger<LaborExcelImportService>.Instance);
+
+        using var stream = BuildExcel(LaborRow("2026-01-10", "Lote Inexistente", "Pulverización"));
+
+        var upload = await service.UploadAsync(campaignId, stream, "sin-lote.xlsx", "tester");
+        var batchId = upload.PendingBatchId!.Value;
+        var row = context.LaborImportPendingRows.Single();
+        Assert.Null(row.LotId);
+
+        // Sin corregir, la fila no entra.
+        var beforeFix = await service.ImportBatchRowsAsync(batchId, null);
+        Assert.Equal(0, beforeFix.Imported);
+
+        var campaignLot = context.CampaignLots.First(cl => cl.CampaignId == campaignId);
+        await service.UpdatePendingRowAsync(batchId, row.RowIndex, new LaborImportRowEditDto
+        {
+            Date = new DateTime(2026, 1, 10),
+            CampaignLotId = campaignLot.Id,
+            Hectares = 50
+        });
+
+        var afterFix = await service.ImportBatchRowsAsync(batchId, null);
+
+        Assert.Equal(1, afterFix.Imported);
+        Assert.Equal(campaignLot.Id, context.Labors.Single().CampaignLotId);
+    }
+
+    /// <summary>
+    /// No se puede mover una fila a un lote de otra campaña desde la conciliación.
+    /// </summary>
+    [Fact]
+    public async Task UpdatePendingRow_WithLotFromAnotherCampaign_IsRejected()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var tenantId = Guid.NewGuid();
+        using var context = CreateContext(dbName, tenantId);
+        var campaignId = SeedBase(context, tenantId, out _);
+
+        var otraCampaign = new Campaign { Id = Guid.NewGuid(), TenantId = tenantId, Name = "2027-2028" };
+        var otroLote = context.Lots.First();
+        var lotDeOtraCampaign = new CampaignLot { Id = Guid.NewGuid(), TenantId = tenantId, CampaignId = otraCampaign.Id, LotId = otroLote.Id };
+        context.Campaigns.Add(otraCampaign);
+        context.CampaignLots.Add(lotDeOtraCampaign);
+        await context.SaveChangesAsync();
+
+        var service = new LaborExcelImportService(context, NullLogger<LaborExcelImportService>.Instance);
+        using var stream = BuildExcel(LaborRow("2026-01-10", "Lote Inexistente", "Pulverización"));
+        var upload = await service.UploadAsync(campaignId, stream, "otra-campania.xlsx", "tester");
+        var row = context.LaborImportPendingRows.Single();
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.UpdatePendingRowAsync(upload.PendingBatchId!.Value, row.RowIndex, new LaborImportRowEditDto
+            {
+                CampaignLotId = lotDeOtraCampaign.Id,
+                Hectares = 50
+            }));
     }
 }
