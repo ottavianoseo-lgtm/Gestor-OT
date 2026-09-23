@@ -257,10 +257,22 @@ public class LaborExcelImportTests
             var preview = await service.PreviewAsync(campaignId, stream);
 
             Assert.NotNull(preview);
-            Assert.True(preview.TotalLabors > 100, $"Esperaba > 100 labores pero obtuvo {preview.TotalLabors}");
-            Assert.True(preview.TotalSupplies > 300, $"Esperaba > 300 insumos pero obtuvo {preview.TotalSupplies}");
-            Assert.True(preview.UniqueSuppliesCount >= 40, $"Esperaba >= 40 insumos únicos pero obtuvo {preview.UniqueSuppliesCount}");
+            // Números exactos de la planilla real: un ">" no habría detectado OT-60 ni el
+            // encabezado partido de "Contr/Prove", que leían de menos sin romper nada.
+            Assert.Equal(140, preview.TotalLabors);
+            Assert.Equal(363, preview.TotalSupplies);
+            Assert.Equal(41, preview.UniqueSuppliesCount);
             Assert.True(preview.CanProceed);
+
+            // Contr/Prove se lee en todas las filas (responsable de la labor y proveedor
+            // del insumo), no en cero como cuando el salto de línea rompía el match.
+            Assert.DoesNotContain(preview.Labors, l => string.IsNullOrWhiteSpace(l.Contractor));
+            Assert.Contains(preview.Labors.SelectMany(l => l.Supplies), s => !string.IsNullOrWhiteSpace(s.SupplierRawName));
+
+            // Lote 12: Sup presupuestada 33, Sup. Real 29 (OT-60).
+            var lote12 = preview.Labors.Where(l => l.LotName == "12").ToList();
+            Assert.NotEmpty(lote12);
+            Assert.Contains(lote12, l => l.Hectares == 29);
         }
     }
 
@@ -1172,6 +1184,120 @@ public class LaborExcelImportTests
             var dbLabor = await context.Labors.Include(l => l.Supplies).SingleAsync();
             var dbSupply = Assert.Single(dbLabor.Supplies);
             Assert.Null(dbSupply.SupplierContactId);
+        }
+    }
+
+    /// <summary>
+    /// Planilla con los encabezados tal cual los manda AMSA: "Contr/Prove" y
+    /// "real/presup" traen un salto de línea adentro de la celda, y conviven "Sup"
+    /// (presupuestada) con "Sup. Real" (la que se trabajó).
+    /// </summary>
+    private static Stream CreateAmsaLikeExcelStream()
+    {
+        using var workbook = new XLWorkbook();
+        var ws = workbook.Worksheets.Add("Planilla Datos");
+
+        string[] headers =
+        [
+            "Fecha-1", "Fecha", "Establecimiento", "Lote", "Sup", "Sup. Real",
+            "Produc/labor", "Dosis", "Tipo", "Unidad", "Total", "Contr/\nProve", "real/\npresup"
+        ];
+        for (int i = 0; i < headers.Length; i++)
+            ws.Cell(1, i + 1).Value = headers[i];
+
+        var rows = new object?[][]
+        {
+            // Labor con superficie presupuestada 33 y real 29 -> vale la real
+            ["2026-01-10", "2026-01-10", "La Laura", "Lote 12", 33, 29, "Pulverización", 1, "Labor", "ha", 33, "Propio", "r"],
+            ["2026-01-10", "2026-01-10", "La Laura", "Lote 12", 33, 29, "Glifosato 66%", 2, "Herbicida", "litros", 66, "Ekun", "r"],
+            // Labor sin superficie real cargada -> cae a la presupuestada
+            ["2026-01-12", "2026-01-12", "La Laura", "Lote 13", 40, null, "Fertilización", 1, "Labor", "ha", 40, "Don Carlos", "r"]
+        };
+
+        for (int r = 0; r < rows.Length; r++)
+        {
+            for (int c = 0; c < rows[r].Length; c++)
+            {
+                var val = rows[r][c];
+                if (val is null) continue;
+                var cell = ws.Cell(r + 2, c + 1);
+                if (val is int iVal) cell.Value = iVal;
+                else if (val is double dVal) cell.Value = dVal;
+                else cell.Value = val.ToString();
+            }
+        }
+
+        var ms = new MemoryStream();
+        workbook.SaveAs(ms);
+        ms.Position = 0;
+        return ms;
+    }
+
+    /// <summary>
+    /// OT-60: la planilla trae "Sup" (presupuestada) y "Sup. Real"; la labor se hizo
+    /// sobre la real. Antes ganaba "Sup" porque "Sup. Real" no matcheaba ningún caso
+    /// del detector y la superficie entraba inflada.
+    /// </summary>
+    [Fact]
+    public async Task PreviewAsync_WhenSheetHasBudgetedAndRealSurface_UsesRealSurface()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var tenantId = Guid.NewGuid();
+        var campaignId = Guid.NewGuid();
+
+        using (var context = CreateContext(dbName, tenantId))
+        {
+            context.Campaigns.Add(new Campaign { Id = campaignId, TenantId = tenantId, Name = "AMSA", IsActive = true });
+            await context.SaveChangesAsync();
+        }
+
+        using (var context = CreateContext(dbName, tenantId))
+        {
+            var service = new LaborExcelImportService(context, NullLogger<LaborExcelImportService>.Instance);
+            using var stream = CreateAmsaLikeExcelStream();
+
+            var preview = await service.PreviewAsync(campaignId, stream);
+
+            Assert.Equal(2, preview.TotalLabors);
+            Assert.Equal(29, preview.Labors[0].Hectares);
+            // Sin superficie real cargada, vale la presupuestada en vez de quedar en cero.
+            Assert.Equal(40, preview.Labors[1].Hectares);
+        }
+    }
+
+    /// <summary>
+    /// El encabezado "Contr/\nProve" tiene un salto de línea adentro: comparándolo sin
+    /// aplanar, la columna quedaba en 0 y ni la labor tenía responsable ni el insumo
+    /// proveedor. Afectaba al 100% de las filas de la planilla real.
+    /// </summary>
+    [Fact]
+    public async Task PreviewAsync_WhenHeaderHasLineBreak_StillReadsContractorAndSupplier()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var tenantId = Guid.NewGuid();
+        var campaignId = Guid.NewGuid();
+
+        using (var context = CreateContext(dbName, tenantId))
+        {
+            context.Campaigns.Add(new Campaign { Id = campaignId, TenantId = tenantId, Name = "AMSA", IsActive = true });
+            context.Contacts.Add(new Contact { Id = Guid.NewGuid(), TenantId = tenantId, FullName = "Ekun", Role = ContactRole.Supplier });
+            await context.SaveChangesAsync();
+        }
+
+        using (var context = CreateContext(dbName, tenantId))
+        {
+            var service = new LaborExcelImportService(context, NullLogger<LaborExcelImportService>.Instance);
+            using var stream = CreateAmsaLikeExcelStream();
+
+            var preview = await service.PreviewAsync(campaignId, stream);
+
+            var labor = preview.Labors[0];
+            Assert.Equal("Propio", labor.Contractor);
+            var supply = Assert.Single(labor.Supplies);
+            Assert.Equal("Ekun", supply.SupplierRawName);
+            Assert.NotNull(supply.SupplierContactId);
+
+            Assert.Equal("Don Carlos", preview.Labors[1].Contractor);
         }
     }
 }

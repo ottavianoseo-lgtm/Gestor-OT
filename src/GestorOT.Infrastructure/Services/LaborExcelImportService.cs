@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -215,6 +215,7 @@ public class LaborExcelImportService : ILaborExcelImportService
         public int LaborsCreated;
         public int LaborsUpdated;
         public int SuppliesCreated;
+        public int SuppliesSkipped;
         public int NewInventories;
         public int AliasesLearned;
         public List<string> Errors = new();
@@ -591,7 +592,14 @@ public class LaborExcelImportService : ILaborExcelImportService
             {
                 if (!resolved.Supplies.TryGetValue(sup.SupplyName.Trim(), out var supplyId))
                 {
-                    continue; // Ignored or unmapped
+                    // Un insumo sin resolver no puede desaparecer callado: la labor se
+                    // importa igual pero queda constancia de qué se perdió, que es como
+                    // se detectó OT-61 (201 de 363 insumos que nunca llegaron a la base).
+                    counters.SuppliesSkipped++;
+                    _logger.LogWarning(
+                        "Fila {Row}: el insumo '{SupplyName}' no está vinculado a inventario, se importa la labor sin él.",
+                        parsedLabor.RowIndex, sup.SupplyName);
+                    continue;
                 }
 
                 decimal plannedDose = sup.Dose;
@@ -1511,6 +1519,8 @@ public class LaborExcelImportService : ILaborExcelImportService
         public int ColEstablecimiento { get; init; }
         public int ColLote { get; init; }
         public int ColSuperficie { get; init; }
+        /// <summary>Superficie presupuestada: solo se usa si la columna real vino vacía.</summary>
+        public int ColSuperficieFallback { get; init; }
         public int ColProducLabor { get; init; }
         public int ColDosis { get; init; }
         public int ColTipo { get; init; }
@@ -1546,29 +1556,41 @@ public class LaborExcelImportService : ILaborExcelImportService
             int lastCol = row.LastCellUsed()?.Address.ColumnNumber ?? 0;
             if (lastCol < 4) continue;
 
-            int colFecha = 0, colEst = 0, colLote = 0, colSup = 0, colItem = 0, colDosis = 0, colTipo = 0, colUnidad = 0, colTotal = 0, colContr = 0, colModo = 0;
+            int colFecha = 0, colEst = 0, colLote = 0, colSup = 0, colSupReal = 0, colItem = 0, colDosis = 0, colTipo = 0, colUnidad = 0, colTotal = 0, colContr = 0, colModo = 0;
             bool hasProducLabor = false;
 
             for (int c = 1; c <= lastCol; c++)
             {
-                string header = row.Cell(c).GetString().Trim().ToLowerInvariant();
+                // Los encabezados reales vienen con saltos de línea adentro ("Contr/\nProve",
+                // "real/\npresup"): sin aplanarlos, el Contains nunca matchea y la columna
+                // queda en 0, que el parser interpreta como "no existe" y la ignora en
+                // silencio. `header` aplana los espacios; `compact` los saca del todo para
+                // los nombres partidos al medio.
+                string header = CollapseWhitespace(row.Cell(c).GetString().ToLowerInvariant());
                 if (string.IsNullOrWhiteSpace(header)) continue;
+                string compact = header.Replace(" ", string.Empty);
 
-                if (header.Contains("produc/labor") || header.Contains("produc / labor") || header.Contains("labor o insumo"))
+                if (compact.Contains("produc/labor") || header.Contains("labor o insumo"))
                 {
                     colItem = c;
                     hasProducLabor = true;
                 }
                 else if (header == "tipo") colTipo = c;
-                else if (header == "fecha" || header.StartsWith("fecha")) colFecha = c;
+                // "Fecha-1" también empieza con "fecha": la exacta manda y no la pisa
+                // ninguna variante posterior.
+                else if (header == "fecha") colFecha = c;
+                else if (colFecha == 0 && header.StartsWith("fecha")) colFecha = c;
                 else if (header == "lote") colLote = c;
                 else if (header == "establecimiento" || header == "campo") colEst = c;
+                // "Sup" es la superficie presupuestada y "Sup. Real" la que se trabajó de
+                // verdad (OT-60): si están las dos, gana la real.
+                else if (compact == "sup.real" || compact == "supreal" || compact.StartsWith("superficiereal")) colSupReal = c;
                 else if (header == "sup" || header.StartsWith("superficie")) colSup = c;
                 else if (header == "dosis") colDosis = c;
                 else if (header == "unidad") colUnidad = c;
                 else if (header == "total") colTotal = c;
-                else if (header.Contains("contr/prove") || header.Contains("contratista") || header.Contains("maquinaria")) colContr = c;
-                else if (header.Contains("real/presup") || header == "modo" || header == "estado") colModo = c;
+                else if (compact.Contains("contr/prove") || compact.Contains("contratista") || compact.Contains("maquinaria")) colContr = c;
+                else if (compact.Contains("real/presup") || header == "modo" || header == "estado") colModo = c;
             }
 
             if (colItem > 0 && (colTipo > 0 || colLote > 0))
@@ -1580,7 +1602,8 @@ public class LaborExcelImportService : ILaborExcelImportService
                     ColFecha = colFecha,
                     ColEstablecimiento = colEst,
                     ColLote = colLote,
-                    ColSuperficie = colSup,
+                    ColSuperficie = colSupReal > 0 ? colSupReal : colSup,
+                    ColSuperficieFallback = colSupReal > 0 ? colSup : 0,
                     ColProducLabor = colItem,
                     ColDosis = colDosis,
                     ColTipo = colTipo,
@@ -1665,7 +1688,7 @@ public class LaborExcelImportService : ILaborExcelImportService
                 DateTime? date = cfg.ColFecha > 0 ? ParseDateCell(row.Cell(cfg.ColFecha)) : null;
                 string fieldName = cfg.ColEstablecimiento > 0 ? row.Cell(cfg.ColEstablecimiento).GetString().Trim() : string.Empty;
                 string lotName = cfg.ColLote > 0 ? row.Cell(cfg.ColLote).GetString().Trim() : string.Empty;
-                decimal sup = cfg.ColSuperficie > 0 ? ParseDecimalCell(row.Cell(cfg.ColSuperficie)) : 0;
+                decimal sup = ReadSuperficie(row, cfg);
                 string contractor = cfg.ColContratista > 0 ? row.Cell(cfg.ColContratista).GetString().Trim() : string.Empty;
                 string modoStr = cfg.ColModo > 0 ? row.Cell(cfg.ColModo).GetString().Trim() : string.Empty;
 
@@ -1765,7 +1788,7 @@ public class LaborExcelImportService : ILaborExcelImportService
                         Date = orphanDate,
                         FieldName = cfg.ColEstablecimiento > 0 ? row.Cell(cfg.ColEstablecimiento).GetString().Trim() : string.Empty,
                         LotName = orphanLot,
-                        Hectares = cfg.ColSuperficie > 0 ? ParseDecimalCell(row.Cell(cfg.ColSuperficie)) : 0,
+                        Hectares = ReadSuperficie(row, cfg),
                         LaborTypeName = "Labor General",
                         Contractor = supplyRowContractorRaw,
                         ContactId = orphanContactId,
@@ -2130,6 +2153,28 @@ public class LaborExcelImportService : ILaborExcelImportService
     #endregion
 
     #region String & Number Helpers
+
+    /// <summary>
+    /// Aplana el encabezado: recorta, colapsa cualquier corrida de espacios (incluidos
+    /// los saltos de línea que Excel mete dentro de una celda de título) en uno solo.
+    /// </summary>
+    private static string CollapseWhitespace(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return string.Empty;
+        return Regex.Replace(text, @"\s+", " ").Trim();
+    }
+
+    /// <summary>
+    /// Superficie real de la fila; si la planilla trae la columna real vacía (típico en
+    /// labores planeadas) cae a la presupuestada.
+    /// </summary>
+    private static decimal ReadSuperficie(IXLRow row, ColumnConfig cfg)
+    {
+        decimal sup = cfg.ColSuperficie > 0 ? ParseDecimalCell(row.Cell(cfg.ColSuperficie)) : 0;
+        if (sup == 0 && cfg.ColSuperficieFallback > 0)
+            sup = ParseDecimalCell(row.Cell(cfg.ColSuperficieFallback));
+        return sup;
+    }
 
     private static string NormalizeString(string text)
     {
