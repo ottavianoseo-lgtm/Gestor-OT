@@ -2384,8 +2384,71 @@ public class LaborExcelImportService : ILaborExcelImportService
             }
         }
 
+        // 4. Por palabras, sin importar el orden: la planilla escribe "Daniel Paiuzza"
+        // y el padron lo tiene como "PAIUZZA DANIEL", o "Luis Gismondi" contra
+        // "GISMONDI LUIS OSCAR". Ninguna de las reglas de arriba los une y la fila
+        // queda trabada en conciliacion sin forma de resolverla desde el panel.
+        var byTokens = MatchContactByTokens(norm, contacts);
+        if (byTokens != null)
+        {
+            return (byTokens.Id, byTokens.FullName, byTokens.Role == ContactRole.Contractor);
+        }
+
         bool isContractor = norm.Contains("contrat") || norm.Contains("tercero") || (!norm.Contains("propio") && !string.IsNullOrWhiteSpace(norm));
         return (null, null, isContractor);
+    }
+
+    /// <summary>
+    /// Busca el contacto cuyas palabras contengan a todas las del nombre crudo, en
+    /// cualquier orden. Tolera abreviaturas por prefijo ("Serv. Agrop." contra
+    /// "SERVICIOS AGROPECUARIOS S.R.L.") y exige al menos dos palabras para no
+    /// enganchar a cualquiera con un solo nombre de pila. Si hay empate entre varios
+    /// candidatos no devuelve ninguno: es preferible mandar la fila a conciliacion
+    /// antes que atribuirle la labor a la persona equivocada.
+    /// </summary>
+    private static Contact? MatchContactByTokens(string norm, List<Contact> contacts)
+    {
+        var rawTokens = norm.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+            .Where(t => t.Length >= 3)
+            .Distinct()
+            .ToList();
+        if (rawTokens.Count < 2) return null;
+
+        Contact? best = null;
+        int bestExtra = int.MaxValue;
+        bool tie = false;
+
+        foreach (var c in contacts)
+        {
+            var contactTokens = NormalizeString(c.FullName)
+                .Split(' ', StringSplitOptions.RemoveEmptyEntries)
+                .Where(t => t.Length >= 3)
+                .ToList();
+            if (contactTokens.Count == 0) continue;
+
+            var remaining = new List<string>(contactTokens);
+            bool all = true;
+            foreach (var rt in rawTokens)
+            {
+                var hit = remaining.FirstOrDefault(ct => ct.StartsWith(rt, StringComparison.Ordinal) || rt.StartsWith(ct, StringComparison.Ordinal));
+                if (hit == null) { all = false; break; }
+                remaining.Remove(hit);
+            }
+            if (!all) continue;
+
+            if (remaining.Count < bestExtra)
+            {
+                best = c;
+                bestExtra = remaining.Count;
+                tie = false;
+            }
+            else if (remaining.Count == bestExtra)
+            {
+                tie = true;
+            }
+        }
+
+        return tie ? null : best;
     }
 
     #endregion

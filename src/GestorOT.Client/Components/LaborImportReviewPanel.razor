@@ -540,7 +540,11 @@ else
         if (!string.IsNullOrWhiteSpace(labor.Contractor) && !labor.ContactId.HasValue
             && !IsPropioLike(labor.Contractor))
             return true;
-        return labor.Supplies.Any(s => !string.IsNullOrWhiteSpace(s.SupplierRawName) && !s.SupplierContactId.HasValue);
+        // "Propio" no es un proveedor del padron: marcar la fila por eso hacia que
+        // apareciera "sin vincular" en filas que estaban completas.
+        return labor.Supplies.Any(s => !string.IsNullOrWhiteSpace(s.SupplierRawName)
+            && !IsPropioLike(s.SupplierRawName)
+            && !s.SupplierContactId.HasValue);
     }
 
     private static bool IsPropioLike(string? raw)

@@ -1300,4 +1300,106 @@ public class LaborExcelImportTests
             Assert.Equal("Don Carlos", preview.Labors[1].Contractor);
         }
     }
+
+    /// <summary>
+    /// La planilla escribe el responsable como "Nombre Apellido" y el padron lo tiene
+    /// como "APELLIDO NOMBRE" (o con un segundo nombre de mas). Sin matcheo por
+    /// palabras la fila quedaba trabada en conciliacion sin forma de resolverla: el
+    /// panel tiene solapa para proveedores de insumos, no para el responsable.
+    /// </summary>
+    [Theory]
+    [InlineData("Daniel Paiuzza", "PAIUZZA DANIEL")]
+    [InlineData("Luis Gismondi", "GISMONDI LUIS OSCAR")]
+    [InlineData("Marcos Lamattina", "Lamattina, Marcos Daniel")]
+    [InlineData("Serv. Agrop.", "SERVICIOS AGROPECUARIOS S.R.L.")]
+    public async Task PreviewAsync_MatchesContactWithInvertedOrSurnameFirstName(string enPlanilla, string enPadron)
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var tenantId = Guid.NewGuid();
+        var campaignId = Guid.NewGuid();
+
+        using (var context = CreateContext(dbName, tenantId))
+        {
+            var field = new Field { Id = Guid.NewGuid(), TenantId = tenantId, Name = "Establecimiento Norte" };
+            var lot = new Lot { Id = Guid.NewGuid(), TenantId = tenantId, FieldId = field.Id, Name = "Lote 1" };
+            context.Campaigns.Add(new Campaign { Id = campaignId, TenantId = tenantId, Name = "2026-2027", IsActive = true });
+            context.Fields.Add(field);
+            context.Lots.Add(lot);
+            context.CampaignLots.Add(new CampaignLot { Id = Guid.NewGuid(), TenantId = tenantId, CampaignId = campaignId, LotId = lot.Id });
+            context.Contacts.Add(new Contact { Id = Guid.NewGuid(), TenantId = tenantId, FullName = enPadron, Role = ContactRole.Contractor });
+            // Ruido: otro contacto que comparte una palabra no debe confundir el match.
+            context.Contacts.Add(new Contact { Id = Guid.NewGuid(), TenantId = tenantId, FullName = "Otro Proveedor SA", Role = ContactRole.Supplier });
+            await context.SaveChangesAsync();
+        }
+
+        using (var context = CreateContext(dbName, tenantId))
+        {
+            var service = new LaborExcelImportService(context, NullLogger<LaborExcelImportService>.Instance);
+            using var stream = CreateContractorExcelStream(enPlanilla);
+
+            var preview = await service.PreviewAsync(campaignId, stream);
+
+            var labor = Assert.Single(preview.Labors);
+            Assert.NotNull(labor.ContactId);
+            Assert.Equal(enPadron, labor.MatchedContactName);
+        }
+    }
+
+    /// <summary>
+    /// Con dos contactos igual de parecidos no se elige ninguno: la fila va a
+    /// conciliacion en vez de atribuirle la labor a la persona equivocada.
+    /// </summary>
+    [Fact]
+    public async Task PreviewAsync_WhenTwoContactsMatchEquallyWell_LeavesItUnlinked()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var tenantId = Guid.NewGuid();
+        var campaignId = Guid.NewGuid();
+
+        using (var context = CreateContext(dbName, tenantId))
+        {
+            var field = new Field { Id = Guid.NewGuid(), TenantId = tenantId, Name = "Establecimiento Norte" };
+            var lot = new Lot { Id = Guid.NewGuid(), TenantId = tenantId, FieldId = field.Id, Name = "Lote 1" };
+            context.Campaigns.Add(new Campaign { Id = campaignId, TenantId = tenantId, Name = "2026-2027", IsActive = true });
+            context.Fields.Add(field);
+            context.Lots.Add(lot);
+            context.CampaignLots.Add(new CampaignLot { Id = Guid.NewGuid(), TenantId = tenantId, CampaignId = campaignId, LotId = lot.Id });
+            context.Contacts.Add(new Contact { Id = Guid.NewGuid(), TenantId = tenantId, FullName = "PEREZ JUAN CARLOS", Role = ContactRole.Contractor });
+            context.Contacts.Add(new Contact { Id = Guid.NewGuid(), TenantId = tenantId, FullName = "PEREZ JUAN ESTEBAN", Role = ContactRole.Contractor });
+            await context.SaveChangesAsync();
+        }
+
+        using (var context = CreateContext(dbName, tenantId))
+        {
+            var service = new LaborExcelImportService(context, NullLogger<LaborExcelImportService>.Instance);
+            using var stream = CreateContractorExcelStream("Juan Perez");
+
+            var preview = await service.PreviewAsync(campaignId, stream);
+
+            Assert.Null(Assert.Single(preview.Labors).ContactId);
+        }
+    }
+
+    private static Stream CreateContractorExcelStream(string contractor)
+    {
+        using var workbook = new XLWorkbook();
+        var ws = workbook.Worksheets.Add("Labores e Insumos");
+
+        string[] headers = ["Fecha", "Establecimiento", "Lote", "Superficie (ha)", "Tipo", "Labor o Insumo", "Dosis", "Unidad", "Contratista", "Modo", "Notas"];
+        for (int i = 0; i < headers.Length; i++)
+            ws.Cell(1, i + 1).Value = headers[i];
+
+        object[] row = ["2026-01-10", "Establecimiento Norte", "Lote 1", 50, "Labor", "Pulverización", 1, "ha", contractor, "", ""];
+        for (int c = 0; c < row.Length; c++)
+        {
+            var cell = ws.Cell(2, c + 1);
+            if (row[c] is int iVal) cell.Value = iVal;
+            else cell.Value = row[c].ToString();
+        }
+
+        var ms = new MemoryStream();
+        workbook.SaveAs(ms);
+        ms.Position = 0;
+        return ms;
+    }
 }
