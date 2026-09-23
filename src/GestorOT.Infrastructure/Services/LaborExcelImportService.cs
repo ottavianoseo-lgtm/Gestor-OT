@@ -1869,6 +1869,10 @@ public class LaborExcelImportService : ILaborExcelImportService
                 // la labor (confirmado con datos reales AMSA: en la fila "Labor" vale "Propio",
                 // en las filas de insumos que siguen vale el nombre del distribuidor, ej. "Ekun").
                 string supplyRowContractorRaw = cfg.ColContratista > 0 ? row.Cell(cfg.ColContratista).GetString().Trim() : string.Empty;
+                // En esta planilla "-" es la forma de dejar la celda vacia; tomarlo como
+                // un proveedor llamado "-" ensuciaba la conciliacion con una fila que no
+                // se puede vincular a nada.
+                if (supplyRowContractorRaw == "-") supplyRowContractorRaw = string.Empty;
 
                 if (currentLabor == null)
                 {
@@ -2210,9 +2214,11 @@ public class LaborExcelImportService : ILaborExcelImportService
     private (List<LaborImportSupplierMappingDto> Mappings, int UnmatchedCount) BuildSupplierMappings(
         List<LaborImportParsedLaborDto> labors)
     {
+        // "Propio" no es nadie del padron: pedir que se vincule es pedir algo imposible
+        // y ademas infla el contador de pendientes de la solapa.
         var suppliersGrouped = labors
             .SelectMany(l => l.Supplies)
-            .Where(s => !string.IsNullOrWhiteSpace(s.SupplierRawName))
+            .Where(s => !string.IsNullOrWhiteSpace(s.SupplierRawName) && !IsPropioLike(s.SupplierRawName))
             .GroupBy(s => s.SupplierRawName!.Trim(), StringComparer.OrdinalIgnoreCase)
             .ToList();
 

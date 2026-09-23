@@ -410,7 +410,7 @@ else
                                                         {
                                                             <span style="color: rgba(255,255,255,0.5);">
                                                                 &bull; Prov: @(s.MatchedSupplierName ?? s.SupplierRawName)
-                                                                @if (!s.SupplierContactId.HasValue)
+                                                                @if (!s.SupplierContactId.HasValue && !IsPropioLike(s.SupplierRawName))
                                                                 {
                                                                     <Icon Type="warning" Style="color: #F39C12; font-size: 11px; margin-left: 2px;" />
                                                                 }
