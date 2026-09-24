@@ -42,3 +42,8 @@ build_output.txt
 app_stdout.log
 app_stderr.log
 *.log
+
+# orchestrator (agentes)
+.orchestrator/workers/
+.orchestrator/doing/.heartbeat-*
+.orchestrator/doing/.claim-*

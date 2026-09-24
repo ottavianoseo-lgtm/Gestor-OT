@@ -1,0 +1,1 @@
+{"pool":{"implementer":["opencode-go-10","gemini"],"orchestrator":["claude-pro-20","gemini-pro-20","openai-20"],"reviewer":["claude-pro-20","gemini-pro-20"],"tester":["opencode-go-10","gemini"]},"repo":"Gestor-OT","version":1}
