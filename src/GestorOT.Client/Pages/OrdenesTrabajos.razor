@@ -1,6 +1,7 @@
 @page "/workorders"
 @using GestorOT.Shared.Dtos
 @using GestorOT.Shared
+@using GestorOT.Domain.Enums
 @using GestorOT.Client.Components
 @using System.Net.Http.Json
 @using AntDesign
@@ -130,32 +131,55 @@
        Visible="_modalVisible"
        OnCancel="CloseModal"
        OnOk="SaveWorkOrder"
-       OkText="@(_isEditing ? "Guardar" : "Crear")"
+       OkText="@(_isEditing ? "Guardar cambios" : "Crear orden")"
+       CancelText="@("Cancelar")"
        ConfirmLoading="_saving"
-       Width="560">
+       Width="640">
     <Form @ref="_form" Model="_formModel" Layout="@FormLayout.Vertical">
-        <FormItem Label="Nombre (opcional)">
-            <Input @bind-Value="_formModel.Name" Placeholder="Ej: Siembra Lote Norte — si se deja vacío se genera automáticamente" />
-        </FormItem>
-        <FormItem Label="Descripción (opcional)">
-            <TextArea @bind-Value="_formModel.Description" Placeholder="Notas o detalles adicionales..." AutoSize="true" />
-        </FormItem>
-        <Row Gutter="16">
-            <Col Span="12">
-                <FormItem Label="Responsable (Contacto)">
-                    <Select TItem="ContactDto" TItemValue="Guid?" DataSource="_availableContacts" @bind-Value="_formModel.ContactId"
-                            LabelName="@nameof(ContactDto.FullName)" ValueName="@nameof(ContactDto.Id)" Placeholder="Seleccionar contacto"
-                            Style="width: 100%;" EnableSearch AllowClear />
+        <div class="wo-section">
+            <div class="wo-section-title">Datos</div>
+            <div class="wo-grid">
+                <FormItem Label="Nombre">
+                    <Input @bind-Value="_formModel.Name" Placeholder="Ej: Siembra Lote Norte (opcional)" />
                 </FormItem>
-            </Col>
-            <Col Span="12">
                 <FormItem Label="Fecha">
                     <DatePicker @bind-Value="_formModel.DueDate" Style="width: 100%;" Format="dd/MM/yyyy" />
                 </FormItem>
-            </Col>
-        </Row>
-        <Row Gutter="16">
-            <Col Span="12">
+            </div>
+            <FormItem Label="Descripción">
+                <TextArea @bind-Value="_formModel.Description" Placeholder="Notas o detalles adicionales (opcional)" AutoSize="true" />
+            </FormItem>
+        </div>
+
+        <div class="wo-section">
+            <div class="wo-section-title">Responsable</div>
+            <div class="wo-mode">
+                <button type="button" class="wo-mode-btn @(!_formIsContractor ? "active own" : "")" @onclick="() => SetFormMode(false)">
+                    <Icon Type="team" Theme="IconThemeType.Outline" /> Propia
+                </button>
+                <button type="button" class="wo-mode-btn @(_formIsContractor ? "active contractor" : "")" @onclick="() => SetFormMode(true)">
+                    <Icon Type="shop" Theme="IconThemeType.Outline" /> Contratista
+                </button>
+            </div>
+            <FormItem Label="@(_formIsContractor ? "Contratista" : "Responsable")">
+                <Select TItem="ContactDto" TItemValue="Guid?" DataSource="FormContacts" @bind-Value="_formModel.ContactId"
+                        ItemLabel="c => c.FullName" ItemValue="c => (Guid?)c.Id"
+                        Placeholder="@(_formModel.AcceptsMultiplePeople ? "Opcional con varias personas" : "Buscar persona...")"
+                        Style="width: 100%;" EnableSearch AllowClear />
+                <div class="wo-hint">@FormContacts.Count personas @(_formIsContractor ? "contratistas" : "propias") disponibles</div>
+            </FormItem>
+            <div class="wo-switch">
+                <Switch @bind-Checked="_formModel.AcceptsMultiplePeople" />
+                <div>
+                    <div>Varias personas</div>
+                    <small>Cada labor puede tener su propio responsable; el de la OT deja de ser obligatorio.</small>
+                </div>
+            </div>
+        </div>
+
+        <div class="wo-section">
+            <div class="wo-section-title">Estado</div>
+            <div class="wo-grid">
                 <FormItem Label="Estado">
                     @if (_loadingStatuses)
                     {
@@ -175,18 +199,30 @@
                         <Alert Type="@AlertType.Error" Message="No hay estados de OT configurados. Cree al menos un estado inicial en Administración > Estados de OT." ShowIcon="true" />
                     }
                 </FormItem>
-            </Col>
-            <Col Span="12">
-                <div style="display: flex; gap: 12px; height: 100%; align-items: center; padding-top: 24px;">
-                    <Checkbox @bind-Checked="_formModel.AcceptsMultiplePeople">Mult. Pers.</Checkbox>
-                    <Checkbox @bind-Checked="_formModel.AcceptsMultipleDates">Mult. Fechas</Checkbox>
+                <div class="wo-switch" style="align-self: center;">
+                    <Switch @bind-Checked="_formModel.AcceptsMultipleDates" />
+                    <div>
+                        <div>Varias fechas</div>
+                        <small>Las labores pueden hacerse en días distintos.</small>
+                    </div>
                 </div>
-            </Col>
-        </Row>
+            </div>
+        </div>
     </Form>
 </Modal>
 
 <style>
+    .wo-section { border: 1px solid rgba(255,255,255,0.08); background: rgba(255,255,255,0.02); border-radius: 12px; padding: 14px 14px 2px; margin-bottom: 14px; }
+    .wo-section-title { color: #fff; font-weight: 600; font-size: 14px; margin-bottom: 10px; }
+    .wo-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 16px; }
+    .wo-mode { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+    .wo-mode-btn { display: flex; align-items: center; justify-content: center; gap: 6px; cursor: pointer; padding: 8px 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.12); background: rgba(255,255,255,0.03); color: var(--text-primary); font-weight: 600; }
+    .wo-mode-btn:hover { border-color: rgba(255,255,255,0.3); }
+    .wo-mode-btn.active.own { border-color: #2ECC71; background: rgba(46,204,113,0.12); }
+    .wo-mode-btn.active.contractor { border-color: #E67E22; background: rgba(230,126,34,0.12); }
+    .wo-hint { color: var(--text-secondary); font-size: 11px; margin-top: 4px; }
+    .wo-switch { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 14px; color: var(--text-primary); }
+    .wo-switch small { color: var(--text-secondary); font-size: 11px; }
     .kpi-card-sm {
         background: rgba(255,255,255,0.04);
         border: 1px solid rgba(255,255,255,0.08);
@@ -241,6 +277,36 @@
         public bool AcceptsMultiplePeople { get; set; }
         public bool AcceptsMultipleDates { get; set; }
         public string AssignedTo { get; set; } = string.Empty;
+    }
+
+    // Modo del modal de OT: filtra las personas igual que en el formulario de labor.
+    private bool _formIsContractor;
+
+    private List<ContactDto> FormContacts
+    {
+        get
+        {
+            var requested = _formIsContractor ? LaborExecutionMode.Contractor : LaborExecutionMode.Own;
+            var matching = _availableContacts
+                .Where(c => c.Role.ToExecutionMode().MatchesFilter(requested))
+                .OrderBy(c => c.FullName)
+                .ToList();
+            if (_formModel.ContactId.HasValue && matching.All(c => c.Id != _formModel.ContactId.Value))
+            {
+                var current = _availableContacts.FirstOrDefault(c => c.Id == _formModel.ContactId.Value);
+                if (current != null) matching.Insert(0, current);
+            }
+            return matching;
+        }
+    }
+
+    private void SetFormMode(bool isContractor)
+    {
+        _formIsContractor = isContractor;
+        var requested = isContractor ? LaborExecutionMode.Contractor : LaborExecutionMode.Own;
+        var current = _availableContacts.FirstOrDefault(c => c.Id == _formModel.ContactId);
+        if (current != null && !current.Role.ToExecutionMode().MatchesFilter(requested))
+            _formModel.ContactId = null;
     }
 
     private const string NoStatusFilter = "none";
@@ -367,6 +433,7 @@
         }
 
         _isEditing = false;
+        _formIsContractor = false;
         _formModel = new WoFormModel();
         _formModel.CampaignId = CampaignState.CurrentCampaign.Id;
         
@@ -411,6 +478,8 @@
             AcceptsMultipleDates = wo.AcceptsMultipleDates,
             AssignedTo = wo.AssignedTo
         };
+        var assigned = _availableContacts.FirstOrDefault(c => c.Id == wo.ContactId);
+        _formIsContractor = assigned?.Role.ToExecutionMode() == LaborExecutionMode.Contractor;
         _modalVisible = true;
     }
 
@@ -425,7 +494,7 @@
 
         if (!_formModel.AcceptsMultiplePeople && (_formModel.ContactId == null || _formModel.ContactId == Guid.Empty))
         {
-            Message.Warning("Debe seleccionar un responsable (Contacto) o marcar 'Mult. Pers.'");
+            Message.Warning("Elegí un responsable, o activá 'Varias personas'.");
             return;
         }
 

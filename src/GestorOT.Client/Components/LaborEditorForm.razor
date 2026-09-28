@@ -40,69 +40,136 @@
                 </MessageTemplate>
             </Alert>
         }
-        <FormItem Label="¿Labor propia o de contratista?">
-            <div style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap;">
-                <RadioGroup Value="@_model.IsExternalBilling" TValue="bool" ValueChanged="OnExecutionModeChanged" ButtonStyle="RadioButtonStyle.Solid">
-                    <Radio TValue="bool" Value="@false" RadioButton="true">Propia</Radio>
-                    <Radio TValue="bool" Value="@true" RadioButton="true">Contratista</Radio>
-                </RadioGroup>
-                <span style="color: var(--text-secondary); font-size: 12px;">
-                    Filtra el catálogo de tareas: @FilteredLaborTypes.Count de @_laborTypes.Count
-                    @if (_unclassifiedLaborTypeCount > 0)
-                    {
-                        <span> (incluye @_unclassifiedLaborTypeCount sin clasificar)</span>
-                    }
-                </span>
+        <div class="lef-section">
+            <div class="lef-section-head">
+                <span class="lef-step">1</span>
+                <div>
+                    <div class="lef-section-title">¿Quién la hace?</div>
+                    <div class="lef-section-sub">El modo filtra las tareas y las personas que se pueden elegir.</div>
+                </div>
             </div>
-        </FormItem>
 
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
-            <FormItem Label="Campo (Filtro)">
-                <Select TItemValue="Guid" TItem="FieldDto" @bind-Value="_filterFieldId"
-                        Placeholder="Filtrar por campo" EnableSearch AllowClear
-                        DataSource="@FilteredFields"
-                        LabelName="@nameof(FieldDto.Name)"
-                        ValueName="@nameof(FieldDto.Id)"
-                        OnSelectedItemChanged="OnFieldFilterChanged">
-                </Select>
-            </FormItem>
+            <div class="lef-mode">
+                <button type="button" class="lef-mode-btn @(!_model.IsExternalBilling ? "active own" : "")" @onclick="() => OnExecutionModeChanged(false)">
+                    <Icon Type="team" Theme="IconThemeType.Outline" />
+                    <span>Propia</span>
+                    <small>Personal y maquinaria propia</small>
+                </button>
+                <button type="button" class="lef-mode-btn @(_model.IsExternalBilling ? "active contractor" : "")" @onclick="() => OnExecutionModeChanged(true)">
+                    <Icon Type="shop" Theme="IconThemeType.Outline" />
+                    <span>Contratista</span>
+                    <small>Servicio de un tercero</small>
+                </button>
+            </div>
 
-            <FormItem Label="Lote" Style="@(HasError("lot") ? "border: 1px solid #E74C3C; border-radius: 8px; padding: 8px;" : "")">
-                <Select TItemValue="Guid" TItem="CampaignLotDto" @bind-Value="_model.LotId"
-                        Placeholder="Seleccionar lote" EnableSearch 
-                        DataSource="@FilteredLots"
-                        LabelName="@nameof(CampaignLotDto.LotName)"
-                        ValueName="@nameof(CampaignLotDto.LotId)"
-                        OnSelectedItemChanged="OnLotChanged">
-                </Select>
-                @if (HasError("lot"))
-                {
-                    <div style="color: #E74C3C; font-size: 11px; margin-top: 4px;">@GetError("lot")</div>
-                }
-            </FormItem>
-
-            <FormItem Label="Hectáreas" Style="@(HasError("hectares") ? "border: 1px solid #E74C3C; border-radius: 8px; padding: 8px;" : "")">
-                <AntDesign.InputNumber TValue="decimal" Value="@_model.Hectares" OnChange="OnHectareasChanged" Min="0m" Step="0.1m" Style="width: 100%; color: var(--text-primary);" />
-                @if (_noProductiveAreaWarning)
-                {
-                    <div style="color: #F1C40F; font-size: 11px; margin-top: 4px;">
-                        <Icon Type="warning" /> Este lote no tiene superficie productiva definida en la campaña. Se usa el área catastral como valor inicial. Revisá la configuración en la sección Campañas.
+            <div class="lef-grid">
+                <FormItem Label="Tipo de labor (tarea)" Style="@(HasError("laborType") ? "border: 1px solid #E74C3C; border-radius: 8px; padding: 8px;" : "")">
+                    <Select TItemValue="Guid" TItem="LaborTypeDto" @bind-Value="_model.LaborTypeId"
+                            Placeholder="@(FilteredLaborTypes.Count == 0 ? "Sin tareas para este modo" : "Buscar tarea...")"
+                            EnableSearch
+                            ItemLabel="x => x.DisplayName" ItemValue="x => x.Id"
+                            DataSource="@FilteredLaborTypes"
+                            OnSelectedItemChanged="@((LaborTypeDto _) => ClearError("laborType"))">
+                    </Select>
+                    <div class="lef-hint">
+                        @FilteredLaborTypes.Count tareas @(_model.IsExternalBilling ? "de contratista" : "propias")
+                        @if (_unclassifiedLaborTypeCount > 0)
+                        {
+                            <span> · incluye @_unclassifiedLaborTypeCount sin clasificar</span>
+                        }
                     </div>
-                }
-                else if (_haSuperaLote)
-                {
-                    <div style="color: #FAAD14; font-size: 11px; margin-top: 4px;">
-                        <Icon Type="warning" /> La superficie supera el área productiva del lote (@_lotProductiveArea ha).
+                    @if (HasError("laborType"))
+                    {
+                        <div class="lef-error">@GetError("laborType")</div>
+                    }
+                </FormItem>
+
+                <FormItem Label="@(_model.IsExternalBilling ? "Contratista" : "Responsable")" Style="@(HasError("contact") ? "border: 1px solid #E74C3C; border-radius: 8px; padding: 8px;" : "")">
+                    <Select TItemValue="Guid?" TItem="ContactDto" @bind-Value="_model.ContactId"
+                            Placeholder="@(_model.IsExternalBilling ? "Buscar contratista (opcional)" : "Buscar responsable (opcional)")"
+                            EnableSearch AllowClear
+                            ItemLabel="c => c.FullName" ItemValue="c => (Guid?)c.Id"
+                            DataSource="@FilteredContacts"
+                            OnSelectedItemChanged="OnContactChanged">
+                    </Select>
+                    <div class="lef-hint">
+                        @FilteredContacts.Count personas @(_model.IsExternalBilling ? "contratistas" : "propias")
+                        @if (_unclassifiedContactCount > 0)
+                        {
+                            <span> · incluye @_unclassifiedContactCount sin clasificar</span>
+                        }
                     </div>
-                }
-                @if (HasError("hectares"))
-                {
-                    <div style="color: #E74C3C; font-size: 11px; margin-top: 4px;">@GetError("hectares")</div>
-                }
-            </FormItem>
+                    @if (_contactRoleMismatch)
+                    {
+                        <div class="lef-warn">
+                            <Icon Type="warning" /> Esta persona figura como
+                            @(_model.IsExternalBilling ? "personal propio" : "contratista")
+                            y la labor está marcada como @(_model.IsExternalBilling ? "de contratista" : "propia").
+                        </div>
+                    }
+                    @if (HasError("contact"))
+                    {
+                        <div class="lef-error">@GetError("contact")</div>
+                    }
+                </FormItem>
+            </div>
         </div>
-        
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+
+        <div class="lef-section">
+            <div class="lef-section-head">
+                <span class="lef-step">2</span>
+                <div>
+                    <div class="lef-section-title">¿Dónde?</div>
+                    <div class="lef-section-sub">Elegí el campo para acotar la lista de lotes.</div>
+                </div>
+            </div>
+
+            <div class="lef-grid lef-grid-3">
+                <FormItem Label="Campo">
+                    <Select TItemValue="Guid" TItem="FieldDto" @bind-Value="_filterFieldId"
+                            Placeholder="Todos los campos" EnableSearch AllowClear
+                            DataSource="@FilteredFields"
+                            LabelName="@nameof(FieldDto.Name)"
+                            ValueName="@nameof(FieldDto.Id)"
+                            OnSelectedItemChanged="OnFieldFilterChanged">
+                    </Select>
+                </FormItem>
+
+                <FormItem Label="Lote" Style="@(HasError("lot") ? "border: 1px solid #E74C3C; border-radius: 8px; padding: 8px;" : "")">
+                    <Select TItemValue="Guid" TItem="CampaignLotDto" @bind-Value="_model.LotId"
+                            Placeholder="Buscar lote..." EnableSearch
+                            DataSource="@FilteredLots"
+                            LabelName="@nameof(CampaignLotDto.LotName)"
+                            ValueName="@nameof(CampaignLotDto.LotId)"
+                            OnSelectedItemChanged="OnLotChanged">
+                    </Select>
+                    @if (HasError("lot"))
+                    {
+                        <div class="lef-error">@GetError("lot")</div>
+                    }
+                </FormItem>
+
+                <FormItem Label="Hectáreas" Style="@(HasError("hectares") ? "border: 1px solid #E74C3C; border-radius: 8px; padding: 8px;" : "")">
+                    <AntDesign.InputNumber TValue="decimal" Value="@_model.Hectares" OnChange="OnHectareasChanged" Min="0m" Step="0.1m" Style="width: 100%; color: var(--text-primary);" />
+                    @if (_noProductiveAreaWarning)
+                    {
+                        <div class="lef-warn">
+                            <Icon Type="warning" /> El lote no tiene superficie productiva en la campaña: se usa el área catastral.
+                        </div>
+                    }
+                    else if (_haSuperaLote)
+                    {
+                        <div class="lef-warn">
+                            <Icon Type="warning" /> Supera el área productiva del lote (@_lotProductiveArea ha).
+                        </div>
+                    }
+                    @if (HasError("hectares"))
+                    {
+                        <div class="lef-error">@GetError("hectares")</div>
+                    }
+                </FormItem>
+            </div>
+
             <FormItem Label="Actividad (ERP)" Style="@(HasError("activity") ? "border: 1px solid #E74C3C; border-radius: 8px; padding: 8px;" : "")">
                 <div style="display: flex; align-items: center; gap: 8px;">
                     <Select TItemValue="Guid?" TItem="ErpActivityDto" @bind-Value="_model.ErpActivityId"
@@ -114,7 +181,7 @@
                     @if (_activeRotation != null)
                     {
                         <Tooltip Title="@("Actividad definida en el plan de Rotaciones. Para modificarla, dirigirse a la sección Rotaciones.")">
-                            <Tag Color="TagColor.Processing">Planeada</Tag>
+                            <Tag Color="TagColor.Processing">Según rotación</Tag>
                         </Tooltip>
                     }
                     else if (_showNoRotacionWarning)
@@ -126,101 +193,62 @@
                 </div>
                 @if (HasError("activity"))
                 {
-                    <div style="color: #E74C3C; font-size: 11px; margin-top: 4px;">@GetError("activity")</div>
-                }
-            </FormItem>
-
-            <FormItem Label="Tipo de Labor (Tarea)" Style="@(HasError("laborType") ? "border: 1px solid #E74C3C; border-radius: 8px; padding: 8px;" : "")">
-                <Select TItemValue="Guid" TItem="LaborTypeDto" @bind-Value="_model.LaborTypeId"
-                        Placeholder="@(FilteredLaborTypes.Count == 0 ? "Sin tareas para este modo" : "Seleccionar tipo de labor")"
-                        EnableSearch
-                        ItemLabel="x => x.DisplayName" ItemValue="x => x.Id"
-                        DataSource="@FilteredLaborTypes">
-                </Select>
-                @if (_laborTypes.Count > 0 && FilteredLaborTypes.Count == 0)
-                {
-                    <div style="color: #FAAD14; font-size: 11px; margin-top: 4px;">
-                        <Icon Type="warning" /> No hay tareas marcadas como
-                        @(_model.IsExternalBilling ? "de contratista" : "propias") en el catálogo.
-                        Marcalas en Admin &gt; Tipo de Labores.
-                    </div>
-                }
-                @if (HasError("laborType"))
-                {
-                    <div style="color: #E74C3C; font-size: 11px; margin-top: 4px;">@GetError("laborType")</div>
+                    <div class="lef-error">@GetError("activity")</div>
                 }
             </FormItem>
         </div>
 
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
-            <FormItem Label="Responsable / Contratista (opcional)" Style="@(HasError("contact") ? "border: 1px solid #E74C3C; border-radius: 8px; padding: 8px;" : "")">
-                <div style="display: flex; align-items: center; gap: 16px;">
-                    <Select TItemValue="Guid?" TItem="ContactDto" @bind-Value="_model.ContactId"
-                            Placeholder="Seleccionar responsable o contratista (opcional)" EnableSearch AllowClear Style="flex: 1;"
-                            OnSelectedItemChanged="OnContactChanged">
-                        @foreach (var contact in _contacts)
-                        {
-                            <SelectOption TItemValue="Guid?" TItem="ContactDto" Value="@((Guid?)contact.Id)" Label="@contact.FullName" />
-                        }
-                    </Select>
+        <div class="lef-section">
+            <div class="lef-section-head">
+                <span class="lef-step">3</span>
+                <div>
+                    <div class="lef-section-title">¿Cuándo?</div>
+                    <div class="lef-section-sub">Una labor planeada lleva fecha estimada; una realizada, la fecha en que se hizo.</div>
                 </div>
-                @if (_contactRoleMismatch)
-                {
-                    <div style="color: #FAAD14; font-size: 11px; margin-top: 4px;">
-                        <Icon Type="warning" /> El responsable elegido es
-                        @(_model.IsExternalBilling ? "staff interno" : "contratista"),
-                        y arriba marcaste la labor como @(_model.IsExternalBilling ? "de contratista" : "propia").
-                        Revisá si es correcto.
-                    </div>
-                }
-                @if (HasError("contact"))
-                {
-                    <div style="color: #E74C3C; font-size: 11px; margin-top: 4px;">@GetError("contact")</div>
-                }
-            </FormItem>
+            </div>
 
-            <FormItem Label="@($"Fecha {(_model.Status == "Realized" ? "Ejecución" : "Estimada")}")" Style="@(HasError("date") ? "border: 1px solid #E74C3C; border-radius: 8px; padding: 8px;" : "")">
-                <DatePicker TValue="DateTime?" Value="@(_model.Status == "Realized" ? _model.ExecutionDate : _model.EstimatedDate)" 
-                            OnChange="@(async args => { if (_model.Status == "Realized") { _model.ExecutionDate = args.Date; await CheckRotation(args.Date ?? DateTime.Today); } else await OnFechaEstimadaChanged(args); })" 
-                            Style="width: 100%; color: var(--text-primary);" />
-                @if (_fechaFueraRotacion && _model.Status != "Realized")
-                {
-                    <div style="color: #FAAD14; font-size: 11px; margin-top: 4px;">
-                        <Icon Type="warning" /> Fecha fuera del rango de rotación.
-                    </div>
-                }
-                @if (HasError("date"))
-                {
-                    <div style="color: #E74C3C; font-size: 11px; margin-top: 4px;">@GetError("date")</div>
-                }
-            </FormItem>
-        </div>
+            <div class="lef-grid lef-grid-3">
+                <FormItem Label="Estado">
+                    @if (ForceOriginalPlan || _model.IsOriginalPlan)
+                    {
+                        <Tag Color="@("#1890FF" + "33")" Style="color: #fff; border: 1px solid #1890FF80; border-radius: 12px; font-weight: 600; padding: 4px 16px;">
+                            Planeada
+                        </Tag>
+                    }
+                    else
+                    {
+                        <RadioGroup @bind-Value="_model.Status" OnChange="@((string val) => OnStatusChanged(val))" TValue="string" ButtonStyle="RadioButtonStyle.Solid">
+                            <Radio RadioButton Value="@("Planned")">Planeada</Radio>
+                            <Radio RadioButton Value="@("Realized")">Realizada</Radio>
+                        </RadioGroup>
+                    }
+                </FormItem>
 
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
-            <FormItem Label="Orden de Trabajo">
-                <Select TItemValue="Guid?" TItem="WorkOrderDto" @bind-Value="_model.WorkOrderId"
-                        Placeholder="Sin asignar" EnableSearch AllowClear
-                        DataSource="@_workOrders"
-                        LabelName="@nameof(WorkOrderDto.DisplayName)"
-                        ValueName="@nameof(WorkOrderDto.Id)">
-                </Select>
-            </FormItem>
+                <FormItem Label="@($"Fecha {(_model.Status == "Realized" ? "de ejecución" : "estimada")}")" Style="@(HasError("date") ? "border: 1px solid #E74C3C; border-radius: 8px; padding: 8px;" : "")">
+                    <DatePicker TValue="DateTime?" Value="@(_model.Status == "Realized" ? _model.ExecutionDate : _model.EstimatedDate)" Format="dd/MM/yyyy"
+                                OnChange="@(async args => { ClearError("date"); if (_model.Status == "Realized") { _model.ExecutionDate = args.Date; await CheckRotation(args.Date ?? DateTime.Today); } else await OnFechaEstimadaChanged(args); })"
+                                Style="width: 100%; color: var(--text-primary);" />
+                    @if (_fechaFueraRotacion && _model.Status != "Realized")
+                    {
+                        <div class="lef-warn">
+                            <Icon Type="warning" /> Fuera del rango de la rotación.
+                        </div>
+                    }
+                    @if (HasError("date"))
+                    {
+                        <div class="lef-error">@GetError("date")</div>
+                    }
+                </FormItem>
 
-            <FormItem Label="Estado de la Labor">
-                @if (ForceOriginalPlan || _model.IsOriginalPlan)
-                {
-                    <Tag Color="@("#1890FF" + "33")" Style="color: #fff; border: 1px solid #1890FF80; border-radius: 12px; font-weight: 600; padding: 4px 16px;">
-                        Planeada
-                    </Tag>
-                }
-                else
-                {
-                    <RadioGroup @bind-Value="_model.Status" OnChange="@((string val) => OnStatusChanged(val))" TValue="string">
-                        <Radio Value="@("Planned")"><span style="color: var(--text-primary);">Planeada</span></Radio>
-                        <Radio Value="@("Realized")"><span style="color: var(--text-primary);">Realizada</span></Radio>
-                    </RadioGroup>
-                }
-            </FormItem>
+                <FormItem Label="Orden de Trabajo">
+                    <Select TItemValue="Guid?" TItem="WorkOrderDto" @bind-Value="_model.WorkOrderId"
+                            Placeholder="Labor suelta (sin OT)" EnableSearch AllowClear
+                            DataSource="@_workOrders"
+                            LabelName="@nameof(WorkOrderDto.DisplayName)"
+                            ValueName="@nameof(WorkOrderDto.Id)">
+                    </Select>
+                </FormItem>
+            </div>
         </div>
 
         <FormItem Label="Notas / Prescripción">
@@ -366,6 +394,27 @@
                         ValidationUrl="@_magicLinkUrl" 
                         OnClose="() => _magicLinkModalVisible = false" />
 
+<style>
+    .lef-section { border: 1px solid rgba(255,255,255,0.08); background: rgba(255,255,255,0.02); border-radius: 12px; padding: 16px 16px 4px; margin-bottom: 16px; }
+    .lef-section-head { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 14px; }
+    .lef-step { flex: 0 0 26px; height: 26px; border-radius: 50%; background: rgba(52,152,219,0.18); color: #5DADE2; font-weight: 700; font-size: 13px; display: flex; align-items: center; justify-content: center; }
+    .lef-section-title { color: #fff; font-weight: 600; font-size: 15px; line-height: 26px; }
+    .lef-section-sub { color: var(--text-secondary); font-size: 12px; }
+    .lef-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 16px; }
+    .lef-grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    @@media (max-width: 760px) { .lef-grid, .lef-grid-3 { grid-template-columns: 1fr; } }
+    .lef-mode { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px; }
+    .lef-mode-btn { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left; cursor: pointer; padding: 12px 14px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.12); background: rgba(255,255,255,0.03); color: var(--text-primary); transition: border-color .15s, background .15s; }
+    .lef-mode-btn span { font-weight: 600; font-size: 14px; }
+    .lef-mode-btn small { color: var(--text-secondary); font-size: 11px; }
+    .lef-mode-btn:hover { border-color: rgba(255,255,255,0.3); }
+    .lef-mode-btn.active.own { border-color: #2ECC71; background: rgba(46,204,113,0.12); }
+    .lef-mode-btn.active.contractor { border-color: #E67E22; background: rgba(230,126,34,0.12); }
+    .lef-hint { color: var(--text-secondary); font-size: 11px; margin-top: 4px; }
+    .lef-warn { color: #FAAD14; font-size: 11px; margin-top: 4px; }
+    .lef-error { color: #E74C3C; font-size: 11px; margin-top: 4px; }
+</style>
+
 @code {
     [Parameter] public Guid? WorkOrderId { get; set; }
     [Parameter] public Guid LaborId { get; set; }
@@ -432,6 +481,38 @@
     }
 
     private int _unclassifiedLaborTypeCount => _laborTypes.Count(t => t.ExecutionMode is null);
+
+    private LaborExecutionMode RequestedMode => _model.IsExternalBilling
+        ? LaborExecutionMode.Contractor
+        : LaborExecutionMode.Own;
+
+    /// <summary>
+    /// Personas que sirven para el modo elegido: el personal para una labor propia, los
+    /// contratistas (y proveedores) para una de contratista. Las sin clasificar entran en
+    /// los dos. La persona ya guardada siempre queda, igual que con la tarea.
+    /// </summary>
+    private List<ContactDto> FilteredContacts
+    {
+        get
+        {
+            var requested = RequestedMode;
+            var matching = _contacts
+                .Where(c => c.Role.ToExecutionMode().MatchesFilter(requested))
+                .OrderBy(c => c.FullName)
+                .ToList();
+            if (_model.ContactId.HasValue && matching.All(c => c.Id != _model.ContactId.Value))
+            {
+                var current = _contacts.FirstOrDefault(c => c.Id == _model.ContactId.Value);
+                if (current != null) matching.Insert(0, current);
+            }
+            return matching;
+        }
+    }
+
+    private int _unclassifiedContactCount => _contacts.Count(c => c.Role == ContactRole.Unclassified);
+
+    private bool ContactMatchesMode(ContactDto? contact) =>
+        contact == null || contact.Role.ToExecutionMode().MatchesFilter(RequestedMode);
     private List<ErpActivityDto> _activities = new();
     private List<InventoryDto> _inventories = new();
     private List<ContactDto> _contacts = new();
@@ -584,6 +665,7 @@
         else if (LaborId != Guid.Empty)
         {
             await LoadLabor();
+            _contactRoleMismatch = !ContactMatchesMode(_contacts.FirstOrDefault(c => c.Id == _model.ContactId));
             // CheckRotation on load: use EstimatedDate, fall back to ExecutionDate (for realized labors)
             var dateForRotationCheck = _model.EstimatedDate ?? _model.ExecutionDate;
             if (dateForRotationCheck.HasValue) await CheckRotation(dateForRotationCheck.Value);
@@ -600,7 +682,7 @@
                 {
                     defaultContactId = parentOt.ContactId;
                     var contactMatch = _contacts.FirstOrDefault(c => c.Id == defaultContactId);
-                    isExternalBilling = contactMatch?.Role == ContactRole.Contractor;
+                    isExternalBilling = contactMatch?.Role.ToExecutionMode() == LaborExecutionMode.Contractor;
                 }
             }
 
@@ -849,10 +931,9 @@
     private void OnContactChanged(ContactDto contact)
     {
         ClearError("contact");
-        // El modo propio/contratista se elige arriba y manda: acá solo se avisa si el
-        // responsable elegido no concuerda, sin pisar la decisión del usuario.
-        _contactRoleMismatch = contact != null
-            && (contact.Role == ContactRole.Contractor) != _model.IsExternalBilling;
+        // El modo propio/contratista se elige arriba y manda. La lista ya viene filtrada,
+        // así que esto solo avisa en una labor vieja cuya persona guardada no concuerda.
+        _contactRoleMismatch = !ContactMatchesMode(contact);
     }
 
     private void OnExecutionModeChanged(bool isExternalBilling)
@@ -874,9 +955,15 @@
             ClearError("laborType");
         }
 
+        // Igual con la persona: si no es del modo nuevo se limpia, para no guardar una
+        // labor de contratista con un responsable del personal propio (o al revés).
         var contact = _contacts.FirstOrDefault(c => c.Id == _model.ContactId);
-        _contactRoleMismatch = contact != null
-            && (contact.Role == ContactRole.Contractor) != isExternalBilling;
+        if (!ContactMatchesMode(contact))
+        {
+            _model.ContactId = null;
+            ClearError("contact");
+        }
+        _contactRoleMismatch = false;
     }
 
     private async Task OnLotChanged(CampaignLotDto lot)
