@@ -102,8 +102,12 @@ app.UseWhen(context => !context.Request.Path.StartsWithSegments("/api"), appBuil
 {
     appBuilder.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true);
 });
-app.UseStaticFiles();
 app.UseRouting();
+// Despues de UseRouting: asi los archivos del build los sirve MapStaticAssets (con huella
+// de version y cabeceras de cache correctas) y UseStaticFiles queda solo para lo que no
+// esta en el manifiesto. Antes los atendia todos UseStaticFiles sin cabeceras de cache, y
+// despues de un deploy el navegador seguia corriendo la version vieja del cliente.
+app.UseStaticFiles();
 app.UseAuthentication();
 app.UseAuthorization();
 app.UseWhen(context => !context.Request.Path.StartsWithSegments("/api"), appBuilder =>
