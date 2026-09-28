@@ -59,12 +59,14 @@ else
                                 ContactRole.InternalStaff => "Propio",
                                 ContactRole.Contractor => "Contratista",
                                 ContactRole.Supplier => "Proveedor",
+                                ContactRole.Unclassified => "Sin clasificar",
                                 _ => "Activo"
                             };
                             var modalityColor = contact?.Role switch
                             {
                                 ContactRole.Contractor => "orange",
                                 ContactRole.Supplier => "blue",
+                                ContactRole.Unclassified => "default",
                                 _ => "green"
                             };
                             <Tag Color="@modalityColor">@modalityLabel</Tag>
@@ -89,6 +91,7 @@ else
                                     <SelectOption TItemValue="ContactRole" TItem="ContactRole" Value="@ContactRole.InternalStaff" Label="Propio" />
                                     <SelectOption TItemValue="ContactRole" TItem="ContactRole" Value="@ContactRole.Contractor" Label="Contratista" />
                                     <SelectOption TItemValue="ContactRole" TItem="ContactRole" Value="@ContactRole.Supplier" Label="Proveedor" />
+                                    <SelectOption TItemValue="ContactRole" TItem="ContactRole" Value="@ContactRole.Unclassified" Label="Sin clasificar" />
                                 </Select>
                             }
                         }
@@ -121,6 +124,7 @@ else
                             ContactRole.InternalStaff => "Propio",
                             ContactRole.Contractor => "Contratista",
                             ContactRole.Supplier => "Proveedor",
+                                ContactRole.Unclassified => "Sin clasificar",
                             _ => context.Role.GetDisplayName()
                         };
                         var roleColor = context.Role switch
@@ -139,6 +143,7 @@ else
                             <SelectOption TItemValue="ContactRole" TItem="ContactRole" Value="@ContactRole.InternalStaff" Label="Propio" />
                             <SelectOption TItemValue="ContactRole" TItem="ContactRole" Value="@ContactRole.Contractor" Label="Contratista" />
                             <SelectOption TItemValue="ContactRole" TItem="ContactRole" Value="@ContactRole.Supplier" Label="Proveedor" />
+                                    <SelectOption TItemValue="ContactRole" TItem="ContactRole" Value="@ContactRole.Unclassified" Label="Sin clasificar" />
                         </Select>
                     </div>
                 </Column>
@@ -162,6 +167,7 @@ else
                 <SelectOption TItemValue="ContactRole" TItem="ContactRole" Value="@ContactRole.InternalStaff" Label="Propio" />
                 <SelectOption TItemValue="ContactRole" TItem="ContactRole" Value="@ContactRole.Contractor" Label="Contratista" />
                 <SelectOption TItemValue="ContactRole" TItem="ContactRole" Value="@ContactRole.Supplier" Label="Proveedor" />
+                                    <SelectOption TItemValue="ContactRole" TItem="ContactRole" Value="@ContactRole.Unclassified" Label="Sin clasificar" />
             </Select>
         </div>
         <div style="text-align: right;">

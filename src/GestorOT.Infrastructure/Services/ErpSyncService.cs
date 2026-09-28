@@ -151,6 +151,39 @@ public class ErpSyncService : IErpSyncService
                 catch { }
             }
 
+            // Todo lo que se compara se trae de una vez: consultar por cada concepto eran
+            // miles de viajes a la base por empresa en cada sincronizacion, y la app se
+            // trababa mientras corria.
+            var conceptsById = (await _context.ErpConcepts
+                    .IgnoreQueryFilters()
+                    .Where(c => c.TenantId == tenantId && c.ExternalErpId != null)
+                    .ToListAsync(ct))
+                .GroupBy(c => c.ExternalErpId!)
+                .ToDictionary(g => g.Key, g => g.First());
+            var tenantLaborTypes = await _context.LaborTypes
+                .IgnoreQueryFilters()
+                .Where(l => l.TenantId == tenantId)
+                .ToListAsync(ct);
+            var laborTypesById = tenantLaborTypes
+                .Where(l => l.ExternalErpId != null)
+                .GroupBy(l => l.ExternalErpId!)
+                .ToDictionary(g => g.Key, g => g.First());
+            var manualLaborTypesByName = tenantLaborTypes
+                .Where(l => l.ExternalErpId == null)
+                .GroupBy(l => l.Name)
+                .ToDictionary(g => g.Key, g => g.First());
+            var tenantInventories = await _context.Inventories
+                .IgnoreQueryFilters()
+                .Where(i => i.TenantId == tenantId)
+                .ToListAsync(ct);
+            var inventoriesById = tenantInventories
+                .Where(i => i.ExternalErpId != null)
+                .GroupBy(i => i.ExternalErpId!)
+                .ToDictionary(g => g.Key, g => g.First());
+            var inventoriesByName = tenantInventories
+                .GroupBy(i => i.ItemName)
+                .ToDictionary(g => g.Key, g => g.First());
+
             foreach (var item in erpStock)
             {
                 if (string.IsNullOrEmpty(item.Descripcion)) continue;
@@ -158,14 +191,10 @@ public class ErpSyncService : IErpSyncService
                 var externalId = item.CodConcepto?.ToString() ?? item.Descripcion;
                 var grupo = (item.GrupoConceptos ?? item.GrupoConcepto ?? "").ToUpper().Trim();
                 var subGrupo = (item.SubgrupoConceptos ?? item.SubgrupoConcepto ?? "").ToUpper().Trim();
+                var enabled = item.Habilitado != false;
 
                 // 1. Update ErpConcepts (The full catalog)
-                var concept = await _context.ErpConcepts
-                    .IgnoreQueryFilters()
-                    .Where(c => c.TenantId == tenantId && c.ExternalErpId == externalId)
-                    .FirstOrDefaultAsync(ct);
-
-                if (concept == null)
+                if (!conceptsById.TryGetValue(externalId, out var concept))
                 {
                     concept = new ErpConcept
                     {
@@ -181,6 +210,7 @@ public class ErpSyncService : IErpSyncService
                         LastSyncDate = DateTime.UtcNow
                     };
                     _context.ErpConcepts.Add(concept);
+                    conceptsById[externalId] = concept;
                 }
                 else
                 {
@@ -193,37 +223,44 @@ public class ErpSyncService : IErpSyncService
                     concept.LastSyncDate = DateTime.UtcNow;
                 }
 
-                // 2. Actualizar los LaborTypes ya activados con lo que dice el ERP.
+                // 2. Tipos de labor: todo concepto de labor habilitado en el ERP queda
+                // activo. Activarlos uno por uno desde el catalogo era poco practico y
+                // dejaba afuera tareas que despues no se podian elegir ni importar.
                 if (grupo.Contains("LABOR", StringComparison.OrdinalIgnoreCase))
                 {
-                    // El match es por codigo ERP y nada mas. El ERP repite la misma tarea en dos
+                    // El match es por codigo ERP. El ERP repite la misma tarea en dos
                     // subgrupos (por hectarea = contratista, por UTA = maquinaria propia) con
                     // codConcepto distinto; si se matcheara tambien por nombre, la segunda
                     // variante encontraria la fila de la primera y le pisaria el ExternalErpId,
                     // dejando un solo LaborType donde tienen que existir los dos.
-                    var laborType = await _context.LaborTypes
-                        .IgnoreQueryFilters()
-                        .Where(l => l.TenantId == tenantId && l.ExternalErpId == externalId)
-                        .FirstOrDefaultAsync(ct);
-
                     // Los tipos cargados a mano no tienen codigo ERP: a esos si se los adopta
                     // por nombre, porque no hay gemelo con el que confundirlos.
-                    laborType ??= await _context.LaborTypes
-                        .IgnoreQueryFilters()
-                        .Where(l => l.TenantId == tenantId && l.ExternalErpId == null && l.Name == item.Descripcion)
-                        .FirstOrDefaultAsync(ct);
+                    if (!laborTypesById.TryGetValue(externalId, out var laborType)
+                        && manualLaborTypesByName.Remove(item.Descripcion, out var manual))
+                    {
+                        laborType = manual;
+                    }
 
-                    // El sync NO crea LaborTypes. Un LaborType existe porque alguien activo
-                    // ese concepto desde el catalogo, y eso es lo que hace que "Tipo de
-                    // Labores" liste las labores que la empresa usa y no las mil del ERP.
-                    //
-                    // Crearlos aca tenia dos efectos que se veian como bugs: todos los
-                    // conceptos figuraban como activados apenas se sincronizaba, y desactivar
-                    // uno no duraba nada porque la sincronizacion siguiente lo resucitaba.
+                    var inferredMode = LaborExecutionModeExtensions.InferFromErpSubGroup(subGrupo);
+                    if (laborType == null && enabled)
+                    {
+                        laborType = new LaborType
+                        {
+                            Id = Guid.NewGuid(),
+                            TenantId = tenantId,
+                            Name = item.Descripcion,
+                            Description = !string.IsNullOrWhiteSpace(subGrupo) ? subGrupo : grupo,
+                            ExternalErpId = externalId,
+                            ExecutionMode = concept.ExecutionMode ?? inferredMode
+                        };
+                        _context.LaborTypes.Add(laborType);
+                    }
+
                     if (laborType != null)
                     {
                         laborType.Name = item.Descripcion;
                         laborType.ExternalErpId = externalId;
+                        laborTypesById[externalId] = laborType;
                         if (string.IsNullOrWhiteSpace(laborType.Description))
                         {
                             laborType.Description = !string.IsNullOrWhiteSpace(subGrupo) ? subGrupo : grupo;
@@ -231,7 +268,8 @@ public class ErpSyncService : IErpSyncService
 
                         // Solo se completa si esta vacio: un modo puesto a mano desde la pantalla
                         // de tipos no se pisa en la proxima sincronizacion.
-                        laborType.ExecutionMode ??= LaborExecutionModeExtensions.InferFromErpSubGroup(subGrupo);
+                        laborType.ExecutionMode ??= inferredMode;
+                        concept.ExecutionMode ??= laborType.ExecutionMode;
                     }
                 }
 
@@ -242,10 +280,8 @@ public class ErpSyncService : IErpSyncService
 
                 if (shouldSyncToInventory)
                 {
-                    var inventory = await _context.Inventories
-                        .IgnoreQueryFilters()
-                        .Where(i => i.TenantId == tenantId && (i.ExternalErpId == externalId || i.ItemName == item.Descripcion))
-                        .FirstOrDefaultAsync(ct);
+                    if (!inventoriesById.TryGetValue(externalId, out var inventory))
+                        inventoriesByName.TryGetValue(item.Descripcion, out inventory);
 
                     var category = !string.IsNullOrWhiteSpace(subGrupo) ? subGrupo : (!string.IsNullOrWhiteSpace(grupo) ? grupo : "General");
 
@@ -284,6 +320,8 @@ public class ErpSyncService : IErpSyncService
                         inventory.GrupoConcepto = grupo;
                         inventory.SubGrupoConcepto = subGrupo;
                     }
+                    inventoriesById[externalId] = inventory;
+                    inventoriesByName[item.Descripcion] = inventory;
                 }
             }
             await _context.SaveChangesAsync(ct);
@@ -520,15 +558,33 @@ public class ErpSyncService : IErpSyncService
             var erpPeople = await response.Content.ReadFromJsonAsync<List<ErpPersonResponse>>(ct);
             if (erpPeople == null) return;
 
+            // Se trae todo de una vez: una consulta por persona eran miles de viajes a la
+            // base en cada sincronizacion.
+            var peopleById = (await _context.ErpPeople
+                    .IgnoreQueryFilters()
+                    .Where(e => e.TenantId == tenantId)
+                    .ToListAsync(ct))
+                .GroupBy(e => e.ExternalErpId)
+                .ToDictionary(g => g.Key, g => g.First());
+            var tenantContacts = await _context.Contacts
+                .IgnoreQueryFilters()
+                .Where(c => c.TenantId == tenantId)
+                .ToListAsync(ct);
+            var contactsByPerson = tenantContacts
+                .Where(c => c.ErpPersonId.HasValue)
+                .GroupBy(c => c.ErpPersonId!.Value)
+                .ToDictionary(g => g.Key, g => g.First());
+            var contactsByErpId = tenantContacts
+                .Where(c => c.ExternalErpId != null)
+                .GroupBy(c => c.ExternalErpId!)
+                .ToDictionary(g => g.Key, g => g.First());
+
             foreach (var p in erpPeople)
             {
                 var externalId = p.Id?.ToString();
                 if (string.IsNullOrEmpty(externalId)) continue;
 
-                var erpPerson = await _context.ErpPeople
-                    .IgnoreQueryFilters()
-                    .Where(e => e.TenantId == tenantId && e.ExternalErpId == externalId)
-                    .FirstOrDefaultAsync(ct);
+                peopleById.TryGetValue(externalId, out var erpPerson);
 
                 if (erpPerson == null)
                 {
@@ -549,6 +605,7 @@ public class ErpSyncService : IErpSyncService
                         LastSyncDate = DateTime.UtcNow
                     };
                     _context.ErpPeople.Add(erpPerson);
+                    peopleById[externalId] = erpPerson;
                 }
                 else
                 {
@@ -556,7 +613,43 @@ public class ErpSyncService : IErpSyncService
                     erpPerson.Alias = p.Alias ?? erpPerson.Alias;
                     erpPerson.VatNumber = p.VatNumber ?? erpPerson.VatNumber;
                     erpPerson.Enabled = p.Enabled;
+                    erpPerson.Group = p.Group ?? erpPerson.Group;
                     erpPerson.LastSyncDate = DateTime.UtcNow;
+                }
+
+                // Toda persona habilitada en el ERP queda activa como contacto: activarlas
+                // una por una desde el directorio era poco practico. El rol sale del grupo
+                // de personas de GestorMax; si no lo dice, queda sin clasificar y se
+                // ofrece en los dos modos (propia y contratista) hasta que alguien la
+                // clasifique. Un rol ya elegido a mano no se pisa.
+                if (!contactsByPerson.TryGetValue(erpPerson.Id, out var contact))
+                    contactsByErpId.TryGetValue(externalId, out contact);
+
+                var inferredRole = ContactRoleExtensions.InferFromErpGroup(erpPerson.Group);
+                if (contact == null && erpPerson.Enabled)
+                {
+                    contact = new Contact
+                    {
+                        Id = Guid.NewGuid(),
+                        TenantId = tenantId,
+                        FullName = erpPerson.FullName,
+                        VatNumber = erpPerson.VatNumber,
+                        ExternalErpId = externalId,
+                        ErpPersonId = erpPerson.Id,
+                        Role = inferredRole
+                    };
+                    _context.Contacts.Add(contact);
+                    contactsByPerson[erpPerson.Id] = contact;
+                }
+
+                if (contact != null)
+                {
+                    contact.ErpPersonId ??= erpPerson.Id;
+                    contact.ExternalErpId ??= externalId;
+                    if (contact.Role == ContactRole.Unclassified && inferredRole != ContactRole.Unclassified)
+                        contact.Role = inferredRole;
+                    erpPerson.IsActivated = true;
+                    erpPerson.LinkedContactId = contact.Id;
                 }
             }
             await _context.SaveChangesAsync(ct);
@@ -967,7 +1060,8 @@ public class ErpSyncService : IErpSyncService
         [property: JsonPropertyName("grupoConceptos")] string? GrupoConceptos,
         [property: JsonPropertyName("subgrupoConceptos")] string? SubgrupoConceptos,
         [property: JsonPropertyName("grupoConcepto")] string? GrupoConcepto,
-        [property: JsonPropertyName("subgrupoConcepto")] string? SubgrupoConcepto);
+        [property: JsonPropertyName("subgrupoConcepto")] string? SubgrupoConcepto,
+        [property: JsonPropertyName("habilitado")] bool? Habilitado = null);
 }
 
 /*

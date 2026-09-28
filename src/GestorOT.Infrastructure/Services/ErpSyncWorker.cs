@@ -1,8 +1,10 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using GestorOT.Application.Interfaces;
+using GestorOT.Domain.Entities;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -45,16 +47,17 @@ public class ErpSyncWorker : BackgroundService
 
     private async Task SynchronizeAllTenants(CancellationToken ct)
     {
-        using var scope = _serviceProvider.CreateScope();
-        var context = scope.ServiceProvider.GetRequiredService<IApplicationDbContext>();
-        var erpSyncService = scope.ServiceProvider.GetRequiredService<IErpSyncService>();
-
         _logger.LogInformation("Iniciando sincronización masiva de todos los tenants...");
 
-        var tenants = await context.Tenants
-            .AsNoTracking()
-            .Where(t => !string.IsNullOrEmpty(t.GestorMaxApiKeyEncrypted) && !string.IsNullOrEmpty(t.GestorMaxDatabaseId))
-            .ToListAsync(ct);
+        List<Tenant> tenants;
+        using (var listScope = _serviceProvider.CreateScope())
+        {
+            var context = listScope.ServiceProvider.GetRequiredService<IApplicationDbContext>();
+            tenants = await context.Tenants
+                .AsNoTracking()
+                .Where(t => !string.IsNullOrEmpty(t.GestorMaxApiKeyEncrypted) && !string.IsNullOrEmpty(t.GestorMaxDatabaseId))
+                .ToListAsync(ct);
+        }
 
         foreach (var tenant in tenants)
         {
@@ -63,7 +66,12 @@ public class ErpSyncWorker : BackgroundService
             try
             {
                 _logger.LogInformation($"Sincronizando Tenant: {tenant.Name} ({tenant.Id})");
-                
+
+                // Un scope (y un DbContext) por empresa: con uno solo para todas, el
+                // change tracker juntaba los catálogos de todas las empresas y cada
+                // SaveChanges recorría miles de entidades de más.
+                using var scope = _serviceProvider.CreateScope();
+                var erpSyncService = scope.ServiceProvider.GetRequiredService<IErpSyncService>();
                 await erpSyncService.TotalSyncAsync(tenant.Id, ct);
 
                 _logger.LogInformation($"Sincronización exitosa para {tenant.Name}");
