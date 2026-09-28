@@ -20,14 +20,9 @@
 <div class="page-header">
     <div>
         <h2 class="page-title">Gestión de Labores</h2>
-        <span class="page-subtitle">Todas las labores de la campaña</span>
+        <span class="page-subtitle">Labores de la campaña que no pertenecen a ninguna Orden de Trabajo</span>
     </div>
     <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap; row-gap: 8px;">
-        <Select TItemValue="string?" TItem="string" @bind-Value="_filterAssigned"
-                Placeholder="Asignación" AllowClear Style="width: 130px;" OnSelectedItemChanged="LoadData">
-            <SelectOption TItemValue="string?" TItem="string" Value="@("assigned")" Label="Asignadas" />
-            <SelectOption TItemValue="string?" TItem="string" Value="@("unassigned")" Label="Sin OT" />
-        </Select>
         <Select TItemValue="string?" TItem="string" @bind-Value="_filterStatus"
                 Placeholder="Estado" AllowClear Style="width: 120px;" OnSelectedItemChanged="LoadData">
             <SelectOption TItemValue="string?" TItem="string" Value="@("Planned")" Label="Planeadas" />
@@ -104,20 +99,16 @@
                 <span style="color: #fff;">
                     <strong style="color: #3b82f6;">Modo Asignación:</strong> Seleccionando labores para <strong style="color: #fff;">@(targetWo.Description ?? targetWo.OTNumber)</strong>
                 </span>
-                <Button Size="@ButtonSize.Small" OnClick='() => { targetOT = null; _filterAssigned = null; LoadData(); }' Style="background: rgba(255,255,255,0.1); color: #fff; border: 1px solid rgba(255,255,255,0.2);">Quitar Filtro</Button>
+                <Button Size="@ButtonSize.Small" OnClick='() => { targetOT = null; LoadData(); }' Style="background: rgba(255,255,255,0.1); color: #fff; border: 1px solid rgba(255,255,255,0.2);">Quitar Filtro</Button>
             </div>
         </MessageTemplate>
     </Alert>
 }
 
-<div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 16px;">
+<div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 16px;">
     <div class="kpi-card" style="cursor:pointer; border-color: @(_quickStatusFilter == null ? "rgba(255,255,255,0.3)" : "rgba(255,255,255,0.06)")" @onclick="() => { _quickStatusFilter = null; }">
         <div class="kpi-value">@_labors.Count</div>
         <div class="kpi-label">Total Labores</div>
-    </div>
-    <div class="kpi-card" style="cursor:pointer; border-color: @(_quickStatusFilter == "unassigned" ? "rgba(255,255,255,0.3)" : "rgba(255,255,255,0.06)")" @onclick='() => { _quickStatusFilter = "unassigned"; }'>
-        <div class="kpi-value">@_labors.Count(l => l.WorkOrderId == null)</div>
-        <div class="kpi-label">Sin Asignar</div>
     </div>
     <div class="kpi-card" style="cursor:pointer; border-color: @(_quickStatusFilter == "Planned" ? "#3498DB" : "rgba(255,255,255,0.06)")" @onclick='() => { _quickStatusFilter = "Planned"; }'>
         <div class="kpi-value" style="color: #3498DB;">@_labors.Count(l => l.Status == "Planned")</div>
@@ -139,7 +130,7 @@ else
 {
     <div class="glass-card table-container">
         <LaborList Labors="@FilteredLabors"
-                   ShowOtColumn="true"
+                   ShowOtColumn="false"
                    IsLocked="false"
                    OnEdit="id => EditLabor(id)"
                    OnExecute='(args) => EditLabor(args.Id, true)'
@@ -367,7 +358,6 @@ else
     private Guid? _filterTypeId;
     private Guid? _filterContactId;
     private List<ContactDto> _contacts = new();
-    private string? _filterAssigned;
     private string? _filterStatus;
     private string _sortBy = "default";
     private string? _quickStatusFilter;
@@ -411,9 +401,7 @@ else
             }
 
             // Quick filter from KPI cards
-            if (_quickStatusFilter == "unassigned")
-                result = result.Where(l => l.WorkOrderId == null).ToList();
-            else if (_quickStatusFilter != null)
+            if (_quickStatusFilter != null)
                 result = result.Where(l => l.Status == _quickStatusFilter).ToList();
 
             return result;
@@ -429,12 +417,6 @@ else
 
     protected override async Task OnInitializedAsync()
     {
-        // Force unassigned filter if coming from a specific OT
-        if (targetOT.HasValue && targetOT != Guid.Empty)
-        {
-            _filterAssigned = "unassigned";
-        }
-        
         CampaignState.OnChange += OnCampaignChanged;
         TenantState.OnChange += OnCampaignChanged;
         await LoadData();
@@ -458,12 +440,8 @@ else
             _loading = true;
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
 
-            var url = new StringBuilder("api/labors?");
-            if (!string.IsNullOrEmpty(_filterAssigned)) 
-            {
-                var isAssigned = _filterAssigned == "assigned";
-                url.Append($"assigned={isAssigned.ToString().ToLower()}&");
-            }
+            // Una labor que ya está en una OT se gestiona desde la OT: acá solo van las sueltas.
+            var url = new StringBuilder("api/labors?assigned=false&");
             if (!string.IsNullOrEmpty(_filterStatus)) url.Append($"status={_filterStatus}&");
             if (_filterTypeId.HasValue && _filterTypeId != Guid.Empty) url.Append($"laborTypeId={_filterTypeId}&");
             if (_filterContactId.HasValue && _filterContactId != Guid.Empty) url.Append($"contactId={_filterContactId}&");
