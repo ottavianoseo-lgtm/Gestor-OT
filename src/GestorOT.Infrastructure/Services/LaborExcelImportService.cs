@@ -662,6 +662,8 @@ public class LaborExcelImportService : ILaborExcelImportService
             imported.Add((parsedLabor.RowIndex, laborToSave.Id));
         }
 
+        ApplyWorkOrderStatuses(workOrderCache.Values, existingLabors, counters);
+
         return imported;
     }
 
@@ -750,6 +752,65 @@ public class LaborExcelImportService : ILaborExcelImportService
         _context.WorkOrders.Add(wo);
         cache[number] = wo;
         return wo;
+    }
+
+    /// <summary>
+    /// Estado de cada OT que tocó la importación, según sus labores. Con todas realizadas
+    /// la OT queda cerrada (un estado no editable, como hace Aprobar); si alguna sigue
+    /// planeada queda en el estado por defecto. Un estado editable que alguien eligió a
+    /// mano no se pisa: solo se corrige la OT sin estado o cerrada con labores pendientes.
+    /// </summary>
+    private void ApplyWorkOrderStatuses(
+        IEnumerable<WorkOrder> workOrders,
+        List<Labor> labors,
+        ImportCounters counters)
+    {
+        var orders = workOrders.ToList();
+        if (orders.Count == 0) return;
+
+        var statuses = _context.WorkOrderStatuses.OrderBy(s => s.SortOrder).ToList();
+        var openStatus = statuses.FirstOrDefault(s => s.IsDefault) ?? statuses.FirstOrDefault(s => s.IsEditable);
+        string[] closedNames = ["realiz", "finaliz", "complet", "cerrad", "aprob", "approved"];
+        var closedCandidates = statuses.Where(s => !s.IsEditable).ToList();
+        var closedStatus = closedCandidates.FirstOrDefault(s =>
+                closedNames.Any(n => NormalizeString(s.Name).Contains(n)))
+            ?? closedCandidates.FirstOrDefault();
+
+        bool warnedNoClosed = false;
+        foreach (var wo in orders)
+        {
+            var woLabors = labors.Where(l => l.WorkOrderId == wo.Id).ToList();
+            if (woLabors.Count == 0) continue;
+
+            bool allRealized = woLabors.All(l => l.Status == LaborStatus.Realized);
+            var current = statuses.FirstOrDefault(s => s.Id == wo.WorkOrderStatusId);
+
+            WorkOrderStatus? target = null;
+            if (allRealized)
+            {
+                if (closedStatus == null)
+                {
+                    if (!warnedNoClosed)
+                        counters.Errors.Add("No hay un estado de OT no editable configurado: las OT con todas sus labores realizadas quedaron abiertas. Configurá un estado 'Realizada' no editable y volvé a importar.");
+                    warnedNoClosed = true;
+                    target = current == null ? openStatus : null;
+                }
+                else
+                {
+                    target = closedStatus;
+                }
+            }
+            else if (current == null || !current.IsEditable)
+            {
+                target = openStatus;
+            }
+
+            if (target != null && wo.WorkOrderStatusId != target.Id)
+            {
+                wo.WorkOrderStatusId = target.Id;
+                wo.Status = target.Name;
+            }
+        }
     }
 
     /// <summary>

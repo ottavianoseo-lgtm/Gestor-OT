@@ -120,8 +120,9 @@ public class LaborImportWorkOrderTests
         var campaignId = Guid.NewGuid();
         var fieldId = Guid.NewGuid();
         var farias = new Contact { Id = Guid.NewGuid(), TenantId = tenantId, FullName = "FARIAS WALTER" };
-        var status = new WorkOrderStatus { Id = Guid.NewGuid(), TenantId = tenantId, Name = "Borrador", IsDefault = true };
-        await SeedAsync(dbName, tenantId, campaignId, fieldId, farias, status);
+        var status = new WorkOrderStatus { Id = Guid.NewGuid(), TenantId = tenantId, Name = "Borrador", IsDefault = true, IsEditable = true, SortOrder = 1 };
+        var closed = new WorkOrderStatus { Id = Guid.NewGuid(), TenantId = tenantId, Name = "Realizada", IsEditable = false, SortOrder = 2 };
+        await SeedAsync(dbName, tenantId, campaignId, fieldId, farias, status, closed);
 
         await ImportAsync(dbName, tenantId, campaignId);
 
@@ -135,7 +136,9 @@ public class LaborImportWorkOrderTests
         Assert.Equal(fieldId, ot711.FieldId);
         Assert.Equal(farias.Id, ot711.ContactId);
         Assert.Equal("FARIAS WALTER", ot711.AssignedTo);
-        Assert.Equal("Borrador", ot711.Status);
+        // Todas sus labores realizadas: queda cerrada, en el estado no editable.
+        Assert.Equal("Realizada", ot711.Status);
+        Assert.Equal(closed.Id, ot711.WorkOrderStatusId);
         Assert.Equal(new DateTime(2026, 4, 9), ot711.PlannedDate.Date);
         Assert.Equal(new DateTime(2026, 4, 10), ot711.ExpirationDate.Date);
         Assert.True(ot711.AcceptsMultipleDates);
@@ -150,6 +153,8 @@ public class LaborImportWorkOrderTests
         Assert.Null(planned.RealizedDose);
         Assert.Null(ot767.ContactId);
         Assert.Equal("LAGOS FRANCO", ot767.AssignedTo);
+        // Con una labor planeada sigue abierta, en el estado por defecto.
+        Assert.Equal(status.Id, ot767.WorkOrderStatusId);
     }
 
     [Fact]

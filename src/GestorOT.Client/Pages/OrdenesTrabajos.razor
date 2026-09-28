@@ -19,10 +19,20 @@
         <h2 class="page-title">Órdenes de Trabajo</h2>
         <span class="page-subtitle">@_workOrders.Count órdenes registradas</span>
     </div>
-    <Button Type="@ButtonType.Primary" OnClick="OpenCreateModal"
-            Style="background: #E74C3C; border-color: #E74C3C; border-radius: 8px; font-weight: 600;">
-        <Icon Type="plus" Theme="IconThemeType.Outline" /> Nueva Orden
-    </Button>
+    <div style="display: flex; gap: 8px; align-items: center;">
+        <Select TItemValue="string?" TItem="string" @bind-Value="_statusFilter"
+                Placeholder="Estado" AllowClear Style="width: 180px;">
+            @foreach (var s in _workOrderStatuses)
+            {
+                <SelectOption TItemValue="string?" TItem="string" Value="@s.Id.ToString()" Label="@s.Name" />
+            }
+            <SelectOption TItemValue="string?" TItem="string" Value="@NoStatusFilter" Label="Sin estado" />
+        </Select>
+        <Button Type="@ButtonType.Primary" OnClick="OpenCreateModal"
+                Style="background: #E74C3C; border-color: #E74C3C; border-radius: 8px; font-weight: 600;">
+            <Icon Type="plus" Theme="IconThemeType.Outline" /> Nueva Orden
+        </Button>
+    </div>
 </div>
 
 @if (!string.IsNullOrEmpty(_errorMessage))
@@ -58,9 +68,9 @@
 </AntDesign.Row>
 
 <div class="glass-card">
-    <Table TItem="WorkOrderDto" DataSource="_workOrders" Loading="_loading" Size="@TableSize.Small" ScrollX="1200">
-        <PropertyColumn Property="c => _workOrders.IndexOf(c) + 1" Title="#" Width="70" Fixed="ColumnFixPlacement.Left">
-            <span style="color: #fff; font-weight: 600;">@(_workOrders.IndexOf(context) + 1)</span>
+    <Table TItem="WorkOrderDto" DataSource="FilteredWorkOrders" Loading="_loading" Size="@TableSize.Small" ScrollX="1200">
+        <PropertyColumn Property="c => FilteredWorkOrders.IndexOf(c) + 1" Title="#" Width="70" Fixed="ColumnFixPlacement.Left">
+            <span style="color: #fff; font-weight: 600;">@(FilteredWorkOrders.IndexOf(context) + 1)</span>
         </PropertyColumn>
         <PropertyColumn Property="c => c.Name" Title="Nombre" Sortable Width="180">
             <span style="font-weight: 700; color: #fff;">@(context.Name ?? context.OTNumber)</span>
@@ -233,7 +243,17 @@
         public string AssignedTo { get; set; } = string.Empty;
     }
 
-    private int EditablesCount => _workOrders.Count(w => 
+    private const string NoStatusFilter = "none";
+    private string? _statusFilter;
+
+    private List<WorkOrderDto> FilteredWorkOrders => _statusFilter switch
+    {
+        null or "" => _workOrders,
+        NoStatusFilter => _workOrders.Where(w => w.WorkOrderStatusId == null || w.WorkOrderStatusId == Guid.Empty).ToList(),
+        _ => _workOrders.Where(w => w.WorkOrderStatusId?.ToString() == _statusFilter).ToList()
+    };
+
+    private int EditablesCount =>_workOrders.Count(w => 
         w.WorkOrderStatusId.HasValue && w.WorkOrderStatusId != Guid.Empty &&
         _workOrderStatuses.Any(s => s.Id == w.WorkOrderStatusId.Value && s.IsEditable));
 
@@ -313,7 +333,12 @@
             await Task.WhenAll(ordersTask, contactsTask);
 
             var orders = await ordersTask ?? new();
-            _workOrders = orders.OrderBy(o => o.DueDate).ToList();
+            // De la más vieja a la más reciente; el mismo día, por número de OT.
+            _workOrders = orders
+                .OrderBy(o => o.DueDate)
+                .ThenBy(o => int.TryParse(o.OTNumber, out var n) ? n : int.MaxValue)
+                .ThenBy(o => o.OTNumber)
+                .ToList();
             _availableContacts = await contactsTask ?? new();
             _errorMessage = null;
         }
