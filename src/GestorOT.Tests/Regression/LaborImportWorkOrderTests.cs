@@ -3,6 +3,7 @@ using GestorOT.Domain.Entities;
 using GestorOT.Domain.Enums;
 using GestorOT.Infrastructure.Data;
 using GestorOT.Infrastructure.Services;
+using GestorOT.Shared.Dtos;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -241,6 +242,79 @@ public class LaborImportWorkOrderTests
             Assert.Equal(2, labors.Count);
             Assert.Equal(80, Assert.Single(labors.Single(l => l.WorkOrder!.OTNumber == "755").Supplies).PlannedDose);
             Assert.Equal(50, Assert.Single(labors.Single(l => l.WorkOrder!.OTNumber == "760").Supplies).PlannedDose);
+        }
+    }
+
+    /// <summary>
+    /// Es el camino de la pantalla: al subir, lo que no hizo full match queda como fila
+    /// pendiente en la base y se importa después. La fila pendiente no guardaba el
+    /// Nro OT, el responsable ni el modo: las labores entraban sin OT y como realizadas.
+    /// </summary>
+    [Fact]
+    public async Task UploadThenImportPendingRows_KeepsWorkOrderResponsibleAndPlannedMode()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var tenantId = Guid.NewGuid();
+        var campaignId = Guid.NewGuid();
+        var status = new WorkOrderStatus { Id = Guid.NewGuid(), TenantId = tenantId, Name = "Borrador", IsDefault = true };
+        await SeedAsync(dbName, tenantId, campaignId, Guid.NewGuid(), status);
+
+        // Sin el tipo de labor en el catálogo, ninguna fila es verde: todas quedan pendientes.
+        using (var context = CreateContext(dbName, tenantId))
+        {
+            context.LaborTypes.RemoveRange(context.LaborTypes);
+            await context.SaveChangesAsync();
+        }
+
+        Guid batchId;
+        using (var context = CreateContext(dbName, tenantId))
+        {
+            var service = new LaborExcelImportService(context, NullLogger<LaborExcelImportService>.Instance);
+            using var stream = CreateWorkbook();
+            var upload = await service.UploadAsync(campaignId, stream, "operativos.xlsx", "tester");
+            Assert.NotNull(upload.PendingBatchId);
+            batchId = upload.PendingBatchId.Value;
+            Assert.Equal(0, context.Labors.Count());
+        }
+
+        using (var context = CreateContext(dbName, tenantId))
+        {
+            var siembra = new LaborType { Id = Guid.NewGuid(), TenantId = tenantId, Name = "Siembra ERP", ExternalErpId = "ERP-1" };
+            context.LaborTypes.Add(siembra);
+            await context.SaveChangesAsync();
+
+            var service = new LaborExcelImportService(context, NullLogger<LaborExcelImportService>.Instance);
+            var detail = await service.GetBatchDetailAsync(batchId);
+            Assert.NotNull(detail);
+            Assert.Equal("711", detail.Preview.Labors[0].WorkOrderNumber);
+            Assert.Equal("Planned", detail.Preview.Labors[2].Mode);
+
+            var typeMap = detail.Preview.LaborTypeMappings.Single(m => m.RawName == "Siembra");
+            typeMap.MatchedLaborTypeId = siembra.Id;
+            typeMap.MatchedLaborTypeName = siembra.Name;
+            await service.SaveBatchMappingsAsync(batchId, new LaborImportBatchMappingsDto
+            {
+                SupplyMappings = detail.Preview.SupplyMappings,
+                LaborTypeMappings = detail.Preview.LaborTypeMappings,
+                SupplierMappings = detail.Preview.SupplierMappings
+            });
+
+            var resolve = await service.ImportBatchRowsAsync(batchId, null);
+            Assert.True(resolve.Success);
+            Assert.Equal(3, resolve.Imported);
+        }
+
+        using (var context = CreateContext(dbName, tenantId))
+        {
+            var orders = await context.WorkOrders.Include(w => w.Labors).ThenInclude(l => l.Supplies).OrderBy(w => w.OTNumber).ToListAsync();
+            Assert.Equal(2, orders.Count);
+            Assert.Equal("711", orders[0].OTNumber);
+            Assert.Equal("FARIAS WALTER", orders[0].AssignedTo);
+            Assert.Equal(campaignId, orders[0].CampaignId);
+            Assert.Equal(2, orders[0].Labors.Count);
+            Assert.All(orders[0].Labors, l => Assert.Single(l.Supplies));
+            var planned = Assert.Single(orders[1].Labors);
+            Assert.Equal(LaborMode.Planned, planned.Mode);
         }
     }
 

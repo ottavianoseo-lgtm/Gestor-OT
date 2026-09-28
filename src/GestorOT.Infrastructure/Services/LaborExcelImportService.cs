@@ -940,6 +940,9 @@ public class LaborExcelImportService : ILaborExcelImportService
             ContactId = labor.ContactId,
             MatchedContactName = labor.MatchedContactName,
             IsExternalBilling = labor.IsExternalBilling,
+            Mode = labor.Mode,
+            WorkOrderNumber = labor.WorkOrderNumber,
+            WorkOrderResponsible = labor.WorkOrderResponsible,
             SuppliesJson = JsonSerializer.Serialize(labor.Supplies, BatchJsonOptions),
             ErrorsJson = JsonSerializer.Serialize(labor.Errors, BatchJsonOptions),
             WarningsJson = JsonSerializer.Serialize(labor.Warnings, BatchJsonOptions),
@@ -959,6 +962,12 @@ public class LaborExcelImportService : ILaborExcelImportService
         try { warnings = JsonSerializer.Deserialize<List<string>>(row.WarningsJson, BatchJsonOptions) ?? new(); }
         catch { warnings = new(); }
 
+        // Las filas guardadas antes de persistir el modo no lo tienen: para esas se
+        // mantiene lo que se hacía entonces, deducirlo por la fecha.
+        string mode = !string.IsNullOrWhiteSpace(row.Mode)
+            ? row.Mode
+            : (!row.Date.HasValue || row.Date.Value.Date <= DateTime.UtcNow.Date ? "Realized" : "Planned");
+
         return new LaborImportParsedLaborDto
         {
             RowIndex = row.RowIndex,
@@ -974,8 +983,10 @@ public class LaborExcelImportService : ILaborExcelImportService
             ContactId = row.ContactId,
             MatchedContactName = row.MatchedContactName,
             IsExternalBilling = row.IsExternalBilling,
-            Mode = "Realized",
-            Status = "Realized",
+            Mode = mode,
+            Status = mode,
+            WorkOrderNumber = row.WorkOrderNumber,
+            WorkOrderResponsible = row.WorkOrderResponsible,
             Supplies = supplies,
             Errors = errors,
             Warnings = warnings

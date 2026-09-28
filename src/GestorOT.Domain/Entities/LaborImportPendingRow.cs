@@ -25,6 +25,14 @@ public class LaborImportPendingRow : TenantEntity
     public Guid? ContactId { get; set; }
     public string? MatchedContactName { get; set; }
     public bool IsExternalBilling { get; set; }
+    /// <summary>
+    /// Modo resuelto al parsear ("Realized"/"Planned"). Sin esto la fila volvía como
+    /// realizada, y una ORDEN postergada entraba como ejecutada.
+    /// </summary>
+    public string? Mode { get; set; }
+    /// <summary>Nro OT de la planilla: la labor se agrupa en esa OT al importarse.</summary>
+    public string? WorkOrderNumber { get; set; }
+    public string? WorkOrderResponsible { get; set; }
     /// <summary>Insumos parseados (JSON de lista de LaborImportParsedItemDto).</summary>
     public string SuppliesJson { get; set; } = "[]";
     public string ErrorsJson { get; set; } = "[]";
