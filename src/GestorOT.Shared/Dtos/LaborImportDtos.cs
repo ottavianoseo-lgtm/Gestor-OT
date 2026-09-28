@@ -59,6 +59,10 @@ public record LaborImportParsedLaborDto
     public bool IsExternalBilling { get; set; }
     public string Mode { get; init; } = "Realized";
     public string Status { get; init; } = "Realized";
+    /// <summary>Número de OT de la planilla: las labores con el mismo número van a la misma OT.</summary>
+    public string? WorkOrderNumber { get; init; }
+    /// <summary>Responsable de la OT tal como viene en la planilla.</summary>
+    public string? WorkOrderResponsible { get; init; }
     public List<LaborImportParsedItemDto> Supplies { get; init; } = new();
     public List<string> Errors { get; init; } = new();
     public List<string> Warnings { get; init; } = new();

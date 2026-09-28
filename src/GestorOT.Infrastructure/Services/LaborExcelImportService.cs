@@ -146,6 +146,7 @@ public class LaborExcelImportService : ILaborExcelImportService
             .Include(cl => cl.Rotations)
             .Where(cl => cl.CampaignId == campaignId)
             .ToListAsync(ct);
+        var fieldNames = await _context.Fields.AsNoTracking().ToDictionaryAsync(f => f.Id, f => f.Name, ct);
 
         var existingLaborTypes = await _context.LaborTypes.ToListAsync(ct);
         var existingLaborTypeAliases = await _context.LaborTypeAliases.Include(a => a.LaborType).ToListAsync(ct);
@@ -160,7 +161,7 @@ public class LaborExcelImportService : ILaborExcelImportService
             .Where(l => l.CampaignLotId.HasValue && campaignLotIds.Contains(l.CampaignLotId.Value))
             .ToListAsync(ct);
 
-        var parsedLabors = ParseLaborsFromWorksheet(worksheet, columnConfig, campaignLots, existingLaborTypes, existingContacts);
+        var parsedLabors = ParseLaborsFromWorksheet(worksheet, columnConfig, campaignLots, existingLaborTypes, existingContacts, fieldNames);
 
         var counters = new ImportCounters();
 
@@ -454,6 +455,8 @@ public class LaborExcelImportService : ILaborExcelImportService
         var validContactIds = existingContacts.Select(c => c.Id).ToHashSet();
         Guid? LiveContact(Guid? id) => id.HasValue && validContactIds.Contains(id.Value) ? id : null;
 
+        var workOrderCache = LoadWorkOrdersForImport(parsedLabors, campaignLots);
+
         // 3. Process Labors & Supplies
         foreach (var parsedLabor in parsedLabors)
         {
@@ -500,21 +503,20 @@ public class LaborExcelImportService : ILaborExcelImportService
 
             var campaignLot = campaignLots.FirstOrDefault(cl => cl.Id == parsedLabor.CampaignLotId.Value);
 
-            // Deducir modo por la fecha: si es pasada o igual a hoy, es Realizada; si es a futuro, Planeada
-            bool isRealized = false;
-            if (parsedLabor.Date.HasValue)
-            {
-                isRealized = parsedLabor.Date.Value.Date <= DateTime.UtcNow.Date;
-            }
-            else
-            {
-                isRealized = string.Equals(parsedLabor.Mode, "Realized", StringComparison.OrdinalIgnoreCase);
-            }
+            // El modo ya se resolvió al parsear (modo explícito de la planilla, o la
+            // fecha si no lo trae); recalcularlo acá por la fecha pisaba las planeadas
+            // que quedaron con fecha pasada sin ejecutarse.
+            bool isRealized = string.Equals(parsedLabor.Mode, "Realized", StringComparison.OrdinalIgnoreCase);
 
             var laborMode = isRealized ? LaborMode.Realized : LaborMode.Planned;
             var laborStatus = isRealized ? LaborStatus.Realized : LaborStatus.Planned;
 
-            // Check if labor already exists (deduplication on re-import: same Lot + Date + LaborType)
+            var workOrder = ResolveWorkOrder(parsedLabor, campaignLot, workOrderCache, existingContacts);
+
+            // Check if labor already exists (deduplication on re-import: same Lot + Date + LaborType).
+            // Con Nro OT, la OT también es parte de la identidad: dos operativos distintos
+            // pueden fumigar el mismo lote el mismo día (ej. Amand OT 755 y 760), y sin
+            // esto la segunda pisaba a la primera.
             Labor? existingLabor = null;
             if (parsedLabor.Date.HasValue)
             {
@@ -522,6 +524,7 @@ public class LaborExcelImportService : ILaborExcelImportService
                 existingLabor = existingLabors.FirstOrDefault(l =>
                     l.CampaignLotId == parsedLabor.CampaignLotId.Value &&
                     l.LaborTypeId == targetLaborTypeId.Value &&
+                    (workOrder == null || l.WorkOrderId == null || l.WorkOrderId == workOrder.Id) &&
                     ((l.ExecutionDate.HasValue && l.ExecutionDate.Value.Date == targetDate) ||
                      (l.EstimatedDate.HasValue && l.EstimatedDate.Value.Date == targetDate)));
             }
@@ -532,6 +535,7 @@ public class LaborExcelImportService : ILaborExcelImportService
                 existingLabor.Hectares = parsedLabor.Hectares;
                 existingLabor.EffectiveArea = parsedLabor.Hectares;
                 existingLabor.ContactId = null;
+                existingLabor.WorkOrderId = workOrder?.Id ?? existingLabor.WorkOrderId;
                 existingLabor.IsExternalBilling = parsedLabor.IsExternalBilling;
                 existingLabor.ExecutionDate = parsedLabor.Date;
                 existingLabor.EstimatedDate = parsedLabor.Date;
@@ -567,6 +571,7 @@ public class LaborExcelImportService : ILaborExcelImportService
                 {
                     Id = Guid.NewGuid(),
                     TenantId = _context.CurrentTenantId,
+                    WorkOrderId = workOrder?.Id,
                     LotId = parsedLabor.LotId.Value,
                     CampaignLotId = parsedLabor.CampaignLotId.Value,
                     ErpActivityId = resolvedActivityId,
@@ -659,6 +664,109 @@ public class LaborExcelImportService : ILaborExcelImportService
 
         return imported;
     }
+
+    /// <summary>
+    /// Las OT que ya existen en la campaña con los números que trae el archivo, para que
+    /// reimportar (o importar después las filas pendientes) sume labores a la misma OT
+    /// en vez de duplicarla.
+    /// </summary>
+    private Dictionary<string, WorkOrder> LoadWorkOrdersForImport(
+        List<LaborImportParsedLaborDto> parsedLabors,
+        List<CampaignLot> campaignLots)
+    {
+        var numbers = parsedLabors
+            .Select(l => l.WorkOrderNumber)
+            .Where(n => !string.IsNullOrWhiteSpace(n))
+            .Select(n => n!.Trim())
+            .Distinct()
+            .ToList();
+        var cache = new Dictionary<string, WorkOrder>(StringComparer.OrdinalIgnoreCase);
+        if (numbers.Count == 0) return cache;
+
+        var campaignIds = campaignLots.Select(cl => cl.CampaignId).Distinct().ToList();
+        var existing = _context.WorkOrders
+            .Where(w => w.CampaignId.HasValue && campaignIds.Contains(w.CampaignId.Value) && numbers.Contains(w.OTNumber))
+            .ToList();
+        foreach (var wo in existing)
+            cache[wo.OTNumber] = wo;
+        return cache;
+    }
+
+    /// <summary>
+    /// OT a la que va la labor según el "Nro OT" de la planilla; la crea la primera vez
+    /// que aparece el número. Sin número, la labor queda suelta como antes.
+    /// El responsable se vincula a la OT (ContactId) si matchea con el padrón; el texto
+    /// crudo queda siempre en AssignedTo. La labor sigue sin responsable propio.
+    /// </summary>
+    private WorkOrder? ResolveWorkOrder(
+        LaborImportParsedLaborDto parsedLabor,
+        CampaignLot? campaignLot,
+        Dictionary<string, WorkOrder> cache,
+        List<Contact> contacts)
+    {
+        if (string.IsNullOrWhiteSpace(parsedLabor.WorkOrderNumber))
+            return null;
+
+        string number = parsedLabor.WorkOrderNumber.Trim();
+        DateTime date = parsedLabor.Date ?? DateTime.UtcNow.Date;
+        Guid? fieldId = campaignLot?.Lot?.FieldId;
+
+        if (cache.TryGetValue(number, out var wo))
+        {
+            // Una OT puede juntar labores de varios días y varios campos: la fecha
+            // planeada es la primera y el campo queda solo si es uno.
+            if (date < wo.PlannedDate) { wo.PlannedDate = date; wo.DueDate = date; }
+            if (date > wo.ExpirationDate) wo.ExpirationDate = date;
+            if (date.Date != wo.PlannedDate.Date || date.Date != wo.ExpirationDate.Date) wo.AcceptsMultipleDates = true;
+            if (wo.FieldId.HasValue && fieldId.HasValue && wo.FieldId != fieldId) wo.FieldId = null;
+            if (string.IsNullOrWhiteSpace(wo.AssignedTo) && !string.IsNullOrWhiteSpace(parsedLabor.WorkOrderResponsible))
+                wo.AssignedTo = parsedLabor.WorkOrderResponsible.Trim();
+            return wo;
+        }
+
+        var status = _context.WorkOrderStatuses.FirstOrDefault(s => s.IsDefault)
+            ?? _context.WorkOrderStatuses.OrderBy(s => s.SortOrder).FirstOrDefault();
+
+        string responsible = parsedLabor.WorkOrderResponsible?.Trim() ?? string.Empty;
+        var (contactId, _, _) = MatchContact(responsible, contacts);
+
+        wo = new WorkOrder
+        {
+            Id = Guid.NewGuid(),
+            TenantId = _context.CurrentTenantId,
+            OTNumber = number,
+            Name = $"OT {number}",
+            Description = "Importado desde Excel",
+            CampaignId = campaignLot?.CampaignId,
+            FieldId = fieldId,
+            Status = status?.Name ?? "Draft",
+            WorkOrderStatusId = status?.Id,
+            AssignedTo = responsible,
+            ContactId = contactId,
+            DueDate = date,
+            PlannedDate = date,
+            ExpirationDate = date
+        };
+        _context.WorkOrders.Add(wo);
+        cache[number] = wo;
+        return wo;
+    }
+
+    /// <summary>
+    /// Modo escrito en la planilla: true = realizada, false = planeada, null = no dice
+    /// (vacío o un valor que no se reconoce, y entonces se deduce por la fecha).
+    /// </summary>
+    private static bool? ParseExplicitMode(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return null;
+        string norm = NormalizeString(raw);
+        if (norm == "r" || norm.StartsWith("realiz") || norm == "real") return true;
+        if (norm == "p" || norm.StartsWith("plane") || norm.StartsWith("presup") || norm == "orden") return false;
+        return null;
+    }
+
+    private static string? NullIfBlank(string? raw) =>
+        string.IsNullOrWhiteSpace(raw) ? null : raw.Trim();
 
     /// <summary>
     /// Los mismos valores que MatchContact considera "propio" y por los que no
@@ -1623,6 +1731,8 @@ public class LaborExcelImportService : ILaborExcelImportService
         public int ColTotal { get; init; }
         public int ColContratista { get; init; }
         public int ColModo { get; init; }
+        public int ColNroOT { get; init; }
+        public int ColResponsable { get; init; }
     }
 
     private IXLWorksheet FindLaborWorksheet(XLWorkbook workbook)
@@ -1651,7 +1761,7 @@ public class LaborExcelImportService : ILaborExcelImportService
             int lastCol = row.LastCellUsed()?.Address.ColumnNumber ?? 0;
             if (lastCol < 4) continue;
 
-            int colFecha = 0, colEst = 0, colLote = 0, colSup = 0, colSupReal = 0, colItem = 0, colDosis = 0, colTipo = 0, colUnidad = 0, colTotal = 0, colContr = 0, colModo = 0;
+            int colFecha = 0, colEst = 0, colLote = 0, colSup = 0, colSupReal = 0, colItem = 0, colDosis = 0, colTipo = 0, colUnidad = 0, colTotal = 0, colContr = 0, colModo = 0, colNroOT = 0, colResp = 0;
             bool hasProducLabor = false;
 
             for (int c = 1; c <= lastCol; c++)
@@ -1686,6 +1796,8 @@ public class LaborExcelImportService : ILaborExcelImportService
                 else if (header == "total") colTotal = c;
                 else if (compact.Contains("contr/prove") || compact.Contains("contratista") || compact.Contains("maquinaria")) colContr = c;
                 else if (compact.Contains("real/presup") || header == "modo" || header == "estado") colModo = c;
+                else if (compact == "nroot" || compact == "nro.ot" || compact == "ot" || compact.StartsWith("nrooper") || compact.StartsWith("nro.oper") || header == "orden de trabajo") colNroOT = c;
+                else if (header == "responsable") colResp = c;
             }
 
             if (colItem > 0 && (colTipo > 0 || colLote > 0))
@@ -1705,7 +1817,9 @@ public class LaborExcelImportService : ILaborExcelImportService
                     ColUnidad = colUnidad,
                     ColTotal = colTotal,
                     ColContratista = colContr,
-                    ColModo = colModo
+                    ColModo = colModo,
+                    ColNroOT = colNroOT,
+                    ColResponsable = colResp
                 };
             }
         }
@@ -1733,19 +1847,31 @@ public class LaborExcelImportService : ILaborExcelImportService
         ColumnConfig cfg,
         List<CampaignLot> campaignLots,
         List<LaborType> laborTypes,
-        List<Contact> contacts)
+        List<Contact> contacts,
+        Dictionary<Guid, string>? fieldNames = null)
     {
         var result = new List<LaborImportParsedLaborDto>();
         LaborImportParsedLaborDto? currentLabor = null;
 
         // Build lot lookup dictionaries
-        var lotByNormalizedName = new Dictionary<string, CampaignLot>(StringComparer.OrdinalIgnoreCase);
+        // El nombre de lote se repite entre campos ("2" en cuatro campos de la misma
+        // empresa): buscar solo por nombre se quedaba con el último y mandaba la labor
+        // a otro campo. Se busca por campo + lote, y por nombre solo si es único.
+        var lotByFieldAndName = new Dictionary<string, CampaignLot>(StringComparer.OrdinalIgnoreCase);
+        var lotsByNormalizedName = new Dictionary<string, List<CampaignLot>>(StringComparer.OrdinalIgnoreCase);
         foreach (var cl in campaignLots)
         {
             if (cl.Lot != null)
             {
                 string normName = NormalizeString(cl.Lot.Name);
-                lotByNormalizedName[normName] = cl;
+                if (!lotsByNormalizedName.TryGetValue(normName, out var sameName))
+                    lotsByNormalizedName[normName] = sameName = new List<CampaignLot>();
+                sameName.Add(cl);
+                string? lotFieldName = cl.Lot.Field?.Name;
+                if (lotFieldName == null && fieldNames != null)
+                    fieldNames.TryGetValue(cl.Lot.FieldId, out lotFieldName);
+                if (!string.IsNullOrWhiteSpace(lotFieldName))
+                    lotByFieldAndName[$"{NormalizeString(lotFieldName)}|{normName}"] = cl;
             }
         }
 
@@ -1787,16 +1913,19 @@ public class LaborExcelImportService : ILaborExcelImportService
                 string contractor = cfg.ColContratista > 0 ? row.Cell(cfg.ColContratista).GetString().Trim() : string.Empty;
                 string modoStr = cfg.ColModo > 0 ? row.Cell(cfg.ColModo).GetString().Trim() : string.Empty;
 
-                // Deducir modo por la fecha: si es pasada o igual a hoy, es Realizada; si es a futuro, Planeada
-                bool isRealized = false;
-                if (date.HasValue)
+                // Si la planilla dice el modo, manda: una labor planeada que no se hizo
+                // (ej. se postergó por lluvia) queda con fecha pasada y sigue siendo
+                // planeada. Solo sin modo explícito se deduce por la fecha: pasada o
+                // igual a hoy es Realizada, a futuro es Planeada.
+                bool isRealized;
+                bool? explicitRealized = ParseExplicitMode(modoStr);
+                if (explicitRealized.HasValue)
+                {
+                    isRealized = explicitRealized.Value;
+                }
+                else if (date.HasValue)
                 {
                     isRealized = date.Value.Date <= DateTime.UtcNow.Date;
-                }
-                else if (!string.IsNullOrWhiteSpace(modoStr))
-                {
-                    isRealized = string.Equals(modoStr, "r", StringComparison.OrdinalIgnoreCase) ||
-                                 modoStr.StartsWith("realiz", StringComparison.OrdinalIgnoreCase);
                 }
                 else
                 {
@@ -1813,10 +1942,21 @@ public class LaborExcelImportService : ILaborExcelImportService
                 if (!string.IsNullOrWhiteSpace(lotName))
                 {
                     string normLot = NormalizeString(lotName);
-                    if (lotByNormalizedName.TryGetValue(normLot, out var cl))
+                    lotsByNormalizedName.TryGetValue(normLot, out var sameName);
+                    CampaignLot? cl = null;
+                    if (!string.IsNullOrWhiteSpace(fieldName))
+                        lotByFieldAndName.TryGetValue($"{NormalizeString(fieldName)}|{normLot}", out cl);
+                    if (cl == null && sameName is { Count: 1 })
+                        cl = sameName[0];
+
+                    if (cl != null)
                     {
                         lotId = cl.LotId;
                         campaignLotId = cl.Id;
+                    }
+                    else if (sameName is { Count: > 1 })
+                    {
+                        errors.Add($"Lote '{lotName}' existe en varios campos de la campaña; el campo '{fieldName}' no coincide con ninguno.");
                     }
                     else
                     {
@@ -1857,6 +1997,8 @@ public class LaborExcelImportService : ILaborExcelImportService
                     IsExternalBilling = isExternalBilling,
                     Mode = mode,
                     Status = mode,
+                    WorkOrderNumber = cfg.ColNroOT > 0 ? NullIfBlank(row.Cell(cfg.ColNroOT).GetString()) : null,
+                    WorkOrderResponsible = cfg.ColResponsable > 0 ? NullIfBlank(row.Cell(cfg.ColResponsable).GetString()) : null,
                     Supplies = new List<LaborImportParsedItemDto>(),
                     Errors = errors
                 };
