@@ -21,7 +21,7 @@
             <Radio Value="@("all")">Todas</Radio>
             <Radio Value="@("active")">Activas</Radio>
         </RadioGroup>
-        <Input @bind-Value="@_searchText" Placeholder="Buscar por nombre o CUIT..." Style="width: 250px;" />
+        <Input @bind-Value="@SearchText"Placeholder="Buscar por nombre o CUIT..." Style="width: 250px;" />
         <Button Icon="sync" OnClick="SyncFromErp" Loading="_syncing">Sincronizar con ERP</Button>
     </div>
 </div>
@@ -37,7 +37,7 @@ else
     @if (_filterMode == "all")
     {
         <div class="directory-list">
-            @foreach (var person in FilteredPeople)
+            @foreach (var person in PagedPeople)
             {
                 <div class="person-card @(person.IsActiveContact ? "person-active" : "")">
                     <div class="person-icon">
@@ -53,7 +53,7 @@ else
                     <div class="person-status">
                         @if (person.IsActiveContact)
                         {
-                            var contact = _contacts.FirstOrDefault(c => c.ExternalErpId == person.ExternalId);
+                            _contactsByErpId.TryGetValue(person.ExternalId, out var contact);
                             var modalityLabel = contact?.Role switch
                             {
                                 ContactRole.InternalStaff => "Propio",
@@ -82,7 +82,7 @@ else
                         }
                         else
                         {
-                            var contact = _contacts.FirstOrDefault(c => c.ExternalErpId == person.ExternalId);
+                            _contactsByErpId.TryGetValue(person.ExternalId, out var contact);
                             @if (contact != null)
                             {
                                 <Select TItemValue="ContactRole" TItem="ContactRole"
@@ -99,6 +99,8 @@ else
                 </div>
             }
         </div>
+        <Pagination Total="FilteredPeople.Count()" PageSize="PageSize" Current="_page"
+                    OnChange="OnPageChange" HideOnSinglePage Style="margin-top: 16px; text-align: right;" />
     }
     else
     {
@@ -245,8 +247,19 @@ else
     private List<ErpPersonDto> _people = new();
     private List<ContactDto> _contacts = new();
     private bool _loading = true;
-    private string _searchText = string.Empty;
     private string _filterMode = "all";
+
+    // Renderizar todas las tarjetas (miles, cada una con su Select) congela WASM; se pagina.
+    private const int PageSize = 50;
+    private int _page = 1;
+    private Dictionary<string, ContactDto> _contactsByErpId = new();
+
+    private string _searchText = string.Empty;
+    private string SearchText
+    {
+        get => _searchText;
+        set { _searchText = value; _page = 1; }
+    }
     
     private bool _activationModalVisible = false;
     private ErpPersonDto? _selectedPerson;
@@ -260,6 +273,11 @@ else
             p.FullName.Contains(_searchText, StringComparison.OrdinalIgnoreCase) || 
             (p.VatNumber != null && p.VatNumber.Contains(_searchText))
         );
+
+    private IEnumerable<ErpPersonDto> PagedPeople =>
+        FilteredPeople.Skip((_page - 1) * PageSize).Take(PageSize);
+
+    private void OnPageChange(PaginationEventArgs e) => _page = e.Page;
 
     protected override async Task OnInitializedAsync()
     {
@@ -287,6 +305,10 @@ else
             await Task.WhenAll(peopleTask, contactsTask);
             _people = await peopleTask ?? new();
             _contacts = await contactsTask ?? new();
+            _contactsByErpId = _contacts
+                .Where(c => c.ExternalErpId != null)
+                .GroupBy(c => c.ExternalErpId!)
+                .ToDictionary(g => g.Key, g => g.First());
         }
         catch (Exception ex)
         {
