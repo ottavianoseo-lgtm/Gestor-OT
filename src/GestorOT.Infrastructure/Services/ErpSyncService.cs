@@ -670,14 +670,10 @@ public class ErpSyncService : IErpSyncService
             if (client != null && !string.IsNullOrEmpty(databaseId))
             {
                 var url = $"{BaseUrl}/v3/GestorG4/ListEmpresas?databaseId={databaseId}";
-                var response = await client.GetAsync(url, ct);
-                if (response.IsSuccessStatusCode)
+                var items = await GetErpListAsync(client, "ListEmpresas", url, tenantId, ct);
+                if (items.Any())
                 {
-                    var items = await response.Content.ReadFromJsonAsync<List<GenericErpItemResponse>>(ct);
-                    if (items != null && items.Any())
-                    {
-                        result = items.Select(i => new ErpCompanyDto(i.GetCode(), i.GetDescription())).ToList();
-                    }
+                    result = items.Select(i => new ErpCompanyDto(i.GetCode(), i.GetDescription())).ToList();
                 }
             }
         }
@@ -703,14 +699,10 @@ public class ErpSyncService : IErpSyncService
             if (client != null && !string.IsNullOrEmpty(databaseId))
             {
                 var url = $"{BaseUrl}/v3/GestorG4/ListComprobantes?databaseId={databaseId}";
-                var response = await client.GetAsync(url, ct);
-                if (response.IsSuccessStatusCode)
+                var items = await GetErpListAsync(client, "ListComprobantes", url, tenantId, ct);
+                if (items.Any())
                 {
-                    var items = await response.Content.ReadFromJsonAsync<List<GenericErpItemResponse>>(ct);
-                    if (items != null && items.Any())
-                    {
-                        result = items.Select(i => new ErpVoucherTypeDto(i.GetCode(), i.GetDescription())).ToList();
-                    }
+                    result = items.Select(i => new ErpVoucherTypeDto(i.GetCode(), i.GetDescription())).ToList();
                 }
             }
         }
@@ -736,14 +728,10 @@ public class ErpSyncService : IErpSyncService
             if (client != null && !string.IsNullOrEmpty(databaseId))
             {
                 var url = $"{BaseUrl}/v3/GestorG4/ListMonedas?databaseId={databaseId}";
-                var response = await client.GetAsync(url, ct);
-                if (response.IsSuccessStatusCode)
+                var items = await GetErpListAsync(client, "ListMonedas", url, tenantId, ct);
+                if (items.Any())
                 {
-                    var items = await response.Content.ReadFromJsonAsync<List<GenericErpItemResponse>>(ct);
-                    if (items != null && items.Any())
-                    {
-                        result = items.Select(i => new ErpCurrencyDto(i.GetCode(), i.GetDescription(), "$")).ToList();
-                    }
+                    result = items.Select(i => new ErpCurrencyDto(i.GetCode(), i.GetDescription(), "$")).ToList();
                 }
             }
         }
@@ -786,16 +774,12 @@ public class ErpSyncService : IErpSyncService
             if (client != null && !string.IsNullOrEmpty(databaseId))
             {
                 var url = $"{BaseUrl}/v3/GestorG4/ListPerfilesImputacion?databaseId={databaseId}&soloHabilitados=true";
-                var response = await client.GetAsync(url, ct);
-                if (response.IsSuccessStatusCode)
+                var items = await GetErpListAsync(client, "ListPerfilesImputacion", url, tenantId, ct);
+                if (items.Any())
                 {
-                    var items = await response.Content.ReadFromJsonAsync<List<GenericErpItemResponse>>(ct);
-                    if (items != null && items.Any())
-                    {
-                        var allProfiles = items.Select(i => new ErpProfileDto(i.GetCode(), i.GetDescription())).ToList();
-                        var filtered = allProfiles.Where(p => MatchesAgriculture(p.Nombre)).ToList();
-                        result = filtered.Any() ? filtered : allProfiles;
-                    }
+                    var allProfiles = items.Select(i => new ErpProfileDto(i.GetCode(), i.GetDescription())).ToList();
+                    var filtered = allProfiles.Where(p => MatchesAgriculture(p.Nombre)).ToList();
+                    result = filtered.Any() ? filtered : allProfiles;
                 }
             }
         }
@@ -958,14 +942,10 @@ public class ErpSyncService : IErpSyncService
             if (client != null && !string.IsNullOrEmpty(databaseId))
             {
                 var url = $"{BaseUrl}/v3/GestorG4/ListPersonas?databaseId={databaseId}";
-                var response = await client.GetAsync(url, ct);
-                if (response.IsSuccessStatusCode)
+                var items = await GetErpListAsync(client, "ListPersonas", url, tenantId, ct);
+                if (items.Any())
                 {
-                    var items = await response.Content.ReadFromJsonAsync<List<GenericErpItemResponse>>(ct);
-                    if (items != null && items.Any())
-                    {
-                        result = items.Select(i => new ErpPersonItemDto(i.GetCode(), i.GetDescription())).ToList();
-                    }
+                    result = items.Select(i => new ErpPersonItemDto(i.GetCode(), i.GetDescription())).ToList();
                 }
             }
         }
@@ -995,6 +975,27 @@ public class ErpSyncService : IErpSyncService
         client.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0");
 
         return (client, tenant.GestorMaxDatabaseId.Trim());
+    }
+
+    // Los catálogos caen a un fallback si la lista viene vacía; sin este log no hay forma de
+    // distinguir un 401/404 o una lista vacía de GestorMax de un catálogo que anda bien.
+    private async Task<List<GenericErpItemResponse>> GetErpListAsync(HttpClient client, string endpoint, string url, Guid tenantId, CancellationToken ct)
+    {
+        var response = await client.GetAsync(url, ct);
+        if (!response.IsSuccessStatusCode)
+        {
+            var body = await response.Content.ReadAsStringAsync(ct);
+            _logger.LogWarning("GestorMax {Endpoint} returned {StatusCode} for Tenant {TenantId}: {Body}",
+                endpoint, (int)response.StatusCode, tenantId, body.Length > 300 ? body[..300] : body);
+            return new();
+        }
+
+        var items = await response.Content.ReadFromJsonAsync<List<GenericErpItemResponse>>(ct) ?? new();
+        if (items.Count == 0)
+            _logger.LogWarning("GestorMax {Endpoint} returned an empty list for Tenant {TenantId}", endpoint, tenantId);
+        else
+            _logger.LogInformation("GestorMax {Endpoint} returned {Count} items for Tenant {TenantId}", endpoint, items.Count, tenantId);
+        return items;
     }
 
     private record GenericErpItemResponse(
