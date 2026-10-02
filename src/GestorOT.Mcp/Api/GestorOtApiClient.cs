@@ -68,6 +68,15 @@ public sealed class GestorOtApiClient
     public Task<ApiPaged<ApiInventoryItem>> SearchInventoryAsync(ApiQuery query, CancellationToken ct) =>
         GetAsync<ApiPaged<ApiInventoryItem>>(query.For("api/inventory/search"), ct);
 
+    public async Task<ApiLabor?> GetLaborAsync(Guid id, CancellationToken ct)
+    {
+        using var response = await SendAsync(HttpMethod.Get, $"api/labors/{id}", null, ct);
+        if (response.StatusCode == HttpStatusCode.NotFound)
+            return null;
+        await EnsureSuccessAsync(response, ct);
+        return await response.Content.ReadFromJsonAsync<ApiLabor>(ReadOptions, ct);
+    }
+
     public async Task<ApiInventoryItem?> GetInventoryItemAsync(Guid id, CancellationToken ct)
     {
         using var response = await SendAsync(HttpMethod.Get, $"api/inventory/{id}", null, ct);

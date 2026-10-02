@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Text.Json.Nodes;
 using GestorOT.Mcp.Api;
 using Microsoft.Extensions.Options;
 using ModelContextProtocol;
@@ -64,7 +65,7 @@ public sealed class WriteTools
 
     [McpServerTool(Name = "create_labor", Destructive = false, Idempotent = false, OpenWorld = false)]
     [Description("Crea una labor sobre un lote de una campaña, planificada o ya realizada, opcionalmente dentro de una OT y con insumos. Devuelve la labor creada y las advertencias de la API (ej. rotación).")]
-    public async Task<CreateLaborResult> CreateLabor(
+    public async Task<LaborSaveResult> CreateLabor(
         [Description("Id de campaña. Obligatorio.")] Guid campaignId,
         [Description("Id del lote (ver list_lots con campaignId). Tiene que estar en la campaña.")] Guid lotId,
         [Description("Id del tipo de labor (ver list_labor_types). Obligatorio. Ojo con los nombres repetidos: elegir por executionMode (Propia/Contratista) según quién la ejecuta.")] Guid laborTypeId,
@@ -127,7 +128,7 @@ public sealed class WriteTools
             supplies = supplyBodies
         }, ct);
 
-        return new CreateLaborResult(LaborView.From(response.Labor), response.Warnings);
+        return new LaborSaveResult(LaborView.From(response.Labor), response.Warnings);
     }
 
     [McpServerTool(Name = "assign_labors_to_work_order", Destructive = false, Idempotent = true, OpenWorld = false)]
@@ -153,6 +154,114 @@ public sealed class WriteTools
         return results;
     }
 
+    [McpServerTool(Name = "update_labor", Destructive = false, Idempotent = true, OpenWorld = false)]
+    [Description("Edita una labor existente: solo cambia lo que se pasa. Con realized=true la marca como realizada (el caso típico: 'ya se hizo la pulverización del lote X'), igual que el botón Ejecutar de la UI: fecha de ejecución y dosis reales, que por defecto son las planificadas. Las del Planeamiento Original (isOriginalPlan) no se pueden realizar.")]
+    public async Task<LaborSaveResult> UpdateLabor(
+        [Description("Id de la labor (ver search_labors o get_labor).")] Guid laborId,
+        [Description("true = marcarla realizada; false = volverla a planificada. Vacío = no cambia.")] bool? realized = null,
+        [Description("Fecha (yyyy-MM-dd): la de ejecución si la labor queda realizada, la estimada si queda planificada. Al realizar sin fecha, hoy.")] DateOnly? date = null,
+        [Description("Hectáreas. Si queda realizada, son las hectáreas reales de los insumos.")] decimal? hectares = null,
+        [Description("Persona que la ejecuta (ver list_contacts).")] Guid? contactId = null,
+        [Description("Tipo de labor (ver list_labor_types).")] Guid? laborTypeId = null,
+        [Description("Actividad del ERP (ver list_activities).")] Guid? activityId = null,
+        [Description("Baja, Regular, Alta o Urgente.")] string? priority = null,
+        [Description("Notas. Reemplaza las anteriores.")] string? notes = null,
+        [Description("Dosis por hectárea a cambiar, por supplyId (ver get_labor). Si la labor queda realizada se toman como dosis reales; si no, planificadas. Un supplyId que la labor no tiene se agrega. Los insumos no nombrados no se tocan.")] List<LaborSupplyInput>? supplies = null,
+        CancellationToken ct = default)
+    {
+        var current = await _api.GetLaborAsync(laborId, ct)
+            ?? throw new McpException($"No existe la labor {laborId} (o no es de este tenant).");
+
+        var willBeRealized = realized ?? current.Status == "Realized";
+        if (willBeRealized && current.IsOriginalPlan)
+            throw new McpException("La labor es del Planeamiento Original: no se puede realizar. Cargar la realizada con create_labor (realized=true).");
+
+        // Los insumos nuevos necesitan la unidad del inventario; se resuelve antes de tocar nada.
+        var newSupplyUnits = new Dictionary<Guid, string>();
+        foreach (var s in supplies ?? new())
+        {
+            if (current.Supplies.Any(x => x.SupplyId == s.SupplyId)) continue;
+            newSupplyUnits[s.SupplyId] = !string.IsNullOrWhiteSpace(s.Unit)
+                ? s.Unit
+                : (await _api.GetInventoryItemAsync(s.SupplyId, ct)
+                    ?? throw new McpException($"El insumo {s.SupplyId} no existe. Usar list_supplies.")).UnitA;
+        }
+
+        var response = await _api.PatchLaborAsync(laborId, labor =>
+        {
+            if (realized == true)
+            {
+                labor["status"] = "Realized";
+                labor["mode"] = "Realized";
+                labor["executionDate"] = Iso(_options.ToUtc(date ?? _options.Today()));
+            }
+            else if (realized == false)
+            {
+                labor["status"] = "Planned";
+                labor["mode"] = "Planned";
+                labor["executionDate"] = null;
+                if (date.HasValue) labor["estimatedDate"] = Iso(_options.ToUtc(date.Value));
+            }
+            else if (date.HasValue)
+            {
+                labor[willBeRealized ? "executionDate" : "estimatedDate"] = Iso(_options.ToUtc(date.Value));
+            }
+
+            // Sin fecha estimada la API rechaza volverla a planificada.
+            if (!willBeRealized && labor["estimatedDate"] is null)
+                labor["estimatedDate"] = labor["executionDate"]?.DeepClone() ?? Iso(_options.ToUtc(_options.Today()));
+
+            if (hectares.HasValue) labor["hectares"] = hectares.Value;
+            if (contactId.HasValue) labor["contactId"] = contactId.Value.ToString();
+            if (laborTypeId.HasValue) labor["laborTypeId"] = laborTypeId.Value.ToString();
+            if (activityId.HasValue) labor["erpActivityId"] = activityId.Value.ToString();
+            if (priority is not null) labor["priority"] = PriorityValue(priority);
+            if (notes is not null) labor["notes"] = notes;
+
+            var laborHa = labor["hectares"]!.GetValue<decimal>();
+            var supplyNodes = labor["supplies"] as JsonArray ?? new JsonArray();
+            labor["supplies"] = supplyNodes;
+
+            foreach (var node in supplyNodes.OfType<JsonObject>())
+            {
+                var edit = supplies?.FirstOrDefault(s => s.SupplyId.ToString() == node["supplyId"]?.GetValue<string>());
+                if (edit is not null)
+                    node[willBeRealized ? "realDose" : "plannedDose"] = edit.Dose;
+
+                if (hectares.HasValue)
+                    node[willBeRealized ? "realHectares" : "plannedHectares"] = laborHa;
+
+                // Lo mismo que hace la UI al pasar a Realizada: lo real arranca igual a lo planificado.
+                if (willBeRealized)
+                {
+                    node["realDose"] ??= node["plannedDose"]?.DeepClone();
+                    node["realHectares"] ??= node["plannedHectares"]?.DeepClone() ?? laborHa;
+                }
+            }
+
+            foreach (var (supplyId, unit) in newSupplyUnits)
+            {
+                var dose = supplies!.First(s => s.SupplyId == supplyId).Dose;
+                supplyNodes.Add(new JsonObject
+                {
+                    ["id"] = Guid.Empty.ToString(),
+                    ["supplyId"] = supplyId.ToString(),
+                    ["plannedDose"] = dose,
+                    ["plannedHectares"] = laborHa,
+                    ["realDose"] = willBeRealized ? dose : null,
+                    ["realHectares"] = willBeRealized ? laborHa : null,
+                    ["unitOfMeasure"] = unit
+                });
+            }
+        }, ct);
+
+        // La respuesta del PUT no trae tipo ni actividad por nombre; se relee para devolverla completa.
+        var saved = await _api.GetLaborAsync(laborId, ct) ?? response.Labor;
+        return new LaborSaveResult(LaborView.From(saved), response.Warnings);
+    }
+
+    private static string Iso(DateTime utc) => utc.ToString("O");
+
     // Espejo de GestorOT.Domain.Enums.LaborPriority.
     private static int PriorityValue(string priority) => priority.Trim().ToLowerInvariant() switch
     {
@@ -169,6 +278,6 @@ public sealed record LaborSupplyInput(
     [property: Description("Dosis por hectárea.")] decimal Dose,
     [property: Description("Unidad de la dosis (ej. 'l', 'kg'). Vacío = la unidad del inventario.")] string? Unit = null);
 
-public sealed record CreateLaborResult(LaborView Labor, List<string> Warnings);
+public sealed record LaborSaveResult(LaborView Labor, List<string> Warnings);
 
 public sealed record AssignResult(Guid LaborId, bool Ok, string? Error);

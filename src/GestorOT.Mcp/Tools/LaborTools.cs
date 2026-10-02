@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using GestorOT.Mcp.Api;
 using Microsoft.Extensions.Options;
+using ModelContextProtocol;
 using ModelContextProtocol.Server;
 
 namespace GestorOT.Mcp.Tools;
@@ -55,6 +56,14 @@ public sealed class LaborTools
 
         return PageResult<LaborView>.From(await _api.SearchLaborsAsync(query, ct), LaborView.From);
     }
+
+    [McpServerTool(Name = "get_labor", ReadOnly = true, Idempotent = true, OpenWorld = false)]
+    [Description("Una labor por id, con sus insumos. Para editarla o marcarla realizada, update_labor.")]
+    public async Task<LaborView> GetLabor(
+        [Description("Id de la labor (ver search_labors).")] Guid id,
+        CancellationToken ct = default) =>
+        LaborView.From(await _api.GetLaborAsync(id, ct)
+            ?? throw new McpException($"No existe la labor {id} (o no es de este tenant)."));
 }
 
 /// <summary>
@@ -67,7 +76,7 @@ public sealed record LaborView(
     Guid LotId, string? Lot, string? Field, Guid? CampaignId,
     Guid? WorkOrderId, string? OtNumber,
     DateTime? EstimatedDate, DateTime? ExecutionDate,
-    decimal Hectares, decimal EffectiveArea, string? AssignedTo, string? Notes,
+    decimal Hectares, decimal EffectiveArea, string? AssignedTo, string? Notes, bool IsOriginalPlan,
     List<LaborSupplyView> Supplies)
 {
     public static LaborView From(ApiLabor l) => new(
@@ -76,8 +85,8 @@ public sealed record LaborView(
         l.LotId, l.LotName, l.FieldName, l.CampaignId,
         l.WorkOrderId, l.OTNumber,
         l.EstimatedDate, l.ExecutionDate,
-        l.Hectares, l.EffectiveArea, l.AssignedTo, l.Notes,
-        l.Supplies.Select(s => new LaborSupplyView(s.SupplyName, s.PlannedDose, s.RealDose, s.PlannedTotal, s.RealTotal, s.UnitOfMeasure)).ToList());
+        l.Hectares, l.EffectiveArea, l.AssignedTo, l.Notes, l.IsOriginalPlan,
+        l.Supplies.Select(s => new LaborSupplyView(s.SupplyId, s.SupplyName, s.PlannedDose, s.RealDose, s.PlannedTotal, s.RealTotal, s.UnitOfMeasure)).ToList());
 
     // Espejo de GestorOT.Domain.Enums.LaborPriority.
     private static string PriorityName(int p) => p switch
@@ -89,4 +98,4 @@ public sealed record LaborView(
     };
 }
 
-public sealed record LaborSupplyView(string? Supply, decimal PlannedDose, decimal? RealDose, decimal PlannedTotal, decimal? RealTotal, string Unit);
+public sealed record LaborSupplyView(Guid SupplyId, string? Supply, decimal PlannedDose, decimal? RealDose, decimal PlannedTotal, decimal? RealTotal, string Unit);

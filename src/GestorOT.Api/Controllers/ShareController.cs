@@ -3,6 +3,7 @@ using System.Text.Json;
 using GestorOT.Application.Interfaces;
 using GestorOT.Domain.Entities;
 using GestorOT.Domain.Enums;
+using GestorOT.Shared;
 using GestorOT.Shared.Dtos;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -228,7 +229,7 @@ public class ShareController : ControllerBase
             return BadRequest("La labor ya fue realizada.");
 
         labor.Status = LaborStatus.Realized;
-        labor.ExecutionDate = DateTime.UtcNow;
+        labor.ExecutionDate = LocalDay.Today;
         labor.EffectiveArea = request.RealHectares;
         labor.RealizedDose = request.Supplies.FirstOrDefault()?.RealDose ?? labor.PlannedDose;
 
@@ -312,7 +313,7 @@ public class ShareController : ControllerBase
 
                     // Update existing labor instead of creating a new one
                     source.Status = LaborStatus.Realized;
-                    source.ExecutionDate = DateTime.UtcNow;
+                    source.ExecutionDate = LocalDay.Today;
                     source.EffectiveArea = laborReq.RealHectares; // This is the REAL area
                     
                     source.RealizedDose = laborReq.Supplies.FirstOrDefault()?.RealDose ?? source.PlannedDose;

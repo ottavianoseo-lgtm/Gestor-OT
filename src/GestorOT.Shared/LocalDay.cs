@@ -15,4 +15,7 @@ public static class LocalDay
         TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(value.Date, DateTimeKind.Unspecified), Zone);
 
     public static DateTime? ToUtc(DateTime? value) => value.HasValue ? ToUtc(value.Value) : null;
+
+    /// <summary>Hoy en Argentina, como fecha de día. No usar DateTime.UtcNow: después de las 21 ya es mañana en UTC.</summary>
+    public static DateTime Today => ToUtc(TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, Zone));
 }

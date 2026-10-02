@@ -28,6 +28,10 @@ public sealed class GestorOtOptions
     /// </summary>
     public string TimeZone { get; set; } = "America/Argentina/Buenos_Aires";
 
+    /// <summary>Hoy en la zona del usuario.</summary>
+    public DateOnly Today() =>
+        DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, TimeZoneInfo.FindSystemTimeZoneById(TimeZone)));
+
     public DateTime ToUtc(DateOnly date)
     {
         var tz = TimeZoneInfo.FindSystemTimeZoneById(TimeZone);

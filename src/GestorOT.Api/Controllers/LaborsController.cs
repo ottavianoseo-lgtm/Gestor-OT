@@ -73,6 +73,8 @@ public class LaborsController : ControllerBase
             .AsNoTracking()
             .AsSplitQuery()
             .Include(l => l.Lot).ThenInclude(l => l.Field)
+            .Include(l => l.Type)
+            .Include(l => l.ErpActivity)
             .Include(l => l.WorkOrder)
             .Include(l => l.Supplies).ThenInclude(s => s.Supply)
             .Include(l => l.SourceStrategy)
@@ -381,7 +383,7 @@ public class LaborsController : ControllerBase
             return BadRequest("La labor debe estar en estado 'AwaitingValidation' para ser realizada.");
 
         labor.Status = LaborStatus.Realized;
-        labor.ExecutionDate = DateTime.UtcNow;
+        labor.ExecutionDate = LocalDay.Today;
 
         foreach (var realSupply in realSupplies)
         {
@@ -437,7 +439,7 @@ public class LaborsController : ControllerBase
             LaborTypeId = source.LaborTypeId,
             ContactId = source.ContactId,
             Status = LaborStatus.Realized,
-            ExecutionDate = DateTime.UtcNow,
+            ExecutionDate = LocalDay.Today,
             Hectares = source.Hectares,
             PlannedDose = source.PlannedDose,
             RealizedDose = source.PlannedDose,
@@ -511,7 +513,7 @@ public class LaborsController : ControllerBase
                     IsExternalBilling = source.IsExternalBilling,
                     Mode = LaborMode.Realized,
                     Status = LaborStatus.Realized,
-                    ExecutionDate = DateTime.UtcNow,
+                    ExecutionDate = LocalDay.Today,
                     Hectares = source.Hectares,
                     EffectiveArea = source.Hectares, // Default to hectares
                     Rate = source.Rate,

@@ -711,7 +711,7 @@ public class LaborExcelImportService : ILaborExcelImportService
             return null;
 
         string number = parsedLabor.WorkOrderNumber.Trim();
-        DateTime date = LocalDay.ToUtc(parsedLabor.Date ?? DateTime.UtcNow);
+        DateTime date = parsedLabor.Date.HasValue ? LocalDay.ToUtc(parsedLabor.Date.Value) : LocalDay.Today;
         Guid? fieldId = campaignLot?.Lot?.FieldId;
 
         if (cache.TryGetValue(number, out var wo))
