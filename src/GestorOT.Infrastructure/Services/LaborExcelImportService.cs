@@ -7,6 +7,7 @@ using ClosedXML.Excel;
 using GestorOT.Application.Interfaces;
 using GestorOT.Domain.Entities;
 using GestorOT.Domain.Enums;
+using GestorOT.Shared;
 using GestorOT.Shared.Dtos;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -537,8 +538,8 @@ public class LaborExcelImportService : ILaborExcelImportService
                 existingLabor.ContactId = null;
                 existingLabor.WorkOrderId = workOrder?.Id ?? existingLabor.WorkOrderId;
                 existingLabor.IsExternalBilling = parsedLabor.IsExternalBilling;
-                existingLabor.ExecutionDate = parsedLabor.Date;
-                existingLabor.EstimatedDate = parsedLabor.Date;
+                existingLabor.ExecutionDate = LocalDay.ToUtc(parsedLabor.Date);
+                existingLabor.EstimatedDate = LocalDay.ToUtc(parsedLabor.Date);
                 existingLabor.Mode = laborMode;
                 existingLabor.Status = laborStatus;
                 existingLabor.Notes = string.IsNullOrWhiteSpace(parsedLabor.Contractor)
@@ -578,8 +579,8 @@ public class LaborExcelImportService : ILaborExcelImportService
                     LaborTypeId = targetLaborTypeId.Value,
                     ContactId = null,
                     IsExternalBilling = parsedLabor.IsExternalBilling,
-                    ExecutionDate = parsedLabor.Date,
-                    EstimatedDate = parsedLabor.Date,
+                    ExecutionDate = LocalDay.ToUtc(parsedLabor.Date),
+                    EstimatedDate = LocalDay.ToUtc(parsedLabor.Date),
                     Hectares = parsedLabor.Hectares,
                     EffectiveArea = parsedLabor.Hectares,
                     Rate = 1,
@@ -710,7 +711,7 @@ public class LaborExcelImportService : ILaborExcelImportService
             return null;
 
         string number = parsedLabor.WorkOrderNumber.Trim();
-        DateTime date = parsedLabor.Date ?? DateTime.UtcNow.Date;
+        DateTime date = LocalDay.ToUtc(parsedLabor.Date ?? DateTime.UtcNow);
         Guid? fieldId = campaignLot?.Lot?.FieldId;
 
         if (cache.TryGetValue(number, out var wo))
