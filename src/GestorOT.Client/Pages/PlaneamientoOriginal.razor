@@ -9,7 +9,7 @@
 @inject IMessageService Message
 @inject NavigationManager Nav
 @inject GestorOT.Client.Services.CampaignState CampaignState
-@inject FilterState Filters
+@implements IDisposable
 
 <PageTitle>Planeamiento Original - GestorOT</PageTitle>
 
@@ -72,74 +72,92 @@ else
     </div>
 }
 
-@{ var filtered = _filter.Apply(_labors); }
-<LaborFilterBar Filter="@_filter" Labors="@_labors" ShownCount="@filtered.Count" OnChanged="StateHasChanged" />
 <div class="glass-card">
-    <Table TItem="LaborDto"
-           DataSource="@filtered"
-           Loading="@_loading" 
-           Size="TableSize.Small" 
-           ScrollX="1200">
-        <ChildContent>
-            <PropertyColumn Property="l => l.LaborTypeName" Title="Labor" Sortable>
-                <div style="display: flex; align-items: center; gap: 8px;">
-                    <div style="background: #F1C40F; width: 8px; height: 8px; border-radius: 50%;"></div>
-                    @context.LaborTypeName
-                </div>
-            </PropertyColumn>
-            <PropertyColumn Property="l => l.LotName" Title="Lote" Sortable />
-            <PropertyColumn Property="l => l.FieldName" Title="Campo" Sortable />
-            <PropertyColumn Property="l => l.ErpActivityName" Title="Actividad" Sortable />
-            <Column TData="DateTime?" Title="Fecha Estimada" Sortable>
-                @context.EstimatedDate?.ToString("dd/MM/yyyy")
-            </Column>
-            <PropertyColumn Property="l => l.Hectares" Title="Ha Plan." Sortable Format="N2" />
-            <Column TData="string" Title="Insumos">
-                @if (context.Supplies != null && context.Supplies.Count > 0)
-                {
-                    var first = context.Supplies.First();
-                    var cleanUnit = UnitHelper.CleanDoseUnit(first.SupplyUnit) ?? UnitHelper.CleanDoseUnit(first.UnitOfMeasure) ?? "u";
-                    <span style="color: rgba(255,255,255,0.6); font-size: 11px;">@first.SupplyName @first.PlannedTotal.ToString("N2") @cleanUnit</span>
-                    if (context.Supplies.Count > 1)
+    @if (_hasCampaign)
+    {
+        <RemoteTable @ref="_table"
+                     TItem="LaborDto"
+                     Load="LoadLabors"
+                     FixedFilters="@FixedFilters"
+                     SortKeys="@SortKeys"
+                     StateKey="planeamiento-original"
+                     SearchPlaceholder="Buscar lote, campo, tipo de labor, notas..."
+                     ItemLabel="labores"
+                     RowKey="l => l.Id.ToString()"
+                     ScrollX="1200">
+            <Filters>
+                <SelectFilter Param="laborTypeId" Placeholder="Tipo labor" Options="@_laborTypeOptions" Style="width: 170px;" />
+                <SelectFilter Param="contactId" Placeholder="Responsable" SearchOptions="SearchContacts" Style="width: 180px;" />
+                <SelectFilter Param="fieldId" Placeholder="Campo" SearchOptions="SearchFields" Clears='new[] { "lotId" }' Style="width: 160px;" />
+                <SelectFilter Param="lotId" Placeholder="Lote" SearchOptions="SearchLots" Style="width: 160px;" />
+                <DateRangeFilter />
+            </Filters>
+            <ChildContent>
+                <PropertyColumn Property="l => l.LaborTypeName" Title="Labor" Sortable>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <div style="background: #F1C40F; width: 8px; height: 8px; border-radius: 50%;"></div>
+                        @context.LaborTypeName
+                    </div>
+                </PropertyColumn>
+                <PropertyColumn Property="l => l.LotName" Title="Lote" Sortable />
+                <PropertyColumn Property="l => l.FieldName" Title="Campo" Sortable />
+                @* TODO(api): api/labors/search no ordena por actividad del ERP. *@
+                <PropertyColumn Property="l => l.ErpActivityName" Title="Actividad" />
+                <PropertyColumn Property="l => l.EstimatedDate" Title="Fecha Estimada" Sortable>
+                    @context.EstimatedDate?.ToString("dd/MM/yyyy")
+                </PropertyColumn>
+                <PropertyColumn Property="l => l.Hectares" Title="Ha Plan." Sortable Format="N2" />
+                <Column TData="string" Title="Insumos">
+                    @if (context.Supplies != null && context.Supplies.Count > 0)
                     {
-                        <Tag Style="background: rgba(52,152,219,0.15); color: #3498DB; border: 1px solid rgba(52,152,219,0.3); border-radius: 4px; font-size: 9px; margin-left: 4px;">+@(context.Supplies.Count - 1)</Tag>
+                        var first = context.Supplies.First();
+                        var cleanUnit = UnitHelper.CleanDoseUnit(first.SupplyUnit) ?? UnitHelper.CleanDoseUnit(first.UnitOfMeasure) ?? "u";
+                        <span style="color: rgba(255,255,255,0.6); font-size: 11px;">@first.SupplyName @first.PlannedTotal.ToString("N2") @cleanUnit</span>
+                        if (context.Supplies.Count > 1)
+                        {
+                            <Tag Style="background: rgba(52,152,219,0.15); color: #3498DB; border: 1px solid rgba(52,152,219,0.3); border-radius: 4px; font-size: 9px; margin-left: 4px;">+@(context.Supplies.Count - 1)</Tag>
+                        }
                     }
-                }
-                else
-                {
-                    <span style="color: rgba(255,255,255,0.2); font-size: 11px;">—</span>
-                }
-            </Column>
-            <Column TData="string" Title="Estado">
-                <Tag Style="background: #1890FF33; color: #fff; border: 1px solid #1890FF80; border-radius: 12px; font-size: 11px; font-weight: 600; padding: 2px 10px;">Planeada (Base)</Tag>
-            </Column>
-            <Column TData="string" Title="OT Relacionada">
-                @if (context.WorkOrderId != null)
-                {
-                    <Tag Color="@("blue")" Style="cursor: pointer;" OnClick='() => Nav.NavigateTo($"/workorders/{context.WorkOrderId}")'>
-                        <Icon Type="link" /> @context.OTNumber
-                    </Tag>
-                }
-                else
-                {
-                    <span style="color: rgba(255,255,255,0.3);">Sin asignar</span>
-                }
-            </Column>
-            <ActionColumn Title="Acciones" Width="100">
-                <Space>
-                    <SpaceItem>
-                        <Popconfirm Title="¿Desanclar esta labor de la línea de base?" OnConfirm="() => UnpinOriginalPlan(context.Id)">
-                            <Button Type="@ButtonType.Text" Icon="unlock" Style="color: #E74C3C;" Disabled="@(_isLocked)" />
-                        </Popconfirm>
-                    </SpaceItem>
-                </Space>
-            </ActionColumn>
-        </ChildContent>
-    </Table>
+                    else
+                    {
+                        <span style="color: rgba(255,255,255,0.2); font-size: 11px;">—</span>
+                    }
+                </Column>
+                <Column TData="string" Title="Estado">
+                    <Tag Style="background: #1890FF33; color: #fff; border: 1px solid #1890FF80; border-radius: 12px; font-size: 11px; font-weight: 600; padding: 2px 10px;">Planeada (Base)</Tag>
+                </Column>
+                <PropertyColumn Property="l => l.OTNumber" Title="OT Relacionada" Sortable>
+                    @if (context.WorkOrderId != null)
+                    {
+                        <Tag Color="@("blue")" Style="cursor: pointer;" OnClick='() => Nav.NavigateTo($"/workorders/{context.WorkOrderId}")'>
+                            <Icon Type="link" /> @context.OTNumber
+                        </Tag>
+                    }
+                    else
+                    {
+                        <span style="color: rgba(255,255,255,0.3);">Sin asignar</span>
+                    }
+                </PropertyColumn>
+                <ActionColumn Title="Acciones" Width="100">
+                    <Space>
+                        <SpaceItem>
+                            <Popconfirm Title="¿Desanclar esta labor de la línea de base?" OnConfirm="() => UnpinOriginalPlan(context.Id)">
+                                <Button Type="@ButtonType.Text" Icon="unlock" Style="color: #E74C3C;" Disabled="@(_isLocked)" />
+                            </Popconfirm>
+                        </SpaceItem>
+                    </Space>
+                </ActionColumn>
+            </ChildContent>
+        </RemoteTable>
+    }
+    else
+    {
+        <Empty Description="@("Seleccioná una campaña para ver su planeamiento original")" />
+    }
 </div>
 
 <Modal Title="Crear Labores desde Estrategia (Base)" Visible="_strategyWizardVisible" Footer="null" OnCancel="() => _strategyWizardVisible = false" Width="900">
-    <StrategyLaborWizard ForceOriginalPlan="true" OnClose="() => { _strategyWizardVisible = false; LoadData(); }" />
+    <StrategyLaborWizard ForceOriginalPlan="true" OnClose="OnStrategyWizardClosed" />
 </Modal>
 
 <Modal Title="Nueva Labor Base" Visible="@_drawerVisible" OnCancel="HandleCancelLaborForm" Footer="null" Width="800">
@@ -147,24 +165,46 @@ else
 </Modal>
 
 @code {
-    private List<LaborDto> _labors = new();
-    private bool _loading = true;
-    private bool _showModal;
+    private RemoteTable<LaborDto>? _table;
+    private List<FilterOption> _laborTypeOptions = new();
     private bool _strategyWizardVisible;
     private bool _drawerVisible;
-    private LaborDto? _selectedLabor;
     private bool _hasCampaign;
     private bool _isLocked;
     private LaborEditorForm? _laborFormRef;
 
-    private LaborFilter _filter = new();
+    // La línea de base es de la campaña actual; al cambiar la campaña la tabla vuelve a la página 1 sola.
+    private IReadOnlyDictionary<string, string?> FixedFilters => new Dictionary<string, string?>
+    {
+        ["isOriginalPlan"] = "true",
+        ["campaignId"] = CampaignState.CurrentCampaign?.Id.ToString(),
+    };
+
+    // Propiedad de la columna → clave de orden de api/labors/search.
+    private static readonly IReadOnlyDictionary<string, string> SortKeys = new Dictionary<string, string>
+    {
+        [nameof(LaborDto.LaborTypeName)] = "laborType",
+        [nameof(LaborDto.LotName)] = "lot",
+        [nameof(LaborDto.FieldName)] = "field",
+        [nameof(LaborDto.EstimatedDate)] = "estimatedDate",
+        [nameof(LaborDto.Hectares)] = "hectares",
+        [nameof(LaborDto.OTNumber)] = "otNumber",
+    };
 
     protected override async Task OnInitializedAsync()
     {
-        _filter = Filters.For<LaborFilter>("planeamiento-original");
-        CampaignState.OnChange += async () => await LoadData();
-        await LoadData();
+        UpdateCampaignState();
+        CampaignState.OnChange += OnCampaignChanged;
+        await LoadLaborTypes();
     }
+
+    private void OnCampaignChanged()
+    {
+        // Cambian los FixedFilters y la tabla se recarga sola; acá solo el estado de la campaña.
+        InvokeAsync(() => { UpdateCampaignState(); StateHasChanged(); });
+    }
+
+    public void Dispose() => CampaignState.OnChange -= OnCampaignChanged;
 
     private void UpdateCampaignState()
     {
@@ -172,32 +212,57 @@ else
         _isLocked = CampaignState.IsLocked;
     }
 
-    private async Task LoadData()
+    private async Task LoadLaborTypes()
     {
-        _loading = true;
-        UpdateCampaignState();
         try
         {
-            if (_hasCampaign)
-            {
-                var campaignId = CampaignState.CurrentCampaign!.Id;
-                _labors = await Http.GetFromJsonAsync<List<LaborDto>>(
-                    $"api/labors?isOriginalPlan=true&campaignId={campaignId}") ?? new();
-            }
-            else
-            {
-                _labors = new();
-            }
+            var types = await Http.GetFromJsonAsync("api/catalogs/labor-types", AppJsonSerializerContext.Default.ListLaborTypeDto);
+            _laborTypeOptions = (types ?? new()).Select(t => new FilterOption(t.Id.ToString(), t.Name)).ToList();
         }
         catch (Exception ex)
         {
-            Message.Error($"Error al cargar planeamiento: {ex.Message}");
+            Message.Error($"Error al cargar los tipos de labor: {ex.Message}");
         }
-        finally
-        {
-            _loading = false;
-            StateHasChanged();
-        }
+    }
+
+    private Task<PagedResult<LaborDto>?> LoadLabors(string query, CancellationToken ct) =>
+        Http.GetFromJsonAsync($"api/labors/search?{query}", AppJsonSerializerContext.Default.PagedResultLaborDto, ct);
+
+    private Task ReloadTable() => _table?.ReloadAsync() ?? Task.CompletedTask;
+
+    private async Task<IEnumerable<FilterOption>> SearchContacts(string? text)
+    {
+        var page = await Http.GetFromJsonAsync<PagedResult<ContactDto>>(
+            $"api/catalogs/contacts/search?page=1&pageSize=20&search={Uri.EscapeDataString(text ?? "")}");
+        return page?.Items.Select(c => new FilterOption(c.Id.ToString(), c.FullName)) ?? Enumerable.Empty<FilterOption>();
+    }
+
+    private async Task<IEnumerable<FilterOption>> SearchFields(string? text)
+    {
+        var page = await Http.GetFromJsonAsync<PagedResult<FieldListItemDto>>(
+            $"api/fields/search?page=1&pageSize=20&search={Uri.EscapeDataString(text ?? "")}");
+        return page?.Items.Select(f => new FilterOption(f.Id.ToString(), f.Name)) ?? Enumerable.Empty<FilterOption>();
+    }
+
+    // Con un campo elegido alcanza con el nombre del lote; sin campo se aclara de cuál es,
+    // porque hay lotes que se llaman igual en distintos campos.
+    private async Task<IEnumerable<FilterOption>> SearchLots(string? text)
+    {
+        var campaign = CampaignState.CurrentCampaign;
+        if (campaign == null) return Enumerable.Empty<FilterOption>();
+
+        var fieldId = _table?.Query.Get("fieldId");
+        var page = await Http.GetFromJsonAsync<PagedResult<CampaignLotDto>>(
+            $"api/campaigns/{campaign.Id}/lots/search?page=1&pageSize=20&search={Uri.EscapeDataString(text ?? "")}"
+            + (fieldId is null ? "" : $"&fieldId={fieldId}"));
+        return page?.Items.Select(l => new FilterOption(l.LotId.ToString(), fieldId is null ? $"{l.LotName} · {l.FieldName}" : l.LotName ?? ""))
+            ?? Enumerable.Empty<FilterOption>();
+    }
+
+    private async Task OnStrategyWizardClosed()
+    {
+        _strategyWizardVisible = false;
+        await ReloadTable();
     }
 
     private async Task UnpinOriginalPlan(Guid laborId)
@@ -213,7 +278,7 @@ else
             if (response.IsSuccessStatusCode)
             {
                 Message.Success("Labor desanclada correctamente.");
-                await LoadData();
+                await ReloadTable();
             }
             else
             {
@@ -254,6 +319,6 @@ else
     private async Task OnSaved()
     {
         _drawerVisible = false;
-        await LoadData();
+        await ReloadTable();
     }
 }

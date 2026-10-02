@@ -6,6 +6,7 @@
 @inject HttpClient Http
 @inject IMessageService Message
 @inject NavigationManager Nav
+@inject FilterState FilterState
 
 <PageTitle>Biblioteca de Archivos - GestorOT</PageTitle>
 
@@ -14,12 +15,19 @@
         <h2 class="page-title">Biblioteca de Archivos</h2>
         <span class="page-subtitle">Archivos conservados. Previsualice, descargue o asocie a labores.</span>
     </div>
-    <div style="display: flex; gap: 8px;">
-        <Input @bind-Value="@_searchText" Placeholder="Buscar por nombre..." Style="width: 250px;" />
-        <Button Icon="search" OnClick="LoadData" />
-        <Button Icon="reload" OnClick="LoadData">Refrescar</Button>
-    </div>
 </div>
+
+<FilterToolbar Query="@_query"
+               OnChanged="StateHasChanged"
+               SearchPlaceholder="Buscar por nombre de archivo..."
+               CountText="@CountText"
+               OnReload="LoadData"
+               Loading="@_loading">
+    <Filters>
+        <SelectFilter Param="type" Placeholder="Tipo" Options="@TypeOptions" Style="width: 140px;" />
+        <SelectFilter Param="linked" Placeholder="Enlaces" Options="@LinkOptions" Style="width: 170px;" />
+    </Filters>
+</FilterToolbar>
 
 @if (_loading)
 {
@@ -38,7 +46,7 @@ else if (_files.Count == 0)
 else
 {
     <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 16px;">
-        @foreach (var file in FilteredFiles)
+        @foreach (var file in PageFiles)
         {
             <div class="file-card" @onclick="() => OpenPreview(file)" style="cursor: pointer;">
                 <div class="file-preview">
@@ -87,6 +95,17 @@ else
             </div>
         }
     </div>
+    @if (Filtered.Count == 0)
+    {
+        <div style="text-align: center; padding: 40px; color: rgba(255,255,255,0.35);">Ningún archivo coincide con los filtros.</div>
+    }
+    else
+    {
+        <div style="margin-top: 16px;">
+            <Pagination Total="@Filtered.Count" Current="@_query.PageIndex" PageSize="@_query.PageSize"
+                        OnChange="OnPageChange" ShowSizeChanger PageSizeOptions="@(new[] { 12, 24, 48, 96 })" />
+        </div>
+    }
 }
 
 <Modal Title="@_previewFile?.FileName" Visible="_previewVisible"
@@ -157,18 +176,74 @@ else
 @code {
     private List<FileAssetDto> _files = new();
     private bool _loading = true;
-    private string _searchText = string.Empty;
+    private TableQuery _query = new();
 
     private bool _previewVisible;
     private FileAssetDto? _previewFile;
 
-    private IEnumerable<FileAssetDto> FilteredFiles => string.IsNullOrWhiteSpace(_searchText)
-        ? _files
-        : _files.Where(f => f.FileName.Contains(_searchText, StringComparison.OrdinalIgnoreCase));
+    private static readonly List<FilterOption> TypeOptions = new()
+    {
+        new("image", "Imágenes"),
+        new("pdf", "PDF"),
+        new("other", "Otros"),
+    };
+
+    private static readonly List<FilterOption> LinkOptions = new()
+    {
+        new("true", "Enlazados a labores"),
+        new("false", "Sin enlazar"),
+    };
+
+    // Tarjetas en vez de tabla, pero con la misma barra y paginación que el resto de los listados.
+    // La biblioteca de un tenant es chica: se filtra en memoria sobre lo que trae api/files.
+    private List<FileAssetDto> Filtered
+    {
+        get
+        {
+            IEnumerable<FileAssetDto> rows = _files;
+            var term = _query.Search?.Trim();
+            if (!string.IsNullOrEmpty(term))
+                rows = rows.Where(f => f.FileName.Contains(term, StringComparison.OrdinalIgnoreCase));
+
+            rows = _query.Get("type") switch
+            {
+                "image" => rows.Where(f => f.MimeType.StartsWith("image/")),
+                "pdf" => rows.Where(f => f.MimeType == "application/pdf"),
+                "other" => rows.Where(f => !f.MimeType.StartsWith("image/") && f.MimeType != "application/pdf"),
+                _ => rows
+            };
+            rows = _query.Get("linked") switch
+            {
+                "true" => rows.Where(f => f.LinkCount > 0),
+                "false" => rows.Where(f => f.LinkCount == 0),
+                _ => rows
+            };
+            return rows.ToList();
+        }
+    }
+
+    private IEnumerable<FileAssetDto> PageFiles =>
+        Filtered.Skip((_query.PageIndex - 1) * _query.PageSize).Take(_query.PageSize);
+
+    private string CountText => Filtered.Count == _files.Count
+        ? $"{_files.Count} archivos"
+        : $"{Filtered.Count} de {_files.Count} archivos";
 
     protected override async Task OnInitializedAsync()
     {
+        _query = FilterState.For<TableQuery>("table:biblioteca");
+        if (!_query.Seeded)
+        {
+            _query.PageSize = 24;
+            _query.Seeded = true;
+        }
         await LoadData();
+    }
+
+    private void OnPageChange(PaginationEventArgs args)
+    {
+        _query.PageIndex = args.Page;
+        _query.PageSize = args.PageSize;
     }
 
     private async Task LoadData()
@@ -176,10 +251,7 @@ else
         _loading = true;
         try
         {
-            var url = string.IsNullOrWhiteSpace(_searchText)
-                ? "api/files"
-                : $"api/files?search={Uri.EscapeDataString(_searchText)}";
-            _files = await Http.GetFromJsonAsync<List<FileAssetDto>>(url) ?? new();
+            _files = await Http.GetFromJsonAsync<List<FileAssetDto>>("api/files") ?? new();
         }
         catch (Exception ex)
         {

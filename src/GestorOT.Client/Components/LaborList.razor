@@ -3,159 +3,37 @@
 @inject IMessageService Message
 @inject NavigationManager Nav
 
-<Table @ref="_table" 
-       TItem="LaborDto" 
-       DataSource="@Labors" 
-       Size="TableSize.Small" 
-       OnRowClick="r => OnEdit.InvokeAsync(r.Data.Id)"
-       SelectedRowsChanged="OnSelectedRowsChanged"
-       RowKey="l => l.Id.ToString()"
-       Style="background: transparent;">
-    <ChildContent>
-        <Selection Key="@(context.Id.ToString())" Type="SelectionType.Checkbox" Disabled="@(DisableSelection?.Invoke(context) ?? false)" />
-        
-        <PropertyColumn Property="l => l.LaborTypeName" Title="Labor" Sortable>
-            <div style="display: flex; align-items: center; gap: 8px;">
-                <div style="background: @(GetTypeBgColor(context.LaborTypeName ?? "Labor")); width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;"></div>
-                <span style="color: #fff;">@context.LaborTypeName</span>
-                @if (context.IsOriginalPlan) {
-                    <Tag Color="@("gold")" Style="font-size: 10px; margin-left: 6px;" Title="Planeamiento Original: solo lectura">P.O.</Tag>
-                }
-            </div>
-        </PropertyColumn>
-
-        @* La fecha de la labor es cuando se ejecuta/planea, no cuando se cargó el registro (OT-59). *@
-        <PropertyColumn Property="l => l.DisplayDate" Title="Fecha" Sortable Format="dd/MM/yyyy" />
-        <PropertyColumn Property="l => l.LotName" Title="Lote" Sortable />
-        <PropertyColumn Property="l => l.FieldName" Title="Campo" Sortable />
-        <PropertyColumn Property="l => l.AssignedTo" Title="Responsable" Sortable />
-        <PropertyColumn Property="l => l.Hectares" Title="Ha" Sortable Format="N1" />
-
-        @if (ShowOtColumn)
-        {
-            <Column TData="string" Title="OT" Sortable>
-                @if (context.WorkOrderId != null)
-                {
-                    <div @onclick:stopPropagation="true">
-                        <Tag Color="@("blue")" Style="cursor: pointer;" OnClick='() => Nav.NavigateTo($"/workorders/{context.WorkOrderId}")'>
-                            <Icon Type="link" /> @context.OTNumber
-                        </Tag>
-                    </div>
-                }
-                else
-                {
-                    <span style="color: rgba(255,255,255,0.2);">Sin OT</span>
-                }
-            </Column>
-        }
-
-        <Column TData="string" Title="Estado" Sortable>
-            <Tag Style="@GetStatusTagStyle(context.Status)">
-                @GetStatusLabel(context.Status)
-            </Tag>
-        </Column>
-
-        <ActionColumn Title="Acciones" Width="180" Fixed="@AntDesign.ColumnFixPlacement.Right">
-            <div style="display: flex; gap: 6px;" @onclick:stopPropagation="true">
-                @if (context.Status != "Realized" && !IsLocked)
-                {
-                    <Tooltip Title="@("Ejecutar")">
-                        <Button Type="@ButtonType.Text" Size="@ButtonSize.Small" OnClick='() => OnExecute.InvokeAsync((context.Id, "Realized"))'>
-                            <Icon Type="play-circle" Theme="IconThemeType.Outline" Style="color: #2ECC71; font-size: 16px;" />
-                        </Button>
-                    </Tooltip>
-                }
-                <Tooltip Title="@("Editar")">
-                    <Button Type="@ButtonType.Text" Size="@ButtonSize.Small" OnClick="() => OnEdit.InvokeAsync(context.Id)" Disabled="@IsLocked">
-                        <Icon Type="edit" Theme="IconThemeType.Outline" Style="color: #3498DB; font-size: 16px;" />
-                    </Button>
-                </Tooltip>
-                
-                @if (OnValidate.HasDelegate)
-                {
-                    <Tooltip Title="@("Validar")">
-                        <Button Type="@ButtonType.Text" Size="@ButtonSize.Small" OnClick="() => OnValidate.InvokeAsync(context.Id)" Disabled="@IsLocked">
-                            <Icon Type="share-alt" Theme="IconThemeType.Outline" Style="color: #9B59B6; font-size: 16px;" />
-                        </Button>
-                    </Tooltip>
-                }
-
-                <Tooltip Title="@("Eliminar")">
-                    <Popconfirm Title="@DeleteConfirmTitle" OnConfirm="() => OnDelete.InvokeAsync(context.Id)">
-                        <Button Type="@ButtonType.Text" Danger Size="@ButtonSize.Small" Disabled="@IsLocked">
-                            <Icon Type="delete" Theme="IconThemeType.Outline" Style="font-size: 16px;" />
-                        </Button>
-                    </Popconfirm>
-                </Tooltip>
-            </div>
-        </ActionColumn>
-    </ChildContent>
-
-    <ExpandTemplate Context="laborRow">
-        <div style="padding: 12px; background: rgba(255,255,255,0.02); border-radius: 8px; border: 1px solid rgba(255,255,255,0.05);">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 8px;">
-                <h4 style="margin: 0; color: #3498DB; font-size: 14px; display: flex; align-items: center; gap: 8px;">
-                    <Icon Type="info-circle" /> Detalle de Insumos
-                </h4>
-            </div>
-            @if (laborRow.Data.Supplies != null && laborRow.Data.Supplies.Any())
-            {
-                <Table TItem="LaborSupplyDto" DataSource="@laborRow.Data.Supplies" Size="TableSize.Small" HidePagination Style="background: transparent;">
-
-                    <PropertyColumn Property="s => s.SupplyName" Title="Insumo" />
-
-                    <Column TData="string" Title="Unidad">
-                        @{
-                            var cleanUnit = UnitHelper.CleanDoseUnit(context.SupplyUnit) ?? UnitHelper.CleanDoseUnit(context.UnitOfMeasure) ?? "—";
-                        }
-                        <Tag Style="background: rgba(52, 152, 219, 0.2); color: #3498DB; border-color: rgba(52, 152, 219, 0.4); font-weight: 600; font-size: 11px;">
-                            @cleanUnit
-                        </Tag>
-                    </Column>
-
-                    <Column TData="decimal" Title="Ha. Plan.">
-                        <span class="planned-cell">@((context.PlannedHectares > 0 ? context.PlannedHectares : laborRow.Data.Hectares).ToString("N2")) ha</span>
-                    </Column>
-                    <Column TData="decimal" Title="Dosis Plan.">
-                        @{
-                            var cleanUnit = UnitHelper.CleanDoseUnit(context.SupplyUnit) ?? UnitHelper.CleanDoseUnit(context.UnitOfMeasure) ?? "u";
-                        }
-                        <span class="planned-cell">@context.PlannedDose.ToString("N2") @UnitHelper.FormatDoseRate(cleanUnit)</span>
-                    </Column>
-                    <Column TData="decimal" Title="Total Plan.">
-                        @{
-                            var cleanUnit = UnitHelper.CleanDoseUnit(context.SupplyUnit) ?? UnitHelper.CleanDoseUnit(context.UnitOfMeasure) ?? "u";
-                        }
-                        <span class="planned-cell" style="font-weight: 700; color: #2ECC71;">@context.PlannedTotal.ToString("N2") @cleanUnit</span>
-                    </Column>
-
-                    <Column TData="decimal?" Title="Ha. Real">
-                        <span class="real-cell">@(context.RealHectares.HasValue ? $"{context.RealHectares.Value:N2} ha" : "—")</span>
-                    </Column>
-                    <Column TData="decimal?" Title="Dosis Real">
-                        @{
-                            var cleanUnit = UnitHelper.CleanDoseUnit(context.SupplyUnit) ?? UnitHelper.CleanDoseUnit(context.UnitOfMeasure) ?? "u";
-                        }
-                        <span class="real-cell">@(context.RealDose.HasValue ? $"{context.RealDose.Value:N2} {UnitHelper.FormatDoseRate(cleanUnit)}" : "—")</span>
-                    </Column>
-                    <Column TData="decimal?" Title="Total Real">
-                        @{
-                            var cleanUnit = UnitHelper.CleanDoseUnit(context.SupplyUnit) ?? UnitHelper.CleanDoseUnit(context.UnitOfMeasure) ?? "u";
-                        }
-                        <span class="real-cell" style="font-weight: 700; color: #3498DB;">@(context.RealTotal.HasValue ? $"{context.RealTotal.Value:N2} {cleanUnit}" : "—")</span>
-                    </Column>
-                </Table>
-            }
-            else
-            {
-                <div style="padding: 20px; text-align: center; color: rgba(255,255,255,0.3);">
-                    <Icon Type="inbox" Style="font-size: 24px; display: block; margin-bottom: 8px;" />
-                    No hay insumos registrados para esta labor
-                </div>
-            }
-        </div>
-    </ExpandTemplate>
-</Table>
+@if (Load != null)
+{
+    <RemoteTable @ref="_remote"
+                 TItem="LaborDto"
+                 Load="@Load"
+                 FixedFilters="@FixedFilters"
+                 SortKeys="@SortKeys"
+                 StateKey="@StateKey"
+                 SearchPlaceholder="@SearchPlaceholder"
+                 ItemLabel="labores"
+                 Filters="@Filters"
+                 ExtraOptions="@ExtraOptions"
+                 RowKey="l => l.Id.ToString()"
+                 OnRowClick="r => OnEdit.InvokeAsync(r.Data.Id)"
+                 SelectedRowsChanged="OnSelectedRowsChanged"
+                 OnLoaded="OnLoaded"
+                 ExpandTemplate="@Supplies"
+                 ChildContent="@Columns" />
+}
+else
+{
+    <Table TItem="LaborDto"
+           DataSource="@Labors"
+           Size="TableSize.Small"
+           OnRowClick="r => OnEdit.InvokeAsync(r.Data.Id)"
+           SelectedRowsChanged="OnSelectedRowsChanged"
+           RowKey="l => l.Id.ToString()"
+           ExpandTemplate="@Supplies"
+           ChildContent="@Columns"
+           Style="background: transparent;" />
+}
 
 <style>
     .labor-type-dot {
@@ -187,7 +65,183 @@
     [Parameter] public EventCallback<Guid> OnValidate { get; set; }
     [Parameter] public EventCallback<IEnumerable<LaborDto>> OnSelectedRowsChanged { get; set; }
 
-    private ITable? _table;
+    // Modo servidor: si se pasa Load, la lista pagina, filtra y ordena en la API (GET api/labors/search).
+    [Parameter] public Func<string, CancellationToken, Task<PagedResult<LaborDto>?>>? Load { get; set; }
+    [Parameter] public IReadOnlyDictionary<string, string?>? FixedFilters { get; set; }
+    [Parameter] public string? StateKey { get; set; }
+    [Parameter] public string SearchPlaceholder { get; set; } = "Buscar lote, campo, tipo de labor, notas...";
+    [Parameter] public RenderFragment? Filters { get; set; }
+    [Parameter] public RenderFragment? ExtraOptions { get; set; }
+    [Parameter] public EventCallback<PagedResult<LaborDto>> OnLoaded { get; set; }
+
+    private RemoteTable<LaborDto>? _remote;
+
+    /// <summary>Labores de la página actual (modo servidor) o la lista recibida.</summary>
+    public IEnumerable<LaborDto> CurrentItems => _remote?.Items ?? Labors;
+
+    public Task ReloadAsync() => _remote?.ReloadAsync() ?? Task.CompletedTask;
+
+    public Task SetFilterAsync(string param, string? value) => _remote?.SetFilterAsync(param, value) ?? Task.CompletedTask;
+
+    public string? GetFilter(string param) => _remote?.Query.Get(param);
+
+    // Propiedad de la columna → clave de orden de api/labors/search.
+    private static readonly IReadOnlyDictionary<string, string> SortKeys = new Dictionary<string, string>
+    {
+        [nameof(LaborDto.LaborTypeName)] = "laborType",
+        [nameof(LaborDto.DisplayDate)] = "date",
+        [nameof(LaborDto.LotName)] = "lot",
+        [nameof(LaborDto.FieldName)] = "field",
+        [nameof(LaborDto.AssignedTo)] = "contact",
+        [nameof(LaborDto.Hectares)] = "hectares",
+        [nameof(LaborDto.OTNumber)] = "otNumber",
+        [nameof(LaborDto.Status)] = "status",
+    };
+
+    private RenderFragment<LaborDto> Columns => context => @<text>
+    <Selection Key="@(context.Id.ToString())" Type="SelectionType.Checkbox" Disabled="@(DisableSelection?.Invoke(context) ?? false)" />
+    
+    <PropertyColumn TItem="LaborDto" TProp="string?" Property="l => l.LaborTypeName" Title="Labor" Sortable>
+        <div style="display: flex; align-items: center; gap: 8px;">
+            <div style="background: @(GetTypeBgColor(context.LaborTypeName ?? "Labor")); width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;"></div>
+            <span style="color: #fff;">@context.LaborTypeName</span>
+            @if (context.IsOriginalPlan) {
+                <Tag Color="@("gold")" Style="font-size: 10px; margin-left: 6px;" Title="Planeamiento Original: solo lectura">P.O.</Tag>
+            }
+        </div>
+    </PropertyColumn>
+
+    @* La fecha de la labor es cuando se ejecuta/planea, no cuando se cargó el registro (OT-59). *@
+    <PropertyColumn TItem="LaborDto" TProp="DateTime" Property="l => l.DisplayDate" Title="Fecha" Sortable Format="dd/MM/yyyy" />
+    <PropertyColumn TItem="LaborDto" TProp="string?" Property="l => l.LotName" Title="Lote" Sortable />
+    <PropertyColumn TItem="LaborDto" TProp="string?" Property="l => l.FieldName" Title="Campo" Sortable />
+    <PropertyColumn TItem="LaborDto" TProp="string?" Property="l => l.AssignedTo" Title="Responsable" Sortable />
+    <PropertyColumn TItem="LaborDto" TProp="decimal" Property="l => l.Hectares" Title="Ha" Sortable Format="N1" />
+
+    @if (ShowOtColumn)
+    {
+        <PropertyColumn TItem="LaborDto" TProp="string?" Property="l => l.OTNumber" Title="OT" Sortable>
+            @if (context.WorkOrderId != null)
+            {
+                <div @onclick:stopPropagation="true">
+                    <Tag Color="@("blue")" Style="cursor: pointer;" OnClick='() => Nav.NavigateTo($"/workorders/{context.WorkOrderId}")'>
+                        <Icon Type="link" /> @context.OTNumber
+                    </Tag>
+                </div>
+            }
+            else
+            {
+                <span style="color: rgba(255,255,255,0.2);">Sin OT</span>
+            }
+        </PropertyColumn>
+    }
+
+    <PropertyColumn TItem="LaborDto" TProp="string?" Property="l => l.Status" Title="Estado" Sortable>
+        <Tag Style="@GetStatusTagStyle(context.Status)">
+            @GetStatusLabel(context.Status)
+        </Tag>
+    </PropertyColumn>
+
+    <ActionColumn Title="Acciones" Width="180" Fixed="@AntDesign.ColumnFixPlacement.Right">
+        <div style="display: flex; gap: 6px;" @onclick:stopPropagation="true">
+            @if (context.Status != "Realized" && !IsLocked)
+            {
+                <Tooltip Title="@("Ejecutar")">
+                    <Button Type="@ButtonType.Text" Size="@ButtonSize.Small" OnClick='() => OnExecute.InvokeAsync((context.Id, "Realized"))'>
+                        <Icon Type="play-circle" Theme="IconThemeType.Outline" Style="color: #2ECC71; font-size: 16px;" />
+                    </Button>
+                </Tooltip>
+            }
+            <Tooltip Title="@("Editar")">
+                <Button Type="@ButtonType.Text" Size="@ButtonSize.Small" OnClick="() => OnEdit.InvokeAsync(context.Id)" Disabled="@IsLocked">
+                    <Icon Type="edit" Theme="IconThemeType.Outline" Style="color: #3498DB; font-size: 16px;" />
+                </Button>
+            </Tooltip>
+            
+            @if (OnValidate.HasDelegate)
+            {
+                <Tooltip Title="@("Validar")">
+                    <Button Type="@ButtonType.Text" Size="@ButtonSize.Small" OnClick="() => OnValidate.InvokeAsync(context.Id)" Disabled="@IsLocked">
+                        <Icon Type="share-alt" Theme="IconThemeType.Outline" Style="color: #9B59B6; font-size: 16px;" />
+                    </Button>
+                </Tooltip>
+            }
+
+            <Tooltip Title="@("Eliminar")">
+                <Popconfirm Title="@DeleteConfirmTitle" OnConfirm="() => OnDelete.InvokeAsync(context.Id)">
+                    <Button Type="@ButtonType.Text" Danger Size="@ButtonSize.Small" Disabled="@IsLocked">
+                        <Icon Type="delete" Theme="IconThemeType.Outline" Style="font-size: 16px;" />
+                    </Button>
+                </Popconfirm>
+            </Tooltip>
+        </div>
+    </ActionColumn>
+    </text>;
+
+    private RenderFragment<RowData<LaborDto>> Supplies => laborRow => @<text>
+    <div style="padding: 12px; background: rgba(255,255,255,0.02); border-radius: 8px; border: 1px solid rgba(255,255,255,0.05);">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 8px;">
+            <h4 style="margin: 0; color: #3498DB; font-size: 14px; display: flex; align-items: center; gap: 8px;">
+                <Icon Type="info-circle" /> Detalle de Insumos
+            </h4>
+        </div>
+        @if (laborRow.Data.Supplies != null && laborRow.Data.Supplies.Any())
+        {
+            <Table TItem="LaborSupplyDto" DataSource="@laborRow.Data.Supplies" Size="TableSize.Small" HidePagination Style="background: transparent;">
+
+                <PropertyColumn Property="s => s.SupplyName" Title="Insumo" />
+
+                <Column TData="string" Title="Unidad">
+                    @{
+                        var cleanUnit = UnitHelper.CleanDoseUnit(context.SupplyUnit) ?? UnitHelper.CleanDoseUnit(context.UnitOfMeasure) ?? "—";
+                    }
+                    <Tag Style="background: rgba(52, 152, 219, 0.2); color: #3498DB; border-color: rgba(52, 152, 219, 0.4); font-weight: 600; font-size: 11px;">
+                        @cleanUnit
+                    </Tag>
+                </Column>
+
+                <Column TData="decimal" Title="Ha. Plan.">
+                    <span class="planned-cell">@((context.PlannedHectares > 0 ? context.PlannedHectares : laborRow.Data.Hectares).ToString("N2")) ha</span>
+                </Column>
+                <Column TData="decimal" Title="Dosis Plan.">
+                    @{
+                        var cleanUnit = UnitHelper.CleanDoseUnit(context.SupplyUnit) ?? UnitHelper.CleanDoseUnit(context.UnitOfMeasure) ?? "u";
+                    }
+                    <span class="planned-cell">@context.PlannedDose.ToString("N2") @UnitHelper.FormatDoseRate(cleanUnit)</span>
+                </Column>
+                <Column TData="decimal" Title="Total Plan.">
+                    @{
+                        var cleanUnit = UnitHelper.CleanDoseUnit(context.SupplyUnit) ?? UnitHelper.CleanDoseUnit(context.UnitOfMeasure) ?? "u";
+                    }
+                    <span class="planned-cell" style="font-weight: 700; color: #2ECC71;">@context.PlannedTotal.ToString("N2") @cleanUnit</span>
+                </Column>
+
+                <Column TData="decimal?" Title="Ha. Real">
+                    <span class="real-cell">@(context.RealHectares.HasValue ? $"{context.RealHectares.Value:N2} ha" : "—")</span>
+                </Column>
+                <Column TData="decimal?" Title="Dosis Real">
+                    @{
+                        var cleanUnit = UnitHelper.CleanDoseUnit(context.SupplyUnit) ?? UnitHelper.CleanDoseUnit(context.UnitOfMeasure) ?? "u";
+                    }
+                    <span class="real-cell">@(context.RealDose.HasValue ? $"{context.RealDose.Value:N2} {UnitHelper.FormatDoseRate(cleanUnit)}" : "—")</span>
+                </Column>
+                <Column TData="decimal?" Title="Total Real">
+                    @{
+                        var cleanUnit = UnitHelper.CleanDoseUnit(context.SupplyUnit) ?? UnitHelper.CleanDoseUnit(context.UnitOfMeasure) ?? "u";
+                    }
+                    <span class="real-cell" style="font-weight: 700; color: #3498DB;">@(context.RealTotal.HasValue ? $"{context.RealTotal.Value:N2} {cleanUnit}" : "—")</span>
+                </Column>
+            </Table>
+        }
+        else
+        {
+            <div style="padding: 20px; text-align: center; color: rgba(255,255,255,0.3);">
+                <Icon Type="inbox" Style="font-size: 24px; display: block; margin-bottom: 8px;" />
+                No hay insumos registrados para esta labor
+            </div>
+        }
+    </div>
+    </text>;
 
     private static string GetTypeBgColor(string laborType) => laborType switch
     {

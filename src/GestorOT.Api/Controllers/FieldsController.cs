@@ -138,19 +138,28 @@ public class FieldsController : ControllerBase
     private static readonly SortMap<Field> FieldSorts = new SortMap<Field>(f => f.Id)
         .Add("name", f => f.Name)
         .Add("lotCount", f => f.Lots.Count, defaultDesc: true)
-        .Add("cadastralArea", f => f.Lots.Sum(l => l.CadastralArea), defaultDesc: true);
+        .Add("cadastralArea", f => f.Lots.Sum(l => l.CadastralArea), defaultDesc: true)
+        .Add("createdAt", f => f.CreatedAt, defaultDesc: true);
 
     [HttpGet("search")]
     public Task<ActionResult<PagedResult<FieldListItemDto>>> SearchFields(
         [FromQuery] PagedQuery paging,
         [FromQuery] string? search = null,
+        [FromQuery] Guid? campaignId = null,
         CancellationToken ct = default)
     {
         var query = _context.Fields.AsNoTracking();
+        // Se busca también por nombre de lote: muchas veces se recuerda el lote y no el campo.
         if (!string.IsNullOrWhiteSpace(search))
-            query = query.Where(f => EF.Functions.ILike(f.Name, PagedQueryExtensions.ContainsPattern(search)));
+        {
+            var pattern = PagedQueryExtensions.ContainsPattern(search);
+            query = query.Where(f => EF.Functions.ILike(f.Name, pattern) || f.Lots.Any(l => EF.Functions.ILike(l.Name, pattern)));
+        }
+        // Los campos asignados a la campaña ("Ver solo mis campos").
+        if (campaignId.HasValue)
+            query = query.Where(f => _context.CampaignFields.Any(cf => cf.CampaignId == campaignId && cf.FieldId == f.Id));
 
         return query.ToPagedAsync(paging, FieldSorts,
-            f => new FieldListItemDto(f.Id, f.Name, f.CodCentro, f.Lots.Count, f.Lots.Sum(l => l.CadastralArea)), ct);
+            f => new FieldListItemDto(f.Id, f.Name, f.CodCentro, f.Lots.Count, f.Lots.Sum(l => l.CadastralArea), f.CreatedAt), ct);
     }
 }

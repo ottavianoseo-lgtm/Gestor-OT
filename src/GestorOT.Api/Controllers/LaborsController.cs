@@ -1372,6 +1372,7 @@ public class LaborsController : ControllerBase
         dto.SourceStrategyId = labor.SourceStrategyId;
         dto.SourceStrategyName = labor.SourceStrategy?.Name;
         dto.CampaignId = labor.CampaignLot?.CampaignId;
+        dto.FieldId = labor.Lot?.FieldId;
         return dto;
     }
 
@@ -1416,6 +1417,8 @@ public class LaborsController : ControllerBase
         .Add("lot", l => l.Lot!.Name)
         .Add("field", l => l.Lot!.Field!.Name)
         .Add("laborType", l => l.Type!.Name)
+        .Add("contact", l => l.Contact!.FullName)
+        .Add("otNumber", l => l.WorkOrder!.OTNumber)
         .Add("hectares", l => l.Hectares, defaultDesc: true);
 
     /// <summary>

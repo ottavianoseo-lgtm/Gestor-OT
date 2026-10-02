@@ -1,13 +1,12 @@
 @page "/admin/users"
 @page "/admin"
 @layout GestorOT.Client.Layout.AdminDashboardLayout
-@using Microsoft.AspNetCore.Components.QuickGrid
+@using AntDesign
 @using GestorOT.Domain.Enums
 @using GestorOT.Shared.Dtos
 @inject HttpClient Http
 @inject GestorOT.Client.Services.AuthState AuthState
 @inject GestorOT.Client.Services.TenantState TenantState
-@inject PersistentComponentState PersistentState
 
 <div class="page-header">
     <div>
@@ -51,44 +50,7 @@
 </div>
 
 <div class="glass-card">
-    <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px; flex-wrap: wrap;">
-        <div class="search-wrapper" style="flex: 1; min-width: 200px;">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-            <input class="search-input" type="text" placeholder="Buscar por nombre o email..."
-                   @bind="_searchText" @bind:event="oninput" />
-        </div>
-        @if (AuthState.User?.Role == "SuperAdmin" && _tenants.Count > 1)
-        {
-            <select class="search-input" style="width: 200px; padding-left: 14px;"
-                    @bind="_tenantFilter">
-                <option value="">Todas las Empresas</option>
-                <option value="@Guid.Empty.ToString()">Global (SuperAdmin)</option>
-                @foreach (var t in _tenants)
-                {
-                    <option value="@t.Id.ToString()">@t.Name</option>
-                }
-            </select>
-        }
-        <select class="search-input" style="width: 180px; padding-left: 14px;"
-                @bind="_roleFilter">
-            <option value="">Todos los roles</option>
-            @foreach (ContactRole role in AvailableRoles)
-            {
-                <option value="@role.ToString()">@role.GetDisplayName()</option>
-            }
-        </select>
-    </div>
-
-    @if (_loading)
-    {
-        <div style="text-align: center; padding: 40px; color: rgba(255,255,255,0.4);">
-            <div style="margin-bottom: 8px;">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation: spin 1s linear infinite;"><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"/><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"/><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"/></svg>
-            </div>
-            Cargando usuarios...
-        </div>
-    }
-    else if (_error != null)
+    @if (!_loading && _error != null)
     {
         <div style="background: rgba(231,76,60,0.1); border: 1px solid rgba(231,76,60,0.2); border-radius: 8px; padding: 14px; color: rgba(231,76,60,0.9); font-size: 13px;">
             @_error
@@ -96,59 +58,74 @@
     }
     else
     {
-        <QuickGrid Items="@FilteredUsers" Pagination="@_pagination"
-                   Class="admin-quickgrid"
-                   RowClass="@(u => !u.IsActive ? "row-locked" : "")">
-            <TemplateColumn Title="Usuario">
-                <div style="display: flex; align-items: center; gap: 10px;">
-                    <div style="width: 32px; height: 32px; border-radius: 8px; background: linear-gradient(135deg, @GetAvatarColor(context.Role)); display: flex; align-items: center; justify-content: center; color: #fff; font-size: 12px; font-weight: 700;">
-                        @(context.DisplayName?.Length > 0 ? context.DisplayName[0].ToString().ToUpper() : "?")
-                    </div>
-                    <div>
-                        <div style="font-weight: 600; color: rgba(255,255,255,0.9);">@context.DisplayName</div>
-                        <div style="font-size: 11px; color: rgba(255,255,255,0.4);">@context.Email</div>
-                    </div>
-                </div>
-            </TemplateColumn>
-            <PropertyColumn Property="@(u => u.TenantName ?? "General")" Title="Empresa" Sortable="true" />
-            <TemplateColumn Title="Rol" Sortable="true" SortBy="@(GridSort<UserProfileDto>.ByAscending(u => u.Role))">
-                <span class="badge badge-@(context.Role.ToLower())">@context.Role</span>
-            </TemplateColumn>
-            <TemplateColumn Title="Estado">
-                @if (context.IsActive)
+        <LocalTable TItem="UserProfileDto"
+                    DataSource="@_users"
+                    Loading="@_loading"
+                    OnReload="LoadUsers"
+                    SearchBy='u => $"{u.DisplayName} {u.Email}"'
+                    SearchPlaceholder="Buscar por nombre o email..."
+                    Predicate="MatchesFilters"
+                    ItemLabel="usuarios"
+                    DefaultPageSize="10"
+                    RowClassName='r => r.Data.IsActive ? "" : "row-locked"'
+                    StateKey="admin-users">
+            <Filters>
+                @if (AuthState.User?.Role == "SuperAdmin" && _tenants.Count > 1)
                 {
-                    <span class="badge badge-active">
-                        <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" style="margin-right: 4px;"><circle cx="12" cy="12" r="8"/></svg>
-                        Activo
-                    </span>
+                    <SelectFilter Param="tenantId" Placeholder="Empresa" Style="width: 200px;" Options="TenantOptions" />
                 }
-                else
-                {
-                    <span class="badge badge-locked">
-                        <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" style="margin-right: 4px;"><circle cx="12" cy="12" r="8"/></svg>
-                        Bloqueado
-                    </span>
-                }
-            </TemplateColumn>
-            <PropertyColumn Property="@(u => u.CreatedAt)" Title="Registrado" Format="dd/MM/yyyy" Sortable="true" />
-            <TemplateColumn Title="Acciones">
-                <div style="display: flex; gap: 4px;">
-                    @if (CanEditUser(context))
+                <SelectFilter Param="role" Placeholder="Rol" Style="width: 180px;" Options="RoleOptions" />
+            </Filters>
+            <ChildContent>
+                <PropertyColumn Property="u => u.DisplayName" Title="Usuario" Sortable>
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <div style="width: 32px; height: 32px; border-radius: 8px; background: linear-gradient(135deg, @GetAvatarColor(context.Role)); display: flex; align-items: center; justify-content: center; color: #fff; font-size: 12px; font-weight: 700;">
+                            @(context.DisplayName?.Length > 0 ? context.DisplayName[0].ToString().ToUpper() : "?")
+                        </div>
+                        <div>
+                            <div style="font-weight: 600; color: rgba(255,255,255,0.9);">@context.DisplayName</div>
+                            <div style="font-size: 11px; color: rgba(255,255,255,0.4);">@context.Email</div>
+                        </div>
+                    </div>
+                </PropertyColumn>
+                <PropertyColumn Property="u => u.TenantName" Title="Empresa" Sortable>
+                    @(context.TenantName ?? "General")
+                </PropertyColumn>
+                <PropertyColumn Property="u => u.Role" Title="Rol" Sortable>
+                    <span class="badge badge-@(context.Role.ToLower())">@context.Role</span>
+                </PropertyColumn>
+                <PropertyColumn Property="u => u.IsActive" Title="Estado" Sortable>
+                    @if (context.IsActive)
                     {
-                        <button class="btn-icon" title="Editar" @onclick="() => OpenEditModal(context)">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                        </button>
-                        <button class="btn-icon btn-icon-danger" title="Eliminar" @onclick="() => ConfirmDelete(context)">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                        </button>
+                        <span class="badge badge-active">
+                            <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" style="margin-right: 4px;"><circle cx="12" cy="12" r="8"/></svg>
+                            Activo
+                        </span>
                     }
-                </div>
-            </TemplateColumn>
-        </QuickGrid>
-
-        <div class="admin-paginator">
-            <Paginator State="@_pagination" />
-        </div>
+                    else
+                    {
+                        <span class="badge badge-locked">
+                            <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" style="margin-right: 4px;"><circle cx="12" cy="12" r="8"/></svg>
+                            Bloqueado
+                        </span>
+                    }
+                </PropertyColumn>
+                <PropertyColumn Property="u => u.CreatedAt" Title="Registrado" Format="dd/MM/yyyy" Sortable />
+                <ActionColumn Title="Acciones">
+                    <div style="display: flex; gap: 4px;">
+                        @if (CanEditUser(context))
+                        {
+                            <button class="btn-icon" title="Editar" @onclick="() => OpenEditModal(context)">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                            </button>
+                            <button class="btn-icon btn-icon-danger" title="Eliminar" @onclick="() => ConfirmDelete(context)">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                            </button>
+                        }
+                    </div>
+                </ActionColumn>
+            </ChildContent>
+        </LocalTable>
     }
 </div>
 
@@ -286,17 +263,24 @@
     private bool _loading = true;
     private string? _error;
 
-    private string _searchText = "";
-    private string _roleFilter = "";
-    private string _tenantFilter = "";
-    private PaginationState _pagination = new PaginationState { ItemsPerPage = 10 };
-
     private bool _modalVisible;
     private UserProfileDto? _editingUser;
     private GestorOT.Shared.Validation.UserFormDto _formModel = new();
     private UserProfileDto? _deleteTarget;
 
-    private PersistingComponentStateSubscription _persistingSubscription;
+    private List<FilterOption> RoleOptions => AvailableRoles
+        .Select(r => new FilterOption(r.ToString(), r.GetDisplayName()))
+        .ToList();
+
+    // Guid.Empty = usuarios globales (SuperAdmin), que no tienen empresa.
+    private List<FilterOption> TenantOptions => _tenants
+        .Select(t => new FilterOption(t.Id.ToString(), t.Name))
+        .Prepend(new FilterOption(Guid.Empty.ToString(), "Global (SuperAdmin)"))
+        .ToList();
+
+    private static bool MatchesFilters(UserProfileDto user, TableQuery q) =>
+        (q.Get("role") is not { } role || user.Role == role) &&
+        (q.Get("tenantId") is not { } tenantId || user.TenantId.ToString() == tenantId);
 
     private IEnumerable<ContactRole> AvailableRoles
     {
@@ -319,37 +303,10 @@
         return true;
     }
 
-    private IQueryable<UserProfileDto> FilteredUsers => _users
-        .Where(u =>
-            (string.IsNullOrEmpty(_searchText) ||
-             u.DisplayName.Contains(_searchText, StringComparison.OrdinalIgnoreCase) ||
-             u.Email.Contains(_searchText, StringComparison.OrdinalIgnoreCase)) &&
-            (string.IsNullOrEmpty(_roleFilter) || u.Role == _roleFilter) &&
-            (string.IsNullOrEmpty(_tenantFilter) || u.TenantId.ToString() == _tenantFilter))
-        .AsQueryable();
-
     protected override async Task OnInitializedAsync()
     {
-        _persistingSubscription = PersistentState.RegisterOnPersisting(PersistState);
-
-        if (PersistentState.TryTakeFromJson<string>("admin_users_search", out var savedSearch))
-        {
-            _searchText = savedSearch ?? "";
-        }
-        if (PersistentState.TryTakeFromJson<string>("admin_users_role", out var savedRole))
-        {
-            _roleFilter = savedRole ?? "";
-        }
-
         await LoadTenants();
         await LoadUsers();
-    }
-
-    private Task PersistState()
-    {
-        PersistentState.PersistAsJson("admin_users_search", _searchText);
-        PersistentState.PersistAsJson("admin_users_role", _roleFilter);
-        return Task.CompletedTask;
     }
 
     private async Task LoadTenants()
@@ -518,10 +475,5 @@
         {
             _formModel.TenantId = Guid.Empty;
         }
-    }
-
-    public void Dispose()
-    {
-        _persistingSubscription.Dispose();
     }
 }

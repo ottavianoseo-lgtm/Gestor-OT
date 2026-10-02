@@ -1,0 +1,80 @@
+@using AntDesign
+@implements ITableFilterHost
+
+@* La barra estándar de todos los listados: búsqueda, filtros, opciones extra y herramientas
+   (limpiar, total, recargar). La usan RemoteTable y LocalTable, y también las pantallas que
+   muestran tarjetas o un calendario en vez de una tabla, para que todo se vea igual. *@
+<div class="table-toolbar">
+    @if (EnableSearch)
+    {
+        <SearchInput Value="@Query.Search" ValueChanged="OnSearchChanged" Placeholder="@SearchPlaceholder" Style="width: 260px;" />
+    }
+    <CascadingValue Value="(ITableFilterHost)this" IsFixed="true">
+        @Filters
+    </CascadingValue>
+    @ExtraOptions
+    <div class="table-toolbar-tools">
+        @if (Query.HasFilters)
+        {
+            <Button Type="@ButtonType.Link" OnClick="ClearFiltersAsync">Limpiar filtros</Button>
+        }
+        @if (!string.IsNullOrEmpty(CountText))
+        {
+            <span class="table-toolbar-count">@CountText</span>
+        }
+        @if (OnReload.HasDelegate)
+        {
+            <Tooltip Title="@("Recargar")">
+                <Button Icon="reload" OnClick="() => OnReload.InvokeAsync()" Loading="@Loading" />
+            </Tooltip>
+        }
+    </div>
+</div>
+
+@code {
+    /// <summary>Estado que editan la búsqueda y los filtros. Lo pone quien muestra los datos.</summary>
+    [Parameter, EditorRequired] public TableQuery Query { get; set; } = new();
+
+    /// <summary>Cambió la búsqueda o un filtro (ya se volvió a la página 1).</summary>
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    [Parameter] public RenderFragment? Filters { get; set; }
+    [Parameter] public RenderFragment? ExtraOptions { get; set; }
+    [Parameter] public bool EnableSearch { get; set; } = true;
+    [Parameter] public string SearchPlaceholder { get; set; } = "Buscar...";
+    [Parameter] public string? CountText { get; set; }
+    [Parameter] public EventCallback OnReload { get; set; }
+    [Parameter] public bool Loading { get; set; }
+
+    public event Action? QueryReset;
+
+    /// <summary>Para cuando el estado cambia desde afuera (ej. una tarjeta de KPI): los filtros se redibujan.</summary>
+    public void NotifyReset() => QueryReset?.Invoke();
+
+    public async Task FiltersChangedAsync()
+    {
+        Query.PageIndex = 1;
+        await OnChanged.InvokeAsync();
+    }
+
+    /// <summary>Cambia un filtro desde afuera de la barra (ej. una tarjeta de KPI).</summary>
+    public async Task SetFilterAsync(string param, string? value)
+    {
+        Query.Set(param, value);
+        NotifyReset();
+        await FiltersChangedAsync();
+    }
+
+    private async Task ClearFiltersAsync()
+    {
+        Query.ClearFilters();
+        NotifyReset();
+        await FiltersChangedAsync();
+    }
+
+    private async Task OnSearchChanged(string? text)
+    {
+        Query.Search = text;
+        await FiltersChangedAsync();
+    }
+}

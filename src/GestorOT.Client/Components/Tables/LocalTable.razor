@@ -1,0 +1,125 @@
+@typeparam TItem
+@attribute [CascadingTypeParameter(nameof(TItem))]
+@using AntDesign
+@inject FilterState FilterState
+
+@* Igual que RemoteTable pero para listas chicas que ya están en memoria (catálogos de admin,
+   configuraciones). Misma barra arriba; búsqueda, filtros, orden y página se resuelven acá. *@
+<FilterToolbar @ref="_toolbar"
+               Query="@Query"
+               OnChanged="Refresh"
+               Filters="@Filters"
+               ExtraOptions="@ExtraOptions"
+               EnableSearch="@EnableSearch"
+               SearchPlaceholder="@SearchPlaceholder"
+               CountText="@CountLabel"
+               OnReload="OnReload"
+               Loading="@Loading" />
+
+<Table TItem="TItem"
+       DataSource="@_visible"
+       Loading="@Loading"
+       @bind-PageIndex="Query.PageIndex"
+       @bind-PageSize="Query.PageSize"
+       HidePagination="@HidePagination"
+       Size="TableSize.Small"
+       ScrollX="@ScrollX"
+       RowKey="@RowKey"
+       RowClassName="@(RowClassName ?? NoRowClass)"
+       OnRowClick="OnRowClick"
+       SelectedRowsChanged="SelectedRowsChanged"
+       ExpandTemplate="@ExpandTemplate"
+       ChildContent="@ChildContent"
+       Style="background: transparent;" />
+
+@code {
+    [Parameter] public IEnumerable<TItem>? DataSource { get; set; }
+    [Parameter] public RenderFragment<TItem>? ChildContent { get; set; }
+    [Parameter] public RenderFragment<RowData<TItem>>? ExpandTemplate { get; set; }
+    [Parameter] public RenderFragment? Filters { get; set; }
+    [Parameter] public RenderFragment? ExtraOptions { get; set; }
+
+    /// <summary>Texto donde busca el buscador (ej. x => $"{x.Name} {x.Email}").</summary>
+    [Parameter] public Func<TItem, string?>? SearchBy { get; set; }
+
+    /// <summary>Aplica los filtros de la barra: recibe la fila y el estado (Query.Get("param")).</summary>
+    [Parameter] public Func<TItem, TableQuery, bool>? Predicate { get; set; }
+
+    [Parameter] public string? StateKey { get; set; }
+    [Parameter] public bool EnableSearch { get; set; } = true;
+    [Parameter] public string SearchPlaceholder { get; set; } = "Buscar...";
+    [Parameter] public string ItemLabel { get; set; } = "registros";
+    [Parameter] public int DefaultPageSize { get; set; } = 20;
+    [Parameter] public bool HidePagination { get; set; }
+    [Parameter] public bool Loading { get; set; }
+    [Parameter] public string? ScrollX { get; set; }
+
+    [Parameter] public Func<TItem, string>? RowKey { get; set; }
+
+    /// <summary>Clase CSS por fila (ej. atenuar las inactivas).</summary>
+    [Parameter] public Func<RowData<TItem>, string>? RowClassName { get; set; }
+
+    // AntDesign no admite RowClassName en null (lo llama en cada fila): sin clase, string vacío.
+    private static readonly Func<RowData<TItem>, string> NoRowClass = _ => "";
+    [Parameter] public EventCallback<RowData<TItem>> OnRowClick { get; set; }
+    [Parameter] public EventCallback<IEnumerable<TItem>> SelectedRowsChanged { get; set; }
+
+    /// <summary>Si se pasa, aparece el botón de recargar.</summary>
+    [Parameter] public EventCallback OnReload { get; set; }
+
+    public TableQuery Query { get; private set; } = new();
+
+    /// <summary>Filas que pasan búsqueda y filtros (todas las páginas).</summary>
+    public IReadOnlyList<TItem> Visible => _visible;
+
+    private List<TItem> _visible = new();
+    private FilterToolbar? _toolbar;
+    private int _total;
+
+    private string CountLabel => _visible.Count == _total
+        ? $"{_total} {ItemLabel}"
+        : $"{_visible.Count} de {_total} {ItemLabel}";
+
+    protected override void OnInitialized()
+    {
+        Query = StateKey is null ? new TableQuery() : FilterState.For<TableQuery>($"table:{StateKey}");
+        if (!Query.Seeded)
+        {
+            Query.PageSize = DefaultPageSize;
+            Query.Seeded = true;
+        }
+    }
+
+    protected override void OnParametersSet() => Apply();
+
+    private void Apply()
+    {
+        var all = DataSource?.ToList() ?? new List<TItem>();
+        _total = all.Count;
+
+        IEnumerable<TItem> rows = all;
+        if (SearchBy != null && !string.IsNullOrWhiteSpace(Query.Search))
+        {
+            var term = Query.Search.Trim();
+            rows = rows.Where(r => SearchBy(r)?.Contains(term, StringComparison.OrdinalIgnoreCase) == true);
+        }
+        if (Predicate != null)
+            rows = rows.Where(r => Predicate(r, Query));
+
+        _visible = rows.ToList();
+
+        var lastPage = Math.Max(1, (int)Math.Ceiling(_visible.Count / (double)Math.Max(1, Query.PageSize)));
+        if (Query.PageIndex > lastPage)
+            Query.PageIndex = lastPage;
+    }
+
+    private void Refresh()
+    {
+        Apply();
+        StateHasChanged();
+    }
+
+    /// <summary>Para filtros que maneja la pantalla por fuera de la barra.</summary>
+    public Task SetFilterAsync(string param, string? value) =>
+        _toolbar?.SetFilterAsync(param, value) ?? Task.CompletedTask;
+}

@@ -1,0 +1,117 @@
+@using AntDesign
+@implements IDisposable
+
+@* Filtro de selección para la barra de una RemoteTable. Las opciones son fijas (Options) o se
+   buscan en la API mientras se escribe (SearchOptions), para catálogos grandes como personas o lotes. *@
+<Select TItemValue="string" TItem="string" Value="@_value" ValueChanged="OnChanged"
+        Placeholder="@Placeholder" AllowClear EnableSearch Style="@Style"
+        OnSearch="OnSearch" OnDropdownVisibleChange="OnDropdownVisibleChange">
+    @foreach (var option in VisibleOptions)
+    {
+        <SelectOption TItemValue="string" TItem="string" Value="@option.Value" Label="@option.Label" />
+    }
+</Select>
+
+@code {
+    [CascadingParameter] public ITableFilterHost Host { get; set; } = default!;
+
+    /// <summary>Nombre del parámetro de la API (ej. laborTypeId).</summary>
+    [Parameter, EditorRequired] public string Param { get; set; } = "";
+    [Parameter] public string? Placeholder { get; set; }
+    [Parameter] public string Style { get; set; } = "width: 160px;";
+
+    /// <summary>Opciones fijas.</summary>
+    [Parameter] public IEnumerable<FilterOption>? Options { get; set; }
+
+    /// <summary>Opciones desde la API: recibe el texto escrito (o null al abrir) y devuelve las primeras coincidencias.</summary>
+    [Parameter] public Func<string?, Task<IEnumerable<FilterOption>>>? SearchOptions { get; set; }
+
+    /// <summary>Parámetros que dependen de este y se limpian cuando cambia (ej. campo → lote).</summary>
+    [Parameter] public string[] Clears { get; set; } = Array.Empty<string>();
+
+    private string? _value;
+    private List<FilterOption> _found = new();
+    private CancellationTokenSource? _searchCts;
+
+    private string LabelKey => $"{Param}:label";
+
+    // La opción elegida se sigue mostrando aunque la última búsqueda no la traiga.
+    private IEnumerable<FilterOption> VisibleOptions
+    {
+        get
+        {
+            var options = (SearchOptions is null ? Options ?? Enumerable.Empty<FilterOption>() : _found).ToList();
+            if (_value != null && options.All(o => o.Value != _value) && Host.Query.UiState.GetValueOrDefault(LabelKey) is string label)
+                options.Insert(0, new FilterOption(_value, label));
+            return options;
+        }
+    }
+
+    protected override void OnInitialized()
+    {
+        Host.QueryReset += OnQueryReset;
+    }
+
+    protected override void OnParametersSet()
+    {
+        _value = Host.Query.Get(Param);
+    }
+
+    private void OnQueryReset()
+    {
+        _value = Host.Query.Get(Param);
+        InvokeAsync(StateHasChanged);
+    }
+
+    private async Task OnChanged(string? value)
+    {
+        if (value == _value) return;
+        _value = value;
+        Host.Query.Set(Param, value);
+        Host.Query.UiState[LabelKey] = VisibleOptions.FirstOrDefault(o => o.Value == value)?.Label;
+        foreach (var dependent in Clears)
+        {
+            Host.Query.Set(dependent, null);
+            Host.Query.UiState.Remove($"{dependent}:label");
+        }
+        await Host.FiltersChangedAsync();
+    }
+
+    private void OnDropdownVisibleChange(bool visible)
+    {
+        if (visible && SearchOptions != null)
+            _ = InvokeAsync(() => LoadOptions(null, debounce: false));
+    }
+
+    private void OnSearch(string text)
+    {
+        if (SearchOptions != null)
+            _ = InvokeAsync(() => LoadOptions(text, debounce: true));
+    }
+
+    private async Task LoadOptions(string? text, bool debounce)
+    {
+        _searchCts?.Cancel();
+        _searchCts = new CancellationTokenSource();
+        var ct = _searchCts.Token;
+        try
+        {
+            if (debounce)
+                await Task.Delay(250, ct);
+            var options = (await SearchOptions!(string.IsNullOrWhiteSpace(text) ? null : text)).ToList();
+            if (ct.IsCancellationRequested) return;
+            _found = options;
+            StateHasChanged();
+        }
+        catch (TaskCanceledException)
+        {
+        }
+    }
+
+    public void Dispose()
+    {
+        Host.QueryReset -= OnQueryReset;
+        _searchCts?.Cancel();
+        _searchCts?.Dispose();
+    }
+}

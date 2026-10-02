@@ -140,6 +140,7 @@ public class CatalogsController : ControllerBase
         [FromQuery] PagedQuery paging,
         [FromQuery] string? search = null,
         [FromQuery] bool includeInactive = false,
+        [FromQuery] bool? active = null,
         CancellationToken ct = default)
     {
         // Mismo criterio que GetActivities: si el tenant no tiene actividades propias, se usan las globales.
@@ -149,9 +150,15 @@ public class CatalogsController : ControllerBase
             ? _context.ErpActivities.AsNoTracking().Where(a => a.TenantId == tenantId)
             : _context.ErpActivities.IgnoreQueryFilters().AsNoTracking().Where(a => a.TenantId == Guid.Empty);
 
-        query = query.Where(a => includeInactive || a.IsActive);
+        // active filtra por estado en los dos sentidos y manda sobre includeInactive.
+        query = active.HasValue
+            ? query.Where(a => a.IsActive == active.Value)
+            : query.Where(a => includeInactive || a.IsActive);
         if (!string.IsNullOrWhiteSpace(search))
-            query = query.Where(a => EF.Functions.ILike(a.Name, PagedQueryExtensions.ContainsPattern(search)));
+        {
+            var pattern = PagedQueryExtensions.ContainsPattern(search);
+            query = query.Where(a => EF.Functions.ILike(a.Name, pattern) || EF.Functions.ILike(a.ExternalErpId ?? "", pattern));
+        }
 
         return await query.ToPagedAsync(paging, ActivitySorts,
             a => new ErpActivityDto(a.Id, a.Name, a.ExternalErpId, a.IsActive), ct);
@@ -175,7 +182,8 @@ public class CatalogsController : ControllerBase
             var pattern = PagedQueryExtensions.ContainsPattern(search);
             query = query.Where(c => EF.Functions.ILike(c.FullName, pattern)
                 || EF.Functions.ILike(c.LegalName ?? "", pattern)
-                || EF.Functions.ILike(c.Email ?? "", pattern));
+                || EF.Functions.ILike(c.Email ?? "", pattern)
+                || EF.Functions.ILike(c.VatNumber ?? "", pattern));
         }
         if (roles is { Count: > 0 })
             query = query.Where(c => roles.Contains(c.Role));

@@ -1,4 +1,4 @@
-@page "/lots"
+﻿@page "/lots"
 @using GestorOT.Shared.Dtos
 @using GestorOT.Shared
 @using System.Net.Http.Json
@@ -11,7 +11,6 @@
 @inject GestorOT.Client.Services.TenantState TenantState
 @inject ModalService ModalService
 @inject IJSRuntime Js
-@inject FilterState Filters
 @implements IDisposable
 
 <PageTitle>Lotes - GestorOT</PageTitle>
@@ -19,17 +18,9 @@
 <div class="page-header">
     <div>
         <h2 class="page-title">Gestión de Lotes</h2>
-        <span class="page-subtitle">@_lots.Count lotes registrados</span>
+        <span class="page-subtitle">@_total lotes registrados</span>
     </div>
     <div style="display: flex; align-items: center; gap: 16px;">
-        @if (CampaignState.IsSelected)
-        {
-            <div style="display: flex; align-items: center; gap: 8px; background: rgba(46, 204, 113, 0.1); padding: 6px 12px; border-radius: 8px; border: 1px solid rgba(46, 204, 113, 0.2);">
-                <Icon Type="calendar" Theme="IconThemeType.Outline" Style="color: #2ECC71;" />
-                <span style="color: #fff; font-size: 13px; font-weight: 600;">Campaña: @CampaignState.CurrentCampaign!.Name</span>
-                <Checkbox @bind-Checked="_filterByCampaign" Style="margin-left: 8px; color: rgba(255,255,255,0.7); font-size: 12px;">Ver solo mis lotes</Checkbox>
-            </div>
-        }
         <Button Type="@ButtonType.Default" OnClick="OpenImportModal"
                 Style="background: rgba(46, 204, 113, 0.15); border-color: #2ECC71; color: #2ECC71; border-radius: 8px; font-weight: 600;">
             <Icon Type="file-excel" Theme="IconThemeType.Outline" /> Importar Excel
@@ -49,7 +40,7 @@
 <div class="summary-bar" style="display: flex; gap: 24px; background: rgba(255,255,255,0.03); padding: 16px 24px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.08); margin-bottom: 16px;">
     <div class="summary-item">
                         <div style="font-size: 11px; color: rgba(255,255,255,0.4); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">Total ha</div>
-        <div style="font-size: 18px; font-weight: 700; color: #fff;">@FilteredLots.Sum(l => (decimal)l.CadastralArea).ToString("N2") ha</div>
+        <div style="font-size: 18px; font-weight: 700; color: #fff;">@_totalCadastralArea.ToString("N2") ha</div>
     </div>
     @if (CampaignState.IsSelected)
     {
@@ -60,7 +51,7 @@
         <div class="summary-item">
             <div style="font-size: 11px; color: rgba(255,255,255,0.4); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">Variación Total</div>
             @{
-                var totalVari = _campaignLots.Sum(l => l.ProductiveArea) - FilteredLots.Where(l => _campaignLots.Any(cl => cl.LotId == l.Id)).Sum(l => (decimal)l.CadastralArea);
+                var totalVari = _campaignLots.Sum(l => l.ProductiveArea) - _campaignLots.Sum(l => l.CadastralArea);
                 var variColor = totalVari < 0 ? "#E74C3C" : (totalVari > 0 ? "#2ECC71" : "#fff");
             }
             <div style="font-size: 18px; font-weight: 700; color: @variColor;">@(totalVari > 0 ? "+" : "")@totalVari.ToString("N2") ha</div>
@@ -68,26 +59,39 @@
     }
     <div class="summary-item">
         <div style="font-size: 11px; color: rgba(255,255,255,0.4); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">Cant. Lotes</div>
-        <div style="font-size: 18px; font-weight: 700; color: #fff;">@FilteredLots.Count()</div>
+        <div style="font-size: 18px; font-weight: 700; color: #fff;">@_total</div>
     </div>
 </div>
 
-<div class="list-filter-bar">
-    <SearchInput Value="@_lotFilter.Search" ValueChanged="v => _lotFilter.Search = v" Placeholder="Buscar lote o campo..." Style="width: 260px;" />
-    <Select TItemValue="Guid?" TItem="FieldDto" Value="@_lotFilter.FieldId" ValueChanged="v => _lotFilter.FieldId = v"
-            Placeholder="Campo" AllowClear EnableSearch Style="width: 200px;"
-            DataSource="@_availableFields" LabelName="@nameof(FieldDto.Name)" ValueName="@nameof(FieldDto.Id)" />
-</div>
-
 <div class="glass-card">
-    <Table @ref="_table" TItem="LotDto" DataSource="FilteredLots" Loading="_loading" Size="@TableSize.Small"
-           ScrollX="1200" OnExpand="OnExpandLot" RowKey="c => c.Id">
+    <RemoteTable @ref="_table"
+                 TItem="LotListItemDto"
+                 Load="LoadLots"
+                 OnLoaded="OnLotsLoaded"
+                 FixedFilters="@FixedFilters"
+                 SortKeys="@SortKeys"
+                 StateKey="lots"
+                 SearchPlaceholder="Buscar lote o campo..."
+                 ItemLabel="lotes"
+                 RowKey="l => l.Id.ToString()"
+                 ScrollX="1200">
+        <Filters>
+            <SelectFilter Param="fieldId" Placeholder="Campo" SearchOptions="SearchFields" Style="width: 200px;" />
+            <SelectFilter Param="status" Placeholder="Estado" Options="@StatusOptions" Style="width: 140px;" />
+        </Filters>
+        <ExtraOptions>
+            @if (CampaignState.IsSelected)
+            {
+                <Checkbox Checked="@_onlyCampaign" CheckedChanged="v => _onlyCampaign = v"
+                          Style="color: rgba(255,255,255,0.7); font-size: 12px;">Ver solo mis lotes</Checkbox>
+            }
+        </ExtraOptions>
         <ExpandTemplate Context="lot">
             <div style="padding: 16px; background: rgba(0,0,0,0.2); border-radius: 8px;">
                 <div style="display: flex; justify-content: space-between; align-items: center  ; margin-bottom: 12px;">
                     <h4 style="color: #fff; margin: 0;">Historial de Superficies por Campaña</h4>
                 </div>
-                @if (_historyByLot.TryGetValue(lot.Data.Id, out var history))
+                @if (EnsureHistory(lot.Data.Id) is { } history)
                 {
                     <Table TItem="SurfaceHistoryDto" DataSource="history" Size="TableSize.Small" PageSize="10" HidePagination>
                         <PropertyColumn Property="h => h.CampaignName" Title="Campaña" />
@@ -125,14 +129,11 @@
                     @(context.Status == "Active" ? "Activo" : "Inactivo")
                 </Tag>
             </PropertyColumn>
-            <PropertyColumn Property="c => c.CadastralArea" Title="Hectáreas">
+            <PropertyColumn Property="c => c.CadastralArea" Title="Hectáreas" Sortable>
                 <span style="font-weight: 600;">@context.CadastralArea.ToString("N2") ha</span>
             </PropertyColumn>
             <ActionColumn Title="Geometría">
-                @{
-                    var hasGeometry = !string.IsNullOrEmpty(context.WktGeometry);
-                }
-                @if (hasGeometry)
+                @if (context.HasGeometry)
                 {
                     <a href="@($"/mapa?lotId={context.Id}")" style="border-radius: 12px; font-size: 11px; padding: 2px 10px; cursor: pointer; background: #1890FF20; color: #1890FF; border: 1px solid #1890FF40; text-decoration: none; display: inline-block;">
                         Editar GIS
@@ -165,7 +166,7 @@
                 </Space>
             </ActionColumn>
         </ChildContent>
-    </Table>
+    </RemoteTable>
 </div>
 
 <Modal Title="@(_isEditing ? "Editar Lote" : "Nuevo Lote")"
@@ -185,8 +186,8 @@
 
         <div>
             <label style="display: block; color: rgba(255,255,255,0.6); font-size: 13px; margin-bottom: 8px;">Campo</label>
-            <Select TItem="FieldDto" TItemValue="Guid" DataSource="_availableFields" @bind-Value="_formModel.FieldId"
-                    LabelName="@nameof(FieldDto.Name)" ValueName="@nameof(FieldDto.Id)" Placeholder="Campo"
+            <Select TItem="FieldListItemDto" TItemValue="Guid" DataSource="_availableFields" @bind-Value="_formModel.FieldId"
+                    LabelName="@nameof(FieldListItemDto.Name)" ValueName="@nameof(FieldListItemDto.Id)" Placeholder="Campo"
                     Style="width: 100%;" EnableSearch />
         </div>
 
@@ -431,15 +432,25 @@
     OnImportCompleted="HandleImportCompleted" />
 
 @code {
-    private List<LotDto> _lots = new();
-    private List<FieldDto> _availableFields = new();
+    private RemoteTable<LotListItemDto>? _table;
+
+    // "Ver solo mis lotes": se manda como filtro fijo, así la tabla vuelve a la página 1 sola al tildarlo.
+    private bool _onlyCampaign = true;
+
+    private IReadOnlyDictionary<string, string?> FixedFilters => new Dictionary<string, string?>
+    {
+        ["campaignId"] = _onlyCampaign && CampaignState.IsSelected ? CampaignState.CurrentCampaign?.Id.ToString() : null,
+    };
+    private int _total;
+    private decimal _totalCadastralArea;
+    // Lote abierto en el modal, completo (con geometría): la búsqueda no la trae y al guardar hay que reenviarla.
+    private LotDto? _editingLot;
+    private List<FieldListItemDto> _availableFields = new();
     private List<CampaignLotDto> _campaignLots = new();
     private List<ErpAccountDto> _centros = new();
     private bool _loadingCentros;
     private Dictionary<Guid, List<SurfaceHistoryDto>> _historyByLot = new();
-    private bool _loading = true;
-    private Table<LotDto>? _table;
-    private bool _filterByCampaign = true;
+    private readonly HashSet<Guid> _historyLoading = new();
     private string? _errorMessage;
     private bool _modalVisible;
     private bool _importModalVisible;
@@ -461,7 +472,7 @@
     private bool _loadingRotations;
     private bool _savingRotation;
     private bool _isRotationReadOnly;
-    private LotDto? _selectedLotForRotation;
+    private LotListItemDto? _selectedLotForRotation;
     private List<RotationDto> _rotations = new();
     private Guid _newRotationActivityId;
     private DateTime? _newRotationStart;
@@ -472,13 +483,45 @@
     [SupplyParameterFromQuery] public Guid? highlight { get; set; }
     [SupplyParameterFromQuery] public Guid? editId { get; set; }
 
-    private LotFilter _lotFilter = new();
+    // Propiedad de la columna → clave de orden de api/lots/search.
+    private static readonly IReadOnlyDictionary<string, string> SortKeys = new Dictionary<string, string>
+    {
+        [nameof(LotListItemDto.FieldName)] = "field",
+    };
 
-    private IEnumerable<LotDto> FilteredLots =>
-        (_filterByCampaign && CampaignState.IsSelected
-            ? _lots.Where(l => _campaignLots.Any(cl => cl.LotId == l.Id))
-            : _lots)
-        .Where(l => _lotFilter.Matches(l.Name, l.FieldName, l.FieldId));
+    private static readonly List<FilterOption> StatusOptions = new()
+    {
+        new FilterOption("Active", "Activo"),
+        new FilterOption("Inactive", "Inactivo"),
+    };
+
+    private Task<PagedResult<LotListItemDto>?> LoadLots(string query, CancellationToken ct) =>
+        Http.GetFromJsonAsync<PagedResult<LotListItemDto>>($"api/lots/search?{query}", ct);
+
+    private void OnLotsLoaded(PagedResult<LotListItemDto> page)
+    {
+        _total = page.Total;
+    }
+
+    private async Task<IEnumerable<FilterOption>> SearchFields(string? text)
+    {
+        var page = await Http.GetFromJsonAsync<PagedResult<FieldListItemDto>>(
+            $"api/fields/search?page=1&pageSize=20&search={Uri.EscapeDataString(text ?? "")}");
+        return page?.Items.Select(f => new FilterOption(f.Id.ToString(), f.Name)) ?? Enumerable.Empty<FilterOption>();
+    }
+
+    private async Task ReloadTableAsync()
+    {
+        if (_table != null)
+            await _table.ReloadAsync();
+    }
+
+    // Fila de la página actual, o el lote abierto en el modal.
+    private LotListItemDto? FindLot(Guid lotId) =>
+        _table?.Items.FirstOrDefault(l => l.Id == lotId)
+        ?? (_editingLot is { } e && e.Id == lotId
+            ? new LotListItemDto(e.Id, e.FieldId, e.Name, e.Status, e.FieldName, e.CadastralArea, e.CodCentro, !string.IsNullOrEmpty(e.WktGeometry))
+            : null);
 
     private IEnumerable<CampaignSummaryDto> FilteredAvailableCampaigns =>
         _allCampaigns.Where(c => !_lotCampaigns.Any(lc => lc.CampaignId == c.Id));
@@ -507,7 +550,6 @@
 
     protected override async Task OnInitializedAsync()
     {
-        _lotFilter = Filters.For<LotFilter>("lotes");
         CampaignState.OnChange += OnCampaignChanged;
         TenantState.OnChange += OnCampaignChanged;
         await LoadData();
@@ -539,7 +581,7 @@
     private void OnCampaignChanged()
     {
         if (_saving) return;
-        InvokeAsync(async () => { await LoadData(); StateHasChanged(); });
+        InvokeAsync(async () => { await LoadData(); await ReloadTableAsync(); StateHasChanged(); });
     }
 
     public void Dispose()
@@ -548,12 +590,24 @@
         TenantState.OnChange -= OnCampaignChanged;
     }
 
-    private async Task OnExpandLot(RowData<LotDto> args)
+    /// <summary>
+    /// Historial ya cargado del lote, o null mientras se carga. La primera vez que se expande la
+    /// fila dispara la carga (la tabla estándar no expone el evento de expandir).
+    /// </summary>
+    private List<SurfaceHistoryDto>? EnsureHistory(Guid lotId)
     {
-        if (args.Expanded && !_historyByLot.ContainsKey(args.Data.Id))
+        if (_historyByLot.TryGetValue(lotId, out var history))
+            return history;
+        if (_historyLoading.Add(lotId))
         {
-            await LoadHistory(args.Data.Id);
+            _ = InvokeAsync(async () =>
+            {
+                await LoadHistory(lotId);
+                _historyLoading.Remove(lotId);
+                StateHasChanged();
+            });
         }
+        return null;
     }
 
     private async Task LoadHistory(Guid lotId)
@@ -561,13 +615,12 @@
         try
         {
             var history = await Http.GetFromJsonAsync<List<SurfaceHistoryDto>>($"api/lots/{lotId}/surface-history");
-            if (history != null)
-            {
-                _historyByLot[lotId] = history;
-            }
+            _historyByLot[lotId] = history ?? new();
         }
         catch (Exception)
         {
+            // Vacío para no reintentar en cada render de la fila expandida.
+            _historyByLot[lotId] = new();
             Message.Error("Error al cargar historial.");
         }
     }
@@ -576,17 +629,14 @@
     {
         try
         {
-            _loading = true;
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
-            var lotsTask = Http.GetFromJsonAsync("api/lots",
-                AppJsonSerializerContext.Default.ListLotDto, cts.Token);
-            var fieldsTask = Http.GetFromJsonAsync("api/fields",
-                AppJsonSerializerContext.Default.ListFieldDto, cts.Token);
+            var fieldsTask = LoadAllFields(cts.Token);
             var campTask = Http.GetFromJsonAsync("api/campaigns/active",
                 AppJsonSerializerContext.Default.ListCampaignSummaryDto, cts.Token);
 
-            _lots = await lotsTask ?? new();
-            _availableFields = await fieldsTask ?? new();
+            _availableFields = await fieldsTask;
+            // Total de ha de todos los lotes: sale de la suma por campo, sin bajar los lotes.
+            _totalCadastralArea = _availableFields.Sum(f => f.CadastralArea);
             _allCampaigns = await campTask ?? new();
             
             _allActivities = await Http.GetFromJsonAsync<List<ErpActivityDto>>("api/catalogs/activities") ?? new();
@@ -610,7 +660,6 @@
         }
         finally
         {
-            _loading = false;
             StateHasChanged();
 
             if (highlight.HasValue)
@@ -635,15 +684,27 @@
 
             if (editId.HasValue)
             {
-                var lot = _lots.FirstOrDefault(l => l.Id == editId.Value);
-                if (lot != null)
-                {
-                    await OpenEditModal(lot);
-                    editId = null;
-                    StateHasChanged();
-                }
+                var id = editId.Value;
+                editId = null;
+                await OpenEditModal(id);
+                StateHasChanged();
             }
         }
+    }
+
+    /// <summary>Todos los campos (para el selector del modal y el total de ha), de a 100.</summary>
+    private async Task<List<FieldListItemDto>> LoadAllFields(CancellationToken ct)
+    {
+        var fields = new List<FieldListItemDto>();
+        for (var page = 1; ; page++)
+        {
+            var result = await Http.GetFromJsonAsync<PagedResult<FieldListItemDto>>(
+                $"api/fields/search?page={page}&pageSize=100&sortBy=name&sortDir=asc", ct);
+            if (result == null) break;
+            fields.AddRange(result.Items);
+            if (result.Items.Count == 0 || fields.Count >= result.Total) break;
+        }
+        return fields;
     }
 
     private void OpenCreateModal()
@@ -655,8 +716,23 @@
         _modalVisible = true;
     }
 
-    private async Task OpenEditModal(LotDto lot)
+    private Task OpenEditModal(LotListItemDto lot) => OpenEditModal(lot.Id);
+
+    private async Task OpenEditModal(Guid lotId)
     {
+        LotDto? lot;
+        try
+        {
+            lot = await Http.GetFromJsonAsync($"api/lots/{lotId}", AppJsonSerializerContext.Default.LotDto);
+        }
+        catch (Exception ex)
+        {
+            Message.Error($"No se pudo cargar el lote: {ex.Message}");
+            return;
+        }
+        if (lot == null) return;
+
+        _editingLot = lot;
         _isEditing = true;
         _editingId = lot.Id;
         _formModel = new LotFormModel
@@ -695,7 +771,7 @@
     private async Task GoToRotations(Guid campaignId, Guid lotId, bool isReadOnly)
     {
         _isRotationReadOnly = isReadOnly;
-        _selectedLotForRotation = _lots.FirstOrDefault(l => l.Id == lotId);
+        _selectedLotForRotation = FindLot(lotId);
         _currentRotationCampaignId = campaignId;
         _rotationsDrawerVisible = true;
         await LoadRotations();
@@ -777,7 +853,7 @@
         if (!_editingAreas.TryGetValue(item.Id, out var newArea)) return;
         try
         {
-            var lot = _lots.FirstOrDefault(l => l.Id == item.LotId);
+            var lot = _editingLot?.Id == item.LotId ? _editingLot : null;
             if (lot != null && newArea > lot.CadastralArea && lot.CadastralArea > 0)
             {
                 var confirmed = await Js.InvokeAsync<bool>("confirm",
@@ -805,7 +881,7 @@
     {
         if (campaign != null)
         {
-            var lot = _lots.FirstOrDefault(x => x.Id == _editingId);
+            var lot = _editingLot;
             if (lot != null)
             {
                 _newCampaignProductiveArea = Math.Round(lot.CadastralArea, 2);
@@ -821,7 +897,7 @@
         _addingCampaign = true;
         try
         {
-            var lot = _lots.FirstOrDefault(l => l.Id == _editingId);
+            var lot = _editingLot;
             if (lot != null && _newCampaignProductiveArea > lot.CadastralArea && lot.CadastralArea > 0)
             {
                 var confirmed = await Js.InvokeAsync<bool>("confirm",
@@ -863,6 +939,7 @@
                 Message.Success("Relación campaña-lote eliminada.");
                 await LoadLotCampaigns(_editingId);
                 await LoadData();
+                await ReloadTableAsync();
             }
             else
             {
@@ -894,12 +971,17 @@
             return;
         }
 
+        // Sin el lote completo se perdería la geometría al guardar.
+        if (_isEditing && _editingLot?.Id != _editingId)
+        {
+            Message.Error("No se pudo cargar el lote. Cerrá y volvé a abrirlo.");
+            return;
+        }
+
         _saving = true;
         try
         {
-            var existingWkt = _isEditing
-                ? _lots.FirstOrDefault(l => l.Id == _editingId)?.WktGeometry
-                : null;
+            var existingWkt = _isEditing ? _editingLot!.WktGeometry : null;
 
             var formSnapshot = new LotFormModel
             {
@@ -984,6 +1066,7 @@
                     _historyByLot.Remove(_editingId);
                 }
                 await LoadData();
+                await ReloadTableAsync();
             }
             else
             {
@@ -1010,6 +1093,7 @@
             {
                 Message.Success("Lote eliminado correctamente.");
                 await LoadData();
+                await ReloadTableAsync();
             }
             else
             {
@@ -1036,6 +1120,7 @@
     private async Task HandleImportCompleted()
     {
         await LoadData();
+        await ReloadTableAsync();
         StateHasChanged();
     }
 }

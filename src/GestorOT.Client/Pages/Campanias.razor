@@ -27,18 +27,31 @@
 }
 
 <div class="glass-card">
-    <Table TItem="CampaignDto"
-           DataSource="@_campaigns"
-           Loading="@_loading"
-           Size="TableSize.Small"
-           ScrollX="1100">
+    @* Local y no RemoteTable: la columna "Campos" y el modal de campos usan CampaignDto.Fields,
+       que api/campaigns/search (CampaignSummaryDto) no trae. Son pocas campañas. *@
+    <LocalTable TItem="CampaignDto"
+                DataSource="@_campaigns"
+                Loading="@_loading"
+                OnReload="LoadData"
+                SearchBy="c => c.Name"
+                Predicate="MatchesFilters"
+                StateKey="campaigns"
+                SearchPlaceholder="Buscar campaña..."
+                ItemLabel="campañas"
+                RowKey="c => c.Id.ToString()"
+                ScrollX="1100">
+        <Filters>
+            <SelectFilter Param="status" Placeholder="Estado" Options="@StatusOptions" Style="width: 140px;" />
+            <SelectFilter Param="active" Placeholder="Activa" Options="@ActiveOptions" Style="width: 120px;" />
+        </Filters>
+        <ChildContent>
         <PropertyColumn Property="c => c.Name" Title="Nombre" Sortable>
             <span style="font-weight: 600;">@context.Name</span>
         </PropertyColumn>
         <PropertyColumn Property="c => c.StartDate" Title="Inicio" Sortable>
             @context.StartDate.ToString("dd/MM/yyyy")
         </PropertyColumn>
-        <PropertyColumn Property="c => c.EndDate" Title="Fin">
+        <PropertyColumn Property="c => c.EndDate" Title="Fin" Sortable>
             @context.EndDate.ToString("dd/MM/yyyy")
         </PropertyColumn>
         <Column TData="string" Title="Estado">
@@ -137,7 +150,8 @@
                 }
             </Space>
         </ActionColumn>
-    </Table>
+        </ChildContent>
+    </LocalTable>
 </div>
 
 <!-- Create/Edit Campaign Modal -->
@@ -312,6 +326,25 @@
     private bool _addingField;
     private bool _addLotsMassive = true;
     private Guid _batchAssigningFieldId;
+
+    private static readonly List<FilterOption> StatusOptions = new()
+    {
+        new(CampaignStatus.Active.ToString(), "Activa"),
+        new(CampaignStatus.Locked.ToString(), "Bloqueada"),
+    };
+
+    private static readonly List<FilterOption> ActiveOptions = new()
+    {
+        new("true", "Sí"),
+        new("false", "No"),
+    };
+
+    private static bool MatchesFilters(CampaignDto c, TableQuery q)
+    {
+        if (q.Get("status") is string status && c.Status.ToString() != status) return false;
+        if (q.Get("active") is string active && c.IsActive.ToString().ToLowerInvariant() != active) return false;
+        return true;
+    }
 
     public class CampaignFormModel
     {

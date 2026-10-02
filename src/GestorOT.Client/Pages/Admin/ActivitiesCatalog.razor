@@ -20,92 +20,71 @@
 </div>
 
 <div class="glass-card">
-    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 16px;">
-        <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
-            <Input Placeholder="Buscar por nombre o código ERP..." @bind-Value="_search" OnInput="OnSearch" AllowClear 
-                   PrefixIcon="search" Style="width: 320px; border-radius: 8px;" />
-            <RadioGroup @bind-Value="_statusFilter" ButtonStyle="@RadioButtonStyle.Solid">
-                <Radio Value="@("all")">Todas (@_activities.Count)</Radio>
-                <Radio Value="@("active")">Activas (@_activities.Count(a => a.IsActive))</Radio>
-                <Radio Value="@("inactive")">Inactivas (@_activities.Count(a => !a.IsActive))</Radio>
-            </RadioGroup>
-        </div>
-    </div>
-
-    <Table TItem="ErpActivityDto" DataSource="FilteredActivities" Loading="_loading" Size="TableSize.Small">
-        <PropertyColumn Property="a => a.ExternalErpId" Title="Código ERP" Width="130" />
-        <PropertyColumn Property="a => a.Name" Title="Nombre de la Actividad / Cultivo" Sortable />
-        <Column TData="bool" Title="Estado" Width="130">
-            @if (context.IsActive)
-            {
-                <Tag Color="@AntDesign.TagColor.Green"><Icon Type="check-circle" /> Activa</Tag>
-            }
-            else
-            {
-                <Tag Color="@AntDesign.TagColor.Default"><Icon Type="close-circle" /> Inactiva</Tag>
-            }
-        </Column>
-        <ActionColumn Title="Acciones" Width="130" Align="ColumnAlign.Right">
-            @if (!context.IsActive)
-            {
-                <Button Type="@ButtonType.Primary" Size="@ButtonSize.Small" Ghost 
-                        OnClick="() => ToggleActive(context)" Loading="_processingId == context.Id">
-                    Activar
-                </Button>
-            }
-            else
-            {
-                <Button Type="@ButtonType.Default" Danger Size="@ButtonSize.Small" Ghost
-                        OnClick="() => ToggleActive(context)" Loading="_processingId == context.Id">
-                    Desactivar
-                </Button>
-            }
-        </ActionColumn>
-    </Table>
+    <RemoteTable @ref="_table"
+                 TItem="ErpActivityDto"
+                 Load="LoadActivities"
+                 FixedFilters="@AllActivities"
+                 StateKey="admin-activities"
+                 SearchPlaceholder="Buscar por nombre o código ERP..."
+                 ItemLabel="actividades"
+                 RowKey="a => a.Id.ToString()">
+        <Filters>
+            <SelectFilter Param="active" Placeholder="Estado" Options="@StatusOptions" Style="width: 150px;" />
+        </Filters>
+        <ChildContent>
+            <PropertyColumn Property="a => a.ExternalErpId" Title="Código ERP" Width="130" />
+            <PropertyColumn Property="a => a.Name" Title="Nombre de la Actividad / Cultivo" Sortable />
+            <Column TData="bool" Title="Estado" Width="130">
+                @if (context.IsActive)
+                {
+                    <Tag Color="@AntDesign.TagColor.Green"><Icon Type="check-circle" /> Activa</Tag>
+                }
+                else
+                {
+                    <Tag Color="@AntDesign.TagColor.Default"><Icon Type="close-circle" /> Inactiva</Tag>
+                }
+            </Column>
+            <ActionColumn Title="Acciones" Width="130" Align="ColumnAlign.Right">
+                @if (!context.IsActive)
+                {
+                    <Button Type="@ButtonType.Primary" Size="@ButtonSize.Small" Ghost
+                            OnClick="() => ToggleActive(context)" Loading="_processingId == context.Id">
+                        Activar
+                    </Button>
+                }
+                else
+                {
+                    <Button Type="@ButtonType.Default" Danger Size="@ButtonSize.Small" Ghost
+                            OnClick="() => ToggleActive(context)" Loading="_processingId == context.Id">
+                        Desactivar
+                    </Button>
+                }
+            </ActionColumn>
+        </ChildContent>
+    </RemoteTable>
 </div>
 
 @code {
-    private List<ErpActivityDto> _activities = new();
-    private bool _loading = true;
+    private RemoteTable<ErpActivityDto>? _table;
     private bool _syncing;
-    private string _search = "";
-    private string _statusFilter = "all";
     private Guid? _processingId;
 
-    private IEnumerable<ErpActivityDto> FilteredActivities => 
-        _activities
-            .Where(a => _statusFilter switch
-            {
-                "active" => a.IsActive,
-                "inactive" => !a.IsActive,
-                _ => true
-            })
-            .Where(a => string.IsNullOrWhiteSpace(_search) || 
-                        a.Name.Contains(_search, StringComparison.OrdinalIgnoreCase) || 
-                        a.ExternalErpId?.Contains(_search, StringComparison.OrdinalIgnoreCase) == true);
-
-    protected override async Task OnInitializedAsync()
+    // Sin filtro se listan activas e inactivas, como antes; "active" elige una de las dos.
+    private static readonly IReadOnlyDictionary<string, string?> AllActivities = new Dictionary<string, string?>
     {
-        await LoadData();
-    }
+        ["includeInactive"] = "true",
+    };
 
-    private async Task LoadData()
+    private static readonly List<FilterOption> StatusOptions = new()
     {
-        _loading = true;
-        try
-        {
-            // includeInactive = true to show all activities in this management view
-            _activities = await Http.GetFromJsonAsync<List<ErpActivityDto>>("api/catalogs/activities?includeInactive=true") ?? new();
-        }
-        catch (Exception)
-        {
-            Message.Error("Error al cargar las actividades.");
-        }
-        finally
-        {
-            _loading = false;
-        }
-    }
+        new("true", "Activas"),
+        new("false", "Inactivas"),
+    };
+
+    private Task<PagedResult<ErpActivityDto>?> LoadActivities(string query, CancellationToken ct) =>
+        Http.GetFromJsonAsync<PagedResult<ErpActivityDto>>($"api/catalogs/activities/search?{query}", ct);
+
+    private Task ReloadTable() => _table?.ReloadAsync() ?? Task.CompletedTask;
 
     private async Task SyncFromErp()
     {
@@ -117,7 +96,7 @@
             if (response.IsSuccessStatusCode)
             {
                 Message.Success("Sincronización de actividades completada.");
-                await LoadData();
+                await ReloadTable();
             }
             else
             {
@@ -144,7 +123,7 @@
             {
                 var newStatus = !activity.IsActive;
                 Message.Success($"Actividad '{activity.Name}' {(newStatus ? "activada" : "desactivada")}.");
-                await LoadData();
+                await ReloadTable();
             }
             else
             {
@@ -161,6 +140,4 @@
             _processingId = null;
         }
     }
-
-    private void OnSearch() => StateHasChanged();
 }

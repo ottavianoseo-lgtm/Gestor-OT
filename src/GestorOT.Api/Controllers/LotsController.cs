@@ -462,17 +462,24 @@ public class LotsController : ControllerBase
         [FromQuery] string? search = null,
         [FromQuery] Guid? fieldId = null,
         [FromQuery] string? status = null,
+        [FromQuery] Guid? campaignId = null,
         CancellationToken ct = default)
     {
         var query = _context.Lots.AsNoTracking();
         if (!string.IsNullOrWhiteSpace(search))
-            query = query.Where(l => EF.Functions.ILike(l.Name, PagedQueryExtensions.ContainsPattern(search)));
+        {
+            var pattern = PagedQueryExtensions.ContainsPattern(search);
+            query = query.Where(l => EF.Functions.ILike(l.Name, pattern) || EF.Functions.ILike(l.Field!.Name, pattern));
+        }
+        // Los lotes que están en la campaña ("Ver solo mis lotes").
+        if (campaignId.HasValue)
+            query = query.Where(l => l.CampaignLots.Any(cl => cl.CampaignId == campaignId));
         if (fieldId.HasValue)
             query = query.Where(l => l.FieldId == fieldId);
         if (!string.IsNullOrWhiteSpace(status))
             query = query.Where(l => l.Status == status);
 
         return query.ToPagedAsync(paging, LotSorts,
-            l => new LotListItemDto(l.Id, l.FieldId, l.Name, l.Status, l.Field != null ? l.Field.Name : null, l.CadastralArea, l.CodCentro), ct);
+            l => new LotListItemDto(l.Id, l.FieldId, l.Name, l.Status, l.Field != null ? l.Field.Name : null, l.CadastralArea, l.CodCentro, l.Geometry != null), ct);
     }
 }

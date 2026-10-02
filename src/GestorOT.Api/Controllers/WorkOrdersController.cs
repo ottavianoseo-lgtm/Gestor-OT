@@ -564,17 +564,20 @@ public class WorkOrdersController : ControllerBase
         .Add("plannedDate", w => w.PlannedDate, defaultDesc: true)
         .Add("otNumber", w => w.OTNumber)
         .Add("name", w => w.Name)
+        .Add("assignedTo", w => w.AssignedTo)
         .Add("status", w => w.WorkOrderStatus != null ? w.WorkOrderStatus.SortOrder : int.MaxValue);
 
     /// <summary>
     /// A diferencia de GET paged, la campaña va explícita (campaignId) y no sale del header de
-    /// campaña actual. dueFrom inclusivo, dueBefore exclusivo, en UTC.
+    /// campaña actual. dueFrom inclusivo, dueBefore exclusivo, en UTC. statusId acepta el id de
+    /// un estado o "none" (OTs sin estado asignado).
     /// </summary>
     [HttpGet("search")]
     public Task<ActionResult<PagedResult<WorkOrderDto>>> SearchWorkOrders(
         [FromQuery] PagedQuery paging,
         [FromQuery] Guid? campaignId = null,
         [FromQuery] string? status = null,
+        [FromQuery] string? statusId = null,
         [FromQuery] Guid? fieldId = null,
         [FromQuery] Guid? contactId = null,
         [FromQuery] bool? locked = null,
@@ -588,6 +591,12 @@ public class WorkOrdersController : ControllerBase
         if (campaignId.HasValue) query = query.Where(w => w.CampaignId == campaignId);
         if (!string.IsNullOrWhiteSpace(status))
             query = query.Where(w => w.WorkOrderStatus != null ? EF.Functions.ILike(w.WorkOrderStatus.Name, status.Trim()) : EF.Functions.ILike(w.Status, status.Trim()));
+        if (statusId == "none")
+            query = query.Where(w => w.WorkOrderStatusId == null || w.WorkOrderStatusId == Guid.Empty);
+        else if (Guid.TryParse(statusId, out var sid))
+            query = query.Where(w => w.WorkOrderStatusId == sid);
+        else if (!string.IsNullOrWhiteSpace(statusId))
+            return Task.FromResult<ActionResult<PagedResult<WorkOrderDto>>>(BadRequest("statusId tiene que ser un id de estado o 'none'."));
         if (fieldId.HasValue) query = query.Where(w => w.FieldId == fieldId);
         if (contactId.HasValue) query = query.Where(w => w.ContactId == contactId);
         if (locked.HasValue)

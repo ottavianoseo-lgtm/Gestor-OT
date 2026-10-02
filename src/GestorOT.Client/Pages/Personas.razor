@@ -17,149 +17,72 @@
         <span class="page-subtitle">Gestión de personas operativas. Active personas del ERP y administre su modalidad.</span>
     </div>
     <div style="display: flex; gap: 8px;">
-        <RadioGroup @bind-Value="_filterMode" ButtonStyle="@RadioButtonStyle.Solid">
-            <Radio Value="@("all")">Todas</Radio>
-            <Radio Value="@("active")">Activas</Radio>
-        </RadioGroup>
-        <Input @bind-Value="@SearchText"Placeholder="Buscar por nombre o CUIT..." Style="width: 250px;" />
+        <Button Icon="user-add" OnClick="OpenActivationModal">Activar persona del ERP</Button>
         <Button Icon="sync" OnClick="SyncFromErp" Loading="_syncing">Sincronizar con ERP</Button>
     </div>
 </div>
 
-@if (_loading)
-{
-    <div style="text-align: center; padding: 60px;">
-        <Spin Size="AntDesign.SpinSize.Large" Tip="Cargando personas..." />
-    </div>
-}
-else
-{
-    @if (_filterMode == "all")
-    {
-        <div class="directory-list">
-            @foreach (var person in PagedPeople)
-            {
-                <div class="person-card @(person.IsActiveContact ? "person-active" : "")">
-                    <div class="person-icon">
-                        <Icon Type="user" Theme="IconThemeType.Outline" Style="font-size: 24px;" />
-                    </div>
-                    <div class="person-info">
-                        <div class="person-name">@person.FullName</div>
-                        <div class="person-details">
-                            @if (!string.IsNullOrEmpty(person.VatNumber)) { <span>CUIT: @person.VatNumber</span> }
-                            @if (!string.IsNullOrEmpty(person.Position)) { <span>&bull; @person.Position</span> }
-                        </div>
-                    </div>
-                    <div class="person-status">
-                        @if (person.IsActiveContact)
-                        {
-                            _contactsByErpId.TryGetValue(person.ExternalId, out var contact);
-                            var modalityLabel = contact?.Role switch
-                            {
-                                ContactRole.InternalStaff => "Propio",
-                                ContactRole.Contractor => "Contratista",
-                                ContactRole.Supplier => "Proveedor",
-                                ContactRole.Unclassified => "Sin clasificar",
-                                _ => "Activo"
-                            };
-                            var modalityColor = contact?.Role switch
-                            {
-                                ContactRole.Contractor => "orange",
-                                ContactRole.Supplier => "blue",
-                                ContactRole.Unclassified => "default",
-                                _ => "green"
-                            };
-                            <Tag Color="@modalityColor">@modalityLabel</Tag>
-                        }
-                    </div>
-                    <div class="person-actions">
-                        @if (!person.IsActiveContact)
-                        {
-                            <Button Type="@ButtonType.Primary" OnClick="() => OpenActivationModal(person)"
-                                    Style="background: #3498DB; border-color: #3498DB; border-radius: 6px;">
-                                Activar Contacto
-                            </Button>
-                        }
-                        else
-                        {
-                            _contactsByErpId.TryGetValue(person.ExternalId, out var contact);
-                            @if (contact != null)
-                            {
-                                <Select TItemValue="ContactRole" TItem="ContactRole"
-                                        Value="contact.Role" ValueChanged="(v) => UpdateModality(contact, v)"
-                                        Style="width: 140px;">
-                                    <SelectOption TItemValue="ContactRole" TItem="ContactRole" Value="@ContactRole.InternalStaff" Label="Propio" />
-                                    <SelectOption TItemValue="ContactRole" TItem="ContactRole" Value="@ContactRole.Contractor" Label="Contratista" />
-                                    <SelectOption TItemValue="ContactRole" TItem="ContactRole" Value="@ContactRole.Supplier" Label="Proveedor" />
-                                    <SelectOption TItemValue="ContactRole" TItem="ContactRole" Value="@ContactRole.Unclassified" Label="Sin clasificar" />
-                                </Select>
-                            }
-                        }
-                    </div>
+@* La sincronización ya deja como contacto a toda persona habilitada en el ERP, así que la
+   tabla lista contactos (paginados en la API: son miles). Activar a mano queda para las que no. *@
+<div class="glass-card">
+    <RemoteTable @ref="_table"
+                 TItem="ContactDto"
+                 Load="LoadContacts"
+                 SortKeys="@SortKeys"
+                 StateKey="personas"
+                 SearchPlaceholder="Buscar por nombre, razón social, email o CUIT..."
+                 ItemLabel="personas"
+                 RowKey="c => c.Id.ToString()">
+        <Filters>
+            <SelectFilter Param="roles" Placeholder="Modalidad" Options="@RoleOptions" Style="width: 160px;" />
+        </Filters>
+        <ChildContent>
+            <PropertyColumn Property="c => c.FullName" Title="Nombre Completo" Sortable DefaultSortOrder="@SortDirection.Ascending" />
+            <PropertyColumn Property="c => c.Position" Title="Cargo" />
+            <PropertyColumn Property="c => c.Role" Title="Modalidad" Sortable>
+                @{
+                    var roleColor = context.Role switch
+                    {
+                        ContactRole.InternalStaff => "#2ECC71",
+                        ContactRole.Contractor => "#E67E22",
+                        ContactRole.Supplier => "#3498DB",
+                        _ => "#95A5A6"
+                    };
+                }
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <Tag Style="@($"background: {roleColor}20; color: {roleColor}; border: 1px solid {roleColor}40; border-radius: 8px; font-size: 11px;")">@RoleLabel(context.Role)</Tag>
+                    <Select TItemValue="ContactRole" TItem="ContactRole"
+                            Value="context.Role" ValueChanged="(v) => UpdateModality(context, v)"
+                            Style="width: 120px;" Trigger="click">
+                        <SelectOption TItemValue="ContactRole" TItem="ContactRole" Value="@ContactRole.InternalStaff" Label="Propio" />
+                        <SelectOption TItemValue="ContactRole" TItem="ContactRole" Value="@ContactRole.Contractor" Label="Contratista" />
+                        <SelectOption TItemValue="ContactRole" TItem="ContactRole" Value="@ContactRole.Supplier" Label="Proveedor" />
+                        <SelectOption TItemValue="ContactRole" TItem="ContactRole" Value="@ContactRole.Unclassified" Label="Sin clasificar" />
+                    </Select>
                 </div>
-            }
-        </div>
-        <Pagination Total="FilteredPeople.Count()" PageSize="PageSize" Current="_page"
-                    OnChange="OnPageChange" HideOnSinglePage Style="margin-top: 16px; text-align: right;" />
-    }
-    else
-    {
-        @if (_contacts.Count == 0)
-        {
-            <div style="text-align: center; padding: 60px; color: rgba(255,255,255,0.4);">
-                <Icon Type="team" Theme="IconThemeType.Outline" Style="font-size: 48px; margin-bottom: 16px; display: block;" />
-                <p>No hay personas activas. Active personas desde la vista "Todas".</p>
-            </div>
-        }
-        else
-        {
-            <Table DataSource="_contacts.Where(c => string.IsNullOrWhiteSpace(_searchText) ||
-                c.FullName.Contains(_searchText, StringComparison.OrdinalIgnoreCase) ||
-                (c.VatNumber != null && c.VatNumber.Contains(_searchText))).ToList()"
-                   Size="@TableSize.Middle">
-                <PropertyColumn Property="c => c.FullName" Title="Nombre Completo" Sortable />
-                <PropertyColumn Property="c => c.Position" Title="Cargo" />
-                <Column TData="ContactRole" Title="Modalidad">
-                    @{
-                        var roleLabel = context.Role switch
-                        {
-                            ContactRole.InternalStaff => "Propio",
-                            ContactRole.Contractor => "Contratista",
-                            ContactRole.Supplier => "Proveedor",
-                                ContactRole.Unclassified => "Sin clasificar",
-                            _ => context.Role.GetDisplayName()
-                        };
-                        var roleColor = context.Role switch
-                        {
-                            ContactRole.InternalStaff => "#2ECC71",
-                            ContactRole.Contractor => "#E67E22",
-                            ContactRole.Supplier => "#3498DB",
-                            _ => "#95A5A6"
-                        };
-                    }
-                    <div style="display: flex; align-items: center; gap: 8px;">
-                        <Tag Style="@($"background: {roleColor}20; color: {roleColor}; border: 1px solid {roleColor}40; border-radius: 8px; font-size: 11px;")">@roleLabel</Tag>
-                        <Select TItemValue="ContactRole" TItem="ContactRole"
-                                Value="context.Role" ValueChanged="(v) => UpdateModality(context, v)"
-                                Style="width: 120px;" Trigger="click">
-                            <SelectOption TItemValue="ContactRole" TItem="ContactRole" Value="@ContactRole.InternalStaff" Label="Propio" />
-                            <SelectOption TItemValue="ContactRole" TItem="ContactRole" Value="@ContactRole.Contractor" Label="Contratista" />
-                            <SelectOption TItemValue="ContactRole" TItem="ContactRole" Value="@ContactRole.Supplier" Label="Proveedor" />
-                                    <SelectOption TItemValue="ContactRole" TItem="ContactRole" Value="@ContactRole.Unclassified" Label="Sin clasificar" />
-                        </Select>
-                    </div>
-                </Column>
-                <PropertyColumn Property="c => c.Email" Title="Email" />
-                <PropertyColumn Property="c => c.VatNumber" Title="CUIT/VAT" />
-            </Table>
-        }
-    }
-}
+            </PropertyColumn>
+            <PropertyColumn Property="c => c.Email" Title="Email" />
+            <PropertyColumn Property="c => c.VatNumber" Title="CUIT/VAT" />
+        </ChildContent>
+    </RemoteTable>
+</div>
 
 <Modal Title="Activar Contacto" Visible="@_activationModalVisible" OnCancel="() => _activationModalVisible = false" Footer="null">
-    @if (_selectedPerson != null)
-    {
-        <div style="margin-bottom: 20px;">
+    <div style="margin-bottom: 20px;">
+        <div style="margin-bottom: 8px; color: #fff;">Persona del ERP:</div>
+        @* Solo las que todavía no son contacto, y como mucho unas pocas por vez: un Select con
+           miles de opciones congela WASM. *@
+        <Select TItemValue="string" TItem="string" Value="@_selectedPersonId" ValueChanged="OnPersonChanged"
+                Placeholder="Buscar por nombre o CUIT..." EnableSearch AllowClear Loading="_loadingPeople"
+                OnSearch="OnPersonSearch" Style="width: 100%; margin-bottom: 16px;">
+            @foreach (var person in CandidatePeople)
+            {
+                <SelectOption TItemValue="string" TItem="string" Value="@person.Id.ToString()"
+                              Label="@(string.IsNullOrEmpty(person.VatNumber) ? person.FullName : $"{person.FullName} ({person.VatNumber})")" />
+            }
+        </Select>
+        @if (_selectedPerson != null)
+        {
             <p style="color: rgba(255,255,255,0.7); margin-bottom: 16px;">
                 Está a punto de activar a <strong>@_selectedPerson.FullName</strong> en Gestor-OT.
                 Por favor, asigne la modalidad:
@@ -169,120 +92,76 @@ else
                 <SelectOption TItemValue="ContactRole" TItem="ContactRole" Value="@ContactRole.InternalStaff" Label="Propio" />
                 <SelectOption TItemValue="ContactRole" TItem="ContactRole" Value="@ContactRole.Contractor" Label="Contratista" />
                 <SelectOption TItemValue="ContactRole" TItem="ContactRole" Value="@ContactRole.Supplier" Label="Proveedor" />
-                                    <SelectOption TItemValue="ContactRole" TItem="ContactRole" Value="@ContactRole.Unclassified" Label="Sin clasificar" />
+                <SelectOption TItemValue="ContactRole" TItem="ContactRole" Value="@ContactRole.Unclassified" Label="Sin clasificar" />
             </Select>
-        </div>
-        <div style="text-align: right;">
-            <Button OnClick="() => _activationModalVisible = false" Style="margin-right: 8px;">Cancelar</Button>
-            <Button Type="@ButtonType.Primary" Loading="_activating" OnClick="ActivateSelectedPerson">
-                Confirmar Activación
-            </Button>
-        </div>
-    }
+        }
+    </div>
+    <div style="text-align: right;">
+        <Button OnClick="() => _activationModalVisible = false" Style="margin-right: 8px;">Cancelar</Button>
+        <Button Type="@ButtonType.Primary" Loading="_activating" Disabled="_selectedPerson == null" OnClick="ActivateSelectedPerson">
+            Confirmar Activación
+        </Button>
+    </div>
 </Modal>
 
-<style>
-    .directory-list {
-        display: flex;
-        flex-direction: column;
-        gap: 12px;
-    }
-    
-    .person-card {
-        background: rgba(255,255,255,0.04);
-        border: 1px solid rgba(255,255,255,0.08);
-        border-radius: 12px;
-        padding: 16px;
-        display: flex;
-        align-items: center;
-        gap: 16px;
-        transition: all 0.2s;
-    }
-    
-    .person-card:hover {
-        background: rgba(255,255,255,0.06);
-    }
-    
-    .person-active {
-        border-color: rgba(46, 204, 113, 0.3);
-        background: rgba(46, 204, 113, 0.05);
-    }
-
-    .person-icon {
-        width: 48px;
-        height: 48px;
-        border-radius: 50%;
-        background: rgba(255,255,255,0.1);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        color: rgba(255,255,255,0.8);
-    }
-    
-    .person-info {
-        flex: 1;
-    }
-    
-    .person-name {
-        font-size: 16px;
-        font-weight: 600;
-        color: #fff;
-    }
-    
-    .person-details {
-        font-size: 13px;
-        color: rgba(255,255,255,0.5);
-        display: flex;
-        gap: 8px;
-        margin-top: 4px;
-    }
-    
-    .person-status {
-        width: 100px;
-        text-align: center;
-    }
-</style>
-
 @code {
+    private RemoteTable<ContactDto>? _table;
+
     private List<ErpPersonDto> _people = new();
-    private List<ContactDto> _contacts = new();
-    private bool _loading = true;
-    private string _filterMode = "all";
+    private int _personSearchVersion;
+    private bool _loadingPeople;
+    private string? _personSearch;
+    private string? _selectedPersonId;
 
-    // Renderizar todas las tarjetas (miles, cada una con su Select) congela WASM; se pagina.
-    private const int PageSize = 50;
-    private int _page = 1;
-    private Dictionary<string, ContactDto> _contactsByErpId = new();
-
-    private string _searchText = string.Empty;
-    private string SearchText
-    {
-        get => _searchText;
-        set { _searchText = value; _page = 1; }
-    }
-    
     private bool _activationModalVisible = false;
     private ErpPersonDto? _selectedPerson;
     private ContactRole _selectedRole = ContactRole.InternalStaff;
     private bool _activating = false;
     private bool _syncing = false;
 
-    private IEnumerable<ErpPersonDto> FilteredPeople => string.IsNullOrWhiteSpace(_searchText)
-        ? _people
-        : _people.Where(p => 
-            p.FullName.Contains(_searchText, StringComparison.OrdinalIgnoreCase) || 
-            (p.VatNumber != null && p.VatNumber.Contains(_searchText))
-        );
+    // Valor = int de ContactRole, que es lo que espera el parámetro "roles" de la API.
+    private static readonly List<FilterOption> RoleOptions = new()
+    {
+        new(((int)ContactRole.InternalStaff).ToString(), "Propio"),
+        new(((int)ContactRole.Contractor).ToString(), "Contratista"),
+        new(((int)ContactRole.Supplier).ToString(), "Proveedor"),
+        new(((int)ContactRole.Unclassified).ToString(), "Sin clasificar"),
+    };
 
-    private IEnumerable<ErpPersonDto> PagedPeople =>
-        FilteredPeople.Skip((_page - 1) * PageSize).Take(PageSize);
+    // Propiedad de la columna → clave de orden de api/catalogs/contacts/search.
+    private static readonly IReadOnlyDictionary<string, string> SortKeys = new Dictionary<string, string>
+    {
+        [nameof(ContactDto.FullName)] = "name",
+        [nameof(ContactDto.Role)] = "role",
+    };
 
-    private void OnPageChange(PaginationEventArgs e) => _page = e.Page;
+    private Task<PagedResult<ContactDto>?> LoadContacts(string query, CancellationToken ct) =>
+        Http.GetFromJsonAsync<PagedResult<ContactDto>>($"api/catalogs/contacts/search?{query}", ct);
 
-    protected override async Task OnInitializedAsync()
+    private static string RoleLabel(ContactRole role) => role switch
+    {
+        ContactRole.InternalStaff => "Propio",
+        ContactRole.Contractor => "Contratista",
+        ContactRole.Supplier => "Proveedor",
+        ContactRole.Unclassified => "Sin clasificar",
+        _ => role.GetDisplayName()
+    };
+
+    private IEnumerable<ErpPersonDto> CandidatePeople
+    {
+        get
+        {
+            var list = _people.ToList();
+            // La elegida se sigue mostrando aunque la búsqueda ya no la traiga.
+            if (_selectedPerson != null && list.All(p => p.Id != _selectedPerson.Id))
+                list.Insert(0, _selectedPerson);
+            return list;
+        }
+    }
+
+    protected override void OnInitialized()
     {
         TenantState.OnChange += OnTenantChanged;
-        await LoadData();
     }
 
     public void Dispose()
@@ -292,32 +171,46 @@ else
 
     private void OnTenantChanged()
     {
-        InvokeAsync(async () => { await LoadData(); StateHasChanged(); });
+        InvokeAsync(ReloadTable);
     }
 
-    private async Task LoadData()
+    private async Task ReloadTable()
     {
-        _loading = true;
+        if (_table != null)
+            await _table.ReloadAsync();
+    }
+
+    // El directorio del ERP solo hace falta para activar: se buscan en la API las que todavía
+    // no son contacto, de a 50, a medida que se escribe.
+    private async Task LoadErpPeople()
+    {
+        // Se descarta la respuesta de una búsqueda vieja en vez de cancelarla: el handler HTTP
+        // muestra cualquier cancelación como "timeout".
+        var version = ++_personSearchVersion;
+
+        _loadingPeople = true;
+        StateHasChanged();
         try
         {
-            var peopleTask = Http.GetFromJsonAsync("api/erppeople", AppJsonSerializerContext.Default.ListErpPersonDto);
-            var contactsTask = Http.GetFromJsonAsync<List<ContactDto>>("api/catalogs/contacts");
-            await Task.WhenAll(peopleTask, contactsTask);
-            _people = await peopleTask ?? new();
-            _contacts = await contactsTask ?? new();
-            _contactsByErpId = _contacts
-                .Where(c => c.ExternalErpId != null)
-                .GroupBy(c => c.ExternalErpId!)
-                .ToDictionary(g => g.Key, g => g.First());
+            var page = await Http.GetFromJsonAsync<PagedResult<ErpPersonDto>>(
+                $"api/erppeople/search?page=1&pageSize=50&activated=false&search={Uri.EscapeDataString(_personSearch ?? "")}");
+            if (version != _personSearchVersion) return;
+            _people = page?.Items ?? new();
         }
-        catch (Exception ex)
+        catch (Exception ex) when (version == _personSearchVersion)
         {
-            Message.Error($"Error cargando personas: {ex.Message}");
+            Message.Error($"Error cargando personas del ERP: {ex.Message}");
+        }
+        catch
+        {
         }
         finally
         {
-            _loading = false;
-            StateHasChanged();
+            if (version == _personSearchVersion)
+            {
+                _loadingPeople = false;
+                StateHasChanged();
+            }
         }
     }
 
@@ -329,7 +222,7 @@ else
             if (response.IsSuccessStatusCode)
             {
                 Message.Success($"Modalidad de {contact.FullName} actualizada.");
-                await LoadData();
+                await ReloadTable();
             }
             else
             {
@@ -342,17 +235,39 @@ else
         }
     }
 
-    private void OpenActivationModal(ErpPersonDto person)
+    private async Task OpenActivationModal()
     {
-        _selectedPerson = person;
+        _selectedPerson = null;
+        _selectedPersonId = null;
+        _personSearch = null;
         _selectedRole = ContactRole.InternalStaff;
         _activationModalVisible = true;
+        await LoadErpPeople();
+    }
+
+    private void OnPersonSearch(string text)
+    {
+        _personSearch = text;
+        _ = InvokeAsync(async () =>
+        {
+            // Un poco de espera para no pegarle a la API en cada tecla.
+            var current = text;
+            await Task.Delay(250);
+            if (current == _personSearch)
+                await LoadErpPeople();
+        });
+    }
+
+    private void OnPersonChanged(string? id)
+    {
+        _selectedPersonId = id;
+        _selectedPerson = id is null ? null : _people.FirstOrDefault(p => p.Id.ToString() == id);
     }
 
     private async Task ActivateSelectedPerson()
     {
         if (_selectedPerson == null) return;
-        
+
         _activating = true;
         try
         {
@@ -363,12 +278,12 @@ else
             };
 
             var response = await Http.PostAsJsonAsync("api/erppeople/activate", request, AppJsonSerializerContext.Default.ActivateContactRequest);
-            
+
             if (response.IsSuccessStatusCode)
             {
                 Message.Success("Contacto activado exitosamente.");
-                await LoadData();
                 _activationModalVisible = false;
+                await ReloadTable();
             }
             else
             {
@@ -396,7 +311,7 @@ else
             if (response.IsSuccessStatusCode)
             {
                 Message.Success("Sincronización completada.");
-                await LoadData();
+                await ReloadTable();
             }
             else
             {

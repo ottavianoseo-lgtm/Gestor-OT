@@ -13,7 +13,6 @@
 @inject NavigationManager Nav
 @inject GestorOT.Client.Services.CampaignState CampaignState
 @inject GestorOT.Client.Services.TenantState TenantState
-@inject FilterState Filters
 @implements IDisposable
 
 <PageTitle>Labores - GestorOT</PageTitle>
@@ -24,21 +23,6 @@
         <span class="page-subtitle">Labores de la campaña que no pertenecen a ninguna Orden de Trabajo</span>
     </div>
     <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap; row-gap: 8px;">
-        <Select TItemValue="string?" TItem="string" @bind-Value="_filterStatus"
-                Placeholder="Estado" AllowClear Style="width: 120px;" OnSelectedItemChanged="LoadData">
-            <SelectOption TItemValue="string?" TItem="string" Value="@("Planned")" Label="Planeadas" />
-            <SelectOption TItemValue="string?" TItem="string" Value="@("Realized")" Label="Realizadas" />
-            <SelectOption TItemValue="string?" TItem="string" Value="@("AwaitingValidation")" Label="En Validación" />
-        </Select>
-        <Select TItemValue="Guid?" TItem="LaborTypeDto" @bind-Value="_filterTypeId"
-                Placeholder="Tipo labor" AllowClear Style="width: 140px;" OnSelectedItemChanged="LoadData"
-                DataSource="@_laborTypes"
-                LabelName="@nameof(LaborTypeDto.Name)" ValueName="@nameof(LaborTypeDto.Id)" />
-        <Select TItemValue="Guid?" TItem="ContactDto" @bind-Value="_filterContactId"
-                Placeholder="Responsable" AllowClear Style="width: 150px;" OnSelectedItemChanged="LoadData"
-                DataSource="@_contacts"
-                LabelName="@nameof(ContactDto.FullName)" ValueName="@nameof(ContactDto.Id)" />
-        <Button Icon="sync" OnClick="LoadData" />
         @if (CampaignState.CurrentCampaign != null)
         {
             <Tag Style="@($"background: #2ECC7120; color: #2ECC71; border: 1px solid #2ECC7140; border-radius: 8px; font-size: 11px; font-weight: 600; padding: 2px 10px; cursor: default;")">
@@ -95,48 +79,49 @@
                 <span style="color: #fff;">
                     <strong style="color: #3b82f6;">Modo Asignación:</strong> Seleccionando labores para <strong style="color: #fff;">@(targetWo.Description ?? targetWo.OTNumber)</strong>
                 </span>
-                <Button Size="@ButtonSize.Small" OnClick='() => { targetOT = null; LoadData(); }' Style="background: rgba(255,255,255,0.1); color: #fff; border: 1px solid rgba(255,255,255,0.2);">Quitar Filtro</Button>
+                <Button Size="@ButtonSize.Small" OnClick='() => { targetOT = null; return LoadData(); }' Style="background: rgba(255,255,255,0.1); color: #fff; border: 1px solid rgba(255,255,255,0.2);">Quitar Filtro</Button>
             </div>
         </MessageTemplate>
     </Alert>
 }
 
 <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 16px;">
-    <div class="kpi-card" style="cursor:pointer; border-color: @(_quickStatusFilter == null ? "rgba(255,255,255,0.3)" : "rgba(255,255,255,0.06)")" @onclick="() => { _quickStatusFilter = null; }">
-        <div class="kpi-value">@_labors.Count</div>
+    <div class="kpi-card" style="cursor:pointer; border-color: @(KpiBorder(null, "rgba(255,255,255,0.3)"))" @onclick="() => FilterByStatus(null)">
+        <div class="kpi-value">@_kpiTotal</div>
         <div class="kpi-label">Total Labores</div>
     </div>
-    <div class="kpi-card" style="cursor:pointer; border-color: @(_quickStatusFilter == "Planned" ? "#3498DB" : "rgba(255,255,255,0.06)")" @onclick='() => { _quickStatusFilter = "Planned"; }'>
-        <div class="kpi-value" style="color: #3498DB;">@_labors.Count(l => l.Status == "Planned")</div>
+    <div class="kpi-card" style="cursor:pointer; border-color: @(KpiBorder("Planned", "#3498DB"))" @onclick='() => FilterByStatus("Planned")'>
+        <div class="kpi-value" style="color: #3498DB;">@_kpiPlanned</div>
         <div class="kpi-label">Planeadas</div>
     </div>
-    <div class="kpi-card" style="cursor:pointer; border-color: @(_quickStatusFilter == "Realized" ? "#2ECC71" : "rgba(255,255,255,0.06)")" @onclick='() => { _quickStatusFilter = "Realized"; }'>
-        <div class="kpi-value" style="color: #2ECC71;">@_labors.Count(l => l.Status == "Realized")</div>
+    <div class="kpi-card" style="cursor:pointer; border-color: @(KpiBorder("Realized", "#2ECC71"))" @onclick='() => FilterByStatus("Realized")'>
+        <div class="kpi-value" style="color: #2ECC71;">@_kpiRealized</div>
         <div class="kpi-label">Realizadas</div>
     </div>
 </div>
 
-@if (_loading)
-{
-    <div style="text-align: center; padding: 60px;">
-        <Spin Size="AntDesign.SpinSize.Large" Tip="Cargando labores" />
-    </div>
-}
-else
-{
-    var filtered = FilteredLabors;
-    <LaborFilterBar Filter="@_filter" Labors="@_labors" ShownCount="@filtered.Count" OnChanged="StateHasChanged" />
-    <div class="glass-card table-container">
-        <LaborList Labors="@filtered"
-                   ShowOtColumn="false"
-                   IsLocked="false"
-                   OnEdit="id => EditLabor(id)"
-                   OnExecute='(args) => EditLabor(args.Id, true)'
-                   OnDelete="DeleteLabor"
-                   DisableSelection="l => l.WorkOrderId != null"
-                   OnSelectedRowsChanged="OnSelectedRowsChanged" />
-    </div>
-}
+<div class="glass-card table-container">
+    <LaborList @ref="_laborList"
+               Load="LoadLabors"
+               FixedFilters="@FixedFilters"
+               StateKey="labores-sueltas"
+               ShowOtColumn="false"
+               IsLocked="false"
+               OnEdit="id => EditLabor(id)"
+               OnExecute='(args) => EditLabor(args.Id, true)'
+               OnDelete="DeleteLabor"
+               DisableSelection="l => l.WorkOrderId != null"
+               OnSelectedRowsChanged="OnSelectedRowsChanged">
+        <Filters>
+            <SelectFilter Param="status" Placeholder="Estado" Options="@StatusOptions" Style="width: 140px;" />
+            <SelectFilter Param="laborTypeId" Placeholder="Tipo labor" Options="@_laborTypeOptions" Style="width: 170px;" />
+            <SelectFilter Param="contactId" Placeholder="Responsable" SearchOptions="SearchContacts" Style="width: 180px;" />
+            <SelectFilter Param="fieldId" Placeholder="Campo" SearchOptions="SearchFields" Clears='new[] { "lotId" }' Style="width: 160px;" />
+            <SelectFilter Param="lotId" Placeholder="Lote" SearchOptions="SearchLots" Style="width: 160px;" />
+            <DateRangeFilter />
+        </Filters>
+    </LaborList>
+</div>
 
 <!-- Quick Labor Selector Modal -->
 <Modal Title="Nueva Labor" Visible="_quickLaborSelectorVisible" Footer="null" OnCancel="() => _quickLaborSelectorVisible = false" Width="400">
@@ -155,7 +140,7 @@ else
 </Modal>
 
 <Modal Title="Crear Labores desde Estrategia" Visible="_strategyWizardVisible" Footer="null" OnCancel="() => _strategyWizardVisible = false" Width="900">
-    <StrategyLaborWizard OnClose="() => { _strategyWizardVisible = false; LoadData(); }" />
+    <StrategyLaborWizard OnClose="() => { _strategyWizardVisible = false; return LoadData(); }" />
 </Modal>
 
 <Modal Title="@(_editingLaborId == Guid.Empty ? "Nueva Labor Suelta" : (_isExecuting ? "Ejecutar Labor" : "Editar Labor"))"
@@ -211,7 +196,7 @@ else
 <LaborImportModal @bind-Visible="_importModalVisible"
                   CampaignId="@(CampaignState.CurrentCampaign?.Id ?? Guid.Empty)"
                   CampaignName="@(CampaignState.CurrentCampaign?.Name ?? string.Empty)"
-                  OnLaborsImported="LoadData" />
+                  OnLaborsImported="() => LoadData()" />
 
 <!-- Removed redundant execute modal -->
 
@@ -345,20 +330,14 @@ else
 @code {
     [SupplyParameterFromQuery] public Guid? targetOT { get; set; }
     
-    private List<LaborDto> _labors = new();
-    private List<CampaignLotDto> _lots = new();
+    private LaborList? _laborList;
     private List<WorkOrderDto> _workOrders = new();
-    private List<LaborTypeDto> _laborTypes = new();
-    private bool _loading = true;
+    private List<FilterOption> _laborTypeOptions = new();
     private string? _errorMessage;
     private bool _saving;
-    private HashSet<Guid> _selectedIds = new();
-    private Guid? _filterTypeId;
-    private Guid? _filterContactId;
-    private List<ContactDto> _contacts = new();
-    private string? _filterStatus;
-    private LaborFilter _filter = new();
-    private string? _quickStatusFilter;
+    private List<LaborDto> _selectedLabors = new();
+    private HashSet<Guid> _selectedIds => _selectedLabors.Select(l => l.Id).ToHashSet();
+    private int _kpiTotal, _kpiPlanned, _kpiRealized;
 
     private bool _quickLaborSelectorVisible;
     private bool _importModalVisible;
@@ -376,35 +355,72 @@ else
     private string? _bulkValidationLink;
     private int _bulkValidationLaborCount;
 
-    private bool _allSelected => _labors.Count > 0 && _selectedIds.Count == _labors.Count;
+    private static readonly List<FilterOption> StatusOptions = new()
+    {
+        new("Planned", "Planeadas"),
+        new("Realized", "Realizadas"),
+        new("AwaitingValidation", "En validación"),
+        new("Validated", "Validadas"),
+        new("Pending", "Pendientes"),
+    };
 
-    private List<LaborDto> FilteredLabors 
+    // Una labor que ya está en una OT se gestiona desde la OT: acá solo van las sueltas de la campaña.
+    // En modo asignación (targetOT) se limita al campo de esa OT.
+    private IReadOnlyDictionary<string, string?> FixedFilters
     {
         get
         {
-            var result = _labors;
-            
-            // Filter by Type if selected
-            if (_filterTypeId != null)
-                result = result.Where(l => l.LaborTypeId == _filterTypeId).ToList();
-
-            // Filter by Field if coming from a specific OT
-            if (targetOT.HasValue && targetOT != Guid.Empty)
+            var filters = new Dictionary<string, string?>
             {
-                var targetWo = _workOrders.FirstOrDefault(w => w.Id == targetOT);
-                if (targetWo != null && targetWo.FieldId.HasValue)
-                {
-                    result = result.Where(l => string.Equals(l.FieldName, targetWo.FieldName, StringComparison.OrdinalIgnoreCase)).ToList();
-                }
-            }
-
-            // Quick filter from KPI cards
-            if (_quickStatusFilter != null)
-                result = result.Where(l => l.Status == _quickStatusFilter).ToList();
-
-            return _filter.Apply(result);
+                ["assigned"] = "false",
+                ["campaignId"] = CampaignState.CurrentCampaign?.Id.ToString(),
+            };
+            var targetFieldId = TargetWorkOrder?.FieldId;
+            if (targetFieldId.HasValue)
+                filters["fieldId"] = targetFieldId.ToString();
+            return filters;
         }
     }
+
+    private WorkOrderDto? TargetWorkOrder =>
+        targetOT.HasValue && targetOT != Guid.Empty ? _workOrders.FirstOrDefault(w => w.Id == targetOT) : null;
+
+    private Task<PagedResult<LaborDto>?> LoadLabors(string query, CancellationToken ct) =>
+        Http.GetFromJsonAsync($"api/labors/search?{query}", AppJsonSerializerContext.Default.PagedResultLaborDto, ct);
+
+    private async Task<IEnumerable<FilterOption>> SearchContacts(string? text)
+    {
+        var page = await Http.GetFromJsonAsync<PagedResult<ContactDto>>(
+            $"api/catalogs/contacts/search?page=1&pageSize=20&search={Uri.EscapeDataString(text ?? "")}");
+        return page?.Items.Select(c => new FilterOption(c.Id.ToString(), c.FullName)) ?? Enumerable.Empty<FilterOption>();
+    }
+
+    private async Task<IEnumerable<FilterOption>> SearchFields(string? text)
+    {
+        var page = await Http.GetFromJsonAsync<PagedResult<FieldListItemDto>>(
+            $"api/fields/search?page=1&pageSize=20&search={Uri.EscapeDataString(text ?? "")}");
+        return page?.Items.Select(f => new FilterOption(f.Id.ToString(), f.Name)) ?? Enumerable.Empty<FilterOption>();
+    }
+
+    // Con un campo elegido alcanza con el nombre del lote; sin campo se aclara de cuál es,
+    // porque hay lotes que se llaman igual en distintos campos.
+    private async Task<IEnumerable<FilterOption>> SearchLots(string? text)
+    {
+        var campaign = CampaignState.CurrentCampaign;
+        if (campaign == null) return Enumerable.Empty<FilterOption>();
+
+        var fieldId = _laborList?.GetFilter("fieldId");
+        var page = await Http.GetFromJsonAsync<PagedResult<CampaignLotDto>>(
+            $"api/campaigns/{campaign.Id}/lots/search?page=1&pageSize=20&search={Uri.EscapeDataString(text ?? "")}"
+            + (fieldId is null ? "" : $"&fieldId={fieldId}"));
+        return page?.Items.Select(l => new FilterOption(l.LotId.ToString(), fieldId is null ? $"{l.LotName} · {l.FieldName}" : l.LotName ?? ""))
+            ?? Enumerable.Empty<FilterOption>();
+    }
+
+    private string KpiBorder(string? status, string activeColor) =>
+        _laborList?.GetFilter("status") == status ? activeColor : "rgba(255,255,255,0.06)";
+
+    private Task FilterByStatus(string? status) => _laborList?.SetFilterAsync("status", status) ?? Task.CompletedTask;
 
     private void OpenExecuteModal(LaborDto labor)
     {
@@ -415,15 +431,16 @@ else
 
     protected override async Task OnInitializedAsync()
     {
-        _filter = Filters.For<LaborFilter>("labores-sueltas");
         CampaignState.OnChange += OnCampaignChanged;
         TenantState.OnChange += OnCampaignChanged;
-        await LoadData();
+        // La tabla carga su primera página sola; acá van los datos de alrededor.
+        await LoadData(reloadTable: false);
     }
 
     private void OnCampaignChanged()
     {
-        InvokeAsync(async () => { await LoadData(); StateHasChanged(); });
+        // Al cambiar la campaña cambian los FixedFilters y la tabla se recarga sola.
+        InvokeAsync(async () => { await LoadData(reloadTable: false); StateHasChanged(); });
     }
 
     public void Dispose()
@@ -432,69 +449,54 @@ else
         TenantState.OnChange -= OnCampaignChanged;
     }
 
-    private async Task LoadData()
+    private async Task LoadData(bool reloadTable = true)
     {
         try
         {
-            _loading = true;
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
 
-            // Una labor que ya está en una OT se gestiona desde la OT: acá solo van las sueltas.
-            var url = new StringBuilder("api/labors?assigned=false&");
-            if (!string.IsNullOrEmpty(_filterStatus)) url.Append($"status={_filterStatus}&");
-            if (_filterTypeId.HasValue && _filterTypeId != Guid.Empty) url.Append($"laborTypeId={_filterTypeId}&");
-            if (_filterContactId.HasValue && _filterContactId != Guid.Empty) url.Append($"contactId={_filterContactId}&");
-            if (CampaignState.CurrentCampaign != null) url.Append($"campaignId={CampaignState.CurrentCampaign.Id}&");
-
-            var laborsTask = Http.GetFromJsonAsync(url.ToString(),
-                AppJsonSerializerContext.Default.ListLaborDto, cts.Token);
             var woTask = Http.GetFromJsonAsync("api/workorders",
                 AppJsonSerializerContext.Default.ListWorkOrderDto, cts.Token);
             var typesTask = Http.GetFromJsonAsync("api/catalogs/labor-types",
                 AppJsonSerializerContext.Default.ListLaborTypeDto, cts.Token);
-            var contactsTask = Http.GetFromJsonAsync("api/catalogs/contacts",
-                AppJsonSerializerContext.Default.ListContactDto, cts.Token);
-            
-            Task<List<CampaignLotDto>?>? lotsTask = null;
-            if (CampaignState.CurrentCampaign != null)
-            {
-                lotsTask = Http.GetFromJsonAsync(
-                    $"api/campaigns/{CampaignState.CurrentCampaign.Id}/lots",
-                    AppJsonSerializerContext.Default.ListCampaignLotDto, cts.Token);
-            }
+            await Task.WhenAll(woTask, typesTask);
 
-            var tasks = new List<Task?> { laborsTask, woTask, typesTask, contactsTask, lotsTask };
-            await Task.WhenAll(tasks.Where(t => t != null).Select(t => t!));
-
-            _labors = await laborsTask ?? new();
-            if (lotsTask != null)
-                _lots = await lotsTask ?? new();
             _workOrders = await woTask ?? new();
-            _laborTypes = await typesTask ?? new();
-            _contacts = await contactsTask ?? new();
+            _laborTypeOptions = (await typesTask ?? new()).Select(t => new FilterOption(t.Id.ToString(), t.Name)).ToList();
+
+            // Los totales dependen de la OT destino (filtra por su campo), por eso van después.
+            await LoadKpis(cts.Token);
             _errorMessage = null;
+
+            if (TargetWorkOrder != null)
+                _assignTargetOT = TargetWorkOrder.Id;
         }
         catch (Exception ex)
         {
             _errorMessage = $"Error: {ex.Message}";
         }
-        finally
-        {
-            _loading = false;
-            _selectedIds.Clear();
-            
-            if (targetOT.HasValue && targetOT != Guid.Empty && _workOrders.Any(w => w.Id == targetOT))
-            {
-                _assignTargetOT = targetOT.Value;
-                // We don't open the modal automatically yet because they need to select labors first.
-                // But we could show a message.
-            }
-            
-            StateHasChanged();
-        }
+
+        _selectedLabors.Clear();
+        if (reloadTable && _laborList != null)
+            await _laborList.ReloadAsync();
+        StateHasChanged();
     }
 
+    // Totales de las tarjetas: con pageSize=1 alcanza, solo interesa el total de cada estado.
+    private async Task LoadKpis(CancellationToken ct)
+    {
+        var baseQuery = string.Join('&', FixedFilters.Where(f => f.Value != null).Select(f => $"{f.Key}={f.Value}"));
 
+        async Task<int> Count(string? status)
+        {
+            var url = $"api/labors/search?page=1&pageSize=1&{baseQuery}" + (status is null ? "" : $"&status={status}");
+            var page = await Http.GetFromJsonAsync(url, AppJsonSerializerContext.Default.PagedResultLaborDto, ct);
+            return page?.Total ?? 0;
+        }
+
+        var counts = await Task.WhenAll(Count(null), Count("Planned"), Count("Realized"));
+        (_kpiTotal, _kpiPlanned, _kpiRealized) = (counts[0], counts[1], counts[2]);
+    }
 
     private async Task UpdatePriority(LaborDto labor, LaborPriority newPriority)
     {
@@ -516,29 +518,15 @@ else
         }
     }
 
-    private void ToggleSelect(Guid id, bool selected)
-    {
-        if (selected) _selectedIds.Add(id);
-        else _selectedIds.Remove(id);
-    }
-
-    private void ToggleSelectAll(bool selected)
-    {
-        if (selected)
-            _selectedIds = new HashSet<Guid>(_labors.Where(l => l.WorkOrderId == null).Select(l => l.Id));
-        else
-            _selectedIds.Clear();
-    }
-
     private void OnSelectedRowsChanged(IEnumerable<LaborDto> selectedRows)
     {
-        _selectedIds = selectedRows.Select(r => r.Id).ToHashSet();
+        _selectedLabors = selectedRows.ToList();
         StateHasChanged();
     }
 
     private void ClearSelection()
     {
-        _selectedIds.Clear();
+        _selectedLabors.Clear();
         StateHasChanged();
     }
 
@@ -588,12 +576,6 @@ else
         await LoadData();
     }
 
-    private decimal GetLotHectares(Guid lotId)
-    {
-        var lot = _lots.FirstOrDefault(l => l.LotId == lotId);
-        return lot?.ProductiveArea ?? 0;
-    }
-
     private void OpenAssignModal()
     {
         _assignTargetOT = Guid.Empty;
@@ -633,7 +615,7 @@ else
         try
         {
             _saving = true;
-            var selectedLabors = _labors.Where(l => _selectedIds.Contains(l.Id)).ToList();
+            var selectedLabors = _selectedLabors.ToList();
             
             if (CampaignState.CurrentCampaign == null)
             {
@@ -646,9 +628,7 @@ else
             var commonResponsible = responsibles.Count == 1 ? responsibles.First() : string.Empty;
 
             // Logic for common field
-            var firstLabor = selectedLabors.First();
-            var lotInfo = _lots.FirstOrDefault(l => l.Id == firstLabor.CampaignLotId);
-            var commonFieldId = lotInfo?.FieldId;
+            var commonFieldId = selectedLabors.First().FieldId;
 
             var newOT = new WorkOrderDto
             {
@@ -768,7 +748,7 @@ else
 
         // Si la labor pertenece a una OT, consolidar los insumos de esa OT
         // para que Insumos Consolidados y Reportes reflejen los cambios inmediatamente
-        var laborEditada = _labors.FirstOrDefault(l => l.Id == _editingLaborId);
+        var laborEditada = _laborList?.CurrentItems.FirstOrDefault(l => l.Id == _editingLaborId);
         if (laborEditada?.WorkOrderId != null)
         {
             await Http.PostAsync(

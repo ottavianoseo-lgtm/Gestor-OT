@@ -51,6 +51,9 @@ public record LaborDto
     public Guid? SourceStrategyId { get; set; }
     public string? SourceStrategyName { get; set; }
 
+    /// <summary>Campo del lote. Sirve para filtrar y para armar una OT con labores de un mismo campo.</summary>
+    public Guid? FieldId { get; set; }
+
     public LaborDto() { }
     public LaborDto(Guid id, Guid? workOrderId, Guid lotId, Guid? campaignLotId, Guid laborTypeId, Guid? erpActivityId, string status, string mode, DateTime? executionDate, DateTime? estimatedDate, decimal hectares, decimal effectiveArea, DateTime createdAt, decimal rate, string rateUnit, string? lotName, string? laborTypeName, string? erpActivityName, List<LaborSupplyDto> supplies, string? prescriptionMapUrl, string? machineryUsedId, string? weatherLogJson, string? notes, string? fieldName, decimal plannedDose, decimal? realizedDose, Guid? contactId, bool isExternalBilling = false, Guid? plannedLaborId = null, LaborPriority priority = LaborPriority.Regular, string? supplyWithdrawalNotes = null, bool isOriginalPlan = false, string? assignedTo = null, string? otNumber = null)
     {

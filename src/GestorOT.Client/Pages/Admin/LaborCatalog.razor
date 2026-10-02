@@ -17,56 +17,68 @@
 </div>
 
 <div class="glass-card">
-    <div style="margin-bottom: 16px;">
-        <Input Placeholder="Buscar labor..." @bind-Value="_search" OnInput="OnSearch" AllowClear 
-               PrefixIcon="search" Style="max-width: 400px; border-radius: 8px;" />
-    </div>
-
-    <Table TItem="ErpConceptDto" DataSource="FilteredConcepts" Loading="_loading" Size="TableSize.Small">
-        <PropertyColumn Property="c => c.ExternalErpId" Title="Código ERP" Width="120" />
-        <PropertyColumn Property="c => c.Description" Title="Descripción" Sortable />
-        <PropertyColumn Property="c => c.SubGrupoConcepto" Title="Subgrupo" Sortable />
-        <PropertyColumn Property="c => c.UnitA" Title="Unidad" Width="80" />
-        @* Independiente de Activar/Desactivar a propósito: antes el único lugar donde se
-           elegía Propia/Contratista era el modal que aparece al activar, así que cambiarla
-           después obligaba a desactivar y reactivar. Este checkbox pega directo al
-           concepto (y, si ya está activada, también al LaborType) sin tocar su estado. *@
-        <Column TData="bool" Title="Propia" Width="130">
-            <Checkbox Checked="@(context.ExecutionMode == LaborExecutionMode.Own)"
-                      CheckedChanged="@(isOwn => SetMode(context, isOwn ? LaborExecutionMode.Own : LaborExecutionMode.Contractor))"
-                      Disabled="_modeProcessingId == context.Id" />
-            @if (context.ExecutionMode is null)
-            {
-                <Tag Color="@AntDesign.TagColor.Orange" Style="margin-left: 8px;">Sin clasificar</Tag>
-            }
-        </Column>
-        <Column TData="bool" Title="Estado">
-            @if (context.IsActivated)
-            {
-                <Tag Color="@AntDesign.TagColor.Green"><Icon Type="check-circle" /> Activada</Tag>
-            }
-            else
-            {
-                <Tag Color="default">Inactiva</Tag>
-            }
-        </Column>
-        <ActionColumn Title="Acciones" Width="120">
-            @if (!context.IsActivated)
-            {
-                <Button Type="@ButtonType.Primary" Size="@ButtonSize.Small" Ghost
-                        OnClick="() => AskModeAndActivate(context)" Loading="_processingId == context.Id">
-                    Activar
-                </Button>
-            }
-            else
-            {
-                <Button Type="@ButtonType.Default" Danger Size="@ButtonSize.Small" Ghost
-                        OnClick="() => Deactivate(context)" Loading="_processingId == context.Id">
-                    Desactivar
-                </Button>
-            }
-        </ActionColumn>
-    </Table>
+    @* TODO(api): api/catalogs/labor-types/search solo trae las labores ya activadas; esta pantalla
+       lista todos los conceptos LABOR del ERP (activos o no), así que va en memoria hasta que haya
+       un api/erpconcepts/search. *@
+    <LocalTable DataSource="@_concepts"
+                Loading="@_loading"
+                StateKey="admin-labor-catalog"
+                SearchBy='c => $"{c.Description} {c.ExternalErpId}"'
+                Predicate="MatchesFilters"
+                SearchPlaceholder="Buscar labor o código ERP..."
+                ItemLabel="labores"
+                RowKey="c => c.Id.ToString()"
+                OnReload="LoadData">
+        <Filters>
+            <SelectFilter Param="status" Placeholder="Estado" Options="@StatusOptions" Style="width: 140px;" />
+            <SelectFilter Param="mode" Placeholder="Modo" Options="@ModeOptions" Style="width: 150px;" />
+        </Filters>
+        <ChildContent>
+            <PropertyColumn Property="c => c.ExternalErpId" Title="Código ERP" Width="120" Sortable />
+            <PropertyColumn Property="c => c.Description" Title="Descripción" Sortable />
+            <PropertyColumn Property="c => c.SubGrupoConcepto" Title="Subgrupo" Sortable />
+            <PropertyColumn Property="c => c.UnitA" Title="Unidad" Width="80" />
+            @* Independiente de Activar/Desactivar a propósito: antes el único lugar donde se
+               elegía Propia/Contratista era el modal que aparece al activar, así que cambiarla
+               después obligaba a desactivar y reactivar. Este checkbox pega directo al
+               concepto (y, si ya está activada, también al LaborType) sin tocar su estado. *@
+            <Column TData="bool" Title="Propia" Width="130">
+                <Checkbox Checked="@(context.ExecutionMode == LaborExecutionMode.Own)"
+                          CheckedChanged="@(isOwn => SetMode(context, isOwn ? LaborExecutionMode.Own : LaborExecutionMode.Contractor))"
+                          Disabled="_modeProcessingId == context.Id" />
+                @if (context.ExecutionMode is null)
+                {
+                    <Tag Color="@AntDesign.TagColor.Orange" Style="margin-left: 8px;">Sin clasificar</Tag>
+                }
+            </Column>
+            <Column TData="bool" Title="Estado">
+                @if (context.IsActivated)
+                {
+                    <Tag Color="@AntDesign.TagColor.Green"><Icon Type="check-circle" /> Activada</Tag>
+                }
+                else
+                {
+                    <Tag Color="default">Inactiva</Tag>
+                }
+            </Column>
+            <ActionColumn Title="Acciones" Width="120">
+                @if (!context.IsActivated)
+                {
+                    <Button Type="@ButtonType.Primary" Size="@ButtonSize.Small" Ghost
+                            OnClick="() => AskModeAndActivate(context)" Loading="_processingId == context.Id">
+                        Activar
+                    </Button>
+                }
+                else
+                {
+                    <Button Type="@ButtonType.Default" Danger Size="@ButtonSize.Small" Ghost
+                            OnClick="() => Deactivate(context)" Loading="_processingId == context.Id">
+                        Desactivar
+                    </Button>
+                }
+            </ActionColumn>
+        </ChildContent>
+    </LocalTable>
 </div>
 
 @* Visible va con binding de dos vias: el Modal avisa el cierre por VisibleChanged, y sin
@@ -105,7 +117,6 @@
 @code {
     private List<ErpConceptDto> _concepts = new();
     private bool _loading = true;
-    private string _search = "";
     private Guid? _processingId;
     private Guid? _modeProcessingId;
 
@@ -115,11 +126,32 @@
     private LaborExecutionMode? _inferredMode;
     private bool _confirming;
 
-    private IEnumerable<ErpConceptDto> FilteredConcepts => 
-        string.IsNullOrWhiteSpace(_search) 
-            ? _concepts 
-            : _concepts.Where(c => c.Description.Contains(_search, StringComparison.OrdinalIgnoreCase) || 
-                                   c.ExternalErpId?.Contains(_search) == true);
+    private static readonly List<FilterOption> StatusOptions = new()
+    {
+        new("active", "Activadas"),
+        new("inactive", "Inactivas"),
+    };
+
+    private static readonly List<FilterOption> ModeOptions = new()
+    {
+        new(nameof(LaborExecutionMode.Own), "Propia"),
+        new(nameof(LaborExecutionMode.Contractor), "Contratista"),
+        new("none", "Sin clasificar"),
+    };
+
+    private static bool MatchesFilters(ErpConceptDto c, TableQuery q)
+    {
+        var status = q.Get("status");
+        if (status == "active" && !c.IsActivated) return false;
+        if (status == "inactive" && c.IsActivated) return false;
+
+        return q.Get("mode") switch
+        {
+            null => true,
+            "none" => c.ExecutionMode is null,
+            var mode => c.ExecutionMode?.ToString() == mode
+        };
+    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -234,8 +266,6 @@
             _processingId = null;
         }
     }
-
-    private void OnSearch() => StateHasChanged();
 
     private async Task SetMode(ErpConceptDto concept, LaborExecutionMode mode)
     {

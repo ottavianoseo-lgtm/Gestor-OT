@@ -7,6 +7,7 @@
 @inject HttpClient Http
 @inject IMessageService Message
 @inject GestorOT.Client.Services.TenantState TenantState
+@implements IDisposable
 
 <PageTitle>Directorio ERP - GestorOT</PageTitle>
 
@@ -16,64 +17,53 @@
         <span class="page-subtitle">Listado de personas sincronizadas. Active las requeridas para utilizarlas en Labores y OTs.</span>
     </div>
     <div style="display: flex; gap: 8px;">
-        <Input @bind-Value="@_searchText" Placeholder="Buscar por nombre o CUIT..." Style="width: 250px;" />
         <Button Icon="sync" OnClick="SyncFromErp" Loading="_syncing">Sincronizar con ERP</Button>
     </div>
 </div>
 
-@if (_loading)
-{
-    <div style="text-align: center; padding: 60px;">
-        <Spin Size="AntDesign.SpinSize.Large" Tip="Cargando directorio ERP..." />
-    </div>
-}
-else
-{
-    <div class="directory-list">
-        @foreach (var person in FilteredPeople)
-        {
-            <div class="person-card @(person.IsActiveContact ? "person-active" : "")">
-                <div class="person-icon">
-                    <Icon Type="user" Theme="IconThemeType.Outline" Style="font-size: 24px;" />
+<div class="glass-card">
+    <RemoteTable @ref="_table"
+                 TItem="ErpPersonDto"
+                 Load="LoadPeople"
+                 SortKeys="@SortKeys"
+                 StateKey="erp-directory"
+                 SearchPlaceholder="Buscar por nombre, CUIT o código ERP..."
+                 ItemLabel="personas"
+                 RowKey="p => p.Id.ToString()">
+        <Filters>
+            <SelectFilter Param="activated" Placeholder="Estado" Options="@StatusOptions" Style="width: 160px;" />
+        </Filters>
+        <ChildContent>
+            <PropertyColumn Property="p => p.FullName" Title="Nombre" Sortable DefaultSortOrder="@SortDirection.Ascending">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <Icon Type="user" Theme="IconThemeType.Outline" Style="color: #3498DB;" />
+                    <span style="font-weight: 600; color: #fff;">@context.FullName</span>
                 </div>
-                <div class="person-info">
-                    <div class="person-name">@person.FullName</div>
-                    <div class="person-details">
-                        @if (!string.IsNullOrEmpty(person.VatNumber))
-                        {
-                            <span>CUIT: @person.VatNumber</span>
-                        }
-                        @if (!string.IsNullOrEmpty(person.Position))
-                        {
-                            <span>&bull; @person.Position</span>
-                        }
-                    </div>
-                </div>
-                <div class="person-status">
-                    @if (person.IsActiveContact)
-                    {
-                        <Tag Color="@("green")">Activado</Tag>
-                    }
-                </div>
-                <div class="person-actions">
-                    @if (!person.IsActiveContact)
-                    {
-                        <Button Type="@ButtonType.Primary" OnClick="() => OpenActivationModal(person)"
-                                Style="background: #3498DB; border-color: #3498DB; border-radius: 6px;">
-                            Activar Contacto
-                        </Button>
-                    }
-                    else
-                    {
-                        <Button Type="@ButtonType.Default" Disabled Style="border-radius: 6px;">
-                            Activo
-                        </Button>
-                    }
-                </div>
-            </div>
-        }
-    </div>
-}
+            </PropertyColumn>
+            <PropertyColumn Property="p => p.VatNumber" Title="CUIT" Sortable Width="160" />
+            <PropertyColumn Property="p => p.ExternalId" Title="Código ERP" Width="130" />
+            <PropertyColumn Property="p => p.IsActiveContact" Title="Estado" Width="120">
+                @if (context.IsActiveContact)
+                {
+                    <Tag Color="@("green")">Activado</Tag>
+                }
+                else
+                {
+                    <Tag>Sin activar</Tag>
+                }
+            </PropertyColumn>
+            <ActionColumn Title="Acciones" Width="170">
+                @if (!context.IsActiveContact)
+                {
+                    <Button Type="@ButtonType.Primary" Size="@ButtonSize.Small" OnClick="() => OpenActivationModal(context)"
+                            Style="background: #3498DB; border-color: #3498DB; border-radius: 6px;">
+                        Activar Contacto
+                    </Button>
+                }
+            </ActionColumn>
+        </ChildContent>
+    </RemoteTable>
+</div>
 
 <Modal Title="Activar Contacto" Visible="@_activationModalVisible" OnCancel="() => _activationModalVisible = false" Footer="null">
     @if (_selectedPerson != null)
@@ -100,72 +90,9 @@ else
     }
 </Modal>
 
-<style>
-    .directory-list {
-        display: flex;
-        flex-direction: column;
-        gap: 12px;
-    }
-    
-    .person-card {
-        background: rgba(255,255,255,0.04);
-        border: 1px solid rgba(255,255,255,0.08);
-        border-radius: 12px;
-        padding: 16px;
-        display: flex;
-        align-items: center;
-        gap: 16px;
-        transition: all 0.2s;
-    }
-    
-    .person-card:hover {
-        background: rgba(255,255,255,0.06);
-    }
-    
-    .person-active {
-        border-color: rgba(46, 204, 113, 0.3);
-        background: rgba(46, 204, 113, 0.05);
-    }
-
-    .person-icon {
-        width: 48px;
-        height: 48px;
-        border-radius: 50%;
-        background: rgba(255,255,255,0.1);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        color: rgba(255,255,255,0.8);
-    }
-    
-    .person-info {
-        flex: 1;
-    }
-    
-    .person-name {
-        font-size: 16px;
-        font-weight: 600;
-        color: #fff;
-    }
-    
-    .person-details {
-        font-size: 13px;
-        color: rgba(255,255,255,0.5);
-        display: flex;
-        gap: 8px;
-        margin-top: 4px;
-    }
-    
-    .person-status {
-        width: 100px;
-        text-align: center;
-    }
-</style>
 
 @code {
-    private List<ErpPersonDto> _people = new();
-    private bool _loading = true;
-    private string _searchText = string.Empty;
+    private RemoteTable<ErpPersonDto>? _table;
     
     private bool _activationModalVisible = false;
     private ErpPersonDto? _selectedPerson;
@@ -173,17 +100,27 @@ else
     private bool _activating = false;
     private bool _syncing = false;
 
-    private IEnumerable<ErpPersonDto> FilteredPeople => string.IsNullOrWhiteSpace(_searchText)
-        ? _people
-        : _people.Where(p => 
-            p.FullName.Contains(_searchText, StringComparison.OrdinalIgnoreCase) || 
-            (p.VatNumber != null && p.VatNumber.Contains(_searchText))
-        );
+    private static readonly List<FilterOption> StatusOptions = new()
+    {
+        new("false", "Sin activar"),
+        new("true", "Activadas"),
+    };
 
-    protected override async Task OnInitializedAsync()
+    // Propiedad de la columna → clave de orden de api/erppeople/search.
+    private static readonly IReadOnlyDictionary<string, string> SortKeys = new Dictionary<string, string>
+    {
+        [nameof(ErpPersonDto.FullName)] = "name",
+        [nameof(ErpPersonDto.VatNumber)] = "vatNumber",
+    };
+
+    // Son miles de personas: la API pagina y busca; antes se bajaba el directorio entero.
+    private Task<PagedResult<ErpPersonDto>?> LoadPeople(string query, CancellationToken ct) =>
+        Http.GetFromJsonAsync<PagedResult<ErpPersonDto>>($"api/erppeople/search?{query}", ct);
+
+    // La tabla carga su primera página sola.
+    protected override void OnInitialized()
     {
         TenantState.OnChange += OnTenantChanged;
-        await LoadData();
     }
 
     public void Dispose()
@@ -196,24 +133,7 @@ else
         InvokeAsync(async () => { await LoadData(); StateHasChanged(); });
     }
 
-    private async Task LoadData()
-    {
-        _loading = true;
-        try
-        {
-            var response = await Http.GetFromJsonAsync("api/erppeople", AppJsonSerializerContext.Default.ListErpPersonDto);
-            _people = response ?? new();
-        }
-        catch (Exception ex)
-        {
-            Message.Error($"Error cargando el directorio: {ex.Message}");
-        }
-        finally
-        {
-            _loading = false;
-            StateHasChanged();
-        }
-    }
+    private Task LoadData() => _table?.ReloadAsync() ?? Task.CompletedTask;
 
     private void OpenActivationModal(ErpPersonDto person)
     {

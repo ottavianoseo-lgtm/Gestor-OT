@@ -1,3 +1,4 @@
+using GestorOT.Api.Extensions;
 using GestorOT.Application.Interfaces;
 using GestorOT.Domain.Entities;
 using GestorOT.Shared.Dtos;
@@ -34,6 +35,35 @@ public class ErpPeopleController : ControllerBase
             p.IsActivated,
             p.LinkedContactId
         )).ToList();
+    }
+
+    // --- Búsqueda paginada (ver PagedQuery) ---
+
+    private static readonly SortMap<ErpPerson> PersonSorts = new SortMap<ErpPerson>(p => p.Id)
+        .Add("name", p => p.FullName)
+        .Add("vatNumber", p => p.VatNumber);
+
+    /// <summary>activated=false: las que todavía no son contacto (las que se pueden activar).</summary>
+    [HttpGet("search")]
+    public Task<ActionResult<PagedResult<ErpPersonDto>>> SearchErpPeople(
+        [FromQuery] PagedQuery paging,
+        [FromQuery] string? search = null,
+        [FromQuery] bool? activated = null,
+        CancellationToken ct = default)
+    {
+        var query = _context.ErpPeople.AsNoTracking();
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var pattern = PagedQueryExtensions.ContainsPattern(search);
+            query = query.Where(p => EF.Functions.ILike(p.FullName, pattern)
+                || EF.Functions.ILike(p.VatNumber ?? "", pattern)
+                || EF.Functions.ILike(p.ExternalErpId, pattern));
+        }
+        if (activated.HasValue)
+            query = query.Where(p => p.IsActivated == activated.Value);
+
+        return query.ToPagedAsync(paging, PersonSorts,
+            p => new ErpPersonDto(p.Id, p.ExternalErpId, p.FullName, null, p.VatNumber, p.IsActivated, p.LinkedContactId), ct);
     }
 
     [HttpPost("activate")]

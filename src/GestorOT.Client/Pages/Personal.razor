@@ -2,6 +2,7 @@
 @using GestorOT.Shared.Dtos
 @using System.Net.Http.Json
 @using AntDesign
+@using GestorOT.Domain.Enums
 @inject HttpClient Http
 @inject IMessageService Message
 
@@ -14,26 +15,39 @@
     </div>
 </div>
 
-@if (_loading)
-{
-    <div style="text-align: center; padding: 60px;">
-        <Spin Size="AntDesign.SpinSize.Large" Tip="Cargando personal..." />
-    </div>
-}
-else
-{
-    <Table DataSource="_contacts" Size="@TableSize.Middle">
-        <PropertyColumn Property="c => c.FullName" Title="Nombre Completo" />
-        <PropertyColumn Property="c => c.Position" Title="Cargo" />
-        <PropertyColumn Property="c => c.Role" Title="Rol" />
-        <PropertyColumn Property="c => c.Email" Title="Email" />
+@* Hay api/catalogs/contacts/search, pero acá se muestra la lista completa del catálogo como antes;
+   si crece mucho conviene pasarla a RemoteTable. *@
+<LocalTable TItem="ContactDto"
+            DataSource="@_contacts"
+            Loading="@_loading"
+            OnReload="LoadData"
+            SearchBy='c => $"{c.FullName} {c.Position} {c.Email} {c.VatNumber} {c.LegalName}"'
+            SearchPlaceholder="Buscar nombre, cargo, email o CUIT..."
+            Predicate="MatchesFilters"
+            ItemLabel="personas"
+            StateKey="personal">
+    <Filters>
+        <SelectFilter Param="role" Placeholder="Rol" Options="RoleOptions" />
+    </Filters>
+    <ChildContent>
+        <PropertyColumn Property="c => c.FullName" Title="Nombre Completo" Sortable />
+        <PropertyColumn Property="c => c.Position" Title="Cargo" Sortable />
+        <PropertyColumn Property="c => c.Role" Title="Rol" Sortable />
+        <PropertyColumn Property="c => c.Email" Title="Email" Sortable />
         <PropertyColumn Property="c => c.VatNumber" Title="CUIT/VAT" />
-    </Table>
-}
+    </ChildContent>
+</LocalTable>
 
 @code {
     private List<ContactDto> _contacts = new();
     private bool _loading = true;
+
+    private static readonly List<FilterOption> RoleOptions = Enum.GetValues<ContactRole>()
+        .Select(r => new FilterOption(r.ToString(), r.GetDisplayName()))
+        .ToList();
+
+    private static bool MatchesFilters(ContactDto contact, TableQuery q) =>
+        q.Get("role") is not { } role || contact.Role.ToString() == role;
 
     protected override async Task OnInitializedAsync()
     {

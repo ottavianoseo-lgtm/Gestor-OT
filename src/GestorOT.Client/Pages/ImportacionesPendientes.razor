@@ -36,15 +36,9 @@
            Description="Seleccioná una campaña activa en la barra superior para ver sus importaciones pendientes."
            ShowIcon="true" Style="margin: 16px 0;" />
 }
-else if (_loading)
-{
-    <div style="text-align: center; padding: 60px;">
-        <Spin Size="AntDesign.SpinSize.Large" Tip="Cargando importaciones pendientes..." />
-    </div>
-}
 else if (!_selectedBatchId.HasValue)
 {
-    @if (_batches.Count == 0)
+    @if (!_loading && _batches.Count == 0)
     {
         <div style="text-align: center; padding: 60px; color: rgba(255,255,255,0.4);">
             <Icon Type="inbox" Theme="IconThemeType.Outline" Style="font-size: 48px; margin-bottom: 16px; display: block;" />
@@ -53,39 +47,58 @@ else if (!_selectedBatchId.HasValue)
     }
     else
     {
-        <Table DataSource="_batches" Size="@TableSize.Middle">
-            <PropertyColumn Property="c => c.FileName" Title="Archivo" />
-            <Column TData="LaborImportBatchDto" Title="Subida">
-                <span style="font-size: 12px; color: rgba(255,255,255,0.7);">@context.UploadedAt.ToString("dd/MM/yyyy HH:mm")</span>
-                @if (!string.IsNullOrWhiteSpace(context.UploadedBy))
-                {
-                    <span style="font-size: 11px; color: rgba(255,255,255,0.4); display: block;">@context.UploadedBy</span>
-                }
-            </Column>
-            <Column TData="LaborImportBatchDto" Title="Filas">
-                <span style="font-size: 12px; color: rgba(255,255,255,0.8);">
-                    <span style="color: #2ECC71; font-weight: 600;">@context.ImportedCount imp.</span>
-                    &bull; <span style="color: #F39C12; font-weight: 600;">@context.PendingCount pend.</span>
-                    &bull; @context.ExcludedCount desc.
-                </span>
-            </Column>
-            <Column TData="LaborImportBatchDto" Title="Estado">
-                @if (context.Status == "Completed")
-                {
-                    <Tag Color="@("green")">Completo</Tag>
-                }
-                else
-                {
-                    <Tag Color="@("orange")">Pendiente (@context.PendingCount)</Tag>
-                }
-            </Column>
-            <Column TData="LaborImportBatchDto" Title="">
-                <Button Size="@ButtonSize.Small" OnClick="() => OpenBatch(context.Id)" Style="border-radius: 6px;">
-                    @(context.Status == "Completed" ? "Ver" : "Conciliar")
-                </Button>
-            </Column>
-        </Table>
+        <LocalTable TItem="LaborImportBatchDto"
+                    DataSource="_batches"
+                    Loading="@_loading"
+                    OnReload="LoadBatches"
+                    SearchBy='b => $"{b.FileName} {b.UploadedBy}"'
+                    SearchPlaceholder="Buscar archivo o usuario..."
+                    Predicate="MatchesFilters"
+                    ItemLabel="lotes"
+                    StateKey="importaciones-pendientes">
+            <Filters>
+                <SelectFilter Param="status" Placeholder="Estado" Options="StatusOptions" />
+            </Filters>
+            <ChildContent>
+                <PropertyColumn Property="c => c.FileName" Title="Archivo" Sortable />
+                <PropertyColumn Property="c => c.UploadedAt" Title="Subida" Sortable>
+                    <span style="font-size: 12px; color: rgba(255,255,255,0.7);">@context.UploadedAt.ToString("dd/MM/yyyy HH:mm")</span>
+                    @if (!string.IsNullOrWhiteSpace(context.UploadedBy))
+                    {
+                        <span style="font-size: 11px; color: rgba(255,255,255,0.4); display: block;">@context.UploadedBy</span>
+                    }
+                </PropertyColumn>
+                <PropertyColumn Property="c => c.PendingCount" Title="Filas" Sortable>
+                    <span style="font-size: 12px; color: rgba(255,255,255,0.8);">
+                        <span style="color: #2ECC71; font-weight: 600;">@context.ImportedCount imp.</span>
+                        &bull; <span style="color: #F39C12; font-weight: 600;">@context.PendingCount pend.</span>
+                        &bull; @context.ExcludedCount desc.
+                    </span>
+                </PropertyColumn>
+                <Column TData="LaborImportBatchDto" Title="Estado">
+                    @if (context.Status == "Completed")
+                    {
+                        <Tag Color="@("green")">Completo</Tag>
+                    }
+                    else
+                    {
+                        <Tag Color="@("orange")">Pendiente (@context.PendingCount)</Tag>
+                    }
+                </Column>
+                <Column TData="LaborImportBatchDto" Title="">
+                    <Button Size="@ButtonSize.Small" OnClick="() => OpenBatch(context.Id)" Style="border-radius: 6px;">
+                        @(context.Status == "Completed" ? "Ver" : "Conciliar")
+                    </Button>
+                </Column>
+            </ChildContent>
+        </LocalTable>
     }
+}
+else if (_loading)
+{
+    <div style="text-align: center; padding: 60px;">
+        <Spin Size="AntDesign.SpinSize.Large" Tip="Cargando lote..." />
+    </div>
 }
 else if (_detail != null)
 {
@@ -174,6 +187,20 @@ else if (_detail != null)
     private bool _mappingsDirty = false;
     private string? _actionError;
     private ErrorBoundary? _panelBoundary;
+
+    // La API solo distingue "Completed"; todo lo demás se muestra como pendiente.
+    private static readonly List<FilterOption> StatusOptions = new()
+    {
+        new("pending", "Pendiente"),
+        new("Completed", "Completo")
+    };
+
+    private static bool MatchesFilters(LaborImportBatchDto batch, TableQuery q) => q.Get("status") switch
+    {
+        "Completed" => batch.Status == "Completed",
+        "pending" => batch.Status != "Completed",
+        _ => true
+    };
 
     protected override async Task OnInitializedAsync()
     {

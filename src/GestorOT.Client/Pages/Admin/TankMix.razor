@@ -22,38 +22,41 @@
 }
 
 <div class="glass-card">
-    @if (_loading)
-    {
-        <div style="text-align: center; padding: 40px;">
-            <Spin Tip="Cargando reglas..." />
-        </div>
-    }
-    else if (_rules.Count == 0)
+    @if (!_loading && _rules.Count == 0)
     {
         <Empty Description="@("No hay reglas de mezcla configuradas")" />
     }
     else
     {
-        <Table TItem="TankMixRuleDto"
-               DataSource="@_rules"
-               Loading="@_loading"
-               Size="TableSize.Small"
-               ScrollX="900">
-            <PropertyColumn Property="c => c.ProductAName" Title="Producto A" Sortable />
-            <PropertyColumn Property="c => c.ProductBName" Title="Producto B" Sortable />
-            <Column TData="string" Title="Severidad">
-                <Tag Color="@(context.Severity == "Danger" ? "red" : "orange")">@context.Severity</Tag>
-            </Column>
-            <PropertyColumn Property="c => c.WarningMessage" Title="Mensaje de Alerta" />
-            <ActionColumn Title="Acciones" Width="100">
-                <Popconfirm Title="¿Eliminar esta regla?" OnConfirm="() => DeleteRule(context.Id)"
-                            OkText="Eliminar" CancelText="Cancelar">
-                    <Button Type="@ButtonType.Text" Danger>
-                        <Icon Type="delete" Theme="IconThemeType.Outline" />
-                    </Button>
-                </Popconfirm>
-            </ActionColumn>
-        </Table>
+        <LocalTable TItem="TankMixRuleDto" DataSource="@_rules"
+                    Loading="@_loading"
+                    OnReload="LoadRules"
+                    SearchBy='r => $"{r.ProductAName} {r.ProductBName} {r.WarningMessage}"'
+                    SearchPlaceholder="Buscar producto o mensaje..."
+                    Predicate="MatchesFilters"
+                    ItemLabel="reglas"
+                    StateKey="admin-tankmix"
+                    ScrollX="900">
+            <Filters>
+                <SelectFilter Param="severity" Placeholder="Severidad" Options="SeverityOptions" />
+            </Filters>
+            <ChildContent>
+                <PropertyColumn Property="c => c.ProductAName" Title="Producto A" Sortable />
+                <PropertyColumn Property="c => c.ProductBName" Title="Producto B" Sortable />
+                <PropertyColumn Property="c => c.Severity" Title="Severidad" Sortable>
+                    <Tag Color="@(context.Severity == "Danger" ? "red" : "orange")">@context.Severity</Tag>
+                </PropertyColumn>
+                <PropertyColumn Property="c => c.WarningMessage" Title="Mensaje de Alerta" />
+                <ActionColumn Title="Acciones" Width="100">
+                    <Popconfirm Title="¿Eliminar esta regla?" OnConfirm="() => DeleteRule(context.Id)"
+                                OkText="Eliminar" CancelText="Cancelar">
+                        <Button Type="@ButtonType.Text" Danger>
+                            <Icon Type="delete" Theme="IconThemeType.Outline" />
+                        </Button>
+                    </Popconfirm>
+                </ActionColumn>
+            </ChildContent>
+        </LocalTable>
     }
 </div>
 
@@ -103,6 +106,15 @@
     private string? _error;
     private bool _modalVisible;
     private TankMixFormModel _formModel = new();
+
+    private static readonly List<FilterOption> SeverityOptions = new()
+    {
+        new("Warning", "Advertencia"),
+        new("Danger", "Peligro")
+    };
+
+    private static bool MatchesFilters(TankMixRuleDto rule, TableQuery q) =>
+        q.Get("severity") is not { } severity || rule.Severity == severity;
 
     protected override async Task OnInitializedAsync()
     {

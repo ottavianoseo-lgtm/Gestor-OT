@@ -3,6 +3,7 @@
 @using GestorOT.Shared
 @using System.Net.Http.Json
 @using AntDesign
+@using AntDesign.TableModels
 @inject HttpClient Http
 @inject IMessageService Message
 @inject NavigationManager Navigation
@@ -15,17 +16,9 @@
 <div class="page-header">
     <div>
         <h2 class="page-title">Gestión de Campos</h2>
-        <span class="page-subtitle">@_fields.Count campos registrados</span>
+        <span class="page-subtitle">@_total campos registrados</span>
     </div>
     <div style="display: flex; align-items: center; gap: 16px;">
-        @if (CampaignState.IsSelected)
-        {
-            <div style="display: flex; align-items: center; gap: 8px; background: rgba(46, 204, 113, 0.1); padding: 6px 12px; border-radius: 8px; border: 1px solid rgba(46, 204, 113, 0.2);">
-                <Icon Type="calendar" Theme="IconThemeType.Outline" Style="color: #2ECC71;" />
-                <span style="color: #fff; font-size: 13px; font-weight: 600;">Campaña: @CampaignState.CurrentCampaign!.Name</span>
-                <Checkbox @bind-Checked="_filterByCampaign" Style="margin-left: 8px; color: rgba(255,255,255,0.7); font-size: 12px;">Ver solo mis campos</Checkbox>
-            </div>
-        }
         <Button Type="@ButtonType.Primary" OnClick="OpenCreateModal"
                 Style="background: #E74C3C; border-color: #E74C3C; border-radius: 8px; font-weight: 600;">
             <Icon Type="plus" Theme="IconThemeType.Outline" /> Nuevo Campo
@@ -33,88 +26,39 @@
     </div>
 </div>
 
-@if (!string.IsNullOrEmpty(_errorMessage))
-{
-    <Alert Type="@AlertType.Error" Message="@_errorMessage" ShowIcon="true" Closable="true" Style="margin-bottom: 16px;" />
-}
-
-<div class="list-filter-bar">
-    <SearchInput Value="@_search" ValueChanged="v => _search = v" Placeholder="Buscar campo o lote..." Style="width: 260px;" />
-</div>
-
 <div class="glass-card">
-    <Table TItem="FieldDto"
-           DataSource="@FilteredFields"
-           Loading="@_loading"
-           Size="TableSize.Small"
-           ScrollX="900">
+    <RemoteTable @ref="_table"
+                 TItem="FieldListItemDto"
+                 Load="LoadFields"
+                 OnLoaded="OnFieldsLoaded"
+                 FixedFilters="@FixedFilters"
+                 StateKey="fields"
+                 SearchPlaceholder="Buscar campo o lote..."
+                 ItemLabel="campos"
+                 RowKey="f => f.Id.ToString()"
+                 ScrollX="900"
+                 ExpandTemplate="@FieldLots">
+        <ExtraOptions>
+            @if (CampaignState.IsSelected)
+            {
+                <Checkbox Checked="@_onlyCampaign" CheckedChanged="v => _onlyCampaign = v"
+                          Style="color: rgba(255,255,255,0.7); font-size: 12px;">Ver solo mis campos</Checkbox>
+            }
+        </ExtraOptions>
+        <ChildContent>
         <PropertyColumn Property="c => c.Name" Title="Nombre del Campo" Sortable>
             <span style="font-weight: 600;">@context.Name</span>
         </PropertyColumn>
-        <Column TData="int" Title="Lotes" Width="180">
-            <Popover Placement="@Placement.BottomLeft" Trigger="@(new[] { Trigger.Click })">
-                <TitleTemplate>
-                    <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 2px 0; min-width: 240px;">
-                        <div style="display: flex; align-items: center; gap: 8px;">
-                            <Icon Type="environment" Theme="IconThemeType.Outline" Style="color: #3498DB; font-size: 15px;" />
-                            <span style="font-weight: 700; color: #fff; font-size: 13px;">Lotes de @context.Name</span>
-                        </div>
-                        <Tag Style="background: #3498DB20; color: #3498DB; border: 1px solid #3498DB40; border-radius: 10px; font-weight: 600; font-size: 11px;">
-                            @context.Lots.Count @(context.Lots.Count == 1 ? "lote" : "lotes")
-                        </Tag>
-                    </div>
-                </TitleTemplate>
-                <ContentTemplate>
-                    @if (context.Lots == null || !context.Lots.Any())
-                    {
-                        <div style="padding: 14px 16px; color: rgba(255,255,255,0.45); font-size: 12px; text-align: center; background: rgba(255,255,255,0.02); border-radius: 8px;">
-                            <Icon Type="inbox" Theme="IconThemeType.Outline" Style="font-size: 20px; margin-bottom: 4px; display: block; color: rgba(255,255,255,0.25);" />
-                            Este campo aún no tiene lotes asignados.
-                        </div>
-                    }
-                    else
-                    {
-                        <div style="max-height: 260px; overflow-y: auto; width: 280px; padding-right: 2px;">
-                            <div style="display: flex; flex-direction: column; gap: 6px;">
-                                @foreach (var lot in context.Lots)
-                                {
-                                    <div class="lot-item-row" style="display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; background: rgba(255,255,255,0.04); border-radius: 8px; border: 1px solid rgba(255,255,255,0.07); transition: all 0.2s;">
-                                        <div style="display: flex; flex-direction: column; gap: 2px;">
-                                            <div style="display: flex; align-items: center; gap: 6px;">
-                                                <Icon Type="appstore" Theme="IconThemeType.Outline" Style="color: #3498DB; font-size: 12px;" />
-                                                <span style="font-size: 13px; font-weight: 600; color: rgba(255,255,255,0.9);">@lot.Name</span>
-                                            </div>
-                                            @if (lot.CadastralArea > 0)
-                                            {
-                                                <span style="font-size: 11px; color: rgba(255,255,255,0.45); padding-left: 18px;">
-                                                    Superficie: <strong>@lot.CadastralArea.ToString("N1") Ha</strong>
-                                                </span>
-                                            }
-                                        </div>
-                                        <div style="display: flex; align-items: center; gap: 6px;">
-                                            <span style="font-size: 10px; padding: 2px 8px; border-radius: 10px; font-weight: 600; background: @(lot.Status == "Active" ? "rgba(46, 204, 113, 0.15)" : "rgba(255,255,255,0.1)"); color: @(lot.Status == "Active" ? "#2ECC71" : "rgba(255,255,255,0.5)"); border: 1px solid @(lot.Status == "Active" ? "rgba(46, 204, 113, 0.3)" : "rgba(255,255,255,0.15)");">
-                                                @(lot.Status == "Active" ? "Activo" : lot.Status)
-                                            </span>
-                                            <Button Size="@ButtonSize.Small" Type="@ButtonType.Link" Title="Ver lote en el mapa" OnClick='() => Navigation.NavigateTo("/map")' Style="padding: 0 4px; height: auto;">
-                                                <Icon Type="compass" Theme="IconThemeType.Outline" Style="color: #3498DB; font-size: 14px;" />
-                                            </Button>
-                                        </div>
-                                    </div>
-                                }
-                            </div>
-                        </div>
-                    }
-                </ContentTemplate>
-                <ChildContent>
-                    <button class="lots-dropdown-trigger" style="background: rgba(52, 152, 219, 0.12); color: #3498DB; border: 1px solid rgba(52, 152, 219, 0.3); border-radius: 20px; font-size: 12px; font-weight: 600; padding: 4px 12px; display: inline-flex; align-items: center; gap: 6px; cursor: pointer; transition: all 0.2s ease;">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-                        <span>@context.Lots.Count @(context.Lots.Count == 1 ? "lote" : "lotes")</span>
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-left: 2px;"><polyline points="6 9 12 15 18 9"/></svg>
-                    </button>
-                </ChildContent>
-            </Popover>
-        </Column>
-        <PropertyColumn Property="c => c.CreatedAt" Title="Creado" Sortable>
+        <PropertyColumn Property="c => c.LotCount" Title="Lotes" Sortable Width="140">
+            <span class="lots-dropdown-trigger" style="background: rgba(52, 152, 219, 0.12); color: #3498DB; border: 1px solid rgba(52, 152, 219, 0.3); border-radius: 20px; font-size: 12px; font-weight: 600; padding: 4px 12px; display: inline-flex; align-items: center; gap: 6px;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                <span>@context.LotCount @(context.LotCount == 1 ? "lote" : "lotes")</span>
+            </span>
+        </PropertyColumn>
+        <PropertyColumn Property="c => c.CadastralArea" Title="Superficie" Sortable Width="140">
+            @context.CadastralArea.ToString("N1") Ha
+        </PropertyColumn>
+        <PropertyColumn Property="c => c.CreatedAt" Title="Creado" Sortable Width="120">
             @context.CreatedAt.ToString("dd/MM/yyyy")
         </PropertyColumn>
         <ActionColumn Title="Acciones" Width="160">
@@ -136,7 +80,8 @@
                 </SpaceItem>
             </Space>
         </ActionColumn>
-    </Table>
+        </ChildContent>
+    </RemoteTable>
 </div>
 
 <Modal Title="@(_isEditing ? "Editar Campo" : "Nuevo Campo")"
@@ -166,11 +111,16 @@
 </Modal>
 
 @code {
-    private List<FieldDto> _fields = new();
-    private List<CampaignFieldDto> _campaignFields = new();
-    private bool _loading = true;
-    private bool _filterByCampaign = true;
-    private string? _errorMessage;
+    private RemoteTable<FieldListItemDto>? _table;
+
+    // "Ver solo mis campos": se manda como filtro fijo, así la tabla vuelve a la página 1 sola al tildarlo.
+    private bool _onlyCampaign;
+
+    private IReadOnlyDictionary<string, string?> FixedFilters => new Dictionary<string, string?>
+    {
+        ["campaignId"] = _onlyCampaign && CampaignState.IsSelected ? CampaignState.CurrentCampaign?.Id.ToString() : null,
+    };
+    private int _total;
     private bool _modalVisible;
     private bool _isEditing;
     private bool _saving;
@@ -180,16 +130,8 @@
     private List<ErpAccountDto> _centros = new();
     private bool _loadingCentros;
 
-    private string? _search;
-
-    // Se busca también por nombre de lote: muchas veces se recuerda el lote y no el campo.
-    private IEnumerable<FieldDto> FilteredFields =>
-        (_filterByCampaign && CampaignState.IsSelected
-            ? _fields.Where(f => _campaignFields.Any(cf => cf.FieldId == f.Id))
-            : _fields)
-        .Where(f => string.IsNullOrWhiteSpace(_search)
-            || f.Name.Contains(_search.Trim(), StringComparison.OrdinalIgnoreCase)
-            || f.Lots.Any(l => l.Name.Contains(_search.Trim(), StringComparison.OrdinalIgnoreCase)));
+    // Lotes de cada campo, cargados recién al expandir la fila (null = cargando).
+    private readonly Dictionary<Guid, List<LotListItemDto>?> _lotsByField = new();
 
     public class FieldFormModel
     {
@@ -197,59 +139,118 @@
         public long? CodCentro { get; set; }
     }
 
-    protected override async Task OnInitializedAsync()
+    protected override void OnInitialized()
     {
-        CampaignState.OnChange += OnCampaignChanged;
-        TenantState.OnChange += OnCampaignChanged;
-        await LoadData();
+        TenantState.OnChange += OnTenantChanged;
     }
 
-    private void OnCampaignChanged()
+    private void OnTenantChanged()
     {
-        InvokeAsync(async () => { await LoadData(); StateHasChanged(); });
+        InvokeAsync(ReloadAsync);
     }
 
     public void Dispose()
     {
-        CampaignState.OnChange -= OnCampaignChanged;
-        TenantState.OnChange -= OnCampaignChanged;
+        TenantState.OnChange -= OnTenantChanged;
     }
 
-    private async Task LoadData()
+    private Task<PagedResult<FieldListItemDto>?> LoadFields(string query, CancellationToken ct) =>
+        Http.GetFromJsonAsync<PagedResult<FieldListItemDto>>($"api/fields/search?{query}", ct);
+
+    private void OnFieldsLoaded(PagedResult<FieldListItemDto> page)
     {
-        try
-        {
-            _loading = true;
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
-            _fields = await Http.GetFromJsonAsync("api/fields",
-                AppJsonSerializerContext.Default.ListFieldDto, cts.Token) ?? new();
+        _total = page.Total;
+    }
 
-            if (CampaignState.IsSelected)
-            {
-                var campaign = await Http.GetFromJsonAsync<CampaignDto>($"api/campaigns/{CampaignState.CurrentCampaign!.Id}",
-                    AppJsonSerializerContext.Default.CampaignDto, cts.Token);
-                _campaignFields = campaign?.Fields ?? new();
-            }
-            else
-            {
-                _campaignFields.Clear();
-            }
+    private async Task ReloadAsync()
+    {
+        // Los lotes expandidos pueden haber cambiado (ej. se borró el campo).
+        _lotsByField.Clear();
+        if (_table != null)
+            await _table.ReloadAsync();
+    }
 
-            _errorMessage = null;
+    private RenderFragment<RowData<FieldListItemDto>> FieldLots => row => @<text>
+        @{
+            var fieldRow = row.Data;
+            var lots = EnsureLots(fieldRow.Id);
         }
-        catch (OperationCanceledException)
+        @if (lots == null)
         {
-            _errorMessage = "La solicitud tardó demasiado tiempo. Intente recargar la página.";
+            <div style="padding: 10px 16px;"><Spin /></div>
         }
-        catch (Exception ex)
+        else if (lots.Count == 0)
         {
-            _errorMessage = $"Error de conexión: {ex.Message}";
+            <div style="padding: 14px 16px; color: rgba(255,255,255,0.45); font-size: 12px; text-align: center; background: rgba(255,255,255,0.02); border-radius: 8px;">
+                <Icon Type="inbox" Theme="IconThemeType.Outline" Style="font-size: 20px; margin-bottom: 4px; display: block; color: rgba(255,255,255,0.25);" />
+                Este campo aún no tiene lotes asignados.
+            </div>
         }
-        finally
+        else
         {
-            _loading = false;
+            <div style="display: flex; flex-wrap: wrap; gap: 6px;">
+                @foreach (var lot in lots)
+                {
+                    <div class="lot-item-row" style="display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 260px; padding: 8px 12px; background: rgba(255,255,255,0.04); border-radius: 8px; border: 1px solid rgba(255,255,255,0.07); transition: all 0.2s;">
+                        <div style="display: flex; flex-direction: column; gap: 2px;">
+                            <div style="display: flex; align-items: center; gap: 6px;">
+                                <Icon Type="appstore" Theme="IconThemeType.Outline" Style="color: #3498DB; font-size: 12px;" />
+                                <span style="font-size: 13px; font-weight: 600; color: rgba(255,255,255,0.9);">@lot.Name</span>
+                            </div>
+                            @if (lot.CadastralArea > 0)
+                            {
+                                <span style="font-size: 11px; color: rgba(255,255,255,0.45); padding-left: 18px;">
+                                    Superficie: <strong>@lot.CadastralArea.ToString("N1") Ha</strong>
+                                </span>
+                            }
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 6px;">
+                            <span style="font-size: 10px; padding: 2px 8px; border-radius: 10px; font-weight: 600; background: @(lot.Status == "Active" ? "rgba(46, 204, 113, 0.15)" : "rgba(255,255,255,0.1)"); color: @(lot.Status == "Active" ? "#2ECC71" : "rgba(255,255,255,0.5)"); border: 1px solid @(lot.Status == "Active" ? "rgba(46, 204, 113, 0.3)" : "rgba(255,255,255,0.15)");">
+                                @(lot.Status == "Active" ? "Activo" : lot.Status)
+                            </span>
+                            <Button Size="@ButtonSize.Small" Type="@ButtonType.Link" Title="Ver lote en el mapa" OnClick='() => Navigation.NavigateTo("/map")' Style="padding: 0 4px; height: auto;">
+                                <Icon Type="compass" Theme="IconThemeType.Outline" Style="color: #3498DB; font-size: 14px;" />
+                            </Button>
+                        </div>
+                    </div>
+                }
+            </div>
+            @if (fieldRow.LotCount > lots.Count)
+            {
+                <div style="margin-top: 6px; font-size: 11px; color: rgba(255,255,255,0.45);">
+                    Se muestran @lots.Count de @fieldRow.LotCount lotes. El resto está en la pantalla de Lotes.
+                </div>
+            }
+        }
+    </text>;
+
+    /// <summary>
+    /// Devuelve los lotes ya cargados del campo, o null mientras se cargan. La primera vez que se
+    /// expande la fila dispara la carga (una sola página de 100: alcanza para casi todos los campos).
+    /// </summary>
+    private List<LotListItemDto>? EnsureLots(Guid fieldId)
+    {
+        if (_lotsByField.TryGetValue(fieldId, out var lots))
+            return lots;
+
+        _lotsByField[fieldId] = null;
+        _ = InvokeAsync(async () =>
+        {
+            try
+            {
+                var page = await Http.GetFromJsonAsync<PagedResult<LotListItemDto>>(
+                    $"api/lots/search?page=1&pageSize=100&sortBy=name&sortDir=asc&fieldId={fieldId}");
+                _lotsByField[fieldId] = page?.Items ?? new();
+            }
+            catch (Exception ex)
+            {
+                // Vacío para no reintentar en cada render de la fila expandida.
+                _lotsByField[fieldId] = new();
+                Message.Error($"No se pudieron cargar los lotes: {ex.Message}");
+            }
             StateHasChanged();
-        }
+        });
+        return null;
     }
 
     private void OpenCreateModal()
@@ -260,7 +261,7 @@
         _ = LoadCentros();
     }
 
-    private void OpenEditModal(FieldDto field)
+    private void OpenEditModal(FieldListItemDto field)
     {
         _isEditing = true;
         _editingId = field.Id;
@@ -352,7 +353,7 @@
 
                 Message.Success(_isEditing ? "Campo actualizado correctamente." : "Campo creado correctamente.");
                 _modalVisible = false;
-                await LoadData();
+                await ReloadAsync();
             }
             else
             {
@@ -378,7 +379,7 @@
             if (response.IsSuccessStatusCode)
             {
                 Message.Success("Campo eliminado correctamente.");
-                await LoadData();
+                await ReloadAsync();
             }
             else
             {

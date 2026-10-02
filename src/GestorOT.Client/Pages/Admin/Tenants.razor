@@ -1,6 +1,5 @@
 @page "/admin/tenants"
 @layout GestorOT.Client.Layout.AdminDashboardLayout
-@using Microsoft.AspNetCore.Components.QuickGrid
 @using GestorOT.Shared.Dtos
 @using GestorOT.Shared.Validation
 @using AntDesign
@@ -21,16 +20,7 @@
 </div>
 
 <div class="glass-card">
-    @if (_loading)
-    {
-        <div style="text-align: center; padding: 40px; color: rgba(255,255,255,0.4);">
-            <div style="margin-bottom: 8px;">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation: spin 1s linear infinite;"><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"/><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"/><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"/></svg>
-            </div>
-            Cargando empresas...
-        </div>
-    }
-    else if (_error != null)
+    @if (!_loading && _error != null)
     {
         <div style="background: rgba(231,76,60,0.1); border: 1px solid rgba(231,76,60,0.2); border-radius: 8px; padding: 14px; color: rgba(231,76,60,0.9); font-size: 13px;">
             @_error
@@ -38,55 +28,65 @@
     }
     else
     {
-        <QuickGrid Items="@_tenants.AsQueryable()" Pagination="@_pagination" Class="admin-quickgrid">
-            <Microsoft.AspNetCore.Components.QuickGrid.TemplateColumn Title="Empresa" Sortable="true" SortBy="@(GridSort<TenantDto>.ByAscending(t => t.Name))">
-                <div style="font-weight: 600; color: rgba(255,255,255,0.9);">@context.Name</div>
-            </Microsoft.AspNetCore.Components.QuickGrid.TemplateColumn>
-            <Microsoft.AspNetCore.Components.QuickGrid.TemplateColumn Title="Gestor Max Integration">
-                <div style="display: flex; flex-direction: column; gap: 4px;">
-                    <div style="display: flex; align-items: center; gap: 6px; font-size: 11px;">
-                        <span style="color: rgba(255,255,255,0.4);">API Key:</span>
-                        @if (!string.IsNullOrEmpty(context.GestorMaxApiKeyEncrypted))
-                        {
-                            <span class="badge badge-active" style="padding: 1px 6px;">Configurada</span>
-                        }
-                        else
-                        {
-                            <span class="badge badge-locked" style="padding: 1px 6px;">No configurada</span>
-                        }
-                    </div>
-                    <div style="display: flex; align-items: center; gap: 6px; font-size: 11px;">
-                        <span style="color: rgba(255,255,255,0.4);">DB ID:</span>
-                        <span style="color: rgba(255,255,255,0.7); font-family: monospace;">@(context.GestorMaxDatabaseId ?? "—")</span>
-                    </div>
-                </div>
-            </Microsoft.AspNetCore.Components.QuickGrid.TemplateColumn>
-            <Microsoft.AspNetCore.Components.QuickGrid.PropertyColumn Property="@(t => t.CreatedAt)" Title="Fecha Alta" Format="dd/MM/yyyy" Sortable="true" />
-            <Microsoft.AspNetCore.Components.QuickGrid.TemplateColumn Title="Acciones">
-                <div style="display: flex; gap: 8px;">
-                    <button class="btn-icon" title="Editar" @onclick="() => OpenEditModal(context)">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                    </button>
-                    @if (!string.IsNullOrEmpty(context.GestorMaxDatabaseId))
-                    {
-                        <button class="btn-icon" style="color: #3498DB;" title="Sincronización Total ERP" @onclick="() => FullSyncTenant(context)" disabled="@(_syncingTenantId == context.Id)">
-                            @if (_syncingTenantId == context.Id)
+        <LocalTable TItem="TenantDto"
+                    DataSource="@_tenants"
+                    Loading="@_loading"
+                    OnReload="LoadTenants"
+                    SearchBy='t => $"{t.Name} {t.GestorMaxDatabaseId}"'
+                    SearchPlaceholder="Buscar empresa o DB ID..."
+                    Predicate="MatchesFilters"
+                    ItemLabel="empresas"
+                    DefaultPageSize="15"
+                    StateKey="admin-tenants">
+            <Filters>
+                <SelectFilter Param="erp" Placeholder="Gestor Max" Style="width: 180px;" Options="ErpOptions" />
+            </Filters>
+            <ChildContent>
+                <PropertyColumn Property="t => t.Name" Title="Empresa" Sortable>
+                    <div style="font-weight: 600; color: rgba(255,255,255,0.9);">@context.Name</div>
+                </PropertyColumn>
+                <Column TData="string" Title="Gestor Max Integration">
+                    <div style="display: flex; flex-direction: column; gap: 4px;">
+                        <div style="display: flex; align-items: center; gap: 6px; font-size: 11px;">
+                            <span style="color: rgba(255,255,255,0.4);">API Key:</span>
+                            @if (!string.IsNullOrEmpty(context.GestorMaxApiKeyEncrypted))
                             {
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation: spin 1s linear infinite;"><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"/><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"/><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"/></svg>
+                                <span class="badge badge-active" style="padding: 1px 6px;">Configurada</span>
                             }
                             else
                             {
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                                <span class="badge badge-locked" style="padding: 1px 6px;">No configurada</span>
                             }
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 6px; font-size: 11px;">
+                            <span style="color: rgba(255,255,255,0.4);">DB ID:</span>
+                            <span style="color: rgba(255,255,255,0.7); font-family: monospace;">@(context.GestorMaxDatabaseId ?? "—")</span>
+                        </div>
+                    </div>
+                </Column>
+                <PropertyColumn Property="t => t.CreatedAt" Title="Fecha Alta" Format="dd/MM/yyyy" Sortable />
+                <ActionColumn Title="Acciones">
+                    <div style="display: flex; gap: 8px;">
+                        <button class="btn-icon" title="Editar" @onclick="() => OpenEditModal(context)">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                         </button>
-                    }
-                </div>
-            </Microsoft.AspNetCore.Components.QuickGrid.TemplateColumn>
-        </QuickGrid>
-
-        <div class="admin-paginator">
-            <Paginator State="@_pagination" />
-        </div>
+                        @if (!string.IsNullOrEmpty(context.GestorMaxDatabaseId))
+                        {
+                            <button class="btn-icon" style="color: #3498DB;" title="Sincronización Total ERP" @onclick="() => FullSyncTenant(context)" disabled="@(_syncingTenantId == context.Id)">
+                                @if (_syncingTenantId == context.Id)
+                                {
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation: spin 1s linear infinite;"><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"/><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"/><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"/></svg>
+                                }
+                                else
+                                {
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                                }
+                            </button>
+                        }
+                    </div>
+                </ActionColumn>
+            </ChildContent>
+        </LocalTable>
     }
 </div>
 
@@ -147,7 +147,19 @@
     private bool _loading = true;
     private string? _error;
 
-    private PaginationState _pagination = new PaginationState { ItemsPerPage = 15 };
+    // "Configurada" = tiene Database ID, que es lo que habilita la sincronización con el ERP.
+    private static readonly List<FilterOption> ErpOptions = new()
+    {
+        new("configured", "Configurada"),
+        new("missing", "Sin configurar")
+    };
+
+    private static bool MatchesFilters(TenantDto tenant, TableQuery q) => q.Get("erp") switch
+    {
+        "configured" => !string.IsNullOrEmpty(tenant.GestorMaxDatabaseId),
+        "missing" => string.IsNullOrEmpty(tenant.GestorMaxDatabaseId),
+        _ => true
+    };
 
     private bool _modalVisible;
     private TenantDto? _editingTenant;

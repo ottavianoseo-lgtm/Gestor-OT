@@ -24,13 +24,7 @@
 
 <Tabs DefaultActiveKey="lotes">
     <TabPane Key="lotes" Tab="Lotes Generados">
-        @if (_loading)
-        {
-            <div style="text-align: center; padding: 60px;">
-                <Spin Size="AntDesign.SpinSize.Large" Tip="Cargando historial de lotes G4..." />
-            </div>
-        }
-        else if (!_lotes.Any())
+        @if (!_loading && !_lotes.Any())
         {
             <div class="glass-card" style="text-align: center; padding: 60px;">
                 <Icon Type="inbox" Theme="IconThemeType.Outline" Style="font-size: 48px; color: rgba(255,255,255,0.4); margin-bottom: 16px; display: block;" />
@@ -47,27 +41,40 @@
         else
         {
             <div class="glass-card">
-                <Table DataSource="_lotes" Size="@TableSize.Middle">
-                    <PropertyColumn Property="c => c.Id" Title="Lote ID" Sortable>
-                        <span style="font-family: monospace; color: rgba(255,255,255,0.7);">@context.Id.ToString()[..8]...</span>
-                    </PropertyColumn>
-                    <PropertyColumn Property="c => c.Descripcion" Title="Descripción">
-                        <span style="font-weight: 600; color: #fff;">@(string.IsNullOrEmpty(context.Descripcion) ? "—" : context.Descripcion)</span>
-                    </PropertyColumn>
-                    <PropertyColumn Property="c => c.TotalPases" Title="Total Pases" Sortable>
-                        <span style="font-family: monospace; font-weight: 700; color: #2ECC71;">@context.TotalPases</span>
-                    </PropertyColumn>
-                    <Column TData="string" Title="Estado">
-                        <Tag Color="@("green")">@context.Estado</Tag>
-                    </Column>
-                    <PropertyColumn Property="c => c.GeneradoEn" Title="Generado El" Sortable Format="dd/MM/yyyy HH:mm" />
-                    <ActionColumn Title="Acciones">
-                        <Button Size="@ButtonSize.Small" Icon="download" OnClick="() => DescargarXlsx(context.Id)"
-                                Style="border-radius: 6px; background: rgba(46, 204, 113, 0.15); border-color: rgba(46, 204, 113, 0.3); color: #2ECC71;">
-                            Descargar XLSX
-                        </Button>
-                    </ActionColumn>
-                </Table>
+                <LocalTable TItem="PaseLoteDto"
+                            DataSource="_lotes"
+                            Loading="@_loading"
+                            OnReload="RecargarLotes"
+                            SearchBy='l => $"{l.Id} {l.Descripcion} {l.Estado}"'
+                            SearchPlaceholder="Buscar descripción o ID..."
+                            Predicate="FiltrarLote"
+                            ItemLabel="lotes"
+                            StateKey="pases-g4-lotes">
+                    <Filters>
+                        <SelectFilter Param="estado" Placeholder="Estado" Options="EstadoOptions" />
+                    </Filters>
+                    <ChildContent>
+                        <PropertyColumn Property="c => c.Id" Title="Lote ID" Sortable>
+                            <span style="font-family: monospace; color: rgba(255,255,255,0.7);">@context.Id.ToString()[..8]...</span>
+                        </PropertyColumn>
+                        <PropertyColumn Property="c => c.Descripcion" Title="Descripción">
+                            <span style="font-weight: 600; color: #fff;">@(string.IsNullOrEmpty(context.Descripcion) ? "—" : context.Descripcion)</span>
+                        </PropertyColumn>
+                        <PropertyColumn Property="c => c.TotalPases" Title="Total Pases" Sortable>
+                            <span style="font-family: monospace; font-weight: 700; color: #2ECC71;">@context.TotalPases</span>
+                        </PropertyColumn>
+                        <PropertyColumn Property="c => c.Estado" Title="Estado" Sortable>
+                            <Tag Color="@("green")">@context.Estado</Tag>
+                        </PropertyColumn>
+                        <PropertyColumn Property="c => c.GeneradoEn" Title="Generado El" Sortable Format="dd/MM/yyyy HH:mm" />
+                        <ActionColumn Title="Acciones">
+                            <Button Size="@ButtonSize.Small" Icon="download" OnClick="() => DescargarXlsx(context.Id)"
+                                    Style="border-radius: 6px; background: rgba(46, 204, 113, 0.15); border-color: rgba(46, 204, 113, 0.3); color: #2ECC71;">
+                                Descargar XLSX
+                            </Button>
+                        </ActionColumn>
+                    </ChildContent>
+                </LocalTable>
             </div>
         }
     </TabPane>
@@ -84,23 +91,27 @@
                 </Button>
             </div>
 
-            @if (_loadingConfigs)
-            {
-                <div style="text-align: center; padding: 40px;">
-                    <Spin Tip="Cargando configuraciones contables..." />
-                </div>
-            }
-            else
-            {
-                <Table DataSource="_configs" Size="@TableSize.Middle">
-                    <PropertyColumn Property="c => c.LaborTypeName" Title="Tipo de Labor">
+            <LocalTable TItem="AccountConfigurationDto"
+                        DataSource="_configs"
+                        Loading="@_loadingConfigs"
+                        OnReload="RecargarConfigs"
+                        SearchBy='c => $"{c.LaborTypeName} {c.ErpActivityName} {c.Description} {c.CodEmpresa} {c.CodComprobante}"'
+                        SearchPlaceholder="Buscar tipo de labor o descripción..."
+                        Predicate="FiltrarConfig"
+                        ItemLabel="reglas"
+                        StateKey="pases-g4-configs">
+                <Filters>
+                    <SelectFilter Param="modo" Placeholder="Modo de imputación" Style="width: 200px;" Options="ModoOptions" />
+                </Filters>
+                <ChildContent>
+                    <PropertyColumn Property="c => c.LaborTypeName" Title="Tipo de Labor" Sortable>
                         <span style="font-weight: 700; color: #fff;">@(string.IsNullOrEmpty(context.LaborTypeName) ? "General / Defecto" : context.LaborTypeName)</span>
                     </PropertyColumn>
-                    <PropertyColumn Property="c => c.Description" Title="Nombre / Descripción">
+                    <PropertyColumn Property="c => c.Description" Title="Nombre / Descripción" Sortable>
                         <span style="color: rgba(255,255,255,0.9);">@(string.IsNullOrEmpty(context.Description) ? "—" : context.Description)</span>
                     </PropertyColumn>
-                    <PropertyColumn Property="c => c.CodEmpresa" Title="Empresa" />
-                    <PropertyColumn Property="c => c.CodComprobante" Title="Comprobante" />
+                    <PropertyColumn Property="c => c.CodEmpresa" Title="Empresa" Sortable />
+                    <PropertyColumn Property="c => c.CodComprobante" Title="Comprobante" Sortable />
                     <Column TData="string" Title="Modo de Imputación">
                         @if (context.CodPerfilDebe.HasValue || context.CodPerfilHaber.HasValue)
                         {
@@ -121,8 +132,8 @@
                             Configurar
                         </Button>
                     </ActionColumn>
-                </Table>
-            }
+                </ChildContent>
+            </LocalTable>
         </div>
     </TabPane>
 </Tabs>
@@ -144,6 +155,34 @@
     private bool _modalGenerarVisible;
     private bool _modalConfigVisible;
     private AccountConfigurationDto? _selectedConfig;
+
+    // Los estados salen de lo cargado: la API no expone un catálogo de estados de lote.
+    private List<FilterOption> EstadoOptions => _lotes
+        .Select(l => l.Estado)
+        .Where(e => !string.IsNullOrWhiteSpace(e))
+        .Distinct()
+        .OrderBy(e => e)
+        .Select(e => new FilterOption(e, e))
+        .ToList();
+
+    private static readonly List<FilterOption> ModoOptions = new()
+    {
+        new("perfil", "Perfil Imputación"),
+        new("cuenta", "Cuenta Directa"),
+        new("defecto", "Defecto Estándar")
+    };
+
+    private static bool FiltrarLote(PaseLoteDto lote, TableQuery q) =>
+        q.Get("estado") is not { } estado || lote.Estado == estado;
+
+    private static bool FiltrarConfig(AccountConfigurationDto c, TableQuery q) =>
+        q.Get("modo") is not { } modo || ModoDe(c) == modo;
+
+    // Misma prioridad que el tag de la columna: el perfil gana sobre la cuenta directa.
+    private static string ModoDe(AccountConfigurationDto c) =>
+        c.CodPerfilDebe.HasValue || c.CodPerfilHaber.HasValue ? "perfil"
+        : c.CodCuentaDebeGestion.HasValue || c.CodCuentaHaberGestion.HasValue ? "cuenta"
+        : "defecto";
 
     protected override async Task OnInitializedAsync()
     {

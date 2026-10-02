@@ -52,15 +52,21 @@
 </Row>
 
 <div class="glass-card">
-    <div style="margin-bottom: 16px; width: 300px;">
-        <Input TValue="string" Value="@_inputValue" OnInput="OnInputChanged" ValueChanged="OnValueChanged" Placeholder="Buscar por nombre..." AllowClear>
-            <Prefix><Icon Type="search" Style="color: rgba(255,255,255,0.3);" /></Prefix>
-        </Input>
-    </div>
-
-    <Table TItem="InventoryDto" DataSource="FilteredItems" Loading="_loading" Size="@TableSize.Small"
-           ScrollX="1100">
-        <PropertyColumn Property="c => c.ItemName" Title="Insumo" Sortable>
+    <RemoteTable @ref="_table"
+                 TItem="InventoryDto"
+                 Load="LoadInventory"
+                 SortKeys="@SortKeys"
+                 StateKey="inventory"
+                 SearchPlaceholder="Buscar por nombre, grupo o subgrupo..."
+                 ItemLabel="insumos"
+                 RowKey="i => i.Id.ToString()"
+                 ScrollX="1100">
+        <Filters>
+            <SelectFilter Param="category" Placeholder="Categoría" Options="@CategoryOptions" Style="width: 170px;" />
+            <SelectFilter Param="inStock" Placeholder="Stock" Options="@StockOptions" Style="width: 130px;" />
+        </Filters>
+        <ChildContent>
+        <PropertyColumn Property="c => c.ItemName" Title="Insumo" Sortable DefaultSortOrder="@SortDirection.Ascending">
             <span style="font-weight: 600;">@context.ItemName</span>
         </PropertyColumn>
         <PropertyColumn Property="c => c.Category" Title="Categoría" Sortable>
@@ -68,7 +74,7 @@
                 @context.Category
             </Tag>
         </PropertyColumn>
-        <Column TData="string" Title="Stock (Unidad A)">
+        <PropertyColumn Property="c => c.CurrentStock" Title="Stock (Unidad A)" Sortable>
             @{
                 var isLow = context.CurrentStock <= context.ReorderLevel;
             }
@@ -81,7 +87,7 @@
                     Bajo
                 </Tag>
             }
-        </Column>
+        </PropertyColumn>
         <Column TData="string" Title="Equivalente (Unidad B)">
             @if (context.ConversionFactor > 0 && !string.IsNullOrEmpty(context.UnitB))
             {
@@ -123,7 +129,8 @@
                 </SpaceItem>
             </Space>
         </ActionColumn>
-    </Table>
+        </ChildContent>
+    </RemoteTable>
 </div>
 
 <Modal Title="@(_isEditing ? "Editar Insumo" : "Nuevo Insumo")"
@@ -312,7 +319,6 @@
 
 @code {
     private List<InventoryDto> _items = new();
-    private bool _loading = true;
     private string? _errorMessage;
     private bool _modalVisible;
     private bool _isEditing;
@@ -332,32 +338,34 @@
         public bool IsSelected { get; set; }
     }
     private InvFormModel _formModel = new();
-    private System.Timers.Timer? _debounceTimer;
     private Form<InvFormModel>? _form;
-    private string _inputValue = string.Empty;
-    private string _searchQuery = string.Empty;
+    private RemoteTable<InventoryDto>? _table;
 
-    private IEnumerable<InventoryDto> FilteredItems => string.IsNullOrWhiteSpace(_searchQuery)
-        ? _items
-        : _items.Where(i => i.ItemName.Contains(_searchQuery, StringComparison.OrdinalIgnoreCase));
-
-    private void OnInputChanged(ChangeEventArgs e)
+    // Propiedad de la columna → clave de orden de api/inventory/search.
+    private static readonly IReadOnlyDictionary<string, string> SortKeys = new Dictionary<string, string>
     {
-        _inputValue = e.Value?.ToString() ?? string.Empty;
-        _debounceTimer?.Stop();
-        _debounceTimer?.Start();
-    }
+        [nameof(InventoryDto.ItemName)] = "name",
+        [nameof(InventoryDto.Category)] = "category",
+        [nameof(InventoryDto.CurrentStock)] = "stock",
+    };
 
-    private void OnValueChanged(string value)
+    private static readonly List<FilterOption> StockOptions = new()
     {
-        _inputValue = value ?? string.Empty;
-        if (string.IsNullOrEmpty(_inputValue))
-        {
-            _searchQuery = string.Empty;
-            _debounceTimer?.Stop();
-            InvokeAsync(StateHasChanged);
-        }
-    }
+        new("true", "Con stock"),
+        new("false", "Sin stock"),
+    };
+
+    // Las categorías salen de la lista completa que ya se trae para los KPIs.
+    private List<FilterOption> CategoryOptions => _items
+        .Select(i => i.Category)
+        .Where(c => !string.IsNullOrWhiteSpace(c))
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .OrderBy(c => c)
+        .Select(c => new FilterOption(c, c))
+        .ToList();
+
+    private Task<PagedResult<InventoryDto>?> LoadInventory(string query, CancellationToken ct) =>
+        Http.GetFromJsonAsync<PagedResult<InventoryDto>>($"api/inventory/search?{query}", ct);
 
     public class InvFormModel
     {
@@ -372,14 +380,6 @@
 
     protected override async Task OnInitializedAsync()
     {
-        _debounceTimer = new System.Timers.Timer(500);
-        _debounceTimer.AutoReset = false;
-        _debounceTimer.Elapsed += (s, e) => 
-        {
-            _searchQuery = _inputValue;
-            InvokeAsync(StateHasChanged);
-        };
-
         CampaignState.OnChange += OnCampaignChanged;
         TenantState.OnChange += OnCampaignChanged;
         await LoadData();
@@ -387,21 +387,27 @@
 
     private void OnCampaignChanged()
     {
-        InvokeAsync(async () => { await LoadData(); StateHasChanged(); });
+        InvokeAsync(async () => { await LoadData(); await ReloadTable(); });
     }
 
     public void Dispose()
     {
-        _debounceTimer?.Dispose();
         CampaignState.OnChange -= OnCampaignChanged;
         TenantState.OnChange -= OnCampaignChanged;
     }
 
+    private async Task ReloadTable()
+    {
+        if (_table != null)
+            await _table.ReloadAsync();
+    }
+
+    // La tabla se pagina en la API; la lista completa queda solo para los KPIs y las categorías
+    // del filtro. TODO(api): un endpoint de resumen (total, stock bajo, categorías) evitaría traerla.
     private async Task LoadData()
     {
         try
         {
-            _loading = true;
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
             _items = await Http.GetFromJsonAsync("api/inventory",
                 AppJsonSerializerContext.Default.ListInventoryDto, cts.Token) ?? new();
@@ -413,7 +419,6 @@
         }
         finally
         {
-            _loading = false;
             StateHasChanged();
         }
     }
@@ -486,6 +491,7 @@
                 Message.Success(_isEditing ? "Insumo actualizado." : "Insumo creado correctamente.");
                 _modalVisible = false;
                 await LoadData();
+                await ReloadTable();
             }
             else
             {
@@ -511,6 +517,7 @@
             {
                 Message.Success("Insumo eliminado correctamente.");
                 await LoadData();
+                await ReloadTable();
             }
             else
             {
@@ -601,6 +608,7 @@
                 Message.Success(res?.Message ?? "Sincronización completada.");
                 _syncModalVisible = false;
                 await LoadData();
+                await ReloadTable();
             }
             else
             {

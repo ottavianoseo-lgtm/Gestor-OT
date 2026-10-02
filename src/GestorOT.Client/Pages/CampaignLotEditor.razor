@@ -1,4 +1,4 @@
-@page "/campaigns/{CampaignId:guid}/lots"
+﻿@page "/campaigns/{CampaignId:guid}/lots"
 @using GestorOT.Shared.Dtos
 @using GestorOT.Shared
 @using System.Net.Http.Json
@@ -72,59 +72,59 @@
                 <span class="summary-value">@(_lots?.Count ?? 0)</span>
             </div>
         </div>
-
-        <div class="list-filter-bar">
-            <SearchInput Value="@_lotFilter.Search" ValueChanged="v => _lotFilter.Search = v" Placeholder="Buscar lote o campo..." Style="width: 260px;" />
-            <Select TItemValue="Guid?" TItem="CampaignLotDto" Value="@_lotFilter.FieldId" ValueChanged="v => _lotFilter.FieldId = v"
-                    Placeholder="Campo" AllowClear EnableSearch Style="width: 200px;"
-                    DataSource="@LotFields" LabelName="@nameof(CampaignLotDto.FieldName)" ValueName="@nameof(CampaignLotDto.FieldId)" />
-        </div>
-
-        <Table TItem="CampaignLotDto"
-               DataSource="@FilteredLots"
-               Size="TableSize.Small"
-               OnExpand="OnExpandLot"
-               RowKey="x => x.Id">
-            <ColumnDefinitions>
-                <PropertyColumn Property="l => l.LotName" Title="Lote" Sortable />
-                <PropertyColumn Property="l => l.FieldName" Title="Campo" Sortable />
-                <PropertyColumn Property="l => l.CadastralArea" Title="Ha" Sortable />
-                <Column TData="decimal" Title="Sup. Productiva">
-                    @{ var lotData = context; }
-                    <div style="display: flex; align-items: center; gap: 8px;">
-                        <span style="font-weight: 600; color: #2ECC71;">@lotData.ProductiveArea.ToString("N2")</span>
-                        @if (_campaign?.Status != CampaignStatus.Locked)
-                        {
-                            <Button Size="@ButtonSize.Small" OnClick="() => StartEdit(lotData)" Icon="edit" Type="@ButtonType.Link" />
-                        }
-                    </div>
-                </Column>
-                <ActionColumn Title="Acciones">
-                    <Popconfirm Title="¿Remover?" OnConfirm="() => RemoveLot(context)">
-                        <Button Danger Size="@ButtonSize.Small" Icon="delete" />
-                    </Popconfirm>
-                </ActionColumn>
-            </ColumnDefinitions>
-            <ExpandTemplate Context="row">
-                <div style="padding: 16px; background: rgba(0,0,0,0.1); border-radius: 8px;">
-                    <div style="display: flex; justify-content: space-between; margin-bottom: 12px;">
-                        <h4 style="color: #fff; margin: 0;">Rotaciones del Lote</h4>
-                        <Button Size="@ButtonSize.Small" Type="@ButtonType.Primary" OnClick="() => OpenAddRotationModal(row.Data)">+ Agregar</Button>
-                    </div>
-                    <Table TItem="RotationDto" DataSource="@GetRotations(row.Data.Id)" Size="TableSize.Small" HidePagination>
-                        <PropertyColumn Property="r => r.StartDate" Title="Inicio" />
-                        <PropertyColumn Property="r => r.EndDate" Title="Fin" />
-                        <PropertyColumn Property="r => r.ActivityName" Title="Cultivo" />
-                        <ActionColumn>
-                             @{ var rotData = context; }
-                             <Button Size="@ButtonSize.Small" Icon="edit" OnClick="() => OpenEditRotationModal(row.Data, rotData)" />
-                             <Button Danger Size="@ButtonSize.Small" Icon="delete" OnClick="() => DeleteRotation(rotData)" />
-                        </ActionColumn>
-                    </Table>
-                </div>
-            </ExpandTemplate>
-        </Table>
     }
+
+    @* La tabla se dibuja siempre (aunque se estén cargando los totales) para que _table exista al recargar. *@
+    <RemoteTable @ref="_table"
+                 TItem="CampaignLotDto"
+                 Load="LoadCampaignLots"
+                 SortKeys="@SortKeys"
+                 StateKey="campaign-lots"
+                 SearchPlaceholder="Buscar lote..."
+                 ItemLabel="lotes"
+                 RowKey="x => x.Id.ToString()">
+        <Filters>
+            <SelectFilter Param="fieldId" Placeholder="Campo" SearchOptions="SearchFields" Style="width: 200px;" />
+        </Filters>
+        <ChildContent>
+            <PropertyColumn Property="l => l.LotName" Title="Lote" Sortable />
+            <PropertyColumn Property="l => l.FieldName" Title="Campo" Sortable />
+            <PropertyColumn Property="l => l.CadastralArea" Title="Ha" Sortable />
+            <PropertyColumn Property="l => l.ProductiveArea" Title="Sup. Productiva" Sortable>
+                @{ var lotData = context; }
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <span style="font-weight: 600; color: #2ECC71;">@lotData.ProductiveArea.ToString("N2")</span>
+                    @if (_campaign?.Status != CampaignStatus.Locked)
+                    {
+                        <Button Size="@ButtonSize.Small" OnClick="() => StartEdit(lotData)" Icon="edit" Type="@ButtonType.Link" />
+                    }
+                </div>
+            </PropertyColumn>
+            <ActionColumn Title="Acciones">
+                <Popconfirm Title="¿Remover?" OnConfirm="() => RemoveLot(context)">
+                    <Button Danger Size="@ButtonSize.Small" Icon="delete" />
+                </Popconfirm>
+            </ActionColumn>
+        </ChildContent>
+        <ExpandTemplate Context="row">
+            <div style="padding: 16px; background: rgba(0,0,0,0.1); border-radius: 8px;">
+                <div style="display: flex; justify-content: space-between; margin-bottom: 12px;">
+                    <h4 style="color: #fff; margin: 0;">Rotaciones del Lote</h4>
+                    <Button Size="@ButtonSize.Small" Type="@ButtonType.Primary" OnClick="() => OpenAddRotationModal(row.Data)">+ Agregar</Button>
+                </div>
+                <Table TItem="RotationDto" DataSource="@GetRotations(row.Data.Id)" Size="TableSize.Small" HidePagination>
+                    <PropertyColumn Property="r => r.StartDate" Title="Inicio" />
+                    <PropertyColumn Property="r => r.EndDate" Title="Fin" />
+                    <PropertyColumn Property="r => r.ActivityName" Title="Cultivo" />
+                    <ActionColumn>
+                         @{ var rotData = context; }
+                         <Button Size="@ButtonSize.Small" Icon="edit" OnClick="() => OpenEditRotationModal(row.Data, rotData)" />
+                         <Button Danger Size="@ButtonSize.Small" Icon="delete" OnClick="() => DeleteRotation(rotData)" />
+                    </ActionColumn>
+                </Table>
+            </div>
+        </ExpandTemplate>
+    </RemoteTable>
 </div>
 
 <Modal Title="Agregar Lote" Visible="_addModalVisible" OnCancel="() => _addModalVisible = false" OnOk="AddLotToCampaign">
@@ -256,14 +256,33 @@
 
     private bool RotationDatesInvalid => _rotationModel.StartDate >= _rotationModel.EndDate;
 
-    private readonly LotFilter _lotFilter = new();
+    private RemoteTable<CampaignLotDto>? _table;
+    private readonly HashSet<Guid> _rotationsLoading = new();
 
-    private IEnumerable<CampaignLotDto> FilteredLots =>
-        _lots.Where(l => _lotFilter.Matches(l.LotName, l.FieldName, l.FieldId));
+    // Propiedad de la columna → clave de orden de api/campaigns/{id}/lots/search.
+    private static readonly IReadOnlyDictionary<string, string> SortKeys = new Dictionary<string, string>
+    {
+        [nameof(CampaignLotDto.LotName)] = "name",
+        [nameof(CampaignLotDto.FieldName)] = "field",
+    };
 
-    // Un elemento por campo, para el selector.
-    private IEnumerable<CampaignLotDto> LotFields =>
-        _lots.Where(l => l.FieldId != null).DistinctBy(l => l.FieldId).OrderBy(l => l.FieldName);
+    private Task<PagedResult<CampaignLotDto>?> LoadCampaignLots(string query, CancellationToken ct) =>
+        Http.GetFromJsonAsync<PagedResult<CampaignLotDto>>($"api/campaigns/{CampaignId}/lots/search?{query}", ct);
+
+    private async Task<IEnumerable<FilterOption>> SearchFields(string? text)
+    {
+        var page = await Http.GetFromJsonAsync<PagedResult<FieldListItemDto>>(
+            $"api/fields/search?page=1&pageSize=20&search={Uri.EscapeDataString(text ?? "")}");
+        return page?.Items.Select(f => new FilterOption(f.Id.ToString(), f.Name)) ?? Enumerable.Empty<FilterOption>();
+    }
+
+    // La lista completa sigue cargándose aparte: alimenta los totales y excluye del alta los lotes ya asignados.
+    private async Task ReloadAllAsync()
+    {
+        await LoadData();
+        if (_table != null)
+            await _table.ReloadAsync();
+    }
 
     private IEnumerable<LotDto> FilteredAvailableLots =>
         _addFilterFieldId == Guid.Empty
@@ -318,9 +337,25 @@
         } catch (Exception ex) { _errorMessage = ex.Message; } finally { _loading = false; }
     }
 
-    private async Task OnExpandLot(RowData<CampaignLotDto> args) { if (args.Expanded) await LoadRotations(args.Data.Id); }
     private async Task LoadRotations(Guid id) => _rotationsByLot[id] = await Http.GetFromJsonAsync<List<RotationDto>>($"api/campaigns/{CampaignId}/lots/{id}/rotations") ?? new();
-    private List<RotationDto> GetRotations(Guid id) => _rotationsByLot.TryGetValue(id, out var r) ? r : new();
+
+    // La tabla estándar no expone el evento de expandir: la primera vez que se dibuja la fila expandida se cargan sus rotaciones.
+    private List<RotationDto> GetRotations(Guid id)
+    {
+        if (_rotationsByLot.TryGetValue(id, out var r))
+            return r;
+        if (_rotationsLoading.Add(id))
+        {
+            _ = InvokeAsync(async () =>
+            {
+                try { await LoadRotations(id); }
+                catch (Exception ex) { _rotationsByLot[id] = new(); Message.Error($"No se pudieron cargar las rotaciones: {ex.Message}"); }
+                finally { _rotationsLoading.Remove(id); }
+                StateHasChanged();
+            });
+        }
+        return new();
+    }
 
     private void StartEdit(CampaignLotDto lot) { _editingLot = lot; _editProductiveArea = Math.Round(lot.ProductiveArea, 2); _editModalVisible = true; }
     private async Task SaveProductiveArea()
@@ -335,7 +370,7 @@
             if (resp.IsSuccessStatusCode)
             {
                 _editModalVisible = false;
-                await LoadData();
+                await ReloadAllAsync();
             }
             else
             {
@@ -364,7 +399,7 @@
             _addLotId = Guid.Empty;
             _addFilterFieldId = Guid.Empty;
             _addProductiveArea = 0;
-            await LoadData();
+            await ReloadAllAsync();
         }
         else
         {
@@ -373,7 +408,7 @@
         }
     }
 
-    private async Task RemoveLot(CampaignLotDto lot) { if ((await Http.DeleteAsync($"api/campaigns/{CampaignId}/lots/{lot.LotId}")).IsSuccessStatusCode) await LoadData(); }
+    private async Task RemoveLot(CampaignLotDto lot) { if ((await Http.DeleteAsync($"api/campaigns/{CampaignId}/lots/{lot.LotId}")).IsSuccessStatusCode) await ReloadAllAsync(); }
 
     private void OpenAddRotationModal(CampaignLotDto lot) { _isEditingRotation = false; _rotationError = null; _rotationModel = new RotationModel { CampaignLotId = lot.Id, StartDate = _campaign?.StartDate ?? DateOnly.FromDateTime(DateTime.Today), EndDate = _campaign?.EndDate ?? DateOnly.FromDateTime(DateTime.Today.AddMonths(4)) }; _rotationModalVisible = true; }
     private void OpenEditRotationModal(CampaignLotDto lot, RotationDto r) { _isEditingRotation = true; _rotationError = null; _rotationModel = new RotationModel { Id = r.Id, CampaignLotId = r.CampaignLotId, ActivityId = r.ActivityId, StartDate = r.StartDate, EndDate = r.EndDate, Notes = r.Notes }; _rotationModalVisible = true; }
@@ -408,6 +443,6 @@
     private async Task ExecuteImport() {
         var req = new ImportLotsRequest(_importFromCampaignId, _useProductiveAreaFromPrevious);
         var resp = await Http.PostAsJsonAsync($"api/campaigns/{CampaignId}/lots/import", req);
-        if (resp.IsSuccessStatusCode) { _importModalVisible = false; await LoadData(); }
+        if (resp.IsSuccessStatusCode) { _importModalVisible = false; await ReloadAllAsync(); }
     }
 }

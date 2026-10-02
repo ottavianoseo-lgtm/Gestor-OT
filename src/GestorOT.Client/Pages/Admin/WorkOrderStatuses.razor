@@ -19,45 +19,55 @@
 </div>
 
 <div class="glass-card">
-    <Table TItem="WorkOrderStatusDto" DataSource="_statuses" Loading="_loading" Size="TableSize.Small">
-        <PropertyColumn Property="c => c.SortOrder" Title="#" Width="60" />
-        <Column TData="string" Title="Nombre">
-            <div style="display: flex; align-items: center; gap: 8px;">
-                <div style="width: 12px; height: 12px; border-radius: 50%; background: @context.ColorHex;"></div>
-                <span style="font-weight: 600;">@context.Name</span>
-                @if (context.IsDefault)
+    @* Lista chica de configuración: va en memoria. *@
+    <LocalTable DataSource="@_statuses"
+                Loading="@_loading"
+                StateKey="admin-workorder-statuses"
+                SearchBy="s => s.Name"
+                SearchPlaceholder="Buscar estado..."
+                ItemLabel="estados"
+                RowKey="s => s.Id.ToString()"
+                OnReload="LoadData">
+        <ChildContent>
+            <PropertyColumn Property="c => c.SortOrder" Title="#" Width="60" Sortable />
+            <PropertyColumn Property="c => c.Name" Title="Nombre" Sortable>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <div style="width: 12px; height: 12px; border-radius: 50%; background: @context.ColorHex;"></div>
+                    <span style="font-weight: 600;">@context.Name</span>
+                    @if (context.IsDefault)
+                    {
+                        <Tag Color="@AntDesign.TagColor.Processing">Default</Tag>
+                    }
+                </div>
+            </PropertyColumn>
+            <PropertyColumn Property="c => c.IsEditable" Title="Permite Edición" Sortable>
+                @if (context.IsEditable)
                 {
-                    <Tag Color="@AntDesign.TagColor.Processing">Default</Tag>
+                    <Tag Color="@AntDesign.TagColor.Green">Sí</Tag>
                 }
-            </div>
-        </Column>
-        <Column TData="bool" Title="Permite Edición">
-            @if (context.IsEditable)
-            {
-                <Tag Color="@AntDesign.TagColor.Green">Sí</Tag>
-            }
-            else
-            {
-                <Tag Color="@AntDesign.TagColor.Red">No (Bloqueado)</Tag>
-            }
-        </Column>
-        <ActionColumn Title="Acciones" Width="120">
-            <Space>
-                <SpaceItem>
-                    <Button Size="@ButtonSize.Small" OnClick="() => OpenEditModal(context)">
-                        <Icon Type="edit" />
-                    </Button>
-                </SpaceItem>
-                <SpaceItem>
-                    <Popconfirm Title="¿Eliminar este estado?" OnConfirm="() => DeleteStatus(context.Id)">
-                        <Button Danger Size="@ButtonSize.Small">
-                            <Icon Type="delete" />
+                else
+                {
+                    <Tag Color="@AntDesign.TagColor.Red">No (Bloqueado)</Tag>
+                }
+            </PropertyColumn>
+            <ActionColumn Title="Acciones" Width="120">
+                <Space>
+                    <SpaceItem>
+                        <Button Size="@ButtonSize.Small" OnClick="() => OpenEditModal(context)">
+                            <Icon Type="edit" />
                         </Button>
-                    </Popconfirm>
-                </SpaceItem>
-            </Space>
-        </ActionColumn>
-    </Table>
+                    </SpaceItem>
+                    <SpaceItem>
+                        <Popconfirm Title="¿Eliminar este estado?" OnConfirm="() => DeleteStatus(context.Id)">
+                            <Button Danger Size="@ButtonSize.Small">
+                                <Icon Type="delete" />
+                            </Button>
+                        </Popconfirm>
+                    </SpaceItem>
+                </Space>
+            </ActionColumn>
+        </ChildContent>
+    </LocalTable>
 </div>
 
 <Modal Title="@(_isEditing ? "Editar Estado" : "Nuevo Estado")"

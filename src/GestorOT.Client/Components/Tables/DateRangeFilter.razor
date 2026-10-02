@@ -1,0 +1,62 @@
+@using AntDesign
+@implements IDisposable
+
+@* Rango de fechas para la barra de una RemoteTable. Manda los días como medianoche local en UTC,
+   que es como la UI guarda las fechas: "desde" inclusivo y "antes de" exclusivo (el día siguiente al "hasta"). *@
+<RangePicker TValue="DateTime?[]" Value="@_range" ValueChanged="OnChanged"
+             Format="dd/MM/yyyy" Placeholder="@(new[] { "Desde", "Hasta" })"
+             Ranges="@_ranges" AllowClear Style="@Style" />
+
+@code {
+    [CascadingParameter] public ITableFilterHost Host { get; set; } = default!;
+
+    [Parameter] public string FromParam { get; set; } = "dateFrom";
+    [Parameter] public string BeforeParam { get; set; } = "dateBefore";
+    [Parameter] public string Style { get; set; } = "width: 240px;";
+
+    private DateTime?[]? _range;
+    private string UiKey => $"{FromParam}:range";
+
+    private readonly Dictionary<string, DateTime?[]> _ranges = new()
+    {
+        ["Hoy"] = new DateTime?[] { DateTime.Today, DateTime.Today },
+        ["Últimos 7 días"] = new DateTime?[] { DateTime.Today.AddDays(-6), DateTime.Today },
+        ["Últimos 30 días"] = new DateTime?[] { DateTime.Today.AddDays(-29), DateTime.Today },
+        ["Este mes"] = new DateTime?[] { new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1), DateTime.Today },
+        ["Próximos 7 días"] = new DateTime?[] { DateTime.Today, DateTime.Today.AddDays(6) },
+    };
+
+    protected override void OnInitialized()
+    {
+        Host.QueryReset += OnQueryReset;
+    }
+
+    protected override void OnParametersSet()
+    {
+        _range = Host.Query.UiState.GetValueOrDefault(UiKey) as DateTime?[];
+    }
+
+    private void OnQueryReset()
+    {
+        _range = Host.Query.UiState.GetValueOrDefault(UiKey) as DateTime?[];
+        InvokeAsync(StateHasChanged);
+    }
+
+    private async Task OnChanged(DateTime?[]? range)
+    {
+        _range = range;
+        Host.Query.UiState[UiKey] = range;
+
+        var from = range?.ElementAtOrDefault(0)?.Date;
+        var to = range?.ElementAtOrDefault(1)?.Date;
+        Host.Query.Set(FromParam, from is null ? null : ToUtc(from.Value));
+        Host.Query.Set(BeforeParam, to is null ? null : ToUtc(to.Value.AddDays(1)));
+
+        await Host.FiltersChangedAsync();
+    }
+
+    private static string ToUtc(DateTime localDay) =>
+        DateTime.SpecifyKind(localDay, DateTimeKind.Local).ToUniversalTime().ToString("O");
+
+    public void Dispose() => Host.QueryReset -= OnQueryReset;
+}

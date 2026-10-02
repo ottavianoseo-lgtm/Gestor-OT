@@ -18,17 +18,9 @@
 <div class="page-header">
     <div>
         <h2 class="page-title">Órdenes de Trabajo</h2>
-        <span class="page-subtitle">@_workOrders.Count órdenes registradas</span>
+        <span class="page-subtitle">@_kpiTotal órdenes registradas</span>
     </div>
     <div style="display: flex; gap: 8px; align-items: center;">
-        <Select TItemValue="string?" TItem="string" @bind-Value="_statusFilter"
-                Placeholder="Estado" AllowClear Style="width: 180px;">
-            @foreach (var s in _workOrderStatuses)
-            {
-                <SelectOption TItemValue="string?" TItem="string" Value="@s.Id.ToString()" Label="@s.Name" />
-            }
-            <SelectOption TItemValue="string?" TItem="string" Value="@NoStatusFilter" Label="Sin estado" />
-        </Select>
         <Button Type="@ButtonType.Primary" OnClick="OpenCreateModal"
                 Style="background: #E74C3C; border-color: #E74C3C; border-radius: 8px; font-weight: 600;">
             <Icon Type="plus" Theme="IconThemeType.Outline" /> Nueva Orden
@@ -44,34 +36,50 @@
 <AntDesign.Row Gutter="@((16, 16))" Style="margin-bottom: 16px;">
     <AntDesign.Col Xs="24" Sm="6">
         <div class="kpi-card-sm" style="border-left: 3px solid #3498DB;">
-            <span class="kpi-sm-value">@_workOrders.Count</span>
+            <span class="kpi-sm-value">@_kpiTotal</span>
             <span class="kpi-sm-label">Total</span>
         </div>
     </AntDesign.Col>
     <AntDesign.Col Xs="24" Sm="6">
         <div class="kpi-card-sm" style="border-left: 3px solid #F1C40F;">
-            <span class="kpi-sm-value">@EditablesCount</span>
+            <span class="kpi-sm-value">@_kpiEditable</span>
             <span class="kpi-sm-label">Editables</span>
         </div>
     </AntDesign.Col>
     <AntDesign.Col Xs="24" Sm="6">
         <div class="kpi-card-sm" style="border-left: 3px solid #2ECC71;">
-            <span class="kpi-sm-value">@NoEditablesCount</span>
+            <span class="kpi-sm-value">@_kpiLocked</span>
             <span class="kpi-sm-label">No editables</span>
         </div>
     </AntDesign.Col>
     <AntDesign.Col Xs="24" Sm="6">
         <div class="kpi-card-sm" style="border-left: 3px solid #E74C3C;">
-            <span class="kpi-sm-value">@SinEstadoCount</span>
+            <span class="kpi-sm-value">@_kpiNoStatus</span>
             <span class="kpi-sm-label">Sin estado</span>
         </div>
     </AntDesign.Col>
 </AntDesign.Row>
 
 <div class="glass-card">
-    <Table TItem="WorkOrderDto" DataSource="FilteredWorkOrders" Loading="_loading" Size="@TableSize.Small" ScrollX="1200">
-        <PropertyColumn Property="c => FilteredWorkOrders.IndexOf(c) + 1" Title="#" Width="70" Fixed="ColumnFixPlacement.Left">
-            <span style="color: #fff; font-weight: 600;">@(FilteredWorkOrders.IndexOf(context) + 1)</span>
+    <RemoteTable @ref="_table"
+                 TItem="WorkOrderDto"
+                 Load="LoadWorkOrders"
+                 FixedFilters="@FixedFilters"
+                 SortKeys="@SortKeys"
+                 StateKey="workorders"
+                 SearchPlaceholder="Buscar número, nombre, descripción, responsable..."
+                 ItemLabel="órdenes"
+                 RowKey="w => w.Id.ToString()"
+                 ScrollX="1200">
+        <Filters>
+            <SelectFilter Param="statusId" Placeholder="Estado" Options="@StatusOptions" Style="width: 170px;" />
+            <SelectFilter Param="fieldId" Placeholder="Campo" SearchOptions="SearchFields" Style="width: 160px;" />
+            <SelectFilter Param="contactId" Placeholder="Responsable" SearchOptions="SearchContacts" Style="width: 180px;" />
+            <DateRangeFilter FromParam="dueFrom" BeforeParam="dueBefore" />
+        </Filters>
+        <ChildContent>
+        <PropertyColumn Property="c => c.OTNumber" Title="OT" Sortable Width="110" Fixed="ColumnFixPlacement.Left">
+            <span style="color: #fff; font-weight: 600;">@context.OTNumber</span>
         </PropertyColumn>
         <PropertyColumn Property="c => c.Name" Title="Nombre" Sortable Width="180">
             <span style="font-weight: 700; color: #fff;">@(context.Name ?? context.OTNumber)</span>
@@ -79,14 +87,14 @@
         <PropertyColumn Property="c => c.Description" Title="Descripción" Width="250">
             <span style="font-weight: 600;">@context.Description</span>
         </PropertyColumn>
-        <Column TData="string" Title="Estado" Width="120">
+        <PropertyColumn Property="c => c.WorkOrderStatusId" Title="Estado" Sortable Width="120">
             @{
                 var (color, label) = GetStatusDisplay(context.WorkOrderStatusId);
             }
             <Tag Style="@($"background: {color}20; color: {color}; border: 1px solid {color}40; border-radius: 12px; font-size: 11px; font-weight: 600; padding: 2px 10px;")">
                 @label
             </Tag>
-        </Column>
+        </PropertyColumn>
         <PropertyColumn Property="c => c.AssignedTo" Title="Asignado a" Sortable Width="150" />
         <PropertyColumn Property="c => c.DueDate" Title="Fecha" Sortable DefaultSortOrder="@SortDirection.Ascending" Width="120">
             @context.DueDate.ToString("dd/MM/yyyy")
@@ -124,7 +132,8 @@
                 </Space>
             </div>
         </ActionColumn>
-    </Table>
+        </ChildContent>
+    </RemoteTable>
 </div>
 
 <Modal Title="@(_isEditing ? "Editar Orden de Trabajo" : "Nueva Orden de Trabajo")"
@@ -244,10 +253,10 @@
 </style>
 
 @code {
-    private List<WorkOrderDto> _workOrders = new();
+    private RemoteTable<WorkOrderDto>? _table;
+    private int _kpiTotal, _kpiEditable, _kpiLocked, _kpiNoStatus;
     private List<ContactDto> _availableContacts = new();
     private List<WorkOrderStatusDto> _workOrderStatuses = new();
-    private bool _loading;
     private bool _loadingStatuses;
     private string? _errorMessage;
 
@@ -309,26 +318,64 @@
             _formModel.ContactId = null;
     }
 
+    // statusId=none: OTs sin estado asignado (ver WorkOrdersController.SearchWorkOrders).
     private const string NoStatusFilter = "none";
-    private string? _statusFilter;
 
-    private List<WorkOrderDto> FilteredWorkOrders => _statusFilter switch
+    private List<FilterOption> StatusOptions =>
+        _workOrderStatuses.OrderBy(s => s.SortOrder)
+            .Select(s => new FilterOption(s.Id.ToString(), s.Name))
+            .Append(new FilterOption(NoStatusFilter, "Sin estado"))
+            .ToList();
+
+    // Propiedad de la columna → clave de orden de api/workorders/search.
+    private static readonly IReadOnlyDictionary<string, string> SortKeys = new Dictionary<string, string>
     {
-        null or "" => _workOrders,
-        NoStatusFilter => _workOrders.Where(w => w.WorkOrderStatusId == null || w.WorkOrderStatusId == Guid.Empty).ToList(),
-        _ => _workOrders.Where(w => w.WorkOrderStatusId?.ToString() == _statusFilter).ToList()
+        [nameof(WorkOrderDto.OTNumber)] = "otNumber",
+        [nameof(WorkOrderDto.Name)] = "name",
+        [nameof(WorkOrderDto.WorkOrderStatusId)] = "status",
+        [nameof(WorkOrderDto.AssignedTo)] = "assignedTo",
+        [nameof(WorkOrderDto.DueDate)] = "dueDate",
     };
 
-    private int EditablesCount =>_workOrders.Count(w => 
-        w.WorkOrderStatusId.HasValue && w.WorkOrderStatusId != Guid.Empty &&
-        _workOrderStatuses.Any(s => s.Id == w.WorkOrderStatusId.Value && s.IsEditable));
+    // GET api/workorders tomaba la campaña del header; la búsqueda la recibe explícita.
+    private IReadOnlyDictionary<string, string?> FixedFilters => new Dictionary<string, string?>
+    {
+        ["campaignId"] = CampaignState.CurrentCampaign?.Id.ToString(),
+    };
 
-    private int NoEditablesCount => _workOrders.Count(w => 
-        w.WorkOrderStatusId.HasValue && w.WorkOrderStatusId != Guid.Empty &&
-        _workOrderStatuses.Any(s => s.Id == w.WorkOrderStatusId.Value && !s.IsEditable));
+    private Task<PagedResult<WorkOrderDto>?> LoadWorkOrders(string query, CancellationToken ct) =>
+        Http.GetFromJsonAsync($"api/workorders/search?{query}", AppJsonSerializerContext.Default.PagedResultWorkOrderDto, ct);
 
-    private int SinEstadoCount => _workOrders.Count(w => 
-        w.WorkOrderStatusId == null || w.WorkOrderStatusId == Guid.Empty);
+    private async Task<IEnumerable<FilterOption>> SearchContacts(string? text)
+    {
+        var page = await Http.GetFromJsonAsync<PagedResult<ContactDto>>(
+            $"api/catalogs/contacts/search?page=1&pageSize=20&search={Uri.EscapeDataString(text ?? "")}");
+        return page?.Items.Select(c => new FilterOption(c.Id.ToString(), c.FullName)) ?? Enumerable.Empty<FilterOption>();
+    }
+
+    private async Task<IEnumerable<FilterOption>> SearchFields(string? text)
+    {
+        var page = await Http.GetFromJsonAsync<PagedResult<FieldListItemDto>>(
+            $"api/fields/search?page=1&pageSize=20&search={Uri.EscapeDataString(text ?? "")}");
+        return page?.Items.Select(f => new FilterOption(f.Id.ToString(), f.Name)) ?? Enumerable.Empty<FilterOption>();
+    }
+
+    // Totales de las tarjetas: con pageSize=1 alcanza, solo interesa el total.
+    // Editables = las que tienen un estado editable = total - bloqueadas - sin estado.
+    private async Task LoadKpis(CancellationToken ct)
+    {
+        var campaign = CampaignState.CurrentCampaign?.Id;
+        async Task<int> Count(string filter)
+        {
+            var url = $"api/workorders/search?page=1&pageSize=1{(campaign is null ? "" : $"&campaignId={campaign}")}{filter}";
+            var page = await Http.GetFromJsonAsync(url, AppJsonSerializerContext.Default.PagedResultWorkOrderDto, ct);
+            return page?.Total ?? 0;
+        }
+
+        var counts = await Task.WhenAll(Count(""), Count("&locked=true"), Count($"&statusId={NoStatusFilter}"));
+        (_kpiTotal, _kpiLocked, _kpiNoStatus) = (counts[0], counts[1], counts[2]);
+        _kpiEditable = Math.Max(0, _kpiTotal - _kpiLocked - _kpiNoStatus);
+    }
 
     private (string ColorHex, string Name) GetStatusDisplay(Guid? workOrderStatusId)
     {
@@ -346,7 +393,8 @@
     {
         CampaignState.OnChange += OnCampaignChanged;
         TenantState.OnChange += OnCampaignChanged;
-        await Task.WhenAll(LoadData(), LoadStatuses());
+        // La tabla carga su primera página sola; acá van los datos de alrededor.
+        await Task.WhenAll(LoadData(reloadTable: false), LoadStatuses());
     }
 
     private async Task LoadStatuses()
@@ -376,7 +424,8 @@
 
     private void OnCampaignChanged()
     {
-        InvokeAsync(async () => { await LoadData(); StateHasChanged(); });
+        // Al cambiar la campaña cambian los FixedFilters y la tabla se recarga sola.
+        InvokeAsync(async () => { await LoadData(reloadTable: false); StateHasChanged(); });
     }
 
     public void Dispose()
@@ -385,26 +434,17 @@
         TenantState.OnChange -= OnCampaignChanged;
     }
 
-    private async Task LoadData()
+    private async Task LoadData(bool reloadTable = true)
     {
         try
         {
-            _loading = true;
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
-            var ordersTask = Http.GetFromJsonAsync("api/workorders",
-                AppJsonSerializerContext.Default.ListWorkOrderDto, cts.Token);
             var contactsTask = Http.GetFromJsonAsync("api/catalogs/contacts",
                 AppJsonSerializerContext.Default.ListContactDto, cts.Token);
+            var kpiTask = LoadKpis(cts.Token);
 
-            await Task.WhenAll(ordersTask, contactsTask);
+            await Task.WhenAll(contactsTask, kpiTask);
 
-            var orders = await ordersTask ?? new();
-            // De la más vieja a la más reciente; el mismo día, por número de OT.
-            _workOrders = orders
-                .OrderBy(o => o.DueDate)
-                .ThenBy(o => int.TryParse(o.OTNumber, out var n) ? n : int.MaxValue)
-                .ThenBy(o => o.OTNumber)
-                .ToList();
             _availableContacts = await contactsTask ?? new();
             _errorMessage = null;
         }
@@ -412,11 +452,10 @@
         {
             _errorMessage = $"Error: {ex.Message}";
         }
-        finally
-        {
-            _loading = false;
-            StateHasChanged();
-        }
+
+        if (reloadTable && _table != null)
+            await _table.ReloadAsync();
+        StateHasChanged();
     }
 
     private void OpenDetail(Guid workOrderId)
@@ -438,7 +477,7 @@
         _formModel.CampaignId = CampaignState.CurrentCampaign.Id;
         
         // Incremental ID por pantalla para la descripción por defecto
-        var nextId = _workOrders.Count + 1;
+        var nextId = _kpiTotal + 1;
         _formModel.Description = $"Nueva Orden de Trabajo #{nextId}";
 
         var defaultStatus = _workOrderStatuses.FirstOrDefault(s => s.IsDefault)

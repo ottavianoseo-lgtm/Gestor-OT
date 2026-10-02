@@ -1,0 +1,200 @@
+@typeparam TItem
+@attribute [CascadingTypeParameter(nameof(TItem))]
+@using AntDesign
+@inject FilterState FilterState
+@inject IMessageService Message
+
+@* Tabla estándar paginada en el servidor. Arriba siempre la misma barra: búsqueda, filtros,
+   opciones extra y herramientas (limpiar, total, recargar). La página solo declara columnas,
+   filtros y de dónde se cargan los datos (Load, contra un GET .../search de la API). *@
+<FilterToolbar @ref="_toolbar"
+               Query="@Query"
+               OnChanged="ReloadAsync"
+               Filters="@Filters"
+               ExtraOptions="@ExtraOptions"
+               EnableSearch="@EnableSearch"
+               SearchPlaceholder="@SearchPlaceholder"
+               CountText="@($"{_total} {ItemLabel}")"
+               OnReload="ReloadAsync"
+               Loading="@_loading" />
+
+<Table @ref="_table"
+       TItem="TItem"
+       DataSource="@_items"
+       RemoteDataSource="true"
+       Total="@_total"
+       PageIndex="@Query.PageIndex"
+       PageSize="@Query.PageSize"
+       Loading="@_loading"
+       OnChange="OnTableChange"
+       Size="TableSize.Small"
+       ScrollX="@ScrollX"
+       RowKey="@RowKey"
+       RowClassName="@(RowClassName ?? NoRowClass)"
+       OnRowClick="OnRowClick"
+       SelectedRowsChanged="SelectedRowsChanged"
+       ExpandTemplate="@ExpandTemplate"
+       ChildContent="@ChildContent"
+       Style="background: transparent;" />
+
+@code {
+    /// <summary>Recibe la query string ya armada (page, pageSize, sortBy, sortDir, search, filtros).</summary>
+    [Parameter, EditorRequired] public Func<string, CancellationToken, Task<PagedResult<TItem>?>> Load { get; set; } = default!;
+
+    [Parameter] public RenderFragment<TItem>? ChildContent { get; set; }
+    [Parameter] public RenderFragment<RowData<TItem>>? ExpandTemplate { get; set; }
+    [Parameter] public RenderFragment? Filters { get; set; }
+    [Parameter] public RenderFragment? ExtraOptions { get; set; }
+
+    /// <summary>Filtros que impone la pantalla (ej. campaignId). Si cambian, la tabla vuelve a la página 1.</summary>
+    [Parameter] public IReadOnlyDictionary<string, string?>? FixedFilters { get; set; }
+
+    /// <summary>
+    /// Nombre de la propiedad de la columna → clave de orden de la API. Una columna Sortable que
+    /// no figura acá manda su nombre en camelCase.
+    /// </summary>
+    [Parameter] public IReadOnlyDictionary<string, string>? SortKeys { get; set; }
+
+    /// <summary>Si se pasa, filtros y página se recuerdan por pantalla durante la sesión.</summary>
+    [Parameter] public string? StateKey { get; set; }
+
+    [Parameter] public bool EnableSearch { get; set; } = true;
+    [Parameter] public string SearchPlaceholder { get; set; } = "Buscar...";
+    [Parameter] public string ItemLabel { get; set; } = "registros";
+    [Parameter] public int DefaultPageSize { get; set; } = 20;
+
+    [Parameter] public string? ScrollX { get; set; }
+    [Parameter] public Func<TItem, string>? RowKey { get; set; }
+
+    /// <summary>Clase CSS por fila (ej. atenuar las inactivas).</summary>
+    [Parameter] public Func<RowData<TItem>, string>? RowClassName { get; set; }
+
+    // AntDesign no admite RowClassName en null (lo llama en cada fila): sin clase, string vacío.
+    private static readonly Func<RowData<TItem>, string> NoRowClass = _ => "";
+    [Parameter] public EventCallback<RowData<TItem>> OnRowClick { get; set; }
+    [Parameter] public EventCallback<IEnumerable<TItem>> SelectedRowsChanged { get; set; }
+
+    /// <summary>Después de cada carga, con la página que llegó.</summary>
+    [Parameter] public EventCallback<PagedResult<TItem>> OnLoaded { get; set; }
+
+    public TableQuery Query { get; private set; } = new();
+
+    /// <summary>Filas de la página actual.</summary>
+    public IReadOnlyList<TItem> Items => _items;
+
+    private ITable? _table;
+    private FilterToolbar? _toolbar;
+    private List<TItem> _items = new();
+    private int _total;
+    private bool _loading;
+    // Cada carga se numera y la respuesta de una carga vieja se descarta. No se cancela el
+    // request: ErrorHandlingHttpHandler muestra cualquier cancelación como "timeout".
+    private int _loadVersion;
+    private string? _fixedSignature;
+    private bool _requested;
+
+    protected override void OnInitialized()
+    {
+        Query = StateKey is null ? new TableQuery() : FilterState.For<TableQuery>($"table:{StateKey}");
+        if (!Query.Seeded)
+        {
+            Query.PageSize = DefaultPageSize;
+            Query.Seeded = true;
+        }
+        _fixedSignature = Signature(FixedFilters);
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        // Cambió algo que impone la pantalla (ej. la campaña): se arranca de la página 1.
+        var signature = Signature(FixedFilters);
+        if (signature != _fixedSignature)
+        {
+            _fixedSignature = signature;
+            await FiltersChangedAsync();
+        }
+    }
+
+    // Con RemoteDataSource la tabla avisa su primer estado por OnChange; si no lo hizo, se carga igual.
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && !_requested)
+            await ReloadAsync();
+    }
+
+    /// <summary>Recarga la página actual (ej. después de guardar o borrar).</summary>
+    public async Task ReloadAsync()
+    {
+        _requested = true;
+        var version = ++_loadVersion;
+
+        _loading = true;
+        StateHasChanged();
+        try
+        {
+            var result = await Load(Query.ToQueryString(FixedFilters), CancellationToken.None);
+            if (version != _loadVersion) return;
+
+            _items = result?.Items ?? new();
+            _total = result?.Total ?? 0;
+
+            // Si se borró lo último de la última página, se retrocede una.
+            if (_items.Count == 0 && _total > 0 && Query.PageIndex > 1)
+            {
+                Query.PageIndex = Math.Max(1, (int)Math.Ceiling(_total / (double)Query.PageSize));
+                await ReloadAsync();
+                return;
+            }
+
+            if (result != null)
+                await OnLoaded.InvokeAsync(result);
+        }
+        catch (Exception ex) when (version == _loadVersion)
+        {
+            Message.Error($"No se pudieron cargar los datos: {ex.Message}");
+        }
+        catch
+        {
+            // Falló una carga que ya fue reemplazada por otra: no importa.
+        }
+        finally
+        {
+            if (version == _loadVersion)
+            {
+                _loading = false;
+                StateHasChanged();
+            }
+        }
+    }
+
+    private async Task FiltersChangedAsync()
+    {
+        Query.PageIndex = 1;
+        await ReloadAsync();
+    }
+
+    /// <summary>Para filtros que maneja la pantalla por fuera de la barra (ej. las tarjetas de KPIs).</summary>
+    public Task SetFilterAsync(string param, string? value) =>
+        _toolbar?.SetFilterAsync(param, value) ?? Task.CompletedTask;
+
+    private async Task OnTableChange(QueryModel<TItem> model)
+    {
+        Query.PageIndex = model.PageIndex;
+        Query.PageSize = model.PageSize;
+
+        var sort = model.SortModel
+            .Where(s => s.SortDirection != SortDirection.None)
+            .OrderBy(s => s.Priority)
+            .FirstOrDefault();
+        Query.SortBy = sort is null ? null : SortKeys?.GetValueOrDefault(sort.FieldName) ?? CamelCase(sort.FieldName);
+        Query.SortDir = sort is null ? null : sort.SortDirection == SortDirection.Ascending ? "asc" : "desc";
+
+        await ReloadAsync();
+    }
+
+    private static string CamelCase(string name) =>
+        string.IsNullOrEmpty(name) ? name : char.ToLowerInvariant(name[0]) + name[1..];
+
+    private static string Signature(IReadOnlyDictionary<string, string?>? filters) =>
+        filters is null ? "" : string.Join('&', filters.OrderBy(f => f.Key).Select(f => $"{f.Key}={f.Value}"));
+}
