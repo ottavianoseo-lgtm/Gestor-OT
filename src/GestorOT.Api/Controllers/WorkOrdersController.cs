@@ -1,4 +1,5 @@
 using System.Text;
+using GestorOT.Api.Extensions;
 using GestorOT.Application.Interfaces;
 using GestorOT.Application.Services;
 using GestorOT.Domain.Entities;
@@ -554,5 +555,70 @@ public class WorkOrdersController : ControllerBase
         var pdf = await _pdfExporter.GeneratePdfAsync(id, ct);
         var fileName = $"OT-{wo.OTNumber}-{DateTime.Now:yyyyMMdd}.pdf";
         return File(pdf, "application/pdf", fileName);
+    }
+
+    // --- Búsqueda paginada (ver PagedQuery) ---
+
+    private static readonly SortMap<WorkOrder> WorkOrderSorts = new SortMap<WorkOrder>(w => w.Id)
+        .Add("dueDate", w => w.DueDate, defaultDesc: true)
+        .Add("plannedDate", w => w.PlannedDate, defaultDesc: true)
+        .Add("otNumber", w => w.OTNumber)
+        .Add("name", w => w.Name)
+        .Add("status", w => w.WorkOrderStatus != null ? w.WorkOrderStatus.SortOrder : int.MaxValue);
+
+    /// <summary>
+    /// A diferencia de GET paged, la campaña va explícita (campaignId) y no sale del header de
+    /// campaña actual. dueFrom inclusivo, dueBefore exclusivo, en UTC.
+    /// </summary>
+    [HttpGet("search")]
+    public Task<ActionResult<PagedResult<WorkOrderDto>>> SearchWorkOrders(
+        [FromQuery] PagedQuery paging,
+        [FromQuery] Guid? campaignId = null,
+        [FromQuery] string? status = null,
+        [FromQuery] Guid? fieldId = null,
+        [FromQuery] Guid? contactId = null,
+        [FromQuery] bool? locked = null,
+        [FromQuery] DateTime? dueFrom = null,
+        [FromQuery] DateTime? dueBefore = null,
+        [FromQuery] string? search = null,
+        CancellationToken ct = default)
+    {
+        var query = _context.WorkOrders.AsNoTracking();
+
+        if (campaignId.HasValue) query = query.Where(w => w.CampaignId == campaignId);
+        if (!string.IsNullOrWhiteSpace(status))
+            query = query.Where(w => w.WorkOrderStatus != null ? EF.Functions.ILike(w.WorkOrderStatus.Name, status.Trim()) : EF.Functions.ILike(w.Status, status.Trim()));
+        if (fieldId.HasValue) query = query.Where(w => w.FieldId == fieldId);
+        if (contactId.HasValue) query = query.Where(w => w.ContactId == contactId);
+        if (locked.HasValue)
+            query = locked.Value
+                ? query.Where(w => w.WorkOrderStatus != null && !w.WorkOrderStatus.IsEditable)
+                : query.Where(w => w.WorkOrderStatus == null || w.WorkOrderStatus.IsEditable);
+        if (dueFrom.HasValue)
+        {
+            var from = dueFrom.Value.AsUtc();
+            query = query.Where(w => w.DueDate >= from);
+        }
+        if (dueBefore.HasValue)
+        {
+            var before = dueBefore.Value.AsUtc();
+            query = query.Where(w => w.DueDate < before);
+        }
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var pattern = PagedQueryExtensions.ContainsPattern(search);
+            query = query.Where(w => EF.Functions.ILike(w.OTNumber, pattern)
+                || EF.Functions.ILike(w.Name ?? "", pattern)
+                || EF.Functions.ILike(w.Description ?? "", pattern)
+                || EF.Functions.ILike(w.AssignedTo, pattern));
+        }
+
+        return query.ToPagedAsync(paging, WorkOrderSorts, w => new WorkOrderDto(
+            w.Id, w.FieldId, w.Description ?? "", w.Status, w.AssignedTo, w.DueDate,
+            w.Field != null ? w.Field.Name : null, w.OTNumber, w.PlannedDate, w.ExpirationDate,
+            w.StockReserved, w.ContractorId, w.ContactId, w.CampaignId,
+            w.Name, w.AcceptsMultiplePeople, w.AcceptsMultipleDates,
+            w.WorkOrderStatus != null && !w.WorkOrderStatus.IsEditable,
+            w.WorkOrderStatusId), ct);
     }
 }

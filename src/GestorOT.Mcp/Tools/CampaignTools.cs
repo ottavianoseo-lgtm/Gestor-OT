@@ -7,6 +7,7 @@ namespace GestorOT.Mcp.Tools;
 [McpServerToolType]
 public sealed class CampaignTools
 {
+    private const string Sorts = "Orden: startDate (default, más reciente primero), endDate o name.";
     private readonly GestorOtApiClient _api;
 
     public CampaignTools(GestorOtApiClient api)
@@ -19,14 +20,30 @@ public sealed class CampaignTools
     public Task<ApiUser> GetCurrentUser(CancellationToken ct) => _api.GetCurrentUserAsync(ct);
 
     [McpServerTool(Name = "get_active_campaigns", ReadOnly = true, Idempotent = true, OpenWorld = false)]
-    [Description("Campañas activas y no cerradas, de la más reciente a la más vieja. La primera suele ser 'la campaña actual'. Usar su id para filtrar lotes y labores.")]
-    public async Task<List<CampaignView>> GetActiveCampaigns(CancellationToken ct) =>
-        (await _api.GetActiveCampaignsAsync(ct)).Select(CampaignView.From).ToList();
+    [Description("Campañas activas y no cerradas, paginadas, de la más reciente a la más vieja. La primera suele ser 'la campaña actual'. Usar su id para filtrar lotes y labores.")]
+    public async Task<PageResult<CampaignView>> GetActiveCampaigns(
+        [Description(Paging.Page)] int page = 1,
+        [Description(Paging.PageSize)] int pageSize = Paging.DefaultPageSize,
+        CancellationToken ct = default) =>
+        PageResult<CampaignView>.From(
+            await _api.SearchCampaignsAsync(new ApiQuery(page, pageSize).Add("active", true), ct),
+            CampaignView.From);
 
     [McpServerTool(Name = "list_campaigns", ReadOnly = true, Idempotent = true, OpenWorld = false)]
-    [Description("Todas las campañas, incluidas las cerradas (Locked), de la más reciente a la más vieja.")]
-    public async Task<List<CampaignView>> ListCampaigns(CancellationToken ct) =>
-        (await _api.GetCampaignsAsync(ct)).Select(CampaignView.From).ToList();
+    [Description("Campañas, incluidas las cerradas (Locked), paginadas.")]
+    public async Task<PageResult<CampaignView>> ListCampaigns(
+        [Description("Filtra por nombre (contiene).")] string? search = null,
+        [Description("true = solo activas y no cerradas; false = solo inactivas o cerradas; vacío = todas.")] bool? active = null,
+        [Description(Sorts)] string? sortBy = null,
+        [Description(Paging.SortDir)] string? sortDir = null,
+        [Description(Paging.Page)] int page = 1,
+        [Description(Paging.PageSize)] int pageSize = Paging.DefaultPageSize,
+        CancellationToken ct = default) =>
+        PageResult<CampaignView>.From(
+            await _api.SearchCampaignsAsync(new ApiQuery(page, pageSize, sortBy, sortDir)
+                .Add("search", search)
+                .Add("active", active), ct),
+            CampaignView.From);
 }
 
 public sealed record CampaignView(Guid Id, string Name, string Status, bool IsActive, DateOnly StartDate, DateOnly EndDate)

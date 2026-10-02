@@ -1,4 +1,5 @@
-﻿using GestorOT.Application.Interfaces;
+﻿using GestorOT.Api.Extensions;
+using GestorOT.Application.Interfaces;
 using GestorOT.Application.Services;
 using GestorOT.Domain.Entities;
 using GestorOT.Shared.Dtos;
@@ -130,5 +131,26 @@ public class FieldsController : ControllerBase
         _context.Fields.Remove(field);
         await _context.SaveChangesAsync();
         return NoContent();
+    }
+
+    // --- Búsqueda paginada (ver PagedQuery) ---
+
+    private static readonly SortMap<Field> FieldSorts = new SortMap<Field>(f => f.Id)
+        .Add("name", f => f.Name)
+        .Add("lotCount", f => f.Lots.Count, defaultDesc: true)
+        .Add("cadastralArea", f => f.Lots.Sum(l => l.CadastralArea), defaultDesc: true);
+
+    [HttpGet("search")]
+    public Task<ActionResult<PagedResult<FieldListItemDto>>> SearchFields(
+        [FromQuery] PagedQuery paging,
+        [FromQuery] string? search = null,
+        CancellationToken ct = default)
+    {
+        var query = _context.Fields.AsNoTracking();
+        if (!string.IsNullOrWhiteSpace(search))
+            query = query.Where(f => EF.Functions.ILike(f.Name, PagedQueryExtensions.ContainsPattern(search)));
+
+        return query.ToPagedAsync(paging, FieldSorts,
+            f => new FieldListItemDto(f.Id, f.Name, f.CodCentro, f.Lots.Count, f.Lots.Sum(l => l.CadastralArea)), ct);
     }
 }

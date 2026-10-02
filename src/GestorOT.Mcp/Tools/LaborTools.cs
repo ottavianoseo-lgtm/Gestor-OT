@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using GestorOT.Mcp.Api;
+using Microsoft.Extensions.Options;
 using ModelContextProtocol.Server;
 
 namespace GestorOT.Mcp.Tools;
@@ -7,36 +8,54 @@ namespace GestorOT.Mcp.Tools;
 [McpServerToolType]
 public sealed class LaborTools
 {
-    private const int MaxLimit = 200;
     private readonly GestorOtApiClient _api;
+    private readonly GestorOtOptions _options;
 
-    public LaborTools(GestorOtApiClient api)
+    public LaborTools(GestorOtApiClient api, IOptions<GestorOtOptions> options)
     {
         _api = api;
+        _options = options.Value;
     }
 
     [McpServerTool(Name = "search_labors", ReadOnly = true, Idempotent = true, OpenWorld = false)]
-    [Description("Busca labores (tareas agronómicas sobre un lote). Devuelve como mucho 'limit' resultados y el total encontrado; si total > devueltas, afinar filtros.")]
-    public async Task<LaborSearchResult> SearchLabors(
+    [Description("Busca labores (tareas agronómicas sobre un lote), paginadas. Todos los filtros se combinan. Si hasMore=true, afinar filtros antes que recorrer muchas páginas.")]
+    public async Task<PageResult<LaborView>> SearchLabors(
         [Description("Id de campaña. Casi siempre conviene pasarlo (ver get_active_campaigns).")] Guid? campaignId = null,
         [Description("Estado: Planned, AwaitingValidation, Validated, Realized o Pending.")] string? status = null,
+        [Description("Modo: Planned o Realized.")] string? mode = null,
         [Description("true = solo las que ya están en una OT; false = solo las sin asignar.")] bool? assigned = null,
-        [Description("Id de tipo de labor.")] Guid? laborTypeId = null,
-        [Description("Id de lote: devuelve el historial de labores de ese lote e ignora los otros filtros.")] Guid? lotId = null,
-        [Description("Orden: 'date' (fecha estimada), 'priority' o vacío (más nuevas primero).")] string? sortBy = null,
-        [Description("Máximo de labores a devolver (1-200).")] int limit = 50,
+        [Description("Id de OT: las labores de esa orden.")] Guid? workOrderId = null,
+        [Description("Id de tipo de labor (ver list_labor_types).")] Guid? laborTypeId = null,
+        [Description("Id de la persona que la ejecuta (ver list_contacts).")] Guid? contactId = null,
+        [Description("Id de lote: historial de labores de ese lote.")] Guid? lotId = null,
+        [Description("Id de campo (ver list_fields).")] Guid? fieldId = null,
+        [Description("Desde esta fecha inclusive (yyyy-MM-dd). La fecha es la de ejecución, o la estimada si no se ejecutó.")] DateOnly? dateFrom = null,
+        [Description("Hasta esta fecha inclusive (yyyy-MM-dd).")] DateOnly? dateTo = null,
+        [Description("Texto en lote, campo, tipo de labor o notas (contiene).")] string? search = null,
+        [Description("Orden: created (default, más nuevas primero), date, estimatedDate, executionDate, priority, status, lot, field, laborType o hectares.")] string? sortBy = null,
+        [Description(Paging.SortDir)] string? sortDir = null,
+        [Description(Paging.Page)] int page = 1,
+        [Description(Paging.PageSize)] int pageSize = Paging.DefaultPageSize,
         CancellationToken ct = default)
     {
-        var labors = lotId.HasValue
-            ? await _api.GetLaborsByLotAsync(lotId.Value, ct)
-            : await _api.GetLaborsAsync(campaignId, status, assigned, laborTypeId, sortBy, ct);
+        var query = new ApiQuery(page, pageSize, sortBy, sortDir)
+            .Add("campaignId", campaignId)
+            .Add("status", status)
+            .Add("mode", mode)
+            .Add("assigned", assigned)
+            .Add("workOrderId", workOrderId)
+            .Add("laborTypeId", laborTypeId)
+            .Add("contactId", contactId)
+            .Add("lotId", lotId)
+            .Add("fieldId", fieldId)
+            .Add("dateFrom", dateFrom.HasValue ? _options.ToUtc(dateFrom.Value) : null)
+            // La API toma dateBefore exclusivo; el modelo piensa en días inclusivos.
+            .Add("dateBefore", dateTo.HasValue ? _options.ToUtc(dateTo.Value.AddDays(1)) : null)
+            .Add("search", search);
 
-        var take = Math.Clamp(limit, 1, MaxLimit);
-        return new LaborSearchResult(labors.Count, labors.Take(take).Select(LaborView.From).ToList());
+        return PageResult<LaborView>.From(await _api.SearchLaborsAsync(query, ct), LaborView.From);
     }
 }
-
-public sealed record LaborSearchResult(int Total, List<LaborView> Labors);
 
 public sealed record LaborView(
     Guid Id, string Status, string Mode, string Priority, string? LaborType,

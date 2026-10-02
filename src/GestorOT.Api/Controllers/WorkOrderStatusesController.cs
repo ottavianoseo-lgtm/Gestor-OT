@@ -1,3 +1,4 @@
+using GestorOT.Api.Extensions;
 using GestorOT.Application.Interfaces;
 using GestorOT.Domain.Entities;
 using GestorOT.Shared.Dtos;
@@ -90,5 +91,25 @@ public class WorkOrderStatusesController : ControllerBase
         _context.WorkOrderStatuses.Remove(status);
         await _context.SaveChangesAsync();
         return NoContent();
+    }
+
+    // --- Búsqueda paginada (ver PagedQuery) ---
+
+    private static readonly SortMap<WorkOrderStatus> StatusSorts = new SortMap<WorkOrderStatus>(s => s.Id)
+        .Add("order", s => s.SortOrder)
+        .Add("name", s => s.Name);
+
+    [HttpGet("search")]
+    public Task<ActionResult<PagedResult<WorkOrderStatusDto>>> SearchStatuses(
+        [FromQuery] PagedQuery paging,
+        [FromQuery] string? search = null,
+        CancellationToken ct = default)
+    {
+        var query = _context.WorkOrderStatuses.AsNoTracking();
+        if (!string.IsNullOrWhiteSpace(search))
+            query = query.Where(s => EF.Functions.ILike(s.Name, PagedQueryExtensions.ContainsPattern(search)));
+
+        return query.ToPagedAsync(paging, StatusSorts,
+            s => new WorkOrderStatusDto(s.Id, s.Name, s.ColorHex, s.IsEditable, s.IsDefault, s.SortOrder, s.AllowedTransitionsJson), ct);
     }
 }

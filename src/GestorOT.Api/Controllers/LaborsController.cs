@@ -1,4 +1,5 @@
 using System.Text.Json;
+using GestorOT.Api.Extensions;
 using GestorOT.Application.Interfaces;
 using GestorOT.Application.Services;
 using GestorOT.Domain.Entities;
@@ -1398,6 +1399,92 @@ public class LaborsController : ControllerBase
         }
         var bytes = System.Text.Encoding.UTF8.GetBytes(string.Join("\r\n", lines));
         return File(bytes, "text/csv", $"labores-{DateTime.Today:yyyyMMdd}.csv");
+    }
+
+    // --- Búsqueda paginada (ver PagedQuery) ---
+
+    private static readonly SortMap<Labor> LaborSorts = new SortMap<Labor>(l => l.Id)
+        .Add("created", l => l.CreatedAt, defaultDesc: true)
+        // La fecha que ve el usuario en las grillas (ver LaborDto.DisplayDate).
+        .Add("date", l => l.ExecutionDate ?? l.EstimatedDate ?? l.CreatedAt)
+        .Add("estimatedDate", l => l.EstimatedDate)
+        .Add("executionDate", l => l.ExecutionDate)
+        .Add("priority", l => l.Priority, defaultDesc: true)
+        .Add("status", l => l.Status)
+        .Add("lot", l => l.Lot!.Name)
+        .Add("field", l => l.Lot!.Field!.Name)
+        .Add("laborType", l => l.Type!.Name)
+        .Add("hectares", l => l.Hectares, defaultDesc: true);
+
+    /// <summary>
+    /// dateFrom/dateBefore filtran por la fecha que ve el usuario (ejecución, o estimada si no se
+    /// ejecutó): dateFrom inclusivo, dateBefore exclusivo, ambos en UTC.
+    /// </summary>
+    [HttpGet("search")]
+    public Task<ActionResult<PagedResult<LaborDto>>> SearchLabors(
+        [FromQuery] PagedQuery paging,
+        [FromQuery] Guid? campaignId = null,
+        [FromQuery] LaborStatus? status = null,
+        [FromQuery] LaborMode? mode = null,
+        [FromQuery] bool? assigned = null,
+        [FromQuery] Guid? workOrderId = null,
+        [FromQuery] Guid? laborTypeId = null,
+        [FromQuery] Guid? contactId = null,
+        [FromQuery] Guid? lotId = null,
+        [FromQuery] Guid? fieldId = null,
+        [FromQuery] bool? isOriginalPlan = null,
+        [FromQuery] DateTime? dateFrom = null,
+        [FromQuery] DateTime? dateBefore = null,
+        [FromQuery] string? search = null,
+        CancellationToken ct = default)
+    {
+        var query = _context.Labors
+            .AsNoTracking()
+            .AsSplitQuery()
+            .Include(l => l.Lot)
+                .ThenInclude(l => l!.Field)
+            .Include(l => l.Type)
+            .Include(l => l.ErpActivity)
+            .Include(l => l.Contact)
+            .Include(l => l.WorkOrder)
+            .Include(l => l.SourceStrategy)
+            .Include(l => l.Supplies)
+                .ThenInclude(s => s.Supply)
+            .Include(l => l.CampaignLot)
+            .AsQueryable();
+
+        if (campaignId.HasValue) query = query.Where(l => l.CampaignLot != null && l.CampaignLot.CampaignId == campaignId);
+        if (status.HasValue) query = query.Where(l => l.Status == status);
+        if (mode.HasValue) query = query.Where(l => l.Mode == mode);
+        if (assigned.HasValue) query = assigned.Value ? query.Where(l => l.WorkOrderId != null) : query.Where(l => l.WorkOrderId == null);
+        if (workOrderId.HasValue) query = query.Where(l => l.WorkOrderId == workOrderId);
+        if (laborTypeId.HasValue) query = query.Where(l => l.LaborTypeId == laborTypeId);
+        if (contactId.HasValue) query = query.Where(l => l.ContactId == contactId);
+        if (lotId.HasValue) query = query.Where(l => l.LotId == lotId);
+        if (fieldId.HasValue) query = query.Where(l => l.Lot!.FieldId == fieldId);
+        if (isOriginalPlan.HasValue) query = query.Where(l => l.IsOriginalPlan == isOriginalPlan);
+
+        if (dateFrom.HasValue)
+        {
+            var from = dateFrom.Value.AsUtc();
+            query = query.Where(l => (l.ExecutionDate ?? l.EstimatedDate ?? l.CreatedAt) >= from);
+        }
+        if (dateBefore.HasValue)
+        {
+            var before = dateBefore.Value.AsUtc();
+            query = query.Where(l => (l.ExecutionDate ?? l.EstimatedDate ?? l.CreatedAt) < before);
+        }
+
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var pattern = PagedQueryExtensions.ContainsPattern(search);
+            query = query.Where(l => EF.Functions.ILike(l.Lot!.Name, pattern)
+                || EF.Functions.ILike(l.Lot!.Field!.Name, pattern)
+                || EF.Functions.ILike(l.Type!.Name, pattern)
+                || EF.Functions.ILike(l.Notes ?? "", pattern));
+        }
+
+        return query.ToPagedMappedAsync(paging, LaborSorts, MapToDto, ct);
     }
 }
 

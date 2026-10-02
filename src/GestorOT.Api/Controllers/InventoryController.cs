@@ -1,3 +1,4 @@
+using GestorOT.Api.Extensions;
 using GestorOT.Application.Interfaces;
 using GestorOT.Domain.Entities;
 using GestorOT.Shared.Dtos;
@@ -151,5 +152,40 @@ public class InventoryController : ControllerBase
             ct);
 
         return Ok(result);
+    }
+
+    // --- Búsqueda paginada (ver PagedQuery) ---
+
+    private static readonly SortMap<Inventory> InventorySorts = new SortMap<Inventory>(i => i.Id)
+        .Add("name", i => i.ItemName)
+        .Add("category", i => i.Category)
+        .Add("stock", i => i.CurrentStock, defaultDesc: true);
+
+    [HttpGet("search")]
+    public Task<ActionResult<PagedResult<InventoryDto>>> SearchInventory(
+        [FromQuery] PagedQuery paging,
+        [FromQuery] string? search = null,
+        [FromQuery] string? category = null,
+        [FromQuery] bool? inStock = null,
+        CancellationToken ct = default)
+    {
+        var query = _context.Inventories.AsNoTracking();
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var pattern = PagedQueryExtensions.ContainsPattern(search);
+            query = query.Where(i => EF.Functions.ILike(i.ItemName, pattern)
+                || EF.Functions.ILike(i.GrupoConcepto ?? "", pattern)
+                || EF.Functions.ILike(i.SubGrupoConcepto ?? "", pattern));
+        }
+        if (!string.IsNullOrWhiteSpace(category))
+            query = query.Where(i => EF.Functions.ILike(i.Category, PagedQueryExtensions.ContainsPattern(category)));
+        if (inStock.HasValue)
+            query = inStock.Value ? query.Where(i => i.CurrentStock > 0) : query.Where(i => i.CurrentStock <= 0);
+
+        return query.ToPagedAsync(paging, InventorySorts,
+            i => new InventoryDto(
+                i.Id, i.Category, i.ItemName, i.CurrentStock, i.ReorderLevel,
+                i.UnitA ?? "", i.UnitB ?? "", i.ConversionFactor,
+                i.GrupoConcepto, i.SubGrupoConcepto), ct);
     }
 }

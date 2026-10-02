@@ -1,3 +1,4 @@
+using GestorOT.Api.Extensions;
 using GestorOT.Application.Interfaces;
 using GestorOT.Application.Services;
 using GestorOT.Domain.Entities;
@@ -446,5 +447,32 @@ public class LotsController : ControllerBase
         _context.Lots.Remove(lot);
         await _context.SaveChangesAsync();
         return NoContent();
+    }
+
+    // --- Búsqueda paginada (ver PagedQuery) ---
+
+    private static readonly SortMap<Lot> LotSorts = new SortMap<Lot>(l => l.Id)
+        .Add("name", l => l.Name)
+        .Add("field", l => l.Field!.Name)
+        .Add("cadastralArea", l => l.CadastralArea, defaultDesc: true);
+
+    [HttpGet("search")]
+    public Task<ActionResult<PagedResult<LotListItemDto>>> SearchLots(
+        [FromQuery] PagedQuery paging,
+        [FromQuery] string? search = null,
+        [FromQuery] Guid? fieldId = null,
+        [FromQuery] string? status = null,
+        CancellationToken ct = default)
+    {
+        var query = _context.Lots.AsNoTracking();
+        if (!string.IsNullOrWhiteSpace(search))
+            query = query.Where(l => EF.Functions.ILike(l.Name, PagedQueryExtensions.ContainsPattern(search)));
+        if (fieldId.HasValue)
+            query = query.Where(l => l.FieldId == fieldId);
+        if (!string.IsNullOrWhiteSpace(status))
+            query = query.Where(l => l.Status == status);
+
+        return query.ToPagedAsync(paging, LotSorts,
+            l => new LotListItemDto(l.Id, l.FieldId, l.Name, l.Status, l.Field != null ? l.Field.Name : null, l.CadastralArea, l.CodCentro), ct);
     }
 }

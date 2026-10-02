@@ -1,3 +1,4 @@
+using GestorOT.Api.Extensions;
 using GestorOT.Application.Interfaces;
 using GestorOT.Application.Services;
 using GestorOT.Domain.Entities;
@@ -510,5 +511,66 @@ public class CampaignsController : ControllerBase
         {
             return BadRequest(ex.Message);
         }
+    }
+
+    // --- Búsquedas paginadas (ver PagedQuery) ---
+
+    private static readonly SortMap<Campaign> CampaignSorts = new SortMap<Campaign>(c => c.Id)
+        .Add("startDate", c => c.StartDate, defaultDesc: true)
+        .Add("endDate", c => c.EndDate, defaultDesc: true)
+        .Add("name", c => c.Name);
+
+    /// <summary>active=true equivale a GET active (activas y no cerradas).</summary>
+    [HttpGet("search")]
+    public Task<ActionResult<PagedResult<CampaignSummaryDto>>> SearchCampaigns(
+        [FromQuery] PagedQuery paging,
+        [FromQuery] string? search = null,
+        [FromQuery] bool? active = null,
+        CancellationToken ct = default)
+    {
+        var query = _context.Campaigns.AsNoTracking();
+        if (!string.IsNullOrWhiteSpace(search))
+            query = query.Where(c => EF.Functions.ILike(c.Name, PagedQueryExtensions.ContainsPattern(search)));
+        if (active.HasValue)
+            query = active.Value
+                ? query.Where(c => c.IsActive && c.Status != "Locked")
+                : query.Where(c => !c.IsActive || c.Status == "Locked");
+
+        return query.ToPagedMappedAsync(paging, CampaignSorts,
+            c => new CampaignSummaryDto(c.Id, c.Name, ParseStatus(c.Status), c.IsActive, c.StartDate, c.EndDate), ct);
+    }
+
+    private static readonly SortMap<CampaignLot> CampaignLotSorts = new SortMap<CampaignLot>(cl => cl.Id)
+        .Add("name", cl => cl.Lot!.Name)
+        .Add("field", cl => cl.Lot!.Field!.Name)
+        .Add("productiveArea", cl => cl.ProductiveArea, defaultDesc: true)
+        .Add("cadastralArea", cl => cl.Lot!.CadastralArea, defaultDesc: true);
+
+    [HttpGet("{id:guid}/lots/search")]
+    public Task<ActionResult<PagedResult<CampaignLotDto>>> SearchCampaignLots(
+        Guid id,
+        [FromQuery] PagedQuery paging,
+        [FromQuery] string? search = null,
+        [FromQuery] Guid? fieldId = null,
+        [FromQuery] Guid? lotId = null,
+        CancellationToken ct = default)
+    {
+        var query = _context.CampaignLots.AsNoTracking().Where(cl => cl.CampaignId == id);
+        if (!string.IsNullOrWhiteSpace(search))
+            query = query.Where(cl => EF.Functions.ILike(cl.Lot!.Name, PagedQueryExtensions.ContainsPattern(search)));
+        if (fieldId.HasValue)
+            query = query.Where(cl => cl.Lot!.FieldId == fieldId);
+        if (lotId.HasValue)
+            query = query.Where(cl => cl.LotId == lotId);
+
+        return query.ToPagedAsync(paging, CampaignLotSorts,
+            cl => new CampaignLotDto(
+                cl.Id, cl.CampaignId, cl.LotId,
+                cl.Lot != null ? cl.Lot.FieldId : null,
+                cl.Lot != null ? cl.Lot.Name : "Sin nombre",
+                cl.Lot!.Field != null ? cl.Lot.Field.Name : null,
+                cl.Lot.CadastralArea, cl.ProductiveArea, cl.CropId,
+                cl.Campaign != null ? cl.Campaign.Name : null,
+                cl.CodCentro), ct);
     }
 }

@@ -21,40 +21,25 @@ public sealed class GestorOtApiClient
     public Task<ApiUser> GetCurrentUserAsync(CancellationToken ct) =>
         GetAsync<ApiUser>("api/auth/me", ct);
 
-    public Task<List<ApiCampaignSummary>> GetActiveCampaignsAsync(CancellationToken ct) =>
-        GetAsync<List<ApiCampaignSummary>>("api/campaigns/active", ct);
+    // --- Consultas: todas van a los GET .../search de la API, que exigen página y la cortan en SQL ---
 
-    public Task<List<ApiCampaignSummary>> GetCampaignsAsync(CancellationToken ct) =>
-        GetAsync<List<ApiCampaignSummary>>("api/campaigns/selector", ct);
+    public Task<ApiPaged<ApiCampaignSummary>> SearchCampaignsAsync(ApiQuery query, CancellationToken ct) =>
+        GetAsync<ApiPaged<ApiCampaignSummary>>(query.For("api/campaigns/search"), ct);
 
-    public Task<List<ApiField>> GetFieldsAsync(CancellationToken ct) =>
-        GetAsync<List<ApiField>>("api/fields", ct);
+    public Task<ApiPaged<ApiFieldListItem>> SearchFieldsAsync(ApiQuery query, CancellationToken ct) =>
+        GetAsync<ApiPaged<ApiFieldListItem>>(query.For("api/fields/search"), ct);
 
-    public Task<List<ApiLot>> GetLotsAsync(CancellationToken ct) =>
-        GetAsync<List<ApiLot>>("api/lots", ct);
+    public Task<ApiPaged<ApiLot>> SearchLotsAsync(ApiQuery query, CancellationToken ct) =>
+        GetAsync<ApiPaged<ApiLot>>(query.For("api/lots/search"), ct);
 
-    public Task<List<ApiCampaignLot>> GetCampaignLotsAsync(Guid campaignId, CancellationToken ct) =>
-        GetAsync<List<ApiCampaignLot>>($"api/campaigns/{campaignId}/lots", ct);
+    public Task<ApiPaged<ApiCampaignLot>> SearchCampaignLotsAsync(Guid campaignId, ApiQuery query, CancellationToken ct) =>
+        GetAsync<ApiPaged<ApiCampaignLot>>(query.For($"api/campaigns/{campaignId}/lots/search"), ct);
 
-    public Task<List<ApiLabor>> GetLaborsAsync(
-        Guid? campaignId, string? status, bool? assigned, Guid? laborTypeId, string? sortBy, CancellationToken ct)
-    {
-        var query = new List<string>();
-        if (campaignId.HasValue) query.Add($"campaignId={campaignId}");
-        if (!string.IsNullOrWhiteSpace(status)) query.Add($"status={Uri.EscapeDataString(status)}");
-        if (assigned.HasValue) query.Add($"assigned={assigned.Value.ToString().ToLowerInvariant()}");
-        if (laborTypeId.HasValue) query.Add($"laborTypeId={laborTypeId}");
-        if (!string.IsNullOrWhiteSpace(sortBy)) query.Add($"sortBy={Uri.EscapeDataString(sortBy)}");
+    public Task<ApiPaged<ApiLabor>> SearchLaborsAsync(ApiQuery query, CancellationToken ct) =>
+        GetAsync<ApiPaged<ApiLabor>>(query.For("api/labors/search"), ct);
 
-        var path = query.Count == 0 ? "api/labors" : "api/labors?" + string.Join('&', query);
-        return GetAsync<List<ApiLabor>>(path, ct);
-    }
-
-    public Task<List<ApiLabor>> GetLaborsByLotAsync(Guid lotId, CancellationToken ct) =>
-        GetAsync<List<ApiLabor>>($"api/labors/by-lot/{lotId}", ct);
-
-    public Task<ApiPaged<ApiWorkOrder>> GetWorkOrdersPagedAsync(int page, int pageSize, CancellationToken ct) =>
-        GetAsync<ApiPaged<ApiWorkOrder>>($"api/workorders/paged?page={page}&pageSize={pageSize}", ct);
+    public Task<ApiPaged<ApiWorkOrder>> SearchWorkOrdersAsync(ApiQuery query, CancellationToken ct) =>
+        GetAsync<ApiPaged<ApiWorkOrder>>(query.For("api/workorders/search"), ct);
 
     public async Task<ApiWorkOrder?> GetWorkOrderAsync(Guid id, CancellationToken ct)
     {
@@ -65,23 +50,29 @@ public sealed class GestorOtApiClient
         return await response.Content.ReadFromJsonAsync<ApiWorkOrder>(ct);
     }
 
-    // --- Catálogos ---
+    public Task<ApiPaged<ApiLaborType>> SearchLaborTypesAsync(ApiQuery query, CancellationToken ct) =>
+        GetAsync<ApiPaged<ApiLaborType>>(query.For("api/catalogs/labor-types/search"), ct);
 
-    public Task<List<ApiLaborType>> GetLaborTypesAsync(CancellationToken ct) =>
-        GetAsync<List<ApiLaborType>>("api/catalogs/labor-types", ct);
+    public Task<ApiPaged<ApiActivity>> SearchActivitiesAsync(ApiQuery query, CancellationToken ct) =>
+        GetAsync<ApiPaged<ApiActivity>>(query.For("api/catalogs/activities/search"), ct);
 
-    public Task<List<ApiActivity>> GetActivitiesAsync(CancellationToken ct) =>
-        GetAsync<List<ApiActivity>>("api/catalogs/activities", ct);
+    public Task<ApiPaged<ApiContact>> SearchContactsAsync(ApiQuery query, CancellationToken ct) =>
+        GetAsync<ApiPaged<ApiContact>>(query.For("api/catalogs/contacts/search"), ct);
 
-    public Task<List<ApiContact>> GetContactsAsync(CancellationToken ct) =>
-        GetAsync<List<ApiContact>>("api/catalogs/contacts", ct);
+    public Task<ApiPaged<ApiInventoryItem>> SearchInventoryAsync(ApiQuery query, CancellationToken ct) =>
+        GetAsync<ApiPaged<ApiInventoryItem>>(query.For("api/inventory/search"), ct);
 
-    public Task<List<ApiInventoryItem>> GetInventoryAsync(string? search, CancellationToken ct) =>
-        GetAsync<List<ApiInventoryItem>>(
-            string.IsNullOrWhiteSpace(search) ? "api/inventory" : $"api/inventory?search={Uri.EscapeDataString(search)}", ct);
+    public async Task<ApiInventoryItem?> GetInventoryItemAsync(Guid id, CancellationToken ct)
+    {
+        using var response = await SendAsync(HttpMethod.Get, $"api/inventory/{id}", null, ct);
+        if (response.StatusCode == HttpStatusCode.NotFound)
+            return null;
+        await EnsureSuccessAsync(response, ct);
+        return await response.Content.ReadFromJsonAsync<ApiInventoryItem>(ct);
+    }
 
-    public Task<List<ApiWorkOrderStatus>> GetWorkOrderStatusesAsync(CancellationToken ct) =>
-        GetAsync<List<ApiWorkOrderStatus>>("api/workorderstatuses", ct);
+    public Task<ApiPaged<ApiWorkOrderStatus>> SearchWorkOrderStatusesAsync(ApiQuery query, CancellationToken ct) =>
+        GetAsync<ApiPaged<ApiWorkOrderStatus>>(query.For("api/workorderstatuses/search"), ct);
 
     // --- Escritura ---
 

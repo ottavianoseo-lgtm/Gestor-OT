@@ -8,24 +8,30 @@ solo cambia `GestorOt:BaseUrl`.
 
 **Lectura**
 
+Todas paginan, filtran y ordenan del lado de la API, en SQL, contra los `GET .../search`. Esos
+endpoints exigen `page` y `pageSize` (máximo 100) y solo ordenan por las claves que declaran: el
+modelo nunca recibe una tabla entera. Cada respuesta trae `total`, `page`, `pageSize`, `totalPages`,
+`hasMore` e `items`. Los endpoints sin paginar quedan para la UI.
+
 | Tool | Endpoint |
 |---|---|
 | `get_current_user` | `GET api/auth/me` |
-| `get_active_campaigns` / `list_campaigns` | `GET api/campaigns/active` / `selector` |
-| `list_fields` | `GET api/fields` |
-| `list_lots` | `GET api/lots` o `GET api/campaigns/{id}/lots` (sin geometría) |
-| `search_labors` | `GET api/labors` o `GET api/labors/by-lot/{id}` |
-| `list_work_orders` / `get_work_order` | `GET api/workorders/paged` / `{id}` |
-| `list_labor_types`, `list_activities`, `list_contacts` | `GET api/catalogs/*` |
-| `list_supplies` | `GET api/inventory` |
-| `list_work_order_statuses` | `GET api/workorderstatuses` |
+| `get_active_campaigns` / `list_campaigns` | `GET api/campaigns/search` (`active=true` para las activas) |
+| `list_fields` | `GET api/fields/search` |
+| `list_lots` | `GET api/lots/search` o `GET api/campaigns/{id}/lots/search` |
+| `search_labors` | `GET api/labors/search` |
+| `list_work_orders` | `GET api/workorders/search` |
+| `get_work_order` | `GET api/workorders/{id}` + `GET api/labors/search?workOrderId=` (labores paginadas) |
+| `list_labor_types`, `list_activities`, `list_contacts` | `GET api/catalogs/{labor-types,activities,contacts}/search` |
+| `list_supplies` | `GET api/inventory/search` |
+| `list_work_order_statuses` | `GET api/workorderstatuses/search` |
 
 **Escritura**
 
 | Tool | Endpoint |
 |---|---|
 | `create_work_order` | `POST api/workorders` (genera `OT_XXXXX` igual que la UI) |
-| `create_labor` | `POST api/labors` (resuelve el `campaignLotId` a partir de campaña + lote) |
+| `create_labor` | `POST api/labors` (resuelve el `campaignLotId` con `campaigns/{id}/lots/search?lotId=`) |
 | `assign_labors_to_work_order` | `GET` + `PUT api/labors/{id}` cambiando solo `workOrderId` |
 
 Las fechas se reciben como días (`yyyy-MM-dd`) y se mandan como medianoche de `GestorOt:TimeZone`

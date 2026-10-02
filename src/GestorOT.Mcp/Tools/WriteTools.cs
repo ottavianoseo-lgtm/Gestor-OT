@@ -39,8 +39,8 @@ public sealed class WriteTools
         // El DTO de la API exige Status; sin uno pedido se manda el que el controller elegiría igual.
         if (string.IsNullOrWhiteSpace(status))
         {
-            var statuses = await _api.GetWorkOrderStatusesAsync(ct);
-            status = (statuses.FirstOrDefault(s => s.IsDefault) ?? statuses.OrderBy(s => s.SortOrder).FirstOrDefault())?.Name
+            var statuses = (await _api.SearchWorkOrderStatusesAsync(new ApiQuery(1, ApiQuery.MaxPageSize, "order"), ct)).Items;
+            status = (statuses.FirstOrDefault(s => s.IsDefault) ?? statuses.FirstOrDefault())?.Name
                 ?? throw new McpException("El tenant no tiene estados de OT configurados.");
         }
 
@@ -79,7 +79,7 @@ public sealed class WriteTools
         [Description("Insumos con dosis por hectárea.")] List<LaborSupplyInput>? supplies = null,
         CancellationToken ct = default)
     {
-        var campaignLot = (await _api.GetCampaignLotsAsync(campaignId, ct)).FirstOrDefault(l => l.LotId == lotId)
+        var campaignLot = (await _api.SearchCampaignLotsAsync(campaignId, new ApiQuery(1, 1).Add("lotId", lotId), ct)).Items.FirstOrDefault()
             ?? throw new McpException($"El lote {lotId} no está en la campaña {campaignId}. Usar list_lots con campaignId.");
 
         var ha = hectares ?? (campaignLot.ProductiveArea > 0 ? campaignLot.ProductiveArea : campaignLot.CadastralArea);
@@ -93,7 +93,7 @@ public sealed class WriteTools
             if (string.IsNullOrWhiteSpace(unit))
             {
                 // La unidad la elige la UI desde el inventario; si el modelo no la pasa, se hace lo mismo.
-                var item = (await _api.GetInventoryAsync(null, ct)).FirstOrDefault(i => i.Id == s.SupplyId)
+                var item = await _api.GetInventoryItemAsync(s.SupplyId, ct)
                     ?? throw new McpException($"El insumo {s.SupplyId} no existe. Usar list_supplies.");
                 unit = item.UnitA;
             }

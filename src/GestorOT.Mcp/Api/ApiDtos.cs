@@ -10,11 +10,9 @@ public sealed record ApiUser(Guid UserId, string Email, string DisplayName, stri
 
 public sealed record ApiCampaignSummary(Guid Id, string Name, int Status, bool IsActive, DateOnly StartDate, DateOnly EndDate);
 
-public sealed record ApiField(Guid Id, string Name, long? CodCentro, List<ApiLotSummary> Lots);
+public sealed record ApiFieldListItem(Guid Id, string Name, long? CodCentro, int LotCount, decimal CadastralArea);
 
-public sealed record ApiLotSummary(Guid Id, string Name, string Status, decimal CadastralArea);
-
-public sealed record ApiLot(Guid Id, Guid FieldId, string Name, string Status, string? FieldName, double Area, decimal CadastralArea, long? CodCentro);
+public sealed record ApiLot(Guid Id, Guid FieldId, string Name, string Status, string? FieldName, decimal CadastralArea, long? CodCentro);
 
 public sealed record ApiCampaignLot(
     Guid Id, Guid CampaignId, Guid LotId, Guid? FieldId, string? LotName, string? FieldName,
@@ -64,8 +62,8 @@ public sealed record ApiWorkOrder
     public DateTime? ExpirationDate { get; init; }
     public bool StockReserved { get; init; }
     public bool IsLocked { get; init; }
-    /// <summary>Solo viene en el detalle (GET api/workorders/{id}).</summary>
-    public List<ApiLabor>? Labors { get; init; }
+    // El detalle (GET api/workorders/{id}) también trae Labors; no se declara para que se descarte
+    // y las labores se pidan paginadas a api/labors/search.
 }
 
 public sealed record ApiPaged<T>(List<T> Items, int Total, int Page, int PageSize);
