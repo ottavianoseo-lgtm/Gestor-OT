@@ -37,14 +37,13 @@ services:
       - web_traffic
 
   # MCP remoto para claude.ai (ver src/GestorOT.Mcp/README.md). Habla con la API por la red
-  # interna y el reverse proxy publica solo este contenedor en MCP_PUBLIC_URL.
+  # interna y el reverse proxy lo alcanza como gestorot-mcp:8080 por web_traffic. No publica
+  # puerto en el host: no hace falta y evita choques con lo que ya corre en el servidor.
   gestor-ot-mcp:
     container_name: gestorot-mcp
     build:
       context: .
       dockerfile: Dockerfile.mcp
-    ports:
-      - "${MCP_PORT:-8090}:8080"
     environment:
       GestorOt__BaseUrl: "http://gestor-ot-app:${APP_PORT}"
       OAuth__PublicUrl: "${MCP_PUBLIC_URL:-}"

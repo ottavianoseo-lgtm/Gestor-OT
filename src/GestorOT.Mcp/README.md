@@ -89,7 +89,7 @@ autorización viven en memoria; un reinicio en medio de un login solo obliga a r
 - En el `.env` del servidor: `MCP_PUBLIC_URL=https://<subdominio>` (sin barra final). Sin eso el
   contenedor no arranca, a propósito.
 - Reverse proxy: un **subdominio propio** (los `/.well-known` tienen que estar en la raíz) apuntando a
-  `gestorot-mcp:8080` (red `web_traffic`) o a `localhost:${MCP_PORT}`. Sin buffering, porque las
+  `gestorot-mcp:8080` por la red `web_traffic` (el contenedor no publica puerto en el host). Sin buffering, porque las
   respuestas pueden ser streams SSE. Con nginx:
 
 ```nginx
