@@ -10,6 +10,7 @@ builder.Services.AddScoped<AuthState>();
 
 builder.Services.AddScoped<DashboardState>();
 builder.Services.AddScoped<CatalogCache>();
+builder.Services.AddScoped<FilterState>();
 
 builder.Services.AddScoped<TenantHttpHandler>();
 builder.Services.AddScoped<CampaignHttpHandler>();

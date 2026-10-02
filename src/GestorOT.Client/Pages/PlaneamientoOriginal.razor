@@ -9,6 +9,7 @@
 @inject IMessageService Message
 @inject NavigationManager Nav
 @inject GestorOT.Client.Services.CampaignState CampaignState
+@inject FilterState Filters
 
 <PageTitle>Planeamiento Original - GestorOT</PageTitle>
 
@@ -71,9 +72,11 @@ else
     </div>
 }
 
+@{ var filtered = _filter.Apply(_labors); }
+<LaborFilterBar Filter="@_filter" Labors="@_labors" ShownCount="@filtered.Count" OnChanged="StateHasChanged" />
 <div class="glass-card">
-    <Table TItem="LaborDto" 
-           DataSource="@_labors" 
+    <Table TItem="LaborDto"
+           DataSource="@filtered"
            Loading="@_loading" 
            Size="TableSize.Small" 
            ScrollX="1200">
@@ -154,8 +157,11 @@ else
     private bool _isLocked;
     private LaborEditorForm? _laborFormRef;
 
+    private LaborFilter _filter = new();
+
     protected override async Task OnInitializedAsync()
     {
+        _filter = Filters.For<LaborFilter>("planeamiento-original");
         CampaignState.OnChange += async () => await LoadData();
         await LoadData();
     }

@@ -11,6 +11,7 @@
 @inject GestorOT.Client.Services.TenantState TenantState
 @inject ModalService ModalService
 @inject IJSRuntime Js
+@inject FilterState Filters
 @implements IDisposable
 
 <PageTitle>Lotes - GestorOT</PageTitle>
@@ -69,6 +70,13 @@
         <div style="font-size: 11px; color: rgba(255,255,255,0.4); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">Cant. Lotes</div>
         <div style="font-size: 18px; font-weight: 700; color: #fff;">@FilteredLots.Count()</div>
     </div>
+</div>
+
+<div class="list-filter-bar">
+    <SearchInput Value="@_lotFilter.Search" ValueChanged="v => _lotFilter.Search = v" Placeholder="Buscar lote o campo..." Style="width: 260px;" />
+    <Select TItemValue="Guid?" TItem="FieldDto" Value="@_lotFilter.FieldId" ValueChanged="v => _lotFilter.FieldId = v"
+            Placeholder="Campo" AllowClear EnableSearch Style="width: 200px;"
+            DataSource="@_availableFields" LabelName="@nameof(FieldDto.Name)" ValueName="@nameof(FieldDto.Id)" />
 </div>
 
 <div class="glass-card">
@@ -464,10 +472,13 @@
     [SupplyParameterFromQuery] public Guid? highlight { get; set; }
     [SupplyParameterFromQuery] public Guid? editId { get; set; }
 
+    private LotFilter _lotFilter = new();
+
     private IEnumerable<LotDto> FilteredLots =>
-        _filterByCampaign && CampaignState.IsSelected
+        (_filterByCampaign && CampaignState.IsSelected
             ? _lots.Where(l => _campaignLots.Any(cl => cl.LotId == l.Id))
-            : _lots;
+            : _lots)
+        .Where(l => _lotFilter.Matches(l.Name, l.FieldName, l.FieldId));
 
     private IEnumerable<CampaignSummaryDto> FilteredAvailableCampaigns =>
         _allCampaigns.Where(c => !_lotCampaigns.Any(lc => lc.CampaignId == c.Id));
@@ -496,6 +507,7 @@
 
     protected override async Task OnInitializedAsync()
     {
+        _lotFilter = Filters.For<LotFilter>("lotes");
         CampaignState.OnChange += OnCampaignChanged;
         TenantState.OnChange += OnCampaignChanged;
         await LoadData();

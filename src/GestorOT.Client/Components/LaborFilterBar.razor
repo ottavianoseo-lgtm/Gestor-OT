@@ -1,0 +1,102 @@
+@using AntDesign
+
+@* Búsqueda, campo, lote, rango de fechas y orden para una lista de labores ya cargada.
+   Las opciones de campo y lote salen de las mismas labores, así nunca se ofrece algo que deja la lista vacía. *@
+<div class="labor-filter-bar">
+    <SearchInput Value="@Filter.Search" ValueChanged="v => Set(() => Filter.Search = v)"
+                 Placeholder="Buscar lote, campo, tipo, responsable, notas..." Style="width: 280px;" />
+
+    <Select TItemValue="string" TItem="string" Value="@Filter.FieldName"
+            ValueChanged="v => Set(() => { Filter.FieldName = v; if (!LotBelongsToField()) Filter.LotId = null; })"
+            Placeholder="Campo" AllowClear EnableSearch Style="width: 160px;" DataSource="@_fields" />
+
+    <Select TItemValue="Guid?" TItem="LotOption" Value="@Filter.LotId"
+            ValueChanged="v => Set(() => Filter.LotId = v)"
+            Placeholder="Lote" AllowClear EnableSearch Style="width: 170px;"
+            DataSource="@VisibleLots" LabelName="@nameof(LotOption.Label)" ValueName="@nameof(LotOption.Id)" />
+
+    <RangePicker TValue="DateTime?[]" Value="@Filter.DateRange"
+                 ValueChanged="v => Set(() => Filter.DateRange = v)"
+                 Format="dd/MM/yyyy" Placeholder="@(new[] { "Desde", "Hasta" })"
+                 Ranges="@_ranges" AllowClear Style="width: 240px;" />
+
+    <Select TItemValue="string" TItem="string" Value="@Filter.SortBy"
+            ValueChanged="v => Set(() => Filter.SortBy = v ?? LaborSort.CreatedDesc)" Style="width: 190px;">
+        <SelectOption TItemValue="string" TItem="string" Value="@LaborSort.CreatedDesc" Label="Creación: más nuevas" />
+        <SelectOption TItemValue="string" TItem="string" Value="@LaborSort.CreatedAsc" Label="Creación: más viejas" />
+        <SelectOption TItemValue="string" TItem="string" Value="@LaborSort.DateDesc" Label="Fecha labor: recientes" />
+        <SelectOption TItemValue="string" TItem="string" Value="@LaborSort.DateAsc" Label="Fecha labor: antiguas" />
+        <SelectOption TItemValue="string" TItem="string" Value="@LaborSort.Priority" Label="Prioridad" />
+        <SelectOption TItemValue="string" TItem="string" Value="@LaborSort.Lot" Label="Campo / lote" />
+    </Select>
+
+    @if (!Filter.IsEmpty)
+    {
+        <Button Type="@ButtonType.Link" OnClick="() => Set(Filter.Clear)">Limpiar filtros</Button>
+    }
+    <span class="labor-filter-count">@ShownCount de @Labors.Count() labores</span>
+</div>
+
+<style>
+    .labor-filter-bar {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        align-items: center;
+        margin-bottom: 12px;
+    }
+    .labor-filter-count {
+        margin-left: auto;
+        font-size: 12px;
+        color: rgba(255,255,255,0.45);
+    }
+</style>
+
+@code {
+    [Parameter, EditorRequired] public LaborFilter Filter { get; set; } = new();
+    [Parameter] public IEnumerable<LaborDto> Labors { get; set; } = Enumerable.Empty<LaborDto>();
+    [Parameter] public int ShownCount { get; set; }
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    public sealed record LotOption(Guid Id, string Label, string? FieldName);
+
+    private List<string> _fields = new();
+    private List<LotOption> _lots = new();
+
+    private readonly Dictionary<string, DateTime?[]> _ranges = new()
+    {
+        ["Hoy"] = new DateTime?[] { DateTime.Today, DateTime.Today },
+        ["Últimos 7 días"] = new DateTime?[] { DateTime.Today.AddDays(-6), DateTime.Today },
+        ["Últimos 30 días"] = new DateTime?[] { DateTime.Today.AddDays(-29), DateTime.Today },
+        ["Este mes"] = new DateTime?[] { new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1), DateTime.Today },
+        ["Próximos 7 días"] = new DateTime?[] { DateTime.Today, DateTime.Today.AddDays(6) },
+    };
+
+    private IEnumerable<LotOption> VisibleLots => Filter.FieldName == null
+        ? _lots
+        : _lots.Where(l => string.Equals(l.FieldName, Filter.FieldName, StringComparison.OrdinalIgnoreCase));
+
+    protected override void OnParametersSet()
+    {
+        _fields = Labors.Select(l => l.FieldName).Where(f => !string.IsNullOrWhiteSpace(f))
+            .Distinct(StringComparer.OrdinalIgnoreCase).Order(StringComparer.OrdinalIgnoreCase).ToList()!;
+
+        // Con un campo elegido alcanza con el nombre del lote; sin campo se aclara de cuál es,
+        // porque hay lotes que se llaman igual en distintos campos.
+        _lots = Labors.Where(l => l.LotId != Guid.Empty)
+            .GroupBy(l => l.LotId)
+            .Select(g => g.First())
+            .Select(l => new LotOption(l.LotId, $"{l.LotName} · {l.FieldName}", l.FieldName))
+            .OrderBy(l => l.Label, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private bool LotBelongsToField() =>
+        Filter.LotId == null || VisibleLots.Any(l => l.Id == Filter.LotId);
+
+    private async Task Set(Action change)
+    {
+        change();
+        await OnChanged.InvokeAsync();
+    }
+}

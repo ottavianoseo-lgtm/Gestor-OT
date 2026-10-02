@@ -1,0 +1,56 @@
+@using AntDesign
+@implements IDisposable
+
+@* Buscador con debounce: filtra mientras se escribe sin re-renderizar la tabla en cada tecla. *@
+<Input TValue="string" Value="@_text" OnInput="OnInput" ValueChanged="OnCleared"
+       Placeholder="@Placeholder" AllowClear Style="@Style">
+    <Prefix><Icon Type="search" Style="color: rgba(255,255,255,0.3);" /></Prefix>
+</Input>
+
+@code {
+    [Parameter] public string? Value { get; set; }
+    [Parameter] public EventCallback<string?> ValueChanged { get; set; }
+    [Parameter] public string Placeholder { get; set; } = "Buscar...";
+    [Parameter] public string Style { get; set; } = "width: 220px;";
+
+    private string? _text;
+    private System.Timers.Timer? _timer;
+
+    protected override void OnInitialized()
+    {
+        _text = Value;
+        _timer = new System.Timers.Timer(300) { AutoReset = false };
+        _timer.Elapsed += (_, _) => InvokeAsync(() => ValueChanged.InvokeAsync(_text));
+    }
+
+    // Si la página limpia los filtros desde afuera, el texto del input tiene que seguirla.
+    private string? _lastValue;
+    protected override void OnParametersSet()
+    {
+        if (Value != _lastValue)
+        {
+            _lastValue = Value;
+            _text = Value;
+        }
+    }
+
+    private void OnInput(ChangeEventArgs e)
+    {
+        _text = e.Value?.ToString();
+        _timer?.Stop();
+        _timer?.Start();
+    }
+
+    // El botón de limpiar (AllowClear) dispara ValueChanged con vacío: se aplica sin esperar.
+    private async Task OnCleared(string? value)
+    {
+        _text = value;
+        if (string.IsNullOrEmpty(value))
+        {
+            _timer?.Stop();
+            await ValueChanged.InvokeAsync(null);
+        }
+    }
+
+    public void Dispose() => _timer?.Dispose();
+}

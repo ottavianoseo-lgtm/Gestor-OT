@@ -73,8 +73,15 @@
             </div>
         </div>
 
+        <div class="list-filter-bar">
+            <SearchInput Value="@_lotFilter.Search" ValueChanged="v => _lotFilter.Search = v" Placeholder="Buscar lote o campo..." Style="width: 260px;" />
+            <Select TItemValue="Guid?" TItem="CampaignLotDto" Value="@_lotFilter.FieldId" ValueChanged="v => _lotFilter.FieldId = v"
+                    Placeholder="Campo" AllowClear EnableSearch Style="width: 200px;"
+                    DataSource="@LotFields" LabelName="@nameof(CampaignLotDto.FieldName)" ValueName="@nameof(CampaignLotDto.FieldId)" />
+        </div>
+
         <Table TItem="CampaignLotDto"
-               DataSource="@_lots"
+               DataSource="@FilteredLots"
                Size="TableSize.Small"
                OnExpand="OnExpandLot"
                RowKey="x => x.Id">
@@ -248,6 +255,15 @@
     private class RotationModel { public Guid Id, CampaignLotId, ActivityId; public DateOnly StartDate, EndDate; public string? Notes; }
 
     private bool RotationDatesInvalid => _rotationModel.StartDate >= _rotationModel.EndDate;
+
+    private readonly LotFilter _lotFilter = new();
+
+    private IEnumerable<CampaignLotDto> FilteredLots =>
+        _lots.Where(l => _lotFilter.Matches(l.LotName, l.FieldName, l.FieldId));
+
+    // Un elemento por campo, para el selector.
+    private IEnumerable<CampaignLotDto> LotFields =>
+        _lots.Where(l => l.FieldId != null).DistinctBy(l => l.FieldId).OrderBy(l => l.FieldName);
 
     private IEnumerable<LotDto> FilteredAvailableLots =>
         _addFilterFieldId == Guid.Empty
