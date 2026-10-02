@@ -571,6 +571,11 @@ public class CampaignsController : ControllerBase
                 cl.Lot!.Field != null ? cl.Lot.Field.Name : null,
                 cl.Lot.CadastralArea, cl.ProductiveArea, cl.CropId,
                 cl.Campaign != null ? cl.Campaign.Name : null,
-                cl.CodCentro), ct);
+                cl.CodCentro,
+                cl.Rotations
+                    .Where(r => r.ErpActivity != null)
+                    .OrderBy(r => r.StartDate)
+                    .Select(r => r.ErpActivity!.Name)
+                    .ToList()), ct);
     }
 }

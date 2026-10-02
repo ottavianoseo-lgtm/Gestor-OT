@@ -56,7 +56,10 @@ public record CampaignLotDto(
     decimal ProductiveArea,
     Guid? CropId,
     string? CampaignName = null,
-    long? CodCentro = null
+    long? CodCentro = null,
+    // Cultivos de las rotaciones del lote en la campaña, por fecha de inicio. Solo lo llena
+    // GET campaigns/{id}/lots/search; CropId es un campo viejo que ya no se carga.
+    List<string>? Crops = null
 )
 {
     public CampaignLotDto() : this(Guid.Empty, Guid.Empty, Guid.Empty, null, null, null, 0, 0, null, null) { }

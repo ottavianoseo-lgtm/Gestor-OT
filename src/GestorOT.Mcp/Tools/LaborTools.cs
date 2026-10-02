@@ -57,8 +57,13 @@ public sealed class LaborTools
     }
 }
 
+/// <summary>
+/// Trae los ids (tipo, actividad, persona, OT) además de los nombres para que el modelo pueda
+/// replicar o reasignar una labor sin volver a buscarlos.
+/// </summary>
 public sealed record LaborView(
-    Guid Id, string Status, string Mode, string Priority, string? LaborType,
+    Guid Id, string Status, string Mode, string Priority,
+    Guid LaborTypeId, string? LaborType, Guid? ActivityId, string? Activity, Guid? ContactId,
     Guid LotId, string? Lot, string? Field, Guid? CampaignId,
     Guid? WorkOrderId, string? OtNumber,
     DateTime? EstimatedDate, DateTime? ExecutionDate,
@@ -66,7 +71,8 @@ public sealed record LaborView(
     List<LaborSupplyView> Supplies)
 {
     public static LaborView From(ApiLabor l) => new(
-        l.Id, l.Status, l.Mode, PriorityName(l.Priority), l.LaborTypeName,
+        l.Id, l.Status, l.Mode, PriorityName(l.Priority),
+        l.LaborTypeId, l.LaborTypeName, l.ErpActivityId, l.ErpActivityName, l.ContactId,
         l.LotId, l.LotName, l.FieldName, l.CampaignId,
         l.WorkOrderId, l.OTNumber,
         l.EstimatedDate, l.ExecutionDate,

@@ -20,7 +20,7 @@ public sealed class CatalogTools
     }
 
     [McpServerTool(Name = "list_labor_types", ReadOnly = true, Idempotent = true, OpenWorld = false)]
-    [Description("Tipos de labor (siembra, pulverización, cosecha...), paginados por nombre. executionMode: Propia, Contratista o null (sirve para los dos).")]
+    [Description("Tipos de labor (siembra, pulverización, cosecha...), paginados por nombre. executionMode: Propia, Contratista o null (sirve para los dos). Hay nombres repetidos que solo difieren en executionMode (ej. PULVERIZACION TERRESTRE Propia y Contratista): si el usuario no aclaró quién la hace, preguntar antes de elegir.")]
     public async Task<PageResult<LaborTypeView>> ListLaborTypes(
         [Description("Filtra por nombre o descripción (contiene).")] string? search = null,
         [Description("Propia o Contratista. Vacío = todos.")] string? executionMode = null,
@@ -54,6 +54,7 @@ public sealed class CatalogTools
     public async Task<PageResult<ContactView>> ListContacts(
         [Description("Filtra por nombre, razón social o email (contiene).")] string? search = null,
         [Description("true = solo contratistas, proveedores y sin clasificar; false = solo personal propio y sin clasificar; vacío = todos.")] bool? contractors = null,
+        [Description("Un rol exacto: Staff Interno, Contratista, Agrónomo, Administrador, Proveedor o Sin clasificar. Si viene, manda sobre contractors.")] string? role = null,
         [Description("Orden: name (default), legalName o role.")] string? sortBy = null,
         [Description(Paging.SortDir)] string? sortDir = null,
         [Description(Paging.Page)] int page = 1,
@@ -61,7 +62,7 @@ public sealed class CatalogTools
         CancellationToken ct = default)
     {
         // Espejo de GestorOT.Domain.Enums.ContactRole. Sin clasificar (5) entra en los dos lados.
-        int[] roles = contractors switch
+        int[] roles = role is not null ? new[] { RoleValue(role) } : contractors switch
         {
             true => new[] { 1, 4, 5 },
             false => new[] { 0, 2, 3, 5, 99 },
@@ -121,6 +122,11 @@ public sealed class CatalogTools
         "contratista" => "1",
         _ => throw new McpException($"executionMode '{mode}' inválido. Usar Propia o Contratista.")
     };
+
+    private static int RoleValue(string role) =>
+        new[] { 0, 1, 2, 3, 4, 5 }.FirstOrDefault(r => string.Equals(RoleName(r), role.Trim(), StringComparison.OrdinalIgnoreCase), -1) is var value and >= 0
+            ? value
+            : throw new McpException($"Rol '{role}' inválido. Usar Staff Interno, Contratista, Agrónomo, Administrador, Proveedor o Sin clasificar.");
 
     // Espejo de GestorOT.Domain.Enums.ContactRole.
     private static string RoleName(int role) => role switch

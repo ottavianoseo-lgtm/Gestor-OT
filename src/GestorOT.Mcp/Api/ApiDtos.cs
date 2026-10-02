@@ -16,7 +16,7 @@ public sealed record ApiLot(Guid Id, Guid FieldId, string Name, string Status, s
 
 public sealed record ApiCampaignLot(
     Guid Id, Guid CampaignId, Guid LotId, Guid? FieldId, string? LotName, string? FieldName,
-    decimal CadastralArea, decimal ProductiveArea, Guid? CropId, string? CampaignName, long? CodCentro);
+    decimal CadastralArea, decimal ProductiveArea, string? CampaignName, long? CodCentro, List<string>? Crops);
 
 public sealed record ApiLaborSupply(Guid SupplyId, string? SupplyName, decimal PlannedDose, decimal? RealDose, decimal PlannedTotal, decimal? RealTotal, string UnitOfMeasure);
 
@@ -31,6 +31,9 @@ public sealed record ApiLabor
     public Guid? CampaignId { get; init; }
     public Guid LaborTypeId { get; init; }
     public string? LaborTypeName { get; init; }
+    public Guid? ErpActivityId { get; init; }
+    public string? ErpActivityName { get; init; }
+    public Guid? ContactId { get; init; }
     public string Status { get; init; } = "";
     public string Mode { get; init; } = "";
     public int Priority { get; init; }

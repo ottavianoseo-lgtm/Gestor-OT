@@ -28,7 +28,7 @@ public sealed class FieldTools
             f => new FieldView(f.Id, f.Name, f.CodCentro, f.LotCount, f.CadastralArea));
 
     [McpServerTool(Name = "list_lots", ReadOnly = true, Idempotent = true, OpenWorld = false)]
-    [Description("Lotes paginados, sin geometría. Con campaignId devuelve los lotes de esa campaña con superficie productiva y cultivo; sin campaignId, los lotes del tenant con su estado.")]
+    [Description("Lotes paginados, sin geometría. Con campaignId devuelve los lotes de esa campaña con superficie productiva y cultivos (rotaciones, en orden); sin campaignId, los lotes del tenant con su estado.")]
     public async Task<PageResult<LotView>> ListLots(
         [Description("Id de campaña (ver get_active_campaigns).")] Guid? campaignId = null,
         [Description("Id de campo (ver list_fields).")] Guid? fieldId = null,
@@ -47,7 +47,7 @@ public sealed class FieldTools
         if (campaignId.HasValue)
             return PageResult<LotView>.From(
                 await _api.SearchCampaignLotsAsync(campaignId.Value, query, ct),
-                l => new LotView(l.LotId, l.LotName ?? "", l.FieldId, l.FieldName, l.CadastralArea, l.ProductiveArea, l.CropId, null));
+                l => new LotView(l.LotId, l.LotName ?? "", l.FieldId, l.FieldName, l.CadastralArea, l.ProductiveArea, l.Crops ?? new(), null));
 
         return PageResult<LotView>.From(
             await _api.SearchLotsAsync(query.Add("status", status), ct),
@@ -57,5 +57,8 @@ public sealed class FieldTools
 
 public sealed record FieldView(Guid Id, string Name, long? CodCentro, int LotCount, decimal CadastralArea);
 
-/// <summary>ProductiveArea y CropId solo vienen cuando se consulta por campaña.</summary>
-public sealed record LotView(Guid Id, string Name, Guid? FieldId, string? FieldName, decimal CadastralArea, decimal? ProductiveArea, Guid? CropId, string? Status);
+/// <summary>
+/// ProductiveArea y Crops solo vienen cuando se consulta por campaña. Crops son los cultivos de
+/// las rotaciones del lote, en orden (ej. [Trigo, Soja 2da]); vacío = sin rotación cargada.
+/// </summary>
+public sealed record LotView(Guid Id, string Name, Guid? FieldId, string? FieldName, decimal CadastralArea, decimal? ProductiveArea, List<string>? Crops, string? Status);

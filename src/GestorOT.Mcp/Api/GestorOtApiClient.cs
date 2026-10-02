@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using ModelContextProtocol;
 
@@ -11,6 +12,11 @@ namespace GestorOT.Mcp.Api;
 /// </summary>
 public sealed class GestorOtApiClient
 {
+    private static readonly JsonSerializerOptions ReadOptions = new(JsonSerializerDefaults.Web)
+    {
+        Converters = { new NormalizedDecimalConverter() }
+    };
+
     private readonly HttpClient _http;
 
     public GestorOtApiClient(HttpClient http)
@@ -47,7 +53,7 @@ public sealed class GestorOtApiClient
         if (response.StatusCode == HttpStatusCode.NotFound)
             return null;
         await EnsureSuccessAsync(response, ct);
-        return await response.Content.ReadFromJsonAsync<ApiWorkOrder>(ct);
+        return await response.Content.ReadFromJsonAsync<ApiWorkOrder>(ReadOptions, ct);
     }
 
     public Task<ApiPaged<ApiLaborType>> SearchLaborTypesAsync(ApiQuery query, CancellationToken ct) =>
@@ -68,7 +74,7 @@ public sealed class GestorOtApiClient
         if (response.StatusCode == HttpStatusCode.NotFound)
             return null;
         await EnsureSuccessAsync(response, ct);
-        return await response.Content.ReadFromJsonAsync<ApiInventoryItem>(ct);
+        return await response.Content.ReadFromJsonAsync<ApiInventoryItem>(ReadOptions, ct);
     }
 
     public Task<ApiPaged<ApiWorkOrderStatus>> SearchWorkOrderStatusesAsync(ApiQuery query, CancellationToken ct) =>
@@ -99,14 +105,14 @@ public sealed class GestorOtApiClient
     {
         using var response = await SendAsync(HttpMethod.Get, path, null, ct);
         await EnsureSuccessAsync(response, ct);
-        return (await response.Content.ReadFromJsonAsync<T>(ct))!;
+        return (await response.Content.ReadFromJsonAsync<T>(ReadOptions, ct))!;
     }
 
     private async Task<T> SendJsonAsync<T>(HttpMethod method, string path, object body, CancellationToken ct)
     {
         using var response = await SendAsync(method, path, JsonContent.Create(body), ct);
         await EnsureSuccessAsync(response, ct);
-        return (await response.Content.ReadFromJsonAsync<T>(ct))!;
+        return (await response.Content.ReadFromJsonAsync<T>(ReadOptions, ct))!;
     }
 
     private async Task<HttpResponseMessage> SendAsync(HttpMethod method, string path, HttpContent? content, CancellationToken ct)

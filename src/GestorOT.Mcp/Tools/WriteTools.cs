@@ -67,7 +67,7 @@ public sealed class WriteTools
     public async Task<CreateLaborResult> CreateLabor(
         [Description("Id de campaña. Obligatorio.")] Guid campaignId,
         [Description("Id del lote (ver list_lots con campaignId). Tiene que estar en la campaña.")] Guid lotId,
-        [Description("Id del tipo de labor (ver list_labor_types). Obligatorio.")] Guid laborTypeId,
+        [Description("Id del tipo de labor (ver list_labor_types). Obligatorio. Ojo con los nombres repetidos: elegir por executionMode (Propia/Contratista) según quién la ejecuta.")] Guid laborTypeId,
         [Description("Id de la actividad del ERP (ver list_activities). Obligatorio.")] Guid activityId,
         [Description("Fecha estimada o, si realized=true, fecha de ejecución (yyyy-MM-dd). Obligatoria.")] DateOnly date,
         [Description("Hectáreas. Por defecto, la superficie productiva del lote en la campaña.")] decimal? hectares = null,
