@@ -44,6 +44,6 @@ jobs:
           # Como el runner ya está en tu servidor, ejecutamos los comandos directamente
           cd /home/lscuffi/workspace/desarrollos/Gestor-OT
           git pull origin main
-          docker compose up -d --build gestor-ot-app
+          docker compose up -d --build gestor-ot-app gestor-ot-mcp
           docker image prune -f
           docker builder prune -f

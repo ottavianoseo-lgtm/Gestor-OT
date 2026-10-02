@@ -1,0 +1,17 @@
+# Servidor MCP remoto (modo --http) para conectar GestorOT a claude.ai.
+# Solo compila GestorOT.Mcp: no depende de ningún otro proyecto de la solución.
+FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS base
+USER app
+WORKDIR /app
+
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+WORKDIR /src
+COPY ["src/GestorOT.Mcp/GestorOT.Mcp.csproj", "src/GestorOT.Mcp/"]
+RUN dotnet restore "src/GestorOT.Mcp/GestorOT.Mcp.csproj"
+COPY src/GestorOT.Mcp/ src/GestorOT.Mcp/
+RUN dotnet publish "src/GestorOT.Mcp/GestorOT.Mcp.csproj" -c Release -o /app/publish /p:UseAppHost=false
+
+FROM base AS final
+WORKDIR /app
+COPY --chown=app --from=build /app/publish .
+ENTRYPOINT ["dotnet", "GestorOT.Mcp.dll", "--http"]

@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <!--
+    Servidor MCP de GestorOT. Es un cliente HTTP de la API: no referencia GestorOT.* ni EF,
+    así sigue funcionando cuando la API viva en otro lado (se cambia GestorOt:BaseUrl y listo).
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>GestorOT.Mcp</RootNamespace>
+    <UserSecretsId>gestorot-mcp</UserSecretsId>
+  </PropertyGroup>
+  <ItemGroup>
+    <Content Update="appsettings*.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="ModelContextProtocol" Version="2.2.0" />
+    <PackageReference Include="ModelContextProtocol.AspNetCore" Version="2.2.0" />
+  </ItemGroup>
+</Project>

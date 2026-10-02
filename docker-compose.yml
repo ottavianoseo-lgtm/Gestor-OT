@@ -36,6 +36,25 @@ services:
       - ot_network
       - web_traffic
 
+  # MCP remoto para claude.ai (ver src/GestorOT.Mcp/README.md). Habla con la API por la red
+  # interna y el reverse proxy publica solo este contenedor en MCP_PUBLIC_URL.
+  gestor-ot-mcp:
+    container_name: gestorot-mcp
+    build:
+      context: .
+      dockerfile: Dockerfile.mcp
+    ports:
+      - "${MCP_PORT:-8090}:8080"
+    environment:
+      GestorOt__BaseUrl: "http://gestor-ot-app:${APP_PORT}"
+      OAuth__PublicUrl: "${MCP_PUBLIC_URL:-}"
+    depends_on:
+      - gestor-ot-app
+    restart: always
+    networks:
+      - ot_network
+      - web_traffic
+
 volumes:
   postgres_data:
 
