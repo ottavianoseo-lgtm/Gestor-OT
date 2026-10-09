@@ -4,6 +4,7 @@ using GestorOT.Application.Interfaces;
 using GestorOT.Application.Services;
 using GestorOT.Domain.Entities;
 using GestorOT.Domain.Enums;
+using GestorOT.Infrastructure.Services;
 using GestorOT.Shared.Dtos;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -109,16 +110,22 @@ public class WorkOrdersController : ControllerBase
         if (finalStatus == null)
             return BadRequest("No se encontró un estado válido para la orden de trabajo. Configure al menos un estado de OT en la sección de administración.");
 
+        // Sin numero se le asigna el siguiente: la OT es el comprobante del pase al G4.
+        var otNumber = string.IsNullOrWhiteSpace(dto.OTNumber)
+            ? (await WorkOrderNumbering.NextAsync(_context)).ToString()
+            : dto.OTNumber.Trim();
+
         var workOrder = new WorkOrder
         {
             Id = Guid.NewGuid(),
-            Name = dto.Name,
+            Name = string.IsNullOrWhiteSpace(dto.Name) ? $"OT {otNumber}" : dto.Name,
+            FieldId = dto.FieldId,
             Description = dto.Description,
             Status = finalStatus.Name,
             WorkOrderStatusId = finalStatus.Id,
             AssignedTo = dto.AssignedTo,
             DueDate = dto.DueDate,
-            OTNumber = dto.OTNumber ?? string.Empty,
+            OTNumber = otNumber,
             PlannedDate = dto.PlannedDate ?? dto.DueDate,
             ExpirationDate = dto.ExpirationDate ?? dto.DueDate,
             StockReserved = dto.StockReserved,

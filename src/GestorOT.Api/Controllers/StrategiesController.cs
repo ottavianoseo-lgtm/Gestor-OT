@@ -2,6 +2,7 @@ using System.Text.Json;
 using GestorOT.Application.Interfaces;
 using GestorOT.Domain.Entities;
 using GestorOT.Domain.Enums;
+using GestorOT.Infrastructure.Services;
 using GestorOT.Shared;
 using GestorOT.Shared.Dtos;
 using Microsoft.AspNetCore.Mvc;
@@ -251,12 +252,16 @@ public class StrategiesController : ControllerBase
 
         var workOrderIds = new List<Guid>();
         var laborsCreated = 0;
+        var nextNumber = await WorkOrderNumbering.NextAsync(_context);
 
         foreach (var lot in lots)
         {
+            var otNumber = (nextNumber++).ToString();
             var wo = new WorkOrder
             {
                 Id = Guid.NewGuid(),
+                OTNumber = otNumber,
+                Name = $"OT {otNumber}",
                 FieldId = lot.FieldId,
                 Description = $"{strategy.Name} — {lot.Name}",
                 Status = "Pending",

@@ -630,16 +630,35 @@
             // Logic for common field
             var commonFieldId = selectedLabors.First().FieldId;
 
+            // Si todas las labores son del mismo dia, la OT lleva ese dia: es la fecha del
+            // comprobante en el G4. Con fechas distintas queda la planificacion de siempre.
+            var fechas = selectedLabors
+                .Select(l => (l.ExecutionDate ?? l.EstimatedDate)?.Date)
+                .Distinct()
+                .ToList();
+            var fechaComun = fechas.Count == 1 ? fechas[0] : null;
+            var fechaOt = fechaComun ?? DateTime.Today;
+
+            // El numero lo asigna el servidor (siguiente al ultimo); el nombre describe la OT.
+            var tipos = selectedLabors.Select(l => l.LaborTypeName).Where(t => !string.IsNullOrEmpty(t)).Distinct().ToList();
+            var campos = selectedLabors.Select(l => l.FieldName).Where(c => !string.IsNullOrEmpty(c)).Distinct().ToList();
+            var nombre = string.Join(" - ", new[]
+            {
+                tipos.Count == 1 ? tipos[0] : $"{selectedLabors.Count} labores",
+                campos.Count == 1 ? campos[0] : null
+            }.Where(p => !string.IsNullOrEmpty(p)));
+
             var newOT = new WorkOrderDto
             {
                 CampaignId = CampaignState.CurrentCampaign.Id,
                 FieldId = commonFieldId,
-                Description = $"OT generada - {selectedLabors.Count} labores ({DateTime.Today:dd/MM/yyyy})",
+                Name = nombre,
+                Description = $"OT generada - {selectedLabors.Count} labores ({fechaOt:dd/MM/yyyy})",
                 Status = "Pending",
                 AssignedTo = commonResponsible ?? string.Empty,
-                DueDate = DateTime.Today.AddDays(7),
-                PlannedDate = DateTime.Today,
-                ExpirationDate = DateTime.Today.AddDays(14)
+                DueDate = fechaComun ?? DateTime.Today.AddDays(7),
+                PlannedDate = fechaOt,
+                ExpirationDate = fechaOt.AddDays(14)
             };
 
             var otResponse = await Http.PostAsJsonAsync("api/workorders", newOT, AppJsonSerializerContext.Default.WorkOrderDto);
@@ -658,7 +677,7 @@
             var assignResponse = await Http.SendAsync(req);
             if (assignResponse.IsSuccessStatusCode)
             {
-                Message.Success($"OT creada y {_selectedIds.Count} labores asignadas.");
+                Message.Success($"OT {createdOT.OTNumber} creada y {_selectedIds.Count} labores asignadas.");
                 await LoadData();
             }
         }
