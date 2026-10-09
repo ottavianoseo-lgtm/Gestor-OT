@@ -16,24 +16,49 @@
 
     <Form Model="_model" Layout="@FormLayout.Vertical">
         <Row Gutter="16">
-            <Col Span="12">
-                <FormItem Label="Tipo de Labor">
-                    <Select TItemValue="Guid?" TItem="LaborTypeDto" @bind-Value="_model.LaborTypeId"
-                            Placeholder="General / Defecto (Sin tipo)"
-                            AllowClear Loading="@_loadingBasicCatalogs"
-                            DataSource="@_laborTypes"
-                            ItemLabel="x => x.Name"
-                            ItemValue="x => x.Id" />
+            <Col Span="8">
+                <FormItem Label="Aplica a">
+                    <RadioGroup @bind-Value="_model.AppliesTo" ButtonStyle="RadioButtonStyle.Solid">
+                        <Radio RadioButton Value="AccountRuleTarget.Labor">Labor</Radio>
+                        <Radio RadioButton Value="AccountRuleTarget.Supply">Insumos</Radio>
+                    </RadioGroup>
                 </FormItem>
             </Col>
-            <Col Span="12">
+            <Col Span="16">
                 <FormItem Label="Nombre / Descripción de Regla">
-                    <Input @bind-Value="_model.Description" Placeholder="Ej: Fumigación Terrestre Propia" />
+                    <Input @bind-Value="_model.Description"
+                           Placeholder="@(EsInsumo ? "Ej: Semillas Girasol" : "Ej: Fumigación Terrestre Propia")" />
                 </FormItem>
             </Col>
         </Row>
 
         <Row Gutter="16">
+            @if (EsInsumo)
+            {
+                <AntDesign.Col Span="12">
+                    <FormItem Label="Rubro del insumo (opcional)">
+                        <Select TItemValue="string" TItem="string" @bind-Value="_model.SupplySubGroup"
+                                Placeholder="Todos los rubros"
+                                AllowClear EnableSearch Loading="@_loadingBasicCatalogs"
+                                DataSource="@_rubros"
+                                ItemLabel="x => x"
+                                ItemValue="x => x" />
+                    </FormItem>
+                </AntDesign.Col>
+            }
+            else
+            {
+                <AntDesign.Col Span="12">
+                    <FormItem Label="Tipo de Labor">
+                        <Select TItemValue="Guid?" TItem="LaborTypeDto" @bind-Value="_model.LaborTypeId"
+                                Placeholder="General / Defecto (Sin tipo)"
+                                AllowClear Loading="@_loadingBasicCatalogs"
+                                DataSource="@_laborTypes"
+                                ItemLabel="x => x.Name"
+                                ItemValue="x => x.Id" />
+                    </FormItem>
+                </AntDesign.Col>
+            }
             <Col Span="12">
                 <FormItem Label="Actividad ERP (opcional)">
                     <Select TItemValue="Guid?" TItem="ErpActivityDto" @bind-Value="_model.ErpActivityId"
@@ -44,21 +69,29 @@
                             ItemValue="x => (Guid?)x.Id" />
                 </FormItem>
             </Col>
-            <Col Span="12">
-                <FormItem Label="Modo (opcional)">
-                    <Select TItemValue="LaborExecutionMode?" TItem="LaborExecutionMode?" @bind-Value="_model.ExecutionMode"
-                            Placeholder="Propias y de contratista"
-                            AllowClear
-                            DataSource="@_modos"
-                            ItemLabel="ModoLabel"
-                            ItemValue="x => x" />
-                </FormItem>
-            </Col>
         </Row>
+
+        @if (!EsInsumo)
+        {
+            <Row Gutter="16">
+                <AntDesign.Col Span="12">
+                    <FormItem Label="Modo (opcional)">
+                        <Select TItemValue="LaborExecutionMode?" TItem="LaborExecutionMode?" @bind-Value="_model.ExecutionMode"
+                                Placeholder="Propias y de contratista"
+                                AllowClear
+                                DataSource="@_modos"
+                                ItemLabel="ModoLabel"
+                                ItemValue="x => x" />
+                    </FormItem>
+                </AntDesign.Col>
+            </Row>
+        }
 
         <Alert Type="@AlertType.Info" ShowIcon="true" Style="margin-bottom: 16px;"
                Message="@("Cuanto más específica, más prioridad")"
-               Description="@("Una regla aplica a una labor si coinciden todas las dimensiones que declara; las que dejás vacías son comodines. Entre las que aplican gana la que declara más. Dejá todo vacío para la regla general.")" />
+               Description="@(EsInsumo
+                   ? "Las reglas de insumo imputan las líneas de insumos de cada labor (otro comprobante, sin responsable, otra moneda y lista). Aplican si coinciden la actividad y el rubro que declaran; gana la que declara más. Dejá ambos vacíos para la regla general de insumos."
+                   : "Una regla aplica a una labor si coinciden todas las dimensiones que declara; las que dejás vacías son comodines. Entre las que aplican gana la que declara más. Dejá todo vacío para la regla general.")" />
 
         <Divider Text="Configuración del Lote Contable (GestorMax)" Style="color: rgba(255,255,255,0.6);" />
 
@@ -86,9 +119,14 @@
         </Row>
 
         <Row Gutter="16">
-            <Col Span="8">
+            <Col Span="4">
                 <FormItem Label="Punto de Venta">
                     <AntDesign.InputNumber TValue="int" @bind-Value="_model.PuntoVenta" Style="width: 100%;" />
+                </FormItem>
+            </Col>
+            <Col Span="4">
+                <FormItem Label="Lista de Precios">
+                    <AntDesign.InputNumber TValue="long?" @bind-Value="_model.CodListaDePrecios" Style="width: 100%;" />
                 </FormItem>
             </Col>
             <Col Span="8">
@@ -252,6 +290,9 @@
     private List<ErpPersonItemDto> _personas = new();
     private List<ErpProfileDto> _perfiles = new();
     private List<ErpActivityDto> _activities = new();
+    private List<string> _rubros = new();
+
+    private bool EsInsumo => _model.AppliesTo == AccountRuleTarget.Supply;
 
     private static string ModoLabel(LaborExecutionMode? modo) =>
         modo == LaborExecutionMode.Contractor ? "Solo contratista" : "Solo propias";
@@ -289,6 +330,9 @@
                 LaborTypeId = Configuration.LaborTypeId,
                 ErpActivityId = Configuration.ErpActivityId,
                 ExecutionMode = Configuration.ExecutionMode,
+                AppliesTo = Configuration.AppliesTo,
+                SupplySubGroup = Configuration.SupplySubGroup,
+                CodListaDePrecios = Configuration.CodListaDePrecios,
                 LaborTypeName = Configuration.LaborTypeName,
                 Description = Configuration.Description,
                 CodEmpresa = Configuration.CodEmpresa,
@@ -335,6 +379,7 @@
             var persTask = Http.GetFromJsonAsync<List<ErpPersonItemDto>>("api/pases/erp/personas");
             var perfTask = Http.GetFromJsonAsync<List<ErpProfileDto>>("api/pases/erp/perfiles");
             var actTask = CatalogCache.GetActivitiesAsync();
+            var invTask = CatalogCache.GetInventoryAsync();
 
             // Cada catálogo se espera por separado: si uno falla, los demás igual se cargan.
             var fallidos = new List<string>();
@@ -345,6 +390,16 @@
             _personas = await SafeAsync(persTask, "personas", fallidos) ?? new();
             _perfiles = await SafeAsync(perfTask, "perfiles de imputación", fallidos) ?? new();
             _activities = await SafeAsync(actTask, "actividades", fallidos) ?? new();
+
+            // El rubro de la regla es el SubGrupoConcepto con el que el ERP clasifica los insumos.
+            var inventario = await SafeAsync(invTask, "insumos", fallidos) ?? new();
+            _rubros = inventario
+                .Select(i => i.SubGrupoConcepto?.Trim())
+                .Where(r => !string.IsNullOrEmpty(r))
+                .Select(r => r!)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(r => r)
+                .ToList();
 
             if (fallidos.Count > 0)
             {
@@ -548,8 +603,8 @@
             var dto = new AccountConfigurationDto(
                 _model.Id,
                 _model.TenantId,
-                _model.LaborTypeId,
-                laborTypeName,
+                EsInsumo ? null : _model.LaborTypeId,
+                EsInsumo ? null : laborTypeName,
                 "", "", _model.Description ?? "", true,
                 _model.CodEmpresa,
                 _model.CodComprobante,
@@ -573,7 +628,10 @@
             {
                 // Van por inicializador: son propiedades fuera del constructor posicional.
                 ErpActivityId = _model.ErpActivityId,
-                ExecutionMode = _model.ExecutionMode
+                ExecutionMode = EsInsumo ? null : _model.ExecutionMode,
+                AppliesTo = _model.AppliesTo,
+                SupplySubGroup = EsInsumo ? _model.SupplySubGroup : null,
+                CodListaDePrecios = _model.CodListaDePrecios
             };
 
             var resp = await Http.PostAsJsonAsync("api/pases/account-configurations", dto);
@@ -610,6 +668,9 @@
         public Guid? LaborTypeId { get; set; }
         public Guid? ErpActivityId { get; set; }
         public LaborExecutionMode? ExecutionMode { get; set; }
+        public AccountRuleTarget AppliesTo { get; set; } = AccountRuleTarget.Labor;
+        public string? SupplySubGroup { get; set; }
+        public long? CodListaDePrecios { get; set; }
         public string? LaborTypeName { get; set; }
         public string? Description { get; set; }
         public long? CodEmpresa { get; set; } = 1;

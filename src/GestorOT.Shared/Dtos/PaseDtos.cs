@@ -218,6 +218,9 @@ public record AccountConfigurationDto
     public Guid? ErpActivityId { get; set; }
     public string? ErpActivityName { get; set; }
     public LaborExecutionMode? ExecutionMode { get; set; }
+    public AccountRuleTarget AppliesTo { get; set; } = AccountRuleTarget.Labor;
+    public string? SupplySubGroup { get; set; }
+    public long? CodListaDePrecios { get; set; }
     public string DebitAccountCode { get; set; } = string.Empty;
     public string CreditAccountCode { get; set; } = string.Empty;
     public string? Description { get; set; }

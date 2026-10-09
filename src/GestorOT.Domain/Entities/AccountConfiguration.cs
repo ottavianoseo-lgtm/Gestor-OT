@@ -18,6 +18,19 @@ public class AccountConfiguration : TenantEntity
     /// En null, la regla aplica a los dos modos.
     /// </summary>
     public LaborExecutionMode? ExecutionMode { get; set; }
+
+    /// <summary>
+    /// Si la regla imputa la linea de la labor o las de sus insumos. Las de insumo ignoran
+    /// tipo de labor y modo: se acotan por actividad y por rubro.
+    /// </summary>
+    public AccountRuleTarget AppliesTo { get; set; } = AccountRuleTarget.Labor;
+
+    /// <summary>
+    /// Rubro del insumo (el SubGrupoConcepto del ERP: semillas, fertilizantes, herbicidas...).
+    /// Solo para reglas de insumo; en null aplica a todos los rubros.
+    /// </summary>
+    public string? SupplySubGroup { get; set; }
+
     public string DebitAccountCode { get; set; } = string.Empty;
     public string CreditAccountCode { get; set; } = string.Empty;
     public string? Description { get; set; }
@@ -28,6 +41,7 @@ public class AccountConfiguration : TenantEntity
     public long? CodComprobante { get; set; }
     public int PuntoVenta { get; set; } = 1;
     public long? CodMoneda { get; set; }
+    public long? CodListaDePrecios { get; set; }
     public long? CodPerfilDebe { get; set; }
     public long? CodPerfilHaber { get; set; }
     public long? CodPersona { get; set; }

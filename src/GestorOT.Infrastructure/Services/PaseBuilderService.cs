@@ -38,20 +38,20 @@ public sealed class PaseBuilderService : IPaseBuilderService
         // Fetch labors directly selected OR belonging to selected WorkOrders
         var laborsFromWos = await _context.Labors
             .Include(l => l.Type)
-            .Include(l => l.WorkOrder)
+            .Include(l => l.WorkOrder).ThenInclude(w => w!.Campaign)
             .Include(l => l.Contact)
             .Include(l => l.Lot).ThenInclude(l => l!.Field)
-            .Include(l => l.CampaignLot)
+            .Include(l => l.CampaignLot).ThenInclude(c => c!.Campaign)
             .Include(l => l.Supplies).ThenInclude(s => s.Supply)
             .Where(l => l.TenantId == tenantId && l.WorkOrderId != null && workOrderIds.Contains(l.WorkOrderId.Value))
             .ToListAsync(ct);
 
         var laborsDirect = await _context.Labors
             .Include(l => l.Type)
-            .Include(l => l.WorkOrder)
+            .Include(l => l.WorkOrder).ThenInclude(w => w!.Campaign)
             .Include(l => l.Contact)
             .Include(l => l.Lot).ThenInclude(l => l!.Field)
-            .Include(l => l.CampaignLot)
+            .Include(l => l.CampaignLot).ThenInclude(c => c!.Campaign)
             .Include(l => l.Supplies).ThenInclude(s => s.Supply)
             .Where(l => l.TenantId == tenantId && laborIds.Contains(l.Id))
             .ToListAsync(ct);
@@ -71,8 +71,14 @@ public sealed class PaseBuilderService : IPaseBuilderService
 
         var configsById = configs.ToDictionary(c => c.Id);
 
-        var defaultConfigs = configs.Where(c => c.LaborTypeId == null).ToList();
-        var defaultConfig = defaultConfigs.FirstOrDefault() ?? configs.FirstOrDefault();
+        // Labor e insumos se resuelven contra reglas distintas: en el G4 los insumos de una OT
+        // van en otro comprobante, sin persona, en otra moneda y contra stock.
+        var laborConfigs = configs.Where(c => c.AppliesTo == AccountRuleTarget.Labor).ToList();
+        var supplyConfigs = configs.Where(c => c.AppliesTo == AccountRuleTarget.Supply).ToList();
+        var avisoSinReglasDeInsumo = false;
+
+        var defaultConfigs = laborConfigs.Where(c => c.LaborTypeId == null).ToList();
+        var defaultConfig = defaultConfigs.FirstOrDefault() ?? laborConfigs.FirstOrDefault();
         
         // Default fallback configuration if no custom configuration has been created yet
         defaultConfig ??= new AccountConfiguration
@@ -124,7 +130,7 @@ public sealed class PaseBuilderService : IPaseBuilderService
             // Antes era un FirstOrDefault() sobre las del tipo: con mas de una regla elegia
             // una arbitraria y en silencio.
             AccountConfiguration? config = ResolveConfig(
-                labor, configsById, configs, defaultConfig, warnings);
+                labor, configsById, laborConfigs, defaultConfig, warnings);
 
             if (config == null)
             {
@@ -144,16 +150,15 @@ public sealed class PaseBuilderService : IPaseBuilderService
             // al mismo centro sin importar donde se hizo, y el pase no servia para costo por
             // lote. El nivel campo esta porque en la operacion el centro se abre por campo:
             // cargarlo ahi alcanza y el lote solo se completa cuando es una excepcion.
-            long? codCentroDebe = labor.CampaignLot?.CodCentro
+            // El haber no es el lote: es la contrapartida fija de la regla (servicios propios,
+            // contratistas, stock de insumos), como en la planilla con la que importan hoy.
+            long? centroDelLote = labor.CampaignLot?.CodCentro
                 ?? labor.Lot?.CodCentro
-                ?? labor.Lot?.Field?.CodCentro
-                ?? config.CodCuentaDebeCentro;
-            long? codCentroHaber = labor.CampaignLot?.CodCentro
-                ?? labor.Lot?.CodCentro
-                ?? labor.Lot?.Field?.CodCentro
-                ?? config.CodCuentaHaberCentro;
+                ?? labor.Lot?.Field?.CodCentro;
+            long? codCentroDebe = centroDelLote ?? config.CodCuentaDebeCentro;
+            long? codCentroHaber = config.CodCuentaHaberCentro;
 
-            if (!config.NoImputaCentro && codCentroDebe is null && codCentroHaber is null)
+            if (!config.NoImputaCentro && codCentroDebe is null)
             {
                 warnings.Add($"Labor {labor.Id} ({labor.Type?.Name ?? "Sin Tipo"}) en lote {labor.Lot?.Name ?? "S/N"}: el comprobante imputa centro pero ni el lote ni su campo tienen centro asignado, y la regla contable tampoco. Asignale el centro al campo (o al lote si es una excepcion).");
             }
@@ -210,6 +215,17 @@ public sealed class PaseBuilderService : IPaseBuilderService
 
             var fechaImputacion = labor.ExecutionDate ?? labor.EstimatedDate ?? DateTime.UtcNow;
 
+            // El comprobante del G4 es la OT: su numero va como numeroComprobante y el punto
+            // de venta es la campania (25/26 -> 2526). Sin OT o sin campania quedan como antes.
+            int? numeroComprobante = NumeroDeOt(labor.WorkOrder?.OTNumber);
+            if (labor.WorkOrder != null && numeroComprobante is null)
+            {
+                warnings.Add($"Labor {labor.Id}: la OT '{labor.WorkOrder.OTNumber}' no tiene un numero valido para el comprobante. Sale sin numeroComprobante.");
+            }
+
+            var puntoVenta = PuntoVentaDeCampania(labor.WorkOrder?.Campaign ?? labor.CampaignLot?.Campaign)
+                ?? config.PuntoVenta;
+
             var paseLabor = new PaseImputacion
             {
                 Id = Guid.NewGuid(),
@@ -225,11 +241,12 @@ public sealed class PaseBuilderService : IPaseBuilderService
                 NoImputaContabilidad = config.NoImputaContabilidad,
                 NoImputaCentro = config.NoImputaCentro,
                 NoImputaAuxiliar = config.NoImputaAuxiliar,
-                PuntoVenta = config.PuntoVenta,
+                PuntoVenta = puntoVenta,
+                NumeroComprobante = numeroComprobante,
                 Fecha = fechaImputacion,
                 CodPersona = codPersona,
                 CodMoneda = config.CodMoneda.Value,
-                CodListaDePrecios = null,
+                CodListaDePrecios = config.CodListaDePrecios,
                 CodConcepto = codConcepto,
                 CodigoConcepto = codigoConcepto,
                 CantidadAuxiliar = labor.Hectares > 0 ? labor.Hectares : null,
@@ -250,10 +267,39 @@ public sealed class PaseBuilderService : IPaseBuilderService
 
             pases.Add(paseLabor);
 
-            // Also check supplies if available
             foreach (var supply in labor.Supplies)
             {
                 if (supply.Supply == null) continue;
+
+                var etiquetaInsumo = $"Insumo {supply.Supply.ItemName} en labor {labor.Id}";
+
+                // Sin ninguna regla de insumo cargada se sigue imputando con la de la labor,
+                // como antes de que existieran, para no cortar a quien todavia no las configuro.
+                AccountConfiguration? sc;
+                if (supplyConfigs.Count == 0)
+                {
+                    sc = config;
+                    if (!avisoSinReglasDeInsumo)
+                    {
+                        warnings.Add("No hay reglas contables de insumo: los insumos se imputaron con la regla de su labor. Cargá reglas \"Aplica a: Insumo\" para separarlos.");
+                        avisoSinReglasDeInsumo = true;
+                    }
+                }
+                else
+                {
+                    sc = ResolveSupplyConfig(labor, supply.Supply, supplyConfigs, warnings, etiquetaInsumo);
+                    if (sc == null)
+                    {
+                        warnings.Add($"{etiquetaInsumo}: ninguna regla de insumo aplica (actividad / rubro '{supply.Supply.SubGrupoConcepto}'). Se omitió.");
+                        continue;
+                    }
+                }
+
+                if (!sc.CodEmpresa.HasValue || !sc.CodComprobante.HasValue || !sc.CodMoneda.HasValue)
+                {
+                    warnings.Add($"{etiquetaInsumo}: la regla de insumo esta incompleta (falta CodEmpresa, CodComprobante o CodMoneda). Se omitió.");
+                    continue;
+                }
 
                 long supplyConceptId = 0;
                 if (long.TryParse(supply.Supply.ExternalErpId, out var parsedSupplyConcept))
@@ -262,6 +308,11 @@ public sealed class PaseBuilderService : IPaseBuilderService
                 }
 
                 var cantSupply = supply.RealTotal ?? supply.CalculatedTotal ?? supply.PlannedTotal;
+                var hectareasSupply = supply.RealHectares ?? supply.PlannedHectares;
+                if (hectareasSupply <= 0)
+                {
+                    hectareasSupply = labor.Hectares;
+                }
 
                 var paseSupply = new PaseImputacion
                 {
@@ -272,31 +323,37 @@ public sealed class PaseBuilderService : IPaseBuilderService
                     LaborId = labor.Id,
                     IdReferencia = refId,
                     IdAgrupacionPase = seqGroup,
-                    CodEmpresa = config.CodEmpresa.Value,
-                    CodComprobante = config.CodComprobante.Value,
-                    NoImputaGestion = config.NoImputaGestion,
-                    NoImputaContabilidad = config.NoImputaContabilidad,
-                    NoImputaCentro = config.NoImputaCentro,
-                    NoImputaAuxiliar = config.NoImputaAuxiliar,
-                    PuntoVenta = config.PuntoVenta,
+                    CodEmpresa = sc.CodEmpresa.Value,
+                    CodComprobante = sc.CodComprobante.Value,
+                    NoImputaGestion = sc.NoImputaGestion,
+                    NoImputaContabilidad = sc.NoImputaContabilidad,
+                    NoImputaCentro = sc.NoImputaCentro,
+                    NoImputaAuxiliar = sc.NoImputaAuxiliar,
+                    PuntoVenta = PuntoVentaDeCampania(labor.WorkOrder?.Campaign ?? labor.CampaignLot?.Campaign)
+                        ?? sc.PuntoVenta,
+                    NumeroComprobante = numeroComprobante,
                     Fecha = fechaImputacion,
-                    CodPersona = codPersona,
-                    CodMoneda = config.CodMoneda.Value,
+                    // El insumo no es del contratista: con regla de insumo la persona es la de
+                    // la regla (normalmente ninguna). Con la regla de la labor, como antes.
+                    CodPersona = ReferenceEquals(sc, config) ? codPersona : sc.CodPersona,
+                    CodMoneda = sc.CodMoneda.Value,
+                    CodListaDePrecios = sc.CodListaDePrecios,
                     CodConcepto = supplyConceptId,
                     CodigoConcepto = null,
-                    CantidadAuxiliar = supply.RealDose ?? supply.PlannedDose,
+                    // Como en la planilla: auxiliar = hectareas aplicadas, cantidad = total.
+                    CantidadAuxiliar = hectareasSupply > 0 ? hectareasSupply : null,
                     Cantidad = cantSupply,
-                    Precio = 0, // Insumo consumido
-                    CodPerfilImputacionDebe = config.CodPerfilDebe,
-                    CodPerfilImputacionHaber = config.CodPerfilHaber,
-                    CodCuentaDebeGestion = config.CodCuentaDebeGestion,
-                    CodCuentaHaberGestion = config.CodCuentaHaberGestion,
-                    CodCuentaDebeCentro = codCentroDebe,
-                    CodCuentaHaberCentro = codCentroHaber,
-                    CodCuentaDebeContabilidad = config.CodCuentaDebeContabilidad,
-                    CodCuentaHaberContabilidad = config.CodCuentaHaberContabilidad,
-                    CodCuentaDebeAuxiliar = config.CodCuentaDebeAuxiliar,
-                    CodCuentaHaberAuxiliar = config.CodCuentaHaberAuxiliar,
+                    Precio = 0, // TODO: precio unitario del insumo (lista de precios del G4), pendiente de definir.
+                    CodPerfilImputacionDebe = sc.CodPerfilDebe,
+                    CodPerfilImputacionHaber = sc.CodPerfilHaber,
+                    CodCuentaDebeGestion = sc.CodCuentaDebeGestion,
+                    CodCuentaHaberGestion = sc.CodCuentaHaberGestion,
+                    CodCuentaDebeCentro = centroDelLote ?? sc.CodCuentaDebeCentro,
+                    CodCuentaHaberCentro = sc.CodCuentaHaberCentro,
+                    CodCuentaDebeContabilidad = sc.CodCuentaDebeContabilidad,
+                    CodCuentaHaberContabilidad = sc.CodCuentaHaberContabilidad,
+                    CodCuentaDebeAuxiliar = sc.CodCuentaDebeAuxiliar,
+                    CodCuentaHaberAuxiliar = sc.CodCuentaHaberAuxiliar,
                     Notas = $"Insumo: {supply.Supply.ItemName} en Labor {labor.Type?.Name}"
                 };
 
@@ -451,7 +508,10 @@ public sealed class PaseBuilderService : IPaseBuilderService
         {
             ErpActivityId = c.ErpActivityId,
             ErpActivityName = c.ErpActivity?.Name,
-            ExecutionMode = c.ExecutionMode
+            ExecutionMode = c.ExecutionMode,
+            AppliesTo = c.AppliesTo,
+            SupplySubGroup = c.SupplySubGroup,
+            CodListaDePrecios = c.CodListaDePrecios
         }).ToList();
     }
 
@@ -470,9 +530,17 @@ public sealed class PaseBuilderService : IPaseBuilderService
             _context.AccountConfigurations.Add(entity);
         }
 
-        entity.LaborTypeId = dto.LaborTypeId;
         entity.ErpActivityId = dto.ErpActivityId;
-        entity.ExecutionMode = dto.ExecutionMode;
+        entity.AppliesTo = dto.AppliesTo;
+        // Una regla de insumo no se acota por tipo de labor ni modo, y una de labor no tiene
+        // rubro: se limpia lo que no corresponde para que no quede una dimension invisible.
+        var esInsumo = dto.AppliesTo == AccountRuleTarget.Supply;
+        entity.LaborTypeId = esInsumo ? null : dto.LaborTypeId;
+        entity.ExecutionMode = esInsumo ? null : dto.ExecutionMode;
+        entity.SupplySubGroup = esInsumo && !string.IsNullOrWhiteSpace(dto.SupplySubGroup)
+            ? dto.SupplySubGroup.Trim()
+            : null;
+        entity.CodListaDePrecios = dto.CodListaDePrecios;
         entity.DebitAccountCode = dto.DebitAccountCode;
         entity.CreditAccountCode = dto.CreditAccountCode;
         entity.Description = dto.Description;
@@ -528,7 +596,8 @@ public sealed class PaseBuilderService : IPaseBuilderService
         // El override explicito de la labor gana sobre cualquier regla.
         if (labor.AccountConfigurationId is Guid explicitId)
         {
-            if (configsById.TryGetValue(explicitId, out var explicitConfig))
+            if (configsById.TryGetValue(explicitId, out var explicitConfig)
+                && explicitConfig.AppliesTo == AccountRuleTarget.Labor)
             {
                 return explicitConfig;
             }
@@ -564,6 +633,74 @@ public sealed class PaseBuilderService : IPaseBuilderService
         return ganadoras[0];
     }
 
+    /// <summary>Los digitos del numero de OT ("OT-569" -> 569); null si no hay o no entra en int.</summary>
+    private static int? NumeroDeOt(string? otNumber)
+    {
+        if (string.IsNullOrWhiteSpace(otNumber))
+        {
+            return null;
+        }
+
+        var digitos = new string(otNumber.Where(char.IsAsciiDigit).ToArray());
+        return int.TryParse(digitos, out var numero) && numero > 0 ? numero : null;
+    }
+
+    /// <summary>
+    /// Punto de venta de la campania: los dos ultimos digitos del anio de inicio y de fin
+    /// (25/26 -> 2526), que es como el G4 separa los comprobantes por campania.
+    /// </summary>
+    private static int? PuntoVentaDeCampania(Campaign? campaign)
+    {
+        if (campaign is null || campaign.StartDate == default || campaign.EndDate == default)
+        {
+            return null;
+        }
+
+        return campaign.StartDate.Year % 100 * 100 + campaign.EndDate.Year % 100;
+    }
+
+    /// <summary>
+    /// Resuelve la regla de insumo con el mismo criterio que la de labor: aplican las que
+    /// coinciden en todo lo que declaran (actividad de la labor, rubro del insumo) y gana la mas
+    /// especifica. Asi una regla general de insumos fija la cabecera y la contrapartida, y las
+    /// de (GIRASOL + SEMILLAS) solo cambian la cuenta del debe.
+    /// </summary>
+    private static AccountConfiguration? ResolveSupplyConfig(
+        Labor labor,
+        Inventory supply,
+        List<AccountConfiguration> supplyConfigs,
+        List<string> warnings,
+        string etiqueta)
+    {
+        var rubro = supply.SubGrupoConcepto?.Trim();
+
+        var aplicables = supplyConfigs
+            .Where(c => c.ErpActivityId is null || c.ErpActivityId == labor.ErpActivityId)
+            .Where(c => c.SupplySubGroup is null
+                || string.Equals(c.SupplySubGroup, rubro, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        if (aplicables.Count == 0)
+        {
+            return null;
+        }
+
+        static int EspecificidadInsumo(AccountConfiguration c) =>
+            (c.ErpActivityId is null ? 0 : 1) + (c.SupplySubGroup is null ? 0 : 1);
+
+        var max = aplicables.Max(EspecificidadInsumo);
+        var ganadoras = aplicables.Where(c => EspecificidadInsumo(c) == max).ToList();
+
+        if (ganadoras.Count > 1)
+        {
+            var nombres = string.Join(", ", ganadoras.Select(c =>
+                string.IsNullOrWhiteSpace(c.Description) ? c.Id.ToString()[..8] : c.Description));
+            warnings.Add($"{etiqueta}: hay {ganadoras.Count} reglas de insumo igual de especificas que aplican ({nombres}). Se uso la primera.");
+        }
+
+        return ganadoras[0];
+    }
+
     /// <summary>Cuantas dimensiones declara la regla: a mas dimensiones, mas especifica.</summary>
     private static int Especificidad(AccountConfiguration config)
     {
@@ -575,14 +712,23 @@ public sealed class PaseBuilderService : IPaseBuilderService
     }
 
     /// <summary>
-    /// Un pase del G4 por combinacion de origen, empresa, comprobante, moneda y lista de
-    /// precios. Replica PaseBuilder.AssignGroups del modulo oficial de Ganaderia.
+    /// Un pase del G4 por OT y por cabecera de comprobante (empresa, comprobante, fecha,
+    /// persona, moneda, lista de precios). La OT es el origen: sus labores, una por lote, van
+    /// en un mismo pase, y lo que difiere en cabecera (p. ej. los insumos en otra moneda) abre
+    /// otro. Una labor suelta, sin OT, es su propio origen.
     /// </summary>
     private static void AssignGroups(List<PaseImputacion> pases)
     {
         int grupo = 1;
 
-        foreach (var group in pases.GroupBy(p => (p.LaborId, p.CodEmpresa, p.CodComprobante, p.CodMoneda, p.CodListaDePrecios)))
+        foreach (var group in pases.GroupBy(p => (
+            Origen: p.WorkOrderId ?? p.LaborId,
+            p.CodEmpresa,
+            p.CodComprobante,
+            Fecha: p.Fecha.Date,
+            p.CodPersona,
+            p.CodMoneda,
+            p.CodListaDePrecios)))
         {
             foreach (var pase in group)
             {

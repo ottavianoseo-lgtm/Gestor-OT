@@ -80,8 +80,12 @@ public sealed class PaseXlsxExportService : IPaseXlsxExportService
             ws.Cell(row, 7).Value = p.NoImputaContabilidad ? "true" : "false";
             ws.Cell(row, 8).Value = p.NoImputaCentro ? "true" : "false";
             ws.Cell(row, 9).Value = p.NoImputaAuxiliar ? "true" : "false";
-            ws.Cell(row, 10).Value = p.PuntoVenta;
-            ws.Cell(row, 11).Value = p.NumeroComprobante.HasValue ? p.NumeroComprobante.Value : "";
+            // El G4 los toma como texto con ceros a la izquierda ("02526", "00000569"):
+            // como numero, el Excel se come los ceros.
+            ws.Cell(row, 10).Value = p.PuntoVenta.ToString("D5");
+            ws.Cell(row, 10).Style.NumberFormat.Format = "@";
+            ws.Cell(row, 11).Value = p.NumeroComprobante.HasValue ? p.NumeroComprobante.Value.ToString("D8") : "";
+            ws.Cell(row, 11).Style.NumberFormat.Format = "@";
             ws.Cell(row, 12).Value = p.Fecha;
             ws.Cell(row, 12).Style.NumberFormat.Format = "dd/MM/yyyy";
             ws.Cell(row, 13).Value = p.CodPersona.HasValue ? p.CodPersona.Value : "";

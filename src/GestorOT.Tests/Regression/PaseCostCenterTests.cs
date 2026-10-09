@@ -20,6 +20,9 @@ namespace GestorOT.Tests.Regression;
 ///
 /// El nivel campo existe porque en la operación el centro se abre por campo: cargarlo ahí
 /// alcanza para todos sus lotes y el lote solo se completa cuando es una excepción.
+///
+/// Esa cadena es solo para el debe. El centro del haber es la contrapartida fija de la regla
+/// (servicios propios, contratistas, stock), como en la planilla con la que importan al G4.
 /// </summary>
 public class PaseCostCenterTests
 {
@@ -27,6 +30,7 @@ public class PaseCostCenterTests
     private const long CentroDeLaCampania = 50202;
     private const long CentroDelCampo = 50303;
     private const long CentroDeLaConfig = 50999;
+    private const long CentroHaberDeLaConfig = 10000003;
 
     private ApplicationDbContext CreateContext(string dbName, Guid tenantId)
     {
@@ -75,7 +79,7 @@ public class PaseCostCenterTests
             CodComprobante = 1,
             CodMoneda = 1,
             CodCuentaDebeCentro = CentroDeLaConfig,
-            CodCuentaHaberCentro = CentroDeLaConfig
+            CodCuentaHaberCentro = CentroHaberDeLaConfig
         });
 
         var field = new Field { Id = Guid.NewGuid(), TenantId = tenantId, Name = "La Juanita" };
@@ -176,7 +180,7 @@ public class PaseCostCenterTests
 
         var pase = pases[seeded.LaborConCentroDeLote];
         Assert.Equal(CentroDelLote, pase.CodCuentaDebeCentro);
-        Assert.Equal(CentroDelLote, pase.CodCuentaHaberCentro);
+        Assert.Equal(CentroHaberDeLaConfig, pase.CodCuentaHaberCentro);
     }
 
     [Fact]
@@ -228,7 +232,7 @@ public class PaseCostCenterTests
 
         var pase = pases[seeded.LaborEnCampoConCentro];
         Assert.Equal(CentroDelCampo, pase.CodCuentaDebeCentro);
-        Assert.Equal(CentroDelCampo, pase.CodCuentaHaberCentro);
+        Assert.Equal(CentroHaberDeLaConfig, pase.CodCuentaHaberCentro);
     }
 
     [Fact]
