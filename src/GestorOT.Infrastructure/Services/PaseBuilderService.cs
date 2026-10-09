@@ -265,7 +265,17 @@ public sealed class PaseBuilderService : IPaseBuilderService
                 Notas = $"Labor: {labor.Type?.Name} | Lote: {labor.Lot?.Name ?? "S/N"}"
             };
 
-            pases.Add(paseLabor);
+            // Sin concepto el G4 no puede resolver ni el perfil de imputacion ni la lista de
+            // precios: la linea se omite en vez de mandarla con codConcepto = 0. Los insumos de
+            // la labor tienen su propio concepto y siguen.
+            if (codConcepto > 0)
+            {
+                pases.Add(paseLabor);
+            }
+            else
+            {
+                warnings.Add($"Labor {labor.Id} ({labor.Type?.Name ?? "Sin Tipo"}) en lote {labor.Lot?.Name ?? "S/N"}: el tipo de labor no tiene concepto del ERP. Se omitió la línea de la labor; vinculá el tipo de labor a su concepto en el catálogo.");
+            }
 
             foreach (var supply in labor.Supplies)
             {
@@ -305,6 +315,12 @@ public sealed class PaseBuilderService : IPaseBuilderService
                 if (long.TryParse(supply.Supply.ExternalErpId, out var parsedSupplyConcept))
                 {
                     supplyConceptId = parsedSupplyConcept;
+                }
+
+                if (supplyConceptId <= 0)
+                {
+                    warnings.Add($"{etiquetaInsumo}: el insumo no tiene concepto del ERP. Se omitió; activalo desde el catálogo de conceptos.");
+                    continue;
                 }
 
                 var cantSupply = supply.RealTotal ?? supply.CalculatedTotal ?? supply.PlannedTotal;

@@ -205,6 +205,44 @@ public class PaseSupplyRulesTests
     }
 
     [Fact]
+    public async Task LaborSinConcepto_SeOmite_YSusInsumosSiguen()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var s = Seed(dbName, conReglasDeInsumo: true);
+        using (var ctx = CreateContext(dbName, s.TenantId))
+        {
+            var tipo = await ctx.LaborTypes.SingleAsync();
+            tipo.ExternalErpId = null;
+            tipo.Name = "TIPO SIN CONCEPTO";
+            await ctx.SaveChangesAsync();
+        }
+
+        var (pases, warnings) = await GenerarAsync(dbName, s);
+
+        Assert.DoesNotContain(pases, p => p.CodConcepto == 0);
+        Assert.Equal(2, pases.Count);
+        Assert.Contains(warnings, w => w.Contains("no tiene concepto del ERP"));
+    }
+
+    [Fact]
+    public async Task InsumoSinConcepto_SeOmite_YAvisa()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var s = Seed(dbName, conReglasDeInsumo: true);
+        using (var ctx = CreateContext(dbName, s.TenantId))
+        {
+            var herbicida = await ctx.Inventories.SingleAsync(i => i.Id == s.HerbicidaId);
+            herbicida.ExternalErpId = null;
+            await ctx.SaveChangesAsync();
+        }
+
+        var (pases, warnings) = await GenerarAsync(dbName, s);
+
+        Assert.DoesNotContain(pases, p => p.CodConcepto == 0);
+        Assert.Contains(warnings, w => w.Contains("Glifosato") && w.Contains("no tiene concepto del ERP"));
+    }
+
+    [Fact]
     public async Task SinReglasDeInsumo_ElInsumoSigueConLaDeLaLabor_YAvisa()
     {
         var dbName = Guid.NewGuid().ToString();
