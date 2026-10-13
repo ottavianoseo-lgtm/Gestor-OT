@@ -14,7 +14,7 @@ using System.Text.Json.Serialization;
 
 namespace GestorOT.Infrastructure.Services;
 
-public class ErpSyncService : IErpSyncService
+public class ErpSyncService : IErpSyncService, IErpPriceListProvider
 {
     private readonly IApplicationDbContext _context;
     private readonly ILogger<ErpSyncService> _logger;
@@ -957,6 +957,40 @@ public class ErpSyncService : IErpSyncService
         return result;
     }
 
+    public async Task<IReadOnlyList<ErpPrecio>> GetPreciosAsync(Guid tenantId, long codListaDePrecios, CancellationToken ct = default)
+    {
+        try
+        {
+            var (client, databaseId) = await GetErpClientAndDatabaseIdAsync(tenantId, ct);
+            if (client == null || string.IsNullOrEmpty(databaseId)) return Array.Empty<ErpPrecio>();
+
+            var url = $"{BaseUrl}/v3/GestorG4/ListListasDePreciosPrecios?databaseId={databaseId}&codListaDePrecios={codListaDePrecios}";
+            var response = await client.GetAsync(url, ct);
+            if (!response.IsSuccessStatusCode)
+            {
+                var body = await response.Content.ReadAsStringAsync(ct);
+                _logger.LogWarning("GestorMax ListListasDePreciosPrecios returned {StatusCode} for Tenant {TenantId}, lista {Lista}: {Body}",
+                    (int)response.StatusCode, tenantId, codListaDePrecios, body.Length > 300 ? body[..300] : body);
+                return Array.Empty<ErpPrecio>();
+            }
+
+            var items = await response.Content.ReadFromJsonAsync<List<ErpPrecioResponse>>(ct) ?? new();
+            return items
+                .Select(i => (Item: i, Concepto: long.TryParse(i.CodConcepto?.ToString(), out var c) ? c : 0))
+                .Where(x => x.Concepto > 0)
+                .Select(x => new ErpPrecio(
+                    x.Concepto,
+                    DateTime.TryParse(x.Item.VigenciaDesde, out var desde) ? desde : null,
+                    x.Item.Precio))
+                .ToList();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Could not fetch ListListasDePreciosPrecios ({Lista}) from GestorMax.", codListaDePrecios);
+            return Array.Empty<ErpPrecio>();
+        }
+    }
+
     private async Task<(HttpClient? Client, string? DatabaseId)> GetErpClientAndDatabaseIdAsync(Guid tenantId, CancellationToken ct)
     {
         if (tenantId == Guid.Empty) return (null, null);
@@ -1047,6 +1081,11 @@ public class ErpSyncService : IErpSyncService
         [property: JsonPropertyName("tipoResponsableIVA")] string? ResponsibleTax,
         [property: JsonPropertyName("grupoPersonas")] string? Group,
         [property: JsonPropertyName("habilitado")] bool Enabled);
+
+    private record ErpPrecioResponse(
+        [property: JsonPropertyName("codConcepto")] object? CodConcepto,
+        [property: JsonPropertyName("vigenciaDesde")] string? VigenciaDesde,
+        [property: JsonPropertyName("precio"), JsonNumberHandling(JsonNumberHandling.AllowReadingFromString)] decimal Precio);
 
     private record ErpActivityResponse(
         [property: JsonPropertyName("codActividadPerfilImputacion")] object Codigo, 

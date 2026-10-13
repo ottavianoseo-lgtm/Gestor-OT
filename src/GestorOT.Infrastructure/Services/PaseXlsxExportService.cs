@@ -1,28 +1,68 @@
 using ClosedXML.Excel;
 using GestorOT.Application.Interfaces;
+using GestorOT.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
 namespace GestorOT.Infrastructure.Services;
 
+/// <summary>
+/// Arma el archivo de importacion de pases del G4 con el mismo layout que la planilla con la
+/// que hoy importan (Mechi SRL, Importador v5.08): encabezados en la fila 1 con sus nombres
+/// exactos, datos desde la 2 y la hoja llamada igual que el archivo, que el G4 exige.
+/// </summary>
 public sealed class PaseXlsxExportService : IPaseXlsxExportService
 {
     private readonly IApplicationDbContext _context;
     private readonly ILogger<PaseXlsxExportService> _logger;
 
-    private static readonly string[] Headers =
+    private sealed record Columna(string Header, Func<PaseImputacion, XLCellValue> Valor, string? Formato = null);
+
+    private static XLCellValue OVacio(long? v) => v.HasValue ? (XLCellValue)v.Value : Blank.Value;
+
+    // Las cuentas de gestion quedan vacias cuando hay perfil: el G4 imputa por el perfil.
+    private static XLCellValue CuentaGestion(long? cuenta, long? perfil) =>
+        perfil.GetValueOrDefault() > 0 || cuenta.GetValueOrDefault() == 0 ? Blank.Value : (XLCellValue)cuenta!.Value;
+
+    // Columnas de la planilla, en su orden y con sus nombres (mayusculas incluidas).
+    private static readonly Columna[] ColumnasPlanilla =
     [
-        "idImportacion", "idReferencia", "idAgrupacionPase", "codEmpresa",
-        "codComprobante", "noImputaGestión", "noImputaContabilidad", "noImputaCentro",
-        "noImputaAuxiliar", "puntoVenta", "numeroComprobante", "fecha",
-        "codPersona", "codMoneda", "codListaDePrecios", "codConcepto",
-        "cantidadAuxiliar", "cantidad", "precio",
-        "codPerfilImputacionDebe", "codPerfilImputacionHaber",
-        "codCuentaDebeGestion", "codCuentaHaberGestion",
-        "codCuentaDebeCentro", "codCuentaHaberCentro",
-        "codCuentaDebeContabilidad", "codCuentaHaberContabilidad",
-        "codCuentaDebeAuxiliar", "codCuentaHaberAuxiliar",
-        "Notas"
+        new("IdReferencia", p => p.IdReferencia),
+        new("IdAgrupacionPase", p => p.IdAgrupacionPase),
+        new("CodEmpresa", p => p.CodEmpresa),
+        new("codComprobante", p => p.CodComprobante),
+        new("noImputaGestion", p => p.NoImputaGestion),
+        new("noImputaContabilidad", p => p.NoImputaContabilidad),
+        new("noImputaCentro", p => p.NoImputaCentro),
+        new("noImputaAuxiliar", p => p.NoImputaAuxiliar),
+        // El G4 los toma como texto con ceros a la izquierda ("02526", "00000569").
+        new("puntoVenta", p => p.PuntoVenta.ToString("D5"), "@"),
+        new("numeroComprobante", p => p.NumeroComprobante.HasValue ? (XLCellValue)p.NumeroComprobante.Value.ToString("D8") : Blank.Value, "@"),
+        new("fecha", p => p.Fecha.ToString("yyyy-MM-dd"), "@"),
+        new("codPersona", p => OVacio(p.CodPersona)),
+        new("codMoneda", p => p.CodMoneda),
+        new("codListaDePrecios", p => OVacio(p.CodListaDePrecios)),
+        new("codConcepto", p => p.CodConcepto),
+        new("cantidadAuxiliar", p => p.CantidadAuxiliar.HasValue ? (XLCellValue)p.CantidadAuxiliar.Value : Blank.Value),
+        new("cantidad", p => p.Cantidad),
+        new("precio", p => p.Precio),
+        new("codCuentaDebeGestion", p => CuentaGestion(p.CodCuentaDebeGestion, p.CodPerfilImputacionDebe), "0"),
+        new("codCuentaHaberGestion", p => CuentaGestion(p.CodCuentaHaberGestion, p.CodPerfilImputacionHaber), "0"),
+        new("codCuentaDebeCentro", p => OVacio(p.CodCuentaDebeCentro), "0"),
+        new("codCuentaHaberCentro", p => OVacio(p.CodCuentaHaberCentro), "0"),
+        new("Notas", p => p.Notas ?? ""),
+    ];
+
+    // La planilla no las usa (cuentas explicitas, sin contabilidad ni auxiliar). Se agregan al
+    // final solo si alguna linea del lote las trae, para no correr las columnas de la planilla.
+    private static readonly (Columna Columna, Func<PaseImputacion, long?> Dato)[] ColumnasOpcionales =
+    [
+        (new("codPerfilImputacionDebe", p => OVacio(p.CodPerfilImputacionDebe)), p => p.CodPerfilImputacionDebe),
+        (new("codPerfilImputacionHaber", p => OVacio(p.CodPerfilImputacionHaber)), p => p.CodPerfilImputacionHaber),
+        (new("codCuentaDebeContabilidad", p => OVacio(p.CodCuentaDebeContabilidad), "0"), p => p.CodCuentaDebeContabilidad),
+        (new("codCuentaHaberContabilidad", p => OVacio(p.CodCuentaHaberContabilidad), "0"), p => p.CodCuentaHaberContabilidad),
+        (new("codCuentaDebeAuxiliar", p => OVacio(p.CodCuentaDebeAuxiliar), "0"), p => p.CodCuentaDebeAuxiliar),
+        (new("codCuentaHaberAuxiliar", p => OVacio(p.CodCuentaHaberAuxiliar), "0"), p => p.CodCuentaHaberAuxiliar),
     ];
 
     public PaseXlsxExportService(
@@ -48,88 +88,45 @@ public sealed class PaseXlsxExportService : IPaseXlsxExportService
             .ThenBy(p => p.IdReferencia)
             .ToListAsync(ct);
 
-        var fileName = $"Importacion Pases G4 - {loteId}.xlsx";
+        // idImportacion es un numero correlativo (1, 2, ...) como en la planilla, no un GUID:
+        // es el orden del lote entre los del tenant.
+        var idImportacion = await _context.PasesLote
+            .AsNoTracking()
+            .CountAsync(l => l.TenantId == tenantId && l.GeneradoEn <= lote.GeneradoEn, ct);
+
+        // El G4 exige que la hoja se llame igual que el archivo; una hoja admite hasta 31
+        // caracteres, asi que el nombre es corto.
+        var nombre = $"PasesG4_{idImportacion:D4}_{lote.GeneradoEn:yyyyMMdd}";
+        var fileName = $"{nombre}.xlsx";
+
+        var columnas = new List<Columna> { new("idImportacion", _ => idImportacion) };
+        columnas.AddRange(ColumnasPlanilla);
+        columnas.AddRange(ColumnasOpcionales
+            .Where(o => pases.Any(p => o.Dato(p).GetValueOrDefault() > 0))
+            .Select(o => o.Columna));
 
         using var wb = new XLWorkbook();
-        var ws = wb.AddWorksheet("Importación Pases G4");
+        var ws = wb.AddWorksheet(nombre);
 
-        ws.Cell("A1").Value = fileName;
-        ws.Cell("A1").Style.Font.Bold = true;
-
-        for (int col = 0; col < Headers.Length; col++)
+        for (int c = 0; c < columnas.Count; c++)
         {
-            var cell = ws.Cell(3, col + 1);
-            cell.Value = Headers[col];
-            cell.Style.Font.Bold = true;
-            cell.Style.Fill.BackgroundColor = XLColor.FromHtml("#D9D9D9");
-            cell.Style.Border.BottomBorder = XLBorderStyleValues.Thin;
+            ws.Cell(1, c + 1).Value = columnas[c].Header;
         }
 
         for (int i = 0; i < pases.Count; i++)
         {
-            var p = pases[i];
-            var row = i + 4;
-            var idImportacion = lote.Id.ToString();
-
-            ws.Cell(row, 1).Value = idImportacion;
-            ws.Cell(row, 2).Value = p.IdReferencia;
-            ws.Cell(row, 3).Value = p.IdAgrupacionPase;
-            ws.Cell(row, 4).Value = p.CodEmpresa;
-            ws.Cell(row, 5).Value = p.CodComprobante;
-            ws.Cell(row, 6).Value = p.NoImputaGestion ? "true" : "false";
-            ws.Cell(row, 7).Value = p.NoImputaContabilidad ? "true" : "false";
-            ws.Cell(row, 8).Value = p.NoImputaCentro ? "true" : "false";
-            ws.Cell(row, 9).Value = p.NoImputaAuxiliar ? "true" : "false";
-            // El G4 los toma como texto con ceros a la izquierda ("02526", "00000569"):
-            // como numero, el Excel se come los ceros.
-            ws.Cell(row, 10).Value = p.PuntoVenta.ToString("D5");
-            ws.Cell(row, 10).Style.NumberFormat.Format = "@";
-            ws.Cell(row, 11).Value = p.NumeroComprobante.HasValue ? p.NumeroComprobante.Value.ToString("D8") : "";
-            ws.Cell(row, 11).Style.NumberFormat.Format = "@";
-            ws.Cell(row, 12).Value = p.Fecha;
-            ws.Cell(row, 12).Style.NumberFormat.Format = "dd/MM/yyyy";
-            ws.Cell(row, 13).Value = p.CodPersona.HasValue ? p.CodPersona.Value : "";
-            ws.Cell(row, 14).Value = p.CodMoneda;
-            ws.Cell(row, 15).Value = p.CodListaDePrecios.HasValue ? p.CodListaDePrecios.Value : "";
-            ws.Cell(row, 16).Value = p.CodConcepto;
-            ws.Cell(row, 17).Value = p.CantidadAuxiliar.HasValue ? p.CantidadAuxiliar.Value : "";
-            ws.Cell(row, 18).Value = p.Cantidad;
-            ws.Cell(row, 19).Value = p.Precio;
-            ws.Cell(row, 20).Value = p.CodPerfilImputacionDebe.HasValue ? p.CodPerfilImputacionDebe.Value : "";
-            ws.Cell(row, 21).Value = p.CodPerfilImputacionHaber.HasValue ? p.CodPerfilImputacionHaber.Value : "";
-
-            if (p.CodPerfilImputacionDebe.GetValueOrDefault() > 0 || !p.CodCuentaDebeGestion.HasValue || p.CodCuentaDebeGestion.Value == 0)
+            for (int c = 0; c < columnas.Count; c++)
             {
-                ws.Cell(row, 22).Value = "";
+                var cell = ws.Cell(i + 2, c + 1);
+                if (columnas[c].Formato is string formato)
+                {
+                    cell.Style.NumberFormat.Format = formato;
+                }
+                cell.Value = columnas[c].Valor(pases[i]);
             }
-            else
-            {
-                ws.Cell(row, 22).Value = p.CodCuentaDebeGestion.Value;
-            }
-
-            if (p.CodPerfilImputacionHaber.GetValueOrDefault() > 0 || !p.CodCuentaHaberGestion.HasValue || p.CodCuentaHaberGestion.Value == 0)
-            {
-                ws.Cell(row, 23).Value = "";
-            }
-            else
-            {
-                ws.Cell(row, 23).Value = p.CodCuentaHaberGestion.Value;
-            }
-
-            ws.Cell(row, 24).Value = p.CodCuentaDebeCentro.HasValue ? p.CodCuentaDebeCentro.Value : "";
-            ws.Cell(row, 25).Value = p.CodCuentaHaberCentro.HasValue ? p.CodCuentaHaberCentro.Value : "";
-            ws.Cell(row, 26).Value = p.CodCuentaDebeContabilidad.HasValue ? p.CodCuentaDebeContabilidad.Value : "";
-            ws.Cell(row, 27).Value = p.CodCuentaHaberContabilidad.HasValue ? p.CodCuentaHaberContabilidad.Value : "";
-            ws.Cell(row, 28).Value = p.CodCuentaDebeAuxiliar.HasValue ? p.CodCuentaDebeAuxiliar.Value : "";
-            ws.Cell(row, 29).Value = p.CodCuentaHaberAuxiliar.HasValue ? p.CodCuentaHaberAuxiliar.Value : "";
-            ws.Cell(row, 30).Value = p.Notas ?? "";
-
-            for (int col = 22; col <= 29; col++)
-                ws.Cell(row, col).Style.NumberFormat.Format = "0";
         }
 
         ws.Columns().AdjustToContents();
-        ws.SheetView.FreezeRows(3);
 
         var ms = new MemoryStream();
         wb.SaveAs(ms);

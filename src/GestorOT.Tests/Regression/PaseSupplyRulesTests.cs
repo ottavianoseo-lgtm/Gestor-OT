@@ -1,3 +1,4 @@
+using GestorOT.Application.Interfaces;
 using GestorOT.Domain.Entities;
 using GestorOT.Domain.Enums;
 using GestorOT.Infrastructure.Data;
@@ -128,10 +129,11 @@ public class PaseSupplyRulesTests
         return new Seeded(tenantId, labor.Id, semilla.Id, herbicida.Id);
     }
 
-    private async Task<(List<PaseImputacion> Pases, List<string> Warnings)> GenerarAsync(string dbName, Seeded s)
+    private async Task<(List<PaseImputacion> Pases, List<string> Warnings)> GenerarAsync(
+        string dbName, Seeded s, IErpPriceListProvider? precios = null)
     {
         using var ctx = CreateContext(dbName, s.TenantId);
-        var service = new PaseBuilderService(ctx, NullLogger<PaseBuilderService>.Instance);
+        var service = new PaseBuilderService(ctx, NullLogger<PaseBuilderService>.Instance, precios);
 
         var result = await service.GenerarLoteAsync(s.TenantId, null, new List<Guid> { s.LaborId });
         Assert.True(result.Success, result.Error);
@@ -254,5 +256,49 @@ public class PaseSupplyRulesTests
         Assert.Equal(1080, herbicida.CodComprobante);
         Assert.Equal(339, herbicida.CodPersona);
         Assert.Single(warnings, w => w.Contains("No hay reglas contables de insumo"));
+    }
+
+    private sealed class PreciosFijos(params ErpPrecio[] precios) : IErpPriceListProvider
+    {
+        public List<long> ListasConsultadas { get; } = new();
+
+        public Task<IReadOnlyList<ErpPrecio>> GetPreciosAsync(Guid tenantId, long codListaDePrecios, CancellationToken ct = default)
+        {
+            ListasConsultadas.Add(codListaDePrecios);
+            return Task.FromResult<IReadOnlyList<ErpPrecio>>(codListaDePrecios == 3 ? precios : Array.Empty<ErpPrecio>());
+        }
+    }
+
+    [Fact]
+    public async Task Insumo_TomaElPrecioVigenteALaFechaDeLaListaDeLaRegla()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var s = Seed(dbName, conReglasDeInsumo: true);
+        var precios = new PreciosFijos(
+            new ErpPrecio(50048, new DateTime(2025, 7, 1), 15m),
+            new ErpPrecio(50048, new DateTime(2026, 1, 1), 16.5m),
+            new ErpPrecio(50048, new DateTime(2026, 3, 1), 18m), // posterior a la labor (21/02)
+            new ErpPrecio(50410, new DateTime(2026, 1, 1), 32m));
+
+        var (pases, warnings) = await GenerarAsync(dbName, s, precios);
+
+        Assert.Equal(16.5m, Linea(pases, "50048").Precio);
+        Assert.Equal(32m, Linea(pases, "50410").Precio);
+        Assert.Equal(12537m, Linea(pases, "50798").Precio);
+        Assert.Equal(new List<long> { 3 }, precios.ListasConsultadas);
+        Assert.DoesNotContain(warnings, w => w.Contains("precio 0"));
+    }
+
+    [Fact]
+    public async Task Insumo_SinPrecioVigente_SaleEnCeroYAvisa()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var s = Seed(dbName, conReglasDeInsumo: true);
+        var precios = new PreciosFijos(new ErpPrecio(50410, new DateTime(2026, 1, 1), 32m));
+
+        var (pases, warnings) = await GenerarAsync(dbName, s, precios);
+
+        Assert.Equal(0m, Linea(pases, "50048").Precio);
+        Assert.Contains(warnings, w => w.Contains("Glifosato") && w.Contains("no tiene precio vigente"));
     }
 }

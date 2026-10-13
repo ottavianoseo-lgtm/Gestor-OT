@@ -83,7 +83,9 @@ public static class ServiceExtensions
             services.AddScoped<IDashboardQueryService, DashboardQueryService>();
             services.AddScoped<IAuditLogQueryService, AuditLogQueryService>();
             services.AddScoped<GestorOT.Application.Services.IRotationService, RotationService>();
-            services.AddScoped<IErpSyncService, ErpSyncService>();
+            services.AddScoped<ErpSyncService>();
+            services.AddScoped<IErpSyncService>(sp => sp.GetRequiredService<ErpSyncService>());
+            services.AddScoped<IErpPriceListProvider>(sp => sp.GetRequiredService<ErpSyncService>());
             services.AddScoped<IPaseBuilderService, PaseBuilderService>();
             services.AddScoped<IPaseXlsxExportService, PaseXlsxExportService>();
             services.AddScoped<ILotExcelImportService, LotExcelImportService>();
