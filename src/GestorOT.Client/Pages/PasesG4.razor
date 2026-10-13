@@ -73,6 +73,13 @@
                                     Style="border-radius: 6px; background: rgba(46, 204, 113, 0.15); border-color: rgba(46, 204, 113, 0.3); color: #2ECC71;">
                                 Descargar XLSX
                             </Button>
+                            <Popconfirm Title="¿Borrar el lote y sus pases? No se puede deshacer."
+                                        OkText="Borrar" CancelText="Cancelar"
+                                        OnConfirm="() => BorrarLote(context.Id)">
+                                <Button Size="@ButtonSize.Small" Icon="delete" Danger Style="border-radius: 6px; margin-left: 8px;">
+                                    Borrar
+                                </Button>
+                            </Popconfirm>
                         </ActionColumn>
                     </ChildContent>
                 </LocalTable>
@@ -252,6 +259,26 @@
             false, false, false, false, null, null, null, null, null, null, null, null
         );
         _modalConfigVisible = true;
+    }
+
+    private async Task BorrarLote(Guid loteId)
+    {
+        try
+        {
+            var response = await Http.DeleteAsync($"api/pases/lotes/{loteId}");
+            if (!response.IsSuccessStatusCode)
+            {
+                Message.Error($"No se pudo borrar el lote ({(int)response.StatusCode}).");
+                return;
+            }
+
+            Message.Success("Lote borrado.");
+            await RecargarLotes();
+        }
+        catch (Exception ex)
+        {
+            Message.Error($"Error al borrar el lote: {ex.Message}");
+        }
     }
 
     private async Task DescargarXlsx(Guid loteId)

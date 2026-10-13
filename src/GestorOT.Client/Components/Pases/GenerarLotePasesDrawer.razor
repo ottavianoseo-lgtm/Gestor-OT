@@ -33,11 +33,22 @@
                 }
                 else
                 {
+                    <div style="display: flex; gap: 16px; margin-bottom: 8px;">
+                        <Checkbox Checked="@PaginaCompleta(_pendingWos, _selectedWos, _woQuery)"
+                                  CheckedChanged="@((bool v) => _selectedWos = MarcarPagina(_pendingWos, _selectedWos, _woQuery, v))">
+                            Seleccionar página
+                        </Checkbox>
+                        <Checkbox Checked="@(_selectedWos.Count() == _pendingWos.Count)"
+                                  CheckedChanged="@((bool v) => _selectedWos = v ? _pendingWos.ToList() : new List<PendingImputacionItemDto>())">
+                            Seleccionar todas (@_pendingWos.Count)
+                        </Checkbox>
+                    </div>
                     <Table TItem="PendingImputacionItemDto"
                            DataSource="_pendingWos"
                            Size="@TableSize.Small"
                            PageSize="10"
-                           SelectedRowsChanged="SelectedWoRowsChanged"
+                           @bind-SelectedRows="_selectedWos"
+                           OnChange="@((QueryModel<PendingImputacionItemDto> m) => _woQuery = m)"
                            RowKey="x => x.Id.ToString()">
                         <Selection Key="@(context.Id.ToString())" Type="SelectionType.Checkbox" />
                         <PropertyColumn Property="c => c.Identifier" Title="Identificador" Sortable />
@@ -69,11 +80,22 @@
                 }
                 else
                 {
+                    <div style="display: flex; gap: 16px; margin-bottom: 8px;">
+                        <Checkbox Checked="@PaginaCompleta(_pendingLabors, _selectedLabors, _laborQuery)"
+                                  CheckedChanged="@((bool v) => _selectedLabors = MarcarPagina(_pendingLabors, _selectedLabors, _laborQuery, v))">
+                            Seleccionar página
+                        </Checkbox>
+                        <Checkbox Checked="@(_selectedLabors.Count() == _pendingLabors.Count)"
+                                  CheckedChanged="@((bool v) => _selectedLabors = v ? _pendingLabors.ToList() : new List<PendingImputacionItemDto>())">
+                            Seleccionar todas (@_pendingLabors.Count)
+                        </Checkbox>
+                    </div>
                     <Table TItem="PendingImputacionItemDto"
                            DataSource="_pendingLabors"
                            Size="@TableSize.Small"
                            PageSize="10"
-                           SelectedRowsChanged="SelectedLaborRowsChanged"
+                           @bind-SelectedRows="_selectedLabors"
+                           OnChange="@((QueryModel<PendingImputacionItemDto> m) => _laborQuery = m)"
                            RowKey="x => x.Id.ToString()">
                         <Selection Key="@(context.Id.ToString())" Type="SelectionType.Checkbox" />
                         <PropertyColumn Property="c => c.Identifier" Title="Labor / Lote" Sortable />
@@ -97,14 +119,14 @@
 
         <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 16px; margin-top: 8px;">
             <span style="font-size: 13px; color: rgba(255,255,255,0.6);">
-                Seleccionados: <strong>@(_selectedWoIds.Count + _selectedLaborIds.Count)</strong> elementos
+                Seleccionados: <strong>@(_selectedWos.Count() + _selectedLabors.Count())</strong> elementos
             </span>
             <div style="display: flex; gap: 8px;">
                 <Button OnClick="HandleClose">Cancelar</Button>
                 <Button Type="@ButtonType.Primary"
                         Icon="file-done"
                         Loading="_generando"
-                        Disabled="@(_selectedWoIds.Count == 0 && _selectedLaborIds.Count == 0)"
+                        Disabled="@(!_selectedWos.Any() && !_selectedLabors.Any())"
                         OnClick="Generar"
                         Style="background: #2ECC71; border-color: #2ECC71; font-weight: 600;">
                     Generar Lote G4
@@ -128,8 +150,12 @@
     private List<PendingImputacionItemDto> _pendingWos = new();
     private List<PendingImputacionItemDto> _pendingLabors = new();
 
-    private HashSet<Guid> _selectedWoIds = new();
-    private HashSet<Guid> _selectedLaborIds = new();
+    // La casilla del encabezado de la tabla marca solo la pagina visible; estas listas guardan
+    // la seleccion completa, que es la que se manda al generar.
+    private IEnumerable<PendingImputacionItemDto> _selectedWos = new List<PendingImputacionItemDto>();
+    private IEnumerable<PendingImputacionItemDto> _selectedLabors = new List<PendingImputacionItemDto>();
+    private QueryModel<PendingImputacionItemDto>? _woQuery;
+    private QueryModel<PendingImputacionItemDto>? _laborQuery;
 
     protected override async Task OnParametersSetAsync()
     {
@@ -162,14 +188,32 @@
         }
     }
 
-    private void SelectedWoRowsChanged(IEnumerable<PendingImputacionItemDto> selected)
+    /// <summary>Las filas de la pagina que se ve, con el orden que tenga la tabla.</summary>
+    private static List<PendingImputacionItemDto> PaginaActual(
+        List<PendingImputacionItemDto> data, QueryModel<PendingImputacionItemDto>? query) =>
+        query is null
+            ? data.Take(10).ToList()
+            : query.CurrentPagedRecords(data.AsQueryable()).ToList();
+
+    private static bool PaginaCompleta(
+        List<PendingImputacionItemDto> data,
+        IEnumerable<PendingImputacionItemDto> seleccion,
+        QueryModel<PendingImputacionItemDto>? query)
     {
-        _selectedWoIds = selected.Select(x => x.Id).ToHashSet();
+        var pagina = PaginaActual(data, query);
+        return pagina.Count > 0 && pagina.All(seleccion.Contains);
     }
 
-    private void SelectedLaborRowsChanged(IEnumerable<PendingImputacionItemDto> selected)
+    private static List<PendingImputacionItemDto> MarcarPagina(
+        List<PendingImputacionItemDto> data,
+        IEnumerable<PendingImputacionItemDto> seleccion,
+        QueryModel<PendingImputacionItemDto>? query,
+        bool marcar)
     {
-        _selectedLaborIds = selected.Select(x => x.Id).ToHashSet();
+        var pagina = PaginaActual(data, query);
+        return marcar
+            ? seleccion.Union(pagina).ToList()
+            : seleccion.Except(pagina).ToList();
     }
 
     private async Task Generar()
@@ -178,8 +222,8 @@
         try
         {
             var req = new GenerarLoteRequestDto(
-                _selectedWoIds.ToList(),
-                _selectedLaborIds.ToList(),
+                _selectedWos.Select(x => x.Id).ToList(),
+                _selectedLabors.Select(x => x.Id).ToList(),
                 _descripcion
             );
 
@@ -213,8 +257,10 @@
     {
         _pendingWos.Clear();
         _pendingLabors.Clear();
-        _selectedWoIds.Clear();
-        _selectedLaborIds.Clear();
+        _selectedWos = new List<PendingImputacionItemDto>();
+        _selectedLabors = new List<PendingImputacionItemDto>();
+        _woQuery = null;
+        _laborQuery = null;
         _warnings.Clear();
         _descripcion = "";
         await IsOpenChanged.InvokeAsync(false);

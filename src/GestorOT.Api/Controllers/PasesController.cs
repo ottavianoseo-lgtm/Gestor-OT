@@ -61,6 +61,13 @@ public class PasesController : ControllerBase
         return Ok(result);
     }
 
+    [HttpDelete("lotes/{id:guid}")]
+    public async Task<IActionResult> DeleteLote(Guid id, CancellationToken ct)
+    {
+        var tenantId = _context.CurrentTenantId;
+        return await _paseBuilderService.DeleteLoteAsync(tenantId, id, ct) ? NoContent() : NotFound();
+    }
+
     [HttpGet("lotes/{id:guid}/export")]
     public async Task<IActionResult> ExportLote(Guid id, CancellationToken ct)
     {

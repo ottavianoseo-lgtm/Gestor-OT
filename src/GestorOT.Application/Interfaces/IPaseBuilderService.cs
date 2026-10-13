@@ -15,6 +15,9 @@ public interface IPaseBuilderService
 
     Task<PaseLoteDto?> GetLoteAsync(Guid tenantId, Guid loteId, CancellationToken ct = default);
 
+    /// <summary>Borra el lote y sus pases. False si no existe en el tenant.</summary>
+    Task<bool> DeleteLoteAsync(Guid tenantId, Guid loteId, CancellationToken ct = default);
+
     Task<IReadOnlyList<PendingImputacionItemDto>> GetPendingItemsAsync(Guid tenantId, CancellationToken ct = default);
 
     Task<IReadOnlyList<AccountConfigurationDto>> GetAccountConfigurationsAsync(Guid tenantId, CancellationToken ct = default);

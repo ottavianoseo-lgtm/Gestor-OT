@@ -471,6 +471,24 @@ public sealed class PaseBuilderService : IPaseBuilderService
                 p.Notas)).ToList());
     }
 
+    public async Task<bool> DeleteLoteAsync(Guid tenantId, Guid loteId, CancellationToken ct = default)
+    {
+        var lote = await _context.PasesLote
+            .FirstOrDefaultAsync(l => l.TenantId == tenantId && l.Id == loteId, ct);
+        if (lote == null) return false;
+
+        var pases = await _context.PasesImputacion
+            .Where(p => p.PaseLoteId == loteId)
+            .ToListAsync(ct);
+
+        _context.PasesImputacion.RemoveRange(pases);
+        _context.PasesLote.Remove(lote);
+        await _context.SaveChangesAsync(ct);
+
+        _logger.LogInformation("Lote Pases G4 borrado | LoteId={LoteId} Pases={PasesCount}", loteId, pases.Count);
+        return true;
+    }
+
     public async Task<IReadOnlyList<PendingImputacionItemDto>> GetPendingItemsAsync(Guid tenantId, CancellationToken ct = default)
     {
         var items = new List<PendingImputacionItemDto>();
