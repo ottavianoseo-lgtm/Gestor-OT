@@ -265,7 +265,7 @@ public class PaseSupplyRulesTests
         public Task<IReadOnlyList<ErpPrecio>> GetPreciosAsync(Guid tenantId, long codListaDePrecios, CancellationToken ct = default)
         {
             ListasConsultadas.Add(codListaDePrecios);
-            return Task.FromResult<IReadOnlyList<ErpPrecio>>(codListaDePrecios == 3 ? precios : Array.Empty<ErpPrecio>());
+            return Task.FromResult<IReadOnlyList<ErpPrecio>>(precios);
         }
     }
 
@@ -284,8 +284,7 @@ public class PaseSupplyRulesTests
 
         Assert.Equal(16.5m, Linea(pases, "50048").Precio);
         Assert.Equal(32m, Linea(pases, "50410").Precio);
-        Assert.Equal(12537m, Linea(pases, "50798").Precio);
-        Assert.Equal(new List<long> { 3 }, precios.ListasConsultadas);
+        Assert.Equal(new List<long> { 7, 3 }, precios.ListasConsultadas);
         Assert.DoesNotContain(warnings, w => w.Contains("precio 0"));
     }
 
@@ -300,5 +299,29 @@ public class PaseSupplyRulesTests
 
         Assert.Equal(0m, Linea(pases, "50048").Precio);
         Assert.Contains(warnings, w => w.Contains("Glifosato") && w.Contains("no tiene precio vigente"));
+    }
+
+    [Fact]
+    public async Task Labor_TomaElPrecioDeLaLista_YNoLaTarifa()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var s = Seed(dbName, conReglasDeInsumo: true);
+        var precios = new PreciosFijos(new ErpPrecio(50798, new DateTime(2026, 1, 1), 15000m));
+
+        var (pases, _) = await GenerarAsync(dbName, s, precios);
+
+        Assert.Equal(15000m, Linea(pases, "50798").Precio);
+    }
+
+    [Fact]
+    public async Task Labor_SinPrecioEnLaLista_UsaLaTarifaYAvisa()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var s = Seed(dbName, conReglasDeInsumo: true);
+
+        var (pases, warnings) = await GenerarAsync(dbName, s, new PreciosFijos());
+
+        Assert.Equal(12537m, Linea(pases, "50798").Precio);
+        Assert.Contains(warnings, w => w.Contains("SIEMBRA") && w.Contains("tarifa de la labor"));
     }
 }

@@ -232,6 +232,17 @@ public sealed class PaseBuilderService : IPaseBuilderService
             var puntoVenta = PuntoVentaDeCampania(labor.WorkOrder?.Campaign ?? labor.CampaignLot?.Campaign)
                 ?? config.PuntoVenta;
 
+            // El precio de la labor es el de la lista de su regla, como en la planilla (la misma
+            // tarea vale lo mismo en todas las OTs). La tarifa cargada en la labor queda de
+            // respaldo: en las importadas viene en 1 y no es un precio real.
+            var precioLabor = codConcepto > 0
+                ? await PrecioDeListaAsync(tenantId, config.CodListaDePrecios, codConcepto, fechaImputacion, preciosPorLista, warnings, ct)
+                : null;
+            if (precioLabor is null && codConcepto > 0)
+            {
+                warnings.Add($"Labor {labor.Id} ({labor.Type?.Name ?? "Sin Tipo"}): el concepto {codConcepto} no tiene precio vigente al {fechaImputacion:dd/MM/yyyy} en la lista {config.CodListaDePrecios?.ToString() ?? "(la regla no tiene lista)"}. Sale con la tarifa de la labor ({labor.Rate}).");
+            }
+
             var paseLabor = new PaseImputacion
             {
                 Id = Guid.NewGuid(),
@@ -257,7 +268,7 @@ public sealed class PaseBuilderService : IPaseBuilderService
                 CodigoConcepto = codigoConcepto,
                 CantidadAuxiliar = labor.Hectares > 0 ? labor.Hectares : null,
                 Cantidad = labor.EffectiveArea > 0 ? labor.EffectiveArea : labor.Hectares,
-                Precio = labor.Rate,
+                Precio = precioLabor ?? labor.Rate,
                 CodPerfilImputacionDebe = config.CodPerfilDebe,
                 CodPerfilImputacionHaber = config.CodPerfilHaber,
                 CodCuentaDebeGestion = config.CodCuentaDebeGestion,
@@ -329,9 +340,15 @@ public sealed class PaseBuilderService : IPaseBuilderService
                     continue;
                 }
 
+                // Sin precio vigente sale en 0 con aviso, para que no se importe un costo en cero
+                // sin que nadie lo note.
                 var precioInsumo = await PrecioDeListaAsync(
                     tenantId, sc.CodListaDePrecios, supplyConceptId, fechaImputacion,
-                    preciosPorLista, warnings, etiquetaInsumo, ct);
+                    preciosPorLista, warnings, ct);
+                if (precioInsumo is null)
+                {
+                    warnings.Add($"{etiquetaInsumo}: el concepto {supplyConceptId} no tiene precio vigente al {fechaImputacion:dd/MM/yyyy} en la lista {sc.CodListaDePrecios?.ToString() ?? "(la regla no tiene lista)"}. Sale con precio 0.");
+                }
 
                 var cantSupply = supply.RealTotal ?? supply.CalculatedTotal ?? supply.PlannedTotal;
                 var hectareasSupply = supply.RealHectares ?? supply.PlannedHectares;
@@ -369,7 +386,7 @@ public sealed class PaseBuilderService : IPaseBuilderService
                     // Como en la planilla: auxiliar = hectareas aplicadas, cantidad = total.
                     CantidadAuxiliar = hectareasSupply > 0 ? hectareasSupply : null,
                     Cantidad = cantSupply,
-                    Precio = precioInsumo,
+                    Precio = precioInsumo ?? 0,
                     CodPerfilImputacionDebe = sc.CodPerfilDebe,
                     CodPerfilImputacionHaber = sc.CodPerfilHaber,
                     CodCuentaDebeGestion = sc.CodCuentaDebeGestion,
@@ -661,24 +678,21 @@ public sealed class PaseBuilderService : IPaseBuilderService
 
     /// <summary>
     /// Precio unitario del concepto en la lista de precios de la regla, vigente a la fecha del
-    /// pase: el de vigenciaDesde mas reciente que no la supere, como en Ganaderia. Sin lista,
-    /// sin conexion al G4 o sin precio vigente sale en 0 con aviso, para que no se importe un
-    /// costo en cero sin que nadie lo note.
+    /// pase: el de vigenciaDesde mas reciente que no la supere, como en Ganaderia. Null si la
+    /// regla no tiene lista o no hay precio vigente; quien llama decide el respaldo y el aviso.
     /// </summary>
-    private async Task<decimal> PrecioDeListaAsync(
+    private async Task<decimal?> PrecioDeListaAsync(
         Guid tenantId,
         long? codLista,
         long codConcepto,
         DateTime fecha,
         Dictionary<long, IReadOnlyList<ErpPrecio>> cache,
         List<string> warnings,
-        string etiqueta,
         CancellationToken ct)
     {
         if (codLista is not long lista || lista <= 0)
         {
-            warnings.Add($"{etiqueta}: la regla de insumo no tiene lista de precios. Sale con precio 0.");
-            return 0;
+            return null;
         }
 
         if (!cache.TryGetValue(lista, out var precios))
@@ -690,27 +704,15 @@ public sealed class PaseBuilderService : IPaseBuilderService
 
             if (precios.Count == 0)
             {
-                warnings.Add($"No se pudieron leer precios de la lista {lista} del G4 (sin conexión o lista vacía). Sus insumos salen con precio 0.");
+                warnings.Add($"No se pudieron leer precios de la lista {lista} del G4 (sin conexión o lista vacía).");
             }
         }
 
-        if (precios.Count == 0)
-        {
-            return 0;
-        }
-
-        var vigente = precios
+        return precios
             .Where(p => p.CodConcepto == codConcepto && (p.VigenciaDesde is null || p.VigenciaDesde.Value.Date <= fecha.Date))
             .OrderByDescending(p => p.VigenciaDesde ?? DateTime.MinValue)
+            .Select(p => (decimal?)p.Precio)
             .FirstOrDefault();
-
-        if (vigente is null)
-        {
-            warnings.Add($"{etiqueta}: el concepto {codConcepto} no tiene precio vigente al {fecha:dd/MM/yyyy} en la lista {lista}. Sale con precio 0.");
-            return 0;
-        }
-
-        return vigente.Precio;
     }
 
     /// <summary>Los digitos del numero de OT ("OT-569" -> 569); null si no hay o no entra en int.</summary>

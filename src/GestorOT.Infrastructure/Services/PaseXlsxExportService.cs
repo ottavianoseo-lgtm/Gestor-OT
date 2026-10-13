@@ -7,9 +7,8 @@ using Microsoft.Extensions.Logging;
 namespace GestorOT.Infrastructure.Services;
 
 /// <summary>
-/// Arma el archivo de importacion de pases del G4 con el mismo layout que la planilla con la
-/// que hoy importan (Mechi SRL, Importador v5.08): encabezados en la fila 1 con sus nombres
-/// exactos, datos desde la 2 y la hoja llamada igual que el archivo, que el G4 exige.
+/// Arma el archivo de importacion de pases del G4: encabezados en la fila 1, datos desde la 2
+/// y la hoja llamada igual que el archivo, que el G4 exige (planilla Importador v5.08).
 /// </summary>
 public sealed class PaseXlsxExportService : IPaseXlsxExportService
 {
@@ -24,8 +23,11 @@ public sealed class PaseXlsxExportService : IPaseXlsxExportService
     private static XLCellValue CuentaGestion(long? cuenta, long? perfil) =>
         perfil.GetValueOrDefault() > 0 || cuenta.GetValueOrDefault() == 0 ? Blank.Value : (XLCellValue)cuenta!.Value;
 
-    // Columnas de la planilla, en su orden y con sus nombres (mayusculas incluidas).
-    private static readonly Columna[] ColumnasPlanilla =
+    // Las 30 columnas del layout de importacion del G4, en el orden del export de Ganaderia:
+    // siempre todas, aunque vengan vacias, para poder imputar por perfil o por cuenta. Los
+    // nombres que comparte con la planilla Importador v5.08 van como en ella (mayusculas
+    // incluidas, sin tilde), que es el archivo que hoy importa bien.
+    private static readonly Columna[] Columnas =
     [
         new("IdReferencia", p => p.IdReferencia),
         new("IdAgrupacionPase", p => p.IdAgrupacionPase),
@@ -46,23 +48,17 @@ public sealed class PaseXlsxExportService : IPaseXlsxExportService
         new("cantidadAuxiliar", p => p.CantidadAuxiliar.HasValue ? (XLCellValue)p.CantidadAuxiliar.Value : Blank.Value),
         new("cantidad", p => p.Cantidad),
         new("precio", p => p.Precio),
+        new("codPerfilImputacionDebe", p => OVacio(p.CodPerfilImputacionDebe)),
+        new("codPerfilImputacionHaber", p => OVacio(p.CodPerfilImputacionHaber)),
         new("codCuentaDebeGestion", p => CuentaGestion(p.CodCuentaDebeGestion, p.CodPerfilImputacionDebe), "0"),
         new("codCuentaHaberGestion", p => CuentaGestion(p.CodCuentaHaberGestion, p.CodPerfilImputacionHaber), "0"),
         new("codCuentaDebeCentro", p => OVacio(p.CodCuentaDebeCentro), "0"),
         new("codCuentaHaberCentro", p => OVacio(p.CodCuentaHaberCentro), "0"),
+        new("codCuentaDebeContabilidad", p => OVacio(p.CodCuentaDebeContabilidad), "0"),
+        new("codCuentaHaberContabilidad", p => OVacio(p.CodCuentaHaberContabilidad), "0"),
+        new("codCuentaDebeAuxiliar", p => OVacio(p.CodCuentaDebeAuxiliar), "0"),
+        new("codCuentaHaberAuxiliar", p => OVacio(p.CodCuentaHaberAuxiliar), "0"),
         new("Notas", p => p.Notas ?? ""),
-    ];
-
-    // La planilla no las usa (cuentas explicitas, sin contabilidad ni auxiliar). Se agregan al
-    // final solo si alguna linea del lote las trae, para no correr las columnas de la planilla.
-    private static readonly (Columna Columna, Func<PaseImputacion, long?> Dato)[] ColumnasOpcionales =
-    [
-        (new("codPerfilImputacionDebe", p => OVacio(p.CodPerfilImputacionDebe)), p => p.CodPerfilImputacionDebe),
-        (new("codPerfilImputacionHaber", p => OVacio(p.CodPerfilImputacionHaber)), p => p.CodPerfilImputacionHaber),
-        (new("codCuentaDebeContabilidad", p => OVacio(p.CodCuentaDebeContabilidad), "0"), p => p.CodCuentaDebeContabilidad),
-        (new("codCuentaHaberContabilidad", p => OVacio(p.CodCuentaHaberContabilidad), "0"), p => p.CodCuentaHaberContabilidad),
-        (new("codCuentaDebeAuxiliar", p => OVacio(p.CodCuentaDebeAuxiliar), "0"), p => p.CodCuentaDebeAuxiliar),
-        (new("codCuentaHaberAuxiliar", p => OVacio(p.CodCuentaHaberAuxiliar), "0"), p => p.CodCuentaHaberAuxiliar),
     ];
 
     public PaseXlsxExportService(
@@ -100,10 +96,7 @@ public sealed class PaseXlsxExportService : IPaseXlsxExportService
         var fileName = $"{nombre}.xlsx";
 
         var columnas = new List<Columna> { new("idImportacion", _ => idImportacion) };
-        columnas.AddRange(ColumnasPlanilla);
-        columnas.AddRange(ColumnasOpcionales
-            .Where(o => pases.Any(p => o.Dato(p).GetValueOrDefault() > 0))
-            .Select(o => o.Columna));
+        columnas.AddRange(Columnas);
 
         using var wb = new XLWorkbook();
         var ws = wb.AddWorksheet(nombre);

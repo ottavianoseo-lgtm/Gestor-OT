@@ -23,7 +23,9 @@ public class PaseXlsxExportTests
         "noImputaGestion", "noImputaContabilidad", "noImputaCentro", "noImputaAuxiliar",
         "puntoVenta", "numeroComprobante", "fecha", "codPersona", "codMoneda", "codListaDePrecios",
         "codConcepto", "cantidadAuxiliar", "cantidad", "precio",
+        "codPerfilImputacionDebe", "codPerfilImputacionHaber",
         "codCuentaDebeGestion", "codCuentaHaberGestion", "codCuentaDebeCentro", "codCuentaHaberCentro",
+        "codCuentaDebeContabilidad", "codCuentaHaberContabilidad", "codCuentaDebeAuxiliar", "codCuentaHaberAuxiliar",
         "Notas"
     ];
 
@@ -103,6 +105,7 @@ public class PaseXlsxExportTests
 
         Assert.Equal("PasesG4_0002_20261013.xlsx", fileName);
         Assert.Equal(Path.GetFileNameWithoutExtension(fileName), ws.Name);
+        // Las 30 columnas siempre, aunque el lote no use perfiles ni contabilidad.
         Assert.Equal(HeadersPlanilla, ws.Row(1).CellsUsed().Select(c => c.GetString()).ToArray());
         Assert.Equal(3, ws.LastRowUsed()!.RowNumber());
     }
@@ -127,15 +130,14 @@ public class PaseXlsxExportTests
     }
 
     [Fact]
-    public async Task ColumnasExtra_SoloSiAlgunaLineaUsaPerfil_YAlFinal()
+    public async Task ConPerfil_LaCuentaDeGestionVaVacia()
     {
         var (wb, _) = await ExportarSegundoLoteAsync(p => p.CodPerfilImputacionDebe = 55);
         var ws = wb.Worksheets.Single();
-        var headers = ws.Row(1).CellsUsed().Select(c => c.GetString()).ToList();
+        int Col(string header) => Array.IndexOf(HeadersPlanilla, header) + 1;
 
-        Assert.Equal(HeadersPlanilla, headers.Take(HeadersPlanilla.Length));
-        Assert.Equal(new[] { "codPerfilImputacionDebe" }, headers.Skip(HeadersPlanilla.Length));
-        // Con perfil la cuenta de gestion del debe va vacia: imputa el perfil.
-        Assert.True(ws.Cell(3, Array.IndexOf(HeadersPlanilla, "codCuentaDebeGestion") + 1).Value.IsBlank);
+        Assert.Equal(55, ws.Cell(3, Col("codPerfilImputacionDebe")).Value.GetNumber());
+        Assert.True(ws.Cell(3, Col("codCuentaDebeGestion")).Value.IsBlank);
+        Assert.Equal(11740310, ws.Cell(2, Col("codCuentaDebeGestion")).Value.GetNumber());
     }
 }
