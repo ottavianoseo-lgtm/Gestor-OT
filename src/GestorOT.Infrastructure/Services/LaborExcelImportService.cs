@@ -514,6 +514,12 @@ public class LaborExcelImportService : ILaborExcelImportService
 
             var workOrder = ResolveWorkOrder(parsedLabor, campaignLot, workOrderCache, existingContacts);
 
+            // Quien hizo la labor es su contacto, y de ahi sale la persona del pase del G4: el
+            // contratista si es de terceros, el responsable de la fila si es propia (el
+            // empleado que la hizo, que cambia de labor a labor). La OT solo agrupa; antes el
+            // responsable quedaba en la OT y la labor siempre sin contacto.
+            var laborContactId = ResolveLaborContact(parsedLabor, existingContacts, LiveContact);
+
             // Check if labor already exists (deduplication on re-import: same Lot + Date + LaborType).
             // Con Nro OT, la OT también es parte de la identidad: dos operativos distintos
             // pueden fumigar el mismo lote el mismo día (ej. Amand OT 755 y 760), y sin
@@ -535,7 +541,8 @@ public class LaborExcelImportService : ILaborExcelImportService
             {
                 existingLabor.Hectares = parsedLabor.Hectares;
                 existingLabor.EffectiveArea = parsedLabor.Hectares;
-                existingLabor.ContactId = null;
+                // Al reimportar sin un nombre que matchee no se borra el que ya tenia.
+                existingLabor.ContactId = laborContactId ?? existingLabor.ContactId;
                 existingLabor.WorkOrderId = workOrder?.Id ?? existingLabor.WorkOrderId;
                 existingLabor.IsExternalBilling = parsedLabor.IsExternalBilling;
                 existingLabor.ExecutionDate = LocalDay.ToUtc(parsedLabor.Date);
@@ -577,13 +584,15 @@ public class LaborExcelImportService : ILaborExcelImportService
                     CampaignLotId = parsedLabor.CampaignLotId.Value,
                     ErpActivityId = resolvedActivityId,
                     LaborTypeId = targetLaborTypeId.Value,
-                    ContactId = null,
+                    ContactId = laborContactId,
                     IsExternalBilling = parsedLabor.IsExternalBilling,
                     ExecutionDate = LocalDay.ToUtc(parsedLabor.Date),
                     EstimatedDate = LocalDay.ToUtc(parsedLabor.Date),
                     Hectares = parsedLabor.Hectares,
                     EffectiveArea = parsedLabor.Hectares,
-                    Rate = 1,
+                    // La planilla no trae tarifa: queda en 0 (sin tarifa), no en 1, que pasaba
+                    // como precio real. El precio del pase sale de la lista del G4.
+                    Rate = 0,
                     RateUnit = "ha",
                     PlannedDose = 1,
                     RealizedDose = isRealized ? 1 : null,
@@ -701,6 +710,25 @@ public class LaborExcelImportService : ILaborExcelImportService
     /// El responsable se vincula a la OT (ContactId) si matchea con el padrón; el texto
     /// crudo queda siempre en AssignedTo. La labor sigue sin responsable propio.
     /// </summary>
+    /// <summary>
+    /// Contacto de la labor: el que ya trae la fila (elegido al revisar el lote) y si no, el
+    /// contratista cuando es de terceros o el responsable cuando es propia. "Propio" no es una
+    /// persona, asi que en una propia se usa el responsable.
+    /// </summary>
+    private static Guid? ResolveLaborContact(
+        LaborImportParsedLaborDto parsedLabor,
+        List<Contact> contacts,
+        Func<Guid?, Guid?> liveContact)
+    {
+        if (liveContact(parsedLabor.ContactId) is Guid elegido)
+            return elegido;
+
+        if (parsedLabor.IsExternalBilling && MatchContact(parsedLabor.Contractor, contacts).ContactId is Guid contratista)
+            return contratista;
+
+        return MatchContact(parsedLabor.WorkOrderResponsible, contacts).ContactId;
+    }
+
     private WorkOrder? ResolveWorkOrder(
         LaborImportParsedLaborDto parsedLabor,
         CampaignLot? campaignLot,

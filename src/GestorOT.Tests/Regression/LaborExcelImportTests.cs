@@ -277,7 +277,7 @@ public class LaborExcelImportTests
     }
 
     [Fact]
-    public async Task LaborExcelImport_NeverSetsLaborContact_ButKeepsExternalBillingFlag()
+    public async Task LaborExcelImport_SetsContractorAsLaborContact_OnlyWhenExternal()
     {
         var dbName = Guid.NewGuid().ToString();
         var tenantId = Guid.NewGuid();
@@ -328,9 +328,8 @@ public class LaborExcelImportTests
             Assert.Null(laborPropio.ContactId);
             Assert.False(laborPropio.IsExternalBilling);
 
-            // Labor 2 ("Don Carlos"): el responsable NO se importa aunque el contacto
-            // exista en el padrón; se asigna después desde la labor. Lo que sí queda es
-            // que la labor es de un tercero y el texto crudo de la planilla.
+            // Labor 2 ("Don Carlos"): la vista previa no resuelve el contacto; se resuelve al
+            // importar contra el padrón, porque es la persona del pase del G4.
             var laborCarlos = preview.Labors[1];
             Assert.Null(laborCarlos.ContactId);
             Assert.Equal("Don Carlos", laborCarlos.Contractor);
@@ -349,8 +348,8 @@ public class LaborExcelImportTests
             Assert.Null(dbLabors[0].ContactId);
             Assert.False(dbLabors[0].IsExternalBilling);
 
-            // Labor 2 in DB
-            Assert.Null(dbLabors[1].ContactId);
+            // Labor 2 in DB: de un tercero, su contacto es el contratista.
+            Assert.Equal(contractorContactId, dbLabors[1].ContactId);
             Assert.True(dbLabors[1].IsExternalBilling);
         }
     }

@@ -144,6 +144,10 @@ public class LaborImportWorkOrderTests
         Assert.True(ot711.AcceptsMultipleDates);
         Assert.Equal(2, ot711.Labors.Count);
         Assert.All(ot711.Labors, l => Assert.Equal(LaborMode.Realized, l.Mode));
+        // El responsable de la fila es el contacto de cada labor propia (la persona del pase),
+        // y la planilla no trae tarifa: queda en 0, no en 1.
+        Assert.All(ot711.Labors, l => Assert.Equal(farias.Id, l.ContactId));
+        Assert.All(ot711.Labors, l => Assert.Equal(0m, l.Rate));
 
         // Fecha pasada pero la planilla dice Planeada: no se ejecutó todavía.
         var ot767 = orders[1];
@@ -152,6 +156,7 @@ public class LaborImportWorkOrderTests
         Assert.Equal(LaborStatus.Planned, planned.Status);
         Assert.Null(planned.RealizedDose);
         Assert.Null(ot767.ContactId);
+        Assert.Null(planned.ContactId);
         Assert.Equal("LAGOS FRANCO", ot767.AssignedTo);
         // Con una labor planeada sigue abierta, en el estado por defecto.
         Assert.Equal(status.Id, ot767.WorkOrderStatusId);
