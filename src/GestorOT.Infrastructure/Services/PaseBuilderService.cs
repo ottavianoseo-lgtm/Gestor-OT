@@ -80,20 +80,17 @@ public sealed class PaseBuilderService : IPaseBuilderService
             .ToDictionary(g => g.Key, g => g.Select(x => x.PaseLoteId).Distinct().ToList());
         var numeros = yaEnLote.Count > 0 ? await NumerosDeLoteAsync(tenantId, ct) : new Dictionary<Guid, int>();
 
-        string Etiqueta(Labor l) =>
-            $"{(l.WorkOrder != null ? $"OT {l.WorkOrder.OTNumber}: " : "")}labor {l.Type?.Name ?? "Sin Tipo"} en lote {l.Lot?.Name ?? "S/N"}";
-
         var aProcesar = new List<Labor>();
         foreach (var l in allLabors)
         {
             if (yaEnLote.TryGetValue(l.Id, out var lotes))
             {
                 var nros = string.Join(", ", lotes.Select(id => numeros.TryGetValue(id, out var n) ? n.ToString("D4") : "?"));
-                warnings.Add($"{Etiqueta(l)}: ya está en el lote {nros}. Se omitió.");
+                warnings.Add($"{EtiquetaLabor(l)}: ya está en el lote {nros}. Se omitió.");
             }
             else if (!EstaRealizada(l))
             {
-                warnings.Add($"{Etiqueta(l)}: no está realizada ({l.Status}). Se omitió.");
+                warnings.Add($"{EtiquetaLabor(l)}: no está realizada ({l.Status}). Se omitió.");
             }
             else
             {
@@ -181,13 +178,13 @@ public sealed class PaseBuilderService : IPaseBuilderService
 
             if (config == null)
             {
-                warnings.Add($"Labor {labor.Id} ({labor.Type?.Name ?? "Sin Tipo"}): Sin AccountConfiguration configurada. Se omitió.");
+                warnings.Add($"{EtiquetaLabor(labor)}: Sin AccountConfiguration configurada. Se omitió.");
                 continue;
             }
 
             if (!config.CodEmpresa.HasValue || !config.CodComprobante.HasValue || !config.CodMoneda.HasValue)
             {
-                warnings.Add($"Labor {labor.Id}: AccountConfiguration incompleta (falta CodEmpresa, CodComprobante o CodMoneda). Se omitió.");
+                warnings.Add($"{EtiquetaLabor(labor)}: AccountConfiguration incompleta (falta CodEmpresa, CodComprobante o CodMoneda). Se omitió.");
                 continue;
             }
 
@@ -207,7 +204,7 @@ public sealed class PaseBuilderService : IPaseBuilderService
 
             if (!config.NoImputaCentro && codCentroDebe is null)
             {
-                warnings.Add($"Labor {labor.Id} ({labor.Type?.Name ?? "Sin Tipo"}) en lote {labor.Lot?.Name ?? "S/N"}: el comprobante imputa centro pero ni el lote ni su campo tienen centro asignado, y la regla contable tampoco. Asignale el centro al campo (o al lote si es una excepcion).");
+                warnings.Add($"{EtiquetaLabor(labor)}: el comprobante imputa centro pero ni el lote ni su campo tienen centro asignado, y la regla contable tampoco. Asignale el centro al campo (o al lote si es una excepcion).");
             }
 
             // Resolve ErpConcept for LaborType
@@ -267,7 +264,7 @@ public sealed class PaseBuilderService : IPaseBuilderService
             int? numeroComprobante = NumeroDeOt(labor.WorkOrder?.OTNumber);
             if (labor.WorkOrder != null && numeroComprobante is null)
             {
-                warnings.Add($"Labor {labor.Id}: la OT '{labor.WorkOrder.OTNumber}' no tiene un numero valido para el comprobante. Sale sin numeroComprobante.");
+                warnings.Add($"{EtiquetaLabor(labor)}: la OT '{labor.WorkOrder.OTNumber}' no tiene un numero valido para el comprobante. Sale sin numeroComprobante.");
             }
 
             var puntoVenta = PuntoVentaDeCampania(labor.WorkOrder?.Campaign ?? labor.CampaignLot?.Campaign)
@@ -281,7 +278,7 @@ public sealed class PaseBuilderService : IPaseBuilderService
                 : null;
             if (precioLabor is null && codConcepto > 0)
             {
-                warnings.Add($"Labor {labor.Id} ({labor.Type?.Name ?? "Sin Tipo"}): el concepto {codConcepto} no tiene precio vigente al {fechaImputacion:dd/MM/yyyy} en la lista {config.CodListaDePrecios?.ToString() ?? "(la regla no tiene lista)"}. Sale con la tarifa de la labor ({labor.Rate}).");
+                warnings.Add($"{EtiquetaLabor(labor)}: el concepto {codConcepto} no tiene precio vigente al {fechaImputacion:dd/MM/yyyy} en la lista {config.CodListaDePrecios?.ToString() ?? "(la regla no tiene lista)"}. Sale con la tarifa de la labor ({labor.Rate}).");
             }
 
             var paseLabor = new PaseImputacion
@@ -332,14 +329,14 @@ public sealed class PaseBuilderService : IPaseBuilderService
             }
             else
             {
-                warnings.Add($"Labor {labor.Id} ({labor.Type?.Name ?? "Sin Tipo"}) en lote {labor.Lot?.Name ?? "S/N"}: el tipo de labor no tiene concepto del ERP. Se omitió la línea de la labor; vinculá el tipo de labor a su concepto en el catálogo.");
+                warnings.Add($"{EtiquetaLabor(labor)}: el tipo de labor no tiene concepto del ERP. Se omitió la línea de la labor; vinculá el tipo de labor a su concepto en el catálogo.");
             }
 
             foreach (var supply in labor.Supplies)
             {
                 if (supply.Supply == null) continue;
 
-                var etiquetaInsumo = $"Insumo {supply.Supply.ItemName} en labor {labor.Id}";
+                var etiquetaInsumo = $"Insumo {supply.Supply.ItemName} en {EtiquetaLabor(labor)}";
 
                 // Sin ninguna regla de insumo cargada se sigue imputando con la de la labor,
                 // como antes de que existieran, para no cortar a quien todavia no las configuro.
@@ -627,6 +624,13 @@ public sealed class PaseBuilderService : IPaseBuilderService
         return items.OrderByDescending(i => i.Date).ToList();
     }
 
+    /// <summary>
+    /// Como se nombra una labor en los avisos: por su OT, su tipo y su lote, que es como la
+    /// ubica quien carga ("OT 763: labor FUMIGACION en lote 23"), no por su id.
+    /// </summary>
+    private static string EtiquetaLabor(Labor l) =>
+        $"{(l.WorkOrder != null ? $"OT {l.WorkOrder.OTNumber}: " : "")}labor {l.Type?.Name ?? "Sin Tipo"} en lote {l.Lot?.Name ?? "S/N"}";
+
     /// <summary>Solo las ejecutadas van al G4: realizada o validada por el ejecutor.</summary>
     private static bool EstaRealizada(Labor labor) =>
         labor.Status == LaborStatus.Realized || labor.Status == LaborStatus.Validated;
@@ -753,7 +757,7 @@ public sealed class PaseBuilderService : IPaseBuilderService
         AccountConfiguration? defaultConfig,
         List<string> warnings)
     {
-        var etiqueta = $"Labor {labor.Id} ({labor.Type?.Name ?? "Sin Tipo"})";
+        var etiqueta = EtiquetaLabor(labor);
 
         // El override explicito de la labor gana sobre cualquier regla.
         if (labor.AccountConfigurationId is Guid explicitId)
