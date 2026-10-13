@@ -324,4 +324,52 @@ public class PaseSupplyRulesTests
         Assert.Equal(12537m, Linea(pases, "50798").Precio);
         Assert.Contains(warnings, w => w.Contains("SIEMBRA") && w.Contains("tarifa de la labor"));
     }
+
+    [Fact]
+    public async Task LaborYaEnUnLote_NoVuelveASalir_YQuedaLinkeadaAlLote()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var s = Seed(dbName, conReglasDeInsumo: true);
+        await GenerarAsync(dbName, s);
+
+        using var ctx = CreateContext(dbName, s.TenantId);
+        var service = new PaseBuilderService(ctx, NullLogger<PaseBuilderService>.Instance);
+
+        var segundo = await service.GenerarLoteAsync(s.TenantId, null, new List<Guid> { s.LaborId });
+        Assert.False(segundo.Success);
+        Assert.Contains(segundo.Warnings, w => w.Contains("ya está en el lote 0001"));
+        Assert.Single(await ctx.PasesLote.ToListAsync());
+
+        var pendiente = Assert.Single(await service.GetPendingItemsAsync(s.TenantId));
+        Assert.Equal(1, Assert.Single(pendiente.Lotes).Numero);
+        Assert.Equal(0, pendiente.LaboresListas);
+        Assert.False(pendiente.Importable);
+    }
+
+    [Fact]
+    public async Task LaborSinRealizar_NoEntraAlLote()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var s = Seed(dbName, conReglasDeInsumo: true);
+        using (var ctx = CreateContext(dbName, s.TenantId))
+        {
+            var labor = await ctx.Labors.SingleAsync(l => l.Id == s.LaborId);
+            labor.Status = LaborStatus.Planned;
+            await ctx.SaveChangesAsync();
+        }
+
+        using (var ctx = CreateContext(dbName, s.TenantId))
+        {
+            var service = new PaseBuilderService(ctx, NullLogger<PaseBuilderService>.Instance);
+
+            var pendiente = Assert.Single(await service.GetPendingItemsAsync(s.TenantId));
+            Assert.Equal(1, pendiente.LaboresSinRealizar);
+            Assert.False(pendiente.Importable);
+
+            var result = await service.GenerarLoteAsync(s.TenantId, null, new List<Guid> { s.LaborId });
+            Assert.False(result.Success);
+            Assert.Contains(result.Warnings, w => w.Contains("no está realizada"));
+            Assert.Empty(await ctx.PasesLote.ToListAsync());
+        }
+    }
 }

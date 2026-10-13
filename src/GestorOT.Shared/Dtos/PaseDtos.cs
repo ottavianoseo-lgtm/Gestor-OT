@@ -12,6 +12,8 @@ public record PaseLoteDto
     public int TotalPases { get; set; }
     public string Estado { get; set; } = string.Empty;
     public List<PaseImputacionDto> Pases { get; set; } = new();
+    /// <summary>Numero correlativo del lote en el tenant (el idImportacion del archivo).</summary>
+    public int Numero { get; set; }
 
     [JsonConstructor]
     public PaseLoteDto() { }
@@ -192,6 +194,14 @@ public record PendingImputacionItemDto
     public decimal Area { get; set; }
     public string Status { get; set; } = string.Empty;
 
+    /// <summary>Lotes en los que ya hay pases de esta OT o labor.</summary>
+    public List<LoteRefDto> Lotes { get; set; } = new();
+    /// <summary>Labores realizadas que todavia no estan en ningun lote: las que entrarian al generar.</summary>
+    public int LaboresListas { get; set; }
+    /// <summary>Labores sin realizar: no entran al lote hasta que se realicen.</summary>
+    public int LaboresSinRealizar { get; set; }
+    public bool Importable => LaboresListas > 0;
+
     [JsonConstructor]
     public PendingImputacionItemDto() { }
     public PendingImputacionItemDto(Guid id, string type, string identifier, DateTime date, string details, decimal area, string status)
@@ -306,3 +316,17 @@ public record AccountConfigurationDto
     }
 }
 
+
+public record LoteRefDto
+{
+    public Guid Id { get; set; }
+    public int Numero { get; set; }
+
+    [JsonConstructor]
+    public LoteRefDto() { }
+    public LoteRefDto(Guid id, int numero)
+    {
+        Id = id;
+        Numero = numero;
+    }
+}

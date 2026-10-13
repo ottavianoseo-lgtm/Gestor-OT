@@ -46,7 +46,7 @@
                             DataSource="_lotes"
                             Loading="@_loading"
                             OnReload="RecargarLotes"
-                            SearchBy='l => $"{l.Id} {l.Descripcion} {l.Estado}"'
+                            SearchBy='l => $"{l.Numero:D4} {l.Id} {l.Descripcion} {l.Estado}"'
                             SearchPlaceholder="Buscar descripción o ID..."
                             Predicate="FiltrarLote"
                             ItemLabel="lotes"
@@ -55,8 +55,8 @@
                         <SelectFilter Param="estado" Placeholder="Estado" Options="EstadoOptions" />
                     </Filters>
                     <ChildContent>
-                        <PropertyColumn Property="c => c.Id" Title="Lote ID" Sortable>
-                            <span style="font-family: monospace; color: rgba(255,255,255,0.7);">@context.Id.ToString()[..8]...</span>
+                        <PropertyColumn Property="c => c.Numero" Title="Lote" Sortable>
+                            <a style="font-family: monospace; font-weight: 700;" @onclick="() => _loteDetalleId = context.Id">@context.Numero.ToString("D4")</a>
                         </PropertyColumn>
                         <PropertyColumn Property="c => c.Descripcion" Title="Descripción">
                             <span style="font-weight: 600; color: #fff;">@(string.IsNullOrEmpty(context.Descripcion) ? "—" : context.Descripcion)</span>
@@ -156,7 +156,12 @@
 
 <GenerarLotePasesDrawer IsOpen="@_modalGenerarVisible"
                         IsOpenChanged="v => _modalGenerarVisible = v"
-                        OnLoteGenerado="RecargarLotes" />
+                        OnLoteGenerado="RecargarLotes"
+                        OnVerLote="VerLoteDesdeGenerar" />
+
+<LoteDetalleModal @bind-LoteId="_loteDetalleId"
+                  OnDescargar="DescargarXlsx"
+                  OnBorrar="BorrarLote" />
 
 <ConfiguracionG4Modal Visible="@_modalConfigVisible"
                       VisibleChanged="v => _modalConfigVisible = v"
@@ -169,6 +174,7 @@
     private bool _loading = true;
     private bool _loadingConfigs = true;
     private bool _modalGenerarVisible;
+    private Guid? _loteDetalleId;
     private bool _modalConfigVisible;
     private AccountConfigurationDto? _selectedConfig;
 
@@ -244,6 +250,12 @@
     }
 
     private void AbrirModalGenerar() => _modalGenerarVisible = true;
+
+    private void VerLoteDesdeGenerar(Guid loteId)
+    {
+        _modalGenerarVisible = false;
+        _loteDetalleId = loteId;
+    }
 
     private void EditarConfiguracion(AccountConfigurationDto config)
     {

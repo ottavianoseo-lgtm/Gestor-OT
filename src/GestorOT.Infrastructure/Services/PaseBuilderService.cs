@@ -66,6 +66,48 @@ public sealed class PaseBuilderService : IPaseBuilderService
             return new PaseLoteResult(Guid.Empty, 0, new List<string> { "No se encontraron labores asociadas a los IDs especificados." }, false, "No hay labores para procesar.");
         }
 
+        var warnings = new List<string>();
+
+        // Una labor va a un solo lote: si ya salio en otro, importarla de nuevo duplica el costo
+        // en el G4. Y solo van las realizadas, como en la planilla (estado importable).
+        var idsSeleccionados = allLabors.Select(l => l.Id).ToList();
+        var yaEnLote = (await _context.PasesImputacion
+                .AsNoTracking()
+                .Where(p => p.TenantId == tenantId && p.LaborId != null && idsSeleccionados.Contains(p.LaborId.Value))
+                .Select(p => new { LaborId = p.LaborId!.Value, p.PaseLoteId })
+                .ToListAsync(ct))
+            .GroupBy(x => x.LaborId)
+            .ToDictionary(g => g.Key, g => g.Select(x => x.PaseLoteId).Distinct().ToList());
+        var numeros = yaEnLote.Count > 0 ? await NumerosDeLoteAsync(tenantId, ct) : new Dictionary<Guid, int>();
+
+        string Etiqueta(Labor l) =>
+            $"{(l.WorkOrder != null ? $"OT {l.WorkOrder.OTNumber}: " : "")}labor {l.Type?.Name ?? "Sin Tipo"} en lote {l.Lot?.Name ?? "S/N"}";
+
+        var aProcesar = new List<Labor>();
+        foreach (var l in allLabors)
+        {
+            if (yaEnLote.TryGetValue(l.Id, out var lotes))
+            {
+                var nros = string.Join(", ", lotes.Select(id => numeros.TryGetValue(id, out var n) ? n.ToString("D4") : "?"));
+                warnings.Add($"{Etiqueta(l)}: ya está en el lote {nros}. Se omitió.");
+            }
+            else if (!EstaRealizada(l))
+            {
+                warnings.Add($"{Etiqueta(l)}: no está realizada ({l.Status}). Se omitió.");
+            }
+            else
+            {
+                aProcesar.Add(l);
+            }
+        }
+
+        if (!aProcesar.Any())
+        {
+            return new PaseLoteResult(Guid.Empty, 0, warnings, false, "Ninguna labor seleccionada está realizada y fuera de otro lote.");
+        }
+
+        allLabors = aProcesar;
+
         // Load account configurations
         var configs = await _context.AccountConfigurations
             .AsNoTracking()
@@ -119,7 +161,6 @@ public sealed class PaseBuilderService : IPaseBuilderService
         };
 
         var pases = new List<PaseImputacion>();
-        var warnings = new List<string>();
 
         // Una consulta por lista de precios en todo el lote, no una por insumo.
         var preciosPorLista = new Dictionary<long, IReadOnlyList<ErpPrecio>>();
@@ -437,9 +478,14 @@ public sealed class PaseBuilderService : IPaseBuilderService
             .OrderByDescending(l => l.GeneradoEn)
             .ToListAsync(ct);
 
+        var numeros = await NumerosDeLoteAsync(tenantId, ct);
+
         return lotes.Select(l => new PaseLoteDto(
             l.Id, l.TenantId, l.GeneradoEn, l.Descripcion,
-            l.TotalPases, l.Estado, new List<PaseImputacionDto>())).ToList();
+            l.TotalPases, l.Estado, new List<PaseImputacionDto>())
+        {
+            Numero = numeros.GetValueOrDefault(l.Id)
+        }).ToList();
     }
 
     public async Task<PaseLoteDto?> GetLoteAsync(Guid tenantId, Guid loteId, CancellationToken ct = default)
@@ -451,6 +497,8 @@ public sealed class PaseBuilderService : IPaseBuilderService
             .FirstOrDefaultAsync(ct);
 
         if (lote == null) return null;
+
+        var numeros = await NumerosDeLoteAsync(tenantId, ct);
 
         return new PaseLoteDto(
             lote.Id, lote.TenantId, lote.GeneradoEn, lote.Descripcion,
@@ -468,7 +516,10 @@ public sealed class PaseBuilderService : IPaseBuilderService
                 p.CodCuentaDebeCentro, p.CodCuentaHaberCentro,
                 p.CodCuentaDebeContabilidad, p.CodCuentaHaberContabilidad,
                 p.CodCuentaDebeAuxiliar, p.CodCuentaHaberAuxiliar,
-                p.Notas)).ToList());
+                p.Notas)).ToList())
+        {
+            Numero = numeros.GetValueOrDefault(lote.Id)
+        };
     }
 
     public async Task<bool> DeleteLoteAsync(Guid tenantId, Guid loteId, CancellationToken ct = default)
@@ -493,7 +544,28 @@ public sealed class PaseBuilderService : IPaseBuilderService
     {
         var items = new List<PendingImputacionItemDto>();
 
-        // 1. Work Orders with executed/realized labors
+        // En que lote esta cada labor: una OT o labor que ya salio no se vuelve a ofrecer
+        // como lista, y desde la lista se puede ir al lote.
+        var lotesPorLabor = (await _context.PasesImputacion
+                .AsNoTracking()
+                .Where(p => p.TenantId == tenantId && p.LaborId != null)
+                .Select(p => new { LaborId = p.LaborId!.Value, p.PaseLoteId })
+                .Distinct()
+                .ToListAsync(ct))
+            .GroupBy(x => x.LaborId)
+            .ToDictionary(g => g.Key, g => g.Select(x => x.PaseLoteId).ToList());
+        var numeros = await NumerosDeLoteAsync(tenantId, ct);
+
+        List<LoteRefDto> Lotes(IEnumerable<Labor> labores) => labores
+            .SelectMany(l => lotesPorLabor.GetValueOrDefault(l.Id) ?? new List<Guid>())
+            .Distinct()
+            .Select(id => new LoteRefDto(id, numeros.GetValueOrDefault(id)))
+            .OrderBy(r => r.Numero)
+            .ToList();
+
+        int Listas(IEnumerable<Labor> labores) =>
+            labores.Count(l => EstaRealizada(l) && !lotesPorLabor.ContainsKey(l.Id));
+
         var wos = await _context.WorkOrders
             .AsNoTracking()
             .Include(w => w.Labors).ThenInclude(l => l.Type)
@@ -502,7 +574,7 @@ public sealed class PaseBuilderService : IPaseBuilderService
 
         foreach (var wo in wos)
         {
-            var executedLaborsCount = wo.Labors.Count(l => l.Status == LaborStatus.Realized || l.Status == LaborStatus.Validated);
+            var executedLaborsCount = wo.Labors.Count(EstaRealizada);
             var totalArea = wo.Labors.Sum(l => l.EffectiveArea > 0 ? l.EffectiveArea : l.Hectares);
             var identifier = !string.IsNullOrEmpty(wo.OTNumber) ? $"OT #{wo.OTNumber}" : (wo.Name ?? "OT sin nombre");
 
@@ -514,10 +586,14 @@ public sealed class PaseBuilderService : IPaseBuilderService
                 $"{wo.Labors.Count} labores ({executedLaborsCount} ejec.)",
                 totalArea,
                 wo.Status
-            ));
+            )
+            {
+                Lotes = Lotes(wo.Labors),
+                LaboresListas = Listas(wo.Labors),
+                LaboresSinRealizar = wo.Labors.Count - executedLaborsCount
+            });
         }
 
-        // 2. Standalone labors (Labores sueltas)
         var standaloneLabors = await _context.Labors
             .AsNoTracking()
             .Include(l => l.Type)
@@ -540,10 +616,35 @@ public sealed class PaseBuilderService : IPaseBuilderService
                 $"Labor suelta en {lotName}",
                 area,
                 labor.Status.ToString()
-            ));
+            )
+            {
+                Lotes = Lotes(new[] { labor }),
+                LaboresListas = Listas(new[] { labor }),
+                LaboresSinRealizar = EstaRealizada(labor) ? 0 : 1
+            });
         }
 
         return items.OrderByDescending(i => i.Date).ToList();
+    }
+
+    /// <summary>Solo las ejecutadas van al G4: realizada o validada por el ejecutor.</summary>
+    private static bool EstaRealizada(Labor labor) =>
+        labor.Status == LaborStatus.Realized || labor.Status == LaborStatus.Validated;
+
+    /// <summary>
+    /// Numero de cada lote del tenant: su orden por fecha de generacion (1, 2, ...). Es el
+    /// idImportacion del archivo, asi que tiene que coincidir con PaseXlsxExportService.
+    /// </summary>
+    private async Task<Dictionary<Guid, int>> NumerosDeLoteAsync(Guid tenantId, CancellationToken ct)
+    {
+        var ids = await _context.PasesLote
+            .AsNoTracking()
+            .Where(l => l.TenantId == tenantId)
+            .OrderBy(l => l.GeneradoEn)
+            .Select(l => l.Id)
+            .ToListAsync(ct);
+
+        return ids.Select((id, i) => (id, i)).ToDictionary(x => x.id, x => x.i + 1);
     }
 
     public async Task<IReadOnlyList<AccountConfigurationDto>> GetAccountConfigurationsAsync(Guid tenantId, CancellationToken ct = default)

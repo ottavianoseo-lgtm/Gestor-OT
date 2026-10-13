@@ -1,0 +1,26 @@
+@using GestorOT.Shared.Dtos
+@using AntDesign
+
+@* Estado de una OT o labor para el G4: cuantas labores entrarian al lote, en que lotes ya esta
+   (con link al lote) y cuantas faltan realizar. *@
+<div style="display: flex; gap: 4px; flex-wrap: wrap;">
+    @if (Item.LaboresListas > 0)
+    {
+        <Tag Color="@("green")">@(Item.Type == "Labor" ? "Lista" : $"{Item.LaboresListas} lista{(Item.LaboresListas == 1 ? "" : "s")}")</Tag>
+    }
+    @foreach (var lote in Item.Lotes)
+    {
+        <Tag Color="@("blue")" Style="cursor: pointer;" OnClick="() => OnVerLote.InvokeAsync(lote.Id)">
+            Lote @lote.Numero.ToString("D4")
+        </Tag>
+    }
+    @if (Item.LaboresSinRealizar > 0)
+    {
+        <Tag Color="@("orange")">@(Item.Type == "Labor" ? "Sin realizar" : $"{Item.LaboresSinRealizar} sin realizar")</Tag>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public PendingImputacionItemDto Item { get; set; } = default!;
+    [Parameter] public EventCallback<Guid> OnVerLote { get; set; }
+}

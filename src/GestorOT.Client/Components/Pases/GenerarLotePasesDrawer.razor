@@ -17,7 +17,7 @@
         </div>
 
         <Tabs DefaultActiveKey="wos" @bind-ActiveKey="_activeTab">
-            <TabPane Key="wos" Tab="@($"Órdenes de Trabajo ({_pendingWos.Count})")">
+            <TabPane Key="wos" Tab="@($"Órdenes de Trabajo ({Listas(_pendingWos).Count} listas de {_pendingWos.Count})")">
                 @if (_loading)
                 {
                     <div style="text-align: center; padding: 40px;">
@@ -33,18 +33,21 @@
                 }
                 else
                 {
-                    <div style="display: flex; gap: 16px; margin-bottom: 8px;">
-                        <Checkbox Checked="@PaginaCompleta(_pendingWos, _selectedWos, _woQuery)"
-                                  CheckedChanged="@((bool v) => _selectedWos = MarcarPagina(_pendingWos, _selectedWos, _woQuery, v))">
+                    <div style="display: flex; gap: 16px; margin-bottom: 8px; flex-wrap: wrap;">
+                        <Checkbox Checked="@PaginaCompleta(_visibleWos, _selectedWos, _woQuery)"
+                                  CheckedChanged="@((bool v) => _selectedWos = MarcarPagina(_visibleWos, _selectedWos, _woQuery, v))">
                             Seleccionar página
                         </Checkbox>
-                        <Checkbox Checked="@(_selectedWos.Count() == _pendingWos.Count)"
-                                  CheckedChanged="@((bool v) => _selectedWos = v ? _pendingWos.ToList() : new List<PendingImputacionItemDto>())">
-                            Seleccionar todas (@_pendingWos.Count)
+                        <Checkbox Checked="@TodasMarcadas(_pendingWos, _selectedWos)"
+                                  CheckedChanged="@((bool v) => _selectedWos = v ? Listas(_pendingWos) : new List<PendingImputacionItemDto>())">
+                            Seleccionar todas las listas (@Listas(_pendingWos).Count)
+                        </Checkbox>
+                        <Checkbox Checked="_soloListas" CheckedChanged="CambiarSoloListas" Style="margin-left: auto;">
+                            Solo listas para importar
                         </Checkbox>
                     </div>
                     <Table TItem="PendingImputacionItemDto"
-                           DataSource="_pendingWos"
+                           DataSource="_visibleWos"
                            Size="@TableSize.Small"
                            PageSize="10"
                            @bind-SelectedRows="_selectedWos"
@@ -58,13 +61,13 @@
                             <span style="font-weight: 600; font-family: monospace;">@context.Area.ToString("N1") ha</span>
                         </PropertyColumn>
                         <Column TData="string" Title="Estado">
-                            <Tag Color="@("green")">@context.Status</Tag>
+                            <EstadoPendiente Item="context" OnVerLote="VerLote" />
                         </Column>
                     </Table>
                 }
             </TabPane>
 
-            <TabPane Key="labors" Tab="@($"Labores Sueltas ({_pendingLabors.Count})")">
+            <TabPane Key="labors" Tab="@($"Labores Sueltas ({Listas(_pendingLabors).Count} listas de {_pendingLabors.Count})")">
                 @if (_loading)
                 {
                     <div style="text-align: center; padding: 40px;">
@@ -80,18 +83,21 @@
                 }
                 else
                 {
-                    <div style="display: flex; gap: 16px; margin-bottom: 8px;">
-                        <Checkbox Checked="@PaginaCompleta(_pendingLabors, _selectedLabors, _laborQuery)"
-                                  CheckedChanged="@((bool v) => _selectedLabors = MarcarPagina(_pendingLabors, _selectedLabors, _laborQuery, v))">
+                    <div style="display: flex; gap: 16px; margin-bottom: 8px; flex-wrap: wrap;">
+                        <Checkbox Checked="@PaginaCompleta(_visibleLabors, _selectedLabors, _laborQuery)"
+                                  CheckedChanged="@((bool v) => _selectedLabors = MarcarPagina(_visibleLabors, _selectedLabors, _laborQuery, v))">
                             Seleccionar página
                         </Checkbox>
-                        <Checkbox Checked="@(_selectedLabors.Count() == _pendingLabors.Count)"
-                                  CheckedChanged="@((bool v) => _selectedLabors = v ? _pendingLabors.ToList() : new List<PendingImputacionItemDto>())">
-                            Seleccionar todas (@_pendingLabors.Count)
+                        <Checkbox Checked="@TodasMarcadas(_pendingLabors, _selectedLabors)"
+                                  CheckedChanged="@((bool v) => _selectedLabors = v ? Listas(_pendingLabors) : new List<PendingImputacionItemDto>())">
+                            Seleccionar todas las listas (@Listas(_pendingLabors).Count)
+                        </Checkbox>
+                        <Checkbox Checked="_soloListas" CheckedChanged="CambiarSoloListas" Style="margin-left: auto;">
+                            Solo listas para importar
                         </Checkbox>
                     </div>
                     <Table TItem="PendingImputacionItemDto"
-                           DataSource="_pendingLabors"
+                           DataSource="_visibleLabors"
                            Size="@TableSize.Small"
                            PageSize="10"
                            @bind-SelectedRows="_selectedLabors"
@@ -105,7 +111,7 @@
                             <span style="font-weight: 600; font-family: monospace;">@context.Area.ToString("N1") ha</span>
                         </PropertyColumn>
                         <Column TData="string" Title="Estado">
-                            <Tag Color="@("blue")">@context.Status</Tag>
+                            <EstadoPendiente Item="context" OnVerLote="VerLote" />
                         </Column>
                     </Table>
                 }
@@ -114,7 +120,16 @@
 
         @if (_warnings.Any())
         {
-            <Alert Type="@AlertType.Warning" Message="Advertencias" Description="@(string.Join("\n", _warnings))" ShowIcon="true" />
+            <Alert Type="@AlertType.Warning" Message="@($"Advertencias ({_warnings.Count})")" ShowIcon="true">
+                <ChildContent>
+                    <ul style="margin: 0; padding-left: 18px; max-height: 200px; overflow-y: auto;">
+                        @foreach (var w in _warnings)
+                        {
+                            <li>@w</li>
+                        }
+                    </ul>
+                </ChildContent>
+            </Alert>
         }
 
         <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 16px; margin-top: 8px;">
@@ -140,6 +155,11 @@
     [Parameter] public bool IsOpen { get; set; }
     [Parameter] public EventCallback<bool> IsOpenChanged { get; set; }
     [Parameter] public EventCallback OnLoteGenerado { get; set; }
+    /// <summary>Abre el detalle del lote en el que ya esta una OT o labor.</summary>
+    [Parameter] public EventCallback<Guid> OnVerLote { get; set; }
+
+    // Por defecto solo se ofrece lo que entraria al lote: realizado y fuera de otro lote.
+    private bool _soloListas = true;
 
     private string _activeTab = "wos";
     private string _descripcion = "";
@@ -165,9 +185,10 @@
         }
     }
 
-    private async Task CargarPendientesAsync()
+    private async Task CargarPendientesAsync(bool conservarAvisos = false)
     {
-        _loading = true; _warnings.Clear();
+        _loading = true;
+        if (!conservarAvisos) _warnings.Clear();
         try
         {
             var res = await Http.GetFromJsonAsync<List<PendingImputacionItemDto>>("api/pases/pending");
@@ -175,6 +196,7 @@
             {
                 _pendingWos = res.Where(i => i.Type == "WorkOrder").ToList();
                 _pendingLabors = res.Where(i => i.Type == "Labor").ToList();
+                RefrescarVisibles();
             }
         }
         catch (Exception ex)
@@ -187,6 +209,34 @@
             StateHasChanged();
         }
     }
+
+    // Lo que muestra cada tabla. Se guarda en un campo y no se calcula en el render: una lista
+    // nueva en cada render le cambia el DataSource a la tabla y la vuelve a la pagina 1.
+    private List<PendingImputacionItemDto> _visibleWos = new();
+    private List<PendingImputacionItemDto> _visibleLabors = new();
+
+    private void RefrescarVisibles()
+    {
+        _visibleWos = _soloListas ? Listas(_pendingWos) : _pendingWos;
+        _visibleLabors = _soloListas ? Listas(_pendingLabors) : _pendingLabors;
+    }
+
+    private void CambiarSoloListas(bool valor)
+    {
+        _soloListas = valor;
+        RefrescarVisibles();
+    }
+
+    private static List<PendingImputacionItemDto> Listas(List<PendingImputacionItemDto> data) =>
+        data.Where(i => i.Importable).ToList();
+
+    private static bool TodasMarcadas(List<PendingImputacionItemDto> data, IEnumerable<PendingImputacionItemDto> seleccion)
+    {
+        var listas = Listas(data);
+        return listas.Count > 0 && listas.All(seleccion.Contains);
+    }
+
+    private Task VerLote(Guid loteId) => OnVerLote.InvokeAsync(loteId);
 
     /// <summary>Las filas de la pagina que se ve, con el orden que tenga la tabla.</summary>
     private static List<PendingImputacionItemDto> PaginaActual(
@@ -233,8 +283,20 @@
             if (result?.Success == true)
             {
                 Message.Success($"Lote G4 generado exitosamente con {result.TotalPases} pases.");
-                await IsOpenChanged.InvokeAsync(false);
                 await OnLoteGenerado.InvokeAsync();
+                if (result.Warnings.Any())
+                {
+                    // Con avisos el modal queda abierto: dicen que se omitio y que salio con
+                    // precio 0, y se pierden si se cierra.
+                    _warnings = result.Warnings;
+                    _selectedWos = new List<PendingImputacionItemDto>();
+                    _selectedLabors = new List<PendingImputacionItemDto>();
+                    await CargarPendientesAsync(conservarAvisos: true);
+                }
+                else
+                {
+                    await IsOpenChanged.InvokeAsync(false);
+                }
             }
             else
             {
@@ -257,6 +319,7 @@
     {
         _pendingWos.Clear();
         _pendingLabors.Clear();
+        RefrescarVisibles();
         _selectedWos = new List<PendingImputacionItemDto>();
         _selectedLabors = new List<PendingImputacionItemDto>();
         _woQuery = null;
