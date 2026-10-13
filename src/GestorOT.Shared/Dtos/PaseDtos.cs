@@ -216,6 +216,14 @@ public record PendingImputacionItemDto
     }
 }
 
+public class AccountConfigurationVariantDto
+{
+    public Guid ErpActivityId { get; set; }
+    public string? ErpActivityName { get; set; }
+    public long? CodPerfilDebe { get; set; }
+    public long? CodPerfilHaber { get; set; }
+}
+
 public record AccountConfigurationDto
 {
     public Guid Id { get; set; }
@@ -231,6 +239,9 @@ public record AccountConfigurationDto
     public AccountRuleTarget AppliesTo { get; set; } = AccountRuleTarget.Labor;
     public string? SupplySubGroup { get; set; }
     public long? CodListaDePrecios { get; set; }
+
+    /// Perfiles de imputacion por actividad: pisan los de la regla para esa actividad.
+    public List<AccountConfigurationVariantDto> Variants { get; set; } = new();
     public string DebitAccountCode { get; set; } = string.Empty;
     public string CreditAccountCode { get; set; } = string.Empty;
     public string? Description { get; set; }

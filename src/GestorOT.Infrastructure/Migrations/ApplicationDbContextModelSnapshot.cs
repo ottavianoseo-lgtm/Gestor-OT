@@ -131,6 +131,34 @@ namespace GestorOT.Infrastructure.Migrations
                     b.ToTable("AccountConfigurations");
                 });
 
+            modelBuilder.Entity("GestorOT.Domain.Entities.AccountConfigurationVariant", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("AccountConfigurationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<long?>("CodPerfilDebe")
+                        .HasColumnType("bigint");
+
+                    b.Property<long?>("CodPerfilHaber")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("ErpActivityId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ErpActivityId");
+
+                    b.HasIndex("AccountConfigurationId", "ErpActivityId")
+                        .IsUnique();
+
+                    b.ToTable("AccountConfigurationVariants", "public");
+                });
+
             modelBuilder.Entity("GestorOT.Domain.Entities.AuditLog", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1871,6 +1899,25 @@ namespace GestorOT.Infrastructure.Migrations
                     b.Navigation("LaborType");
                 });
 
+            modelBuilder.Entity("GestorOT.Domain.Entities.AccountConfigurationVariant", b =>
+                {
+                    b.HasOne("GestorOT.Domain.Entities.AccountConfiguration", "AccountConfiguration")
+                        .WithMany("Variants")
+                        .HasForeignKey("AccountConfigurationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("GestorOT.Domain.Entities.ErpActivity", "ErpActivity")
+                        .WithMany()
+                        .HasForeignKey("ErpActivityId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("AccountConfiguration");
+
+                    b.Navigation("ErpActivity");
+                });
+
             modelBuilder.Entity("GestorOT.Domain.Entities.CampaignField", b =>
                 {
                     b.HasOne("GestorOT.Domain.Entities.Campaign", "Campaign")
@@ -2242,6 +2289,11 @@ namespace GestorOT.Infrastructure.Migrations
                     b.Navigation("Supply");
 
                     b.Navigation("WorkOrder");
+                });
+
+            modelBuilder.Entity("GestorOT.Domain.Entities.AccountConfiguration", b =>
+                {
+                    b.Navigation("Variants");
                 });
 
             modelBuilder.Entity("GestorOT.Domain.Entities.Campaign", b =>

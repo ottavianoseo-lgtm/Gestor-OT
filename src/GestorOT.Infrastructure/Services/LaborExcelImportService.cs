@@ -565,14 +565,13 @@ public class LaborExcelImportService : ILaborExcelImportService
             }
             else
             {
-                // Resolve ErpActivityId from the active rotation for this lot at the labor date
+                // La actividad es la de la rotacion del lote a la fecha de la labor (o la
+                // proxima, si es barbecho).
                 Guid? resolvedActivityId = null;
                 if (campaignLot != null && parsedLabor.Date.HasValue)
                 {
                     var laborDate = DateOnly.FromDateTime(parsedLabor.Date.Value);
-                    var activeRotation = campaignLot.Rotations
-                        .FirstOrDefault(r => r.StartDate <= laborDate && r.EndDate >= laborDate);
-                    resolvedActivityId = activeRotation?.ErpActivityId;
+                    resolvedActivityId = campaignLot.RotacionEn(laborDate)?.ErpActivityId;
                 }
 
                 laborToSave = new Labor

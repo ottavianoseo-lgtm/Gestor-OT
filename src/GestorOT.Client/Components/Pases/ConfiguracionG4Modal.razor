@@ -153,6 +153,10 @@
 
         <Divider Text="Perfiles de Imputación (Opcional)" Style="color: rgba(255,255,255,0.6);" />
 
+        <div style="font-size: 12px; color: rgba(255,255,255,0.55); margin-bottom: 8px;">
+            Perfiles generales: se usan para las actividades que no tengan su propia fila abajo.
+        </div>
+
         <Row Gutter="16">
             <Col Span="12">
                 <FormItem Label="Cod Perfil Imputación Debe">
@@ -179,6 +183,59 @@
                 </FormItem>
             </Col>
         </Row>
+
+        <div style="display: flex; align-items: center; justify-content: space-between; margin: 4px 0 8px;">
+            <span style="font-weight: 600;">Perfiles por actividad</span>
+            <Button Size="@ButtonSize.Small" Icon="plus" OnClick="AgregarVariante"
+                    Disabled="@(ActividadesLibres(null).Count == 0)">
+                Agregar actividad
+            </Button>
+        </div>
+        @if (_model.Variants.Count == 0)
+        {
+            <div style="font-size: 12px; color: rgba(255,255,255,0.55); margin-bottom: 16px;">
+                Sin perfiles por actividad: todas las labores imputan con los perfiles generales.
+                Agregá una fila por cultivo cuando la imputación cambie según la actividad.
+            </div>
+        }
+        else
+        {
+            <div style="margin-bottom: 16px;">
+                @foreach (var v in _model.Variants)
+                {
+                    <Row Gutter="8" Style="margin-bottom: 8px;" Align="RowAlign.Middle">
+                        <AntDesign.Col Span="7">
+                            <Select TItemValue="Guid" TItem="ErpActivityDto" @bind-Value="v.ErpActivityId"
+                                    Placeholder="Actividad"
+                                    EnableSearch Loading="@_loadingBasicCatalogs"
+                                    DataSource="@ActividadesLibres(v)"
+                                    ItemLabel="x => x.Name"
+                                    ItemValue="x => x.Id" />
+                        </AntDesign.Col>
+                        <AntDesign.Col Span="8">
+                            <Select TItemValue="long?" TItem="ErpProfileDto" @bind-Value="v.CodPerfilDebe"
+                                    Placeholder="Perfil Debe"
+                                    AllowClear EnableSearch Loading="@_loadingBasicCatalogs"
+                                    DataSource="@_perfiles"
+                                    ItemLabel="x => x.Nombre"
+                                    ItemValue="x => x.CodPerfil" />
+                        </AntDesign.Col>
+                        <AntDesign.Col Span="8">
+                            <Select TItemValue="long?" TItem="ErpProfileDto" @bind-Value="v.CodPerfilHaber"
+                                    Placeholder="Perfil Haber"
+                                    AllowClear EnableSearch Loading="@_loadingBasicCatalogs"
+                                    DataSource="@_perfiles"
+                                    ItemLabel="x => x.Nombre"
+                                    ItemValue="x => x.CodPerfil" />
+                        </AntDesign.Col>
+                        <AntDesign.Col Span="1">
+                            <Button Size="@ButtonSize.Small" Type="@ButtonType.Text" Danger Icon="delete"
+                                    OnClick="() => _model.Variants.Remove(v)" />
+                        </AntDesign.Col>
+                    </Row>
+                }
+            </div>
+        }
 
         <Divider Text="Cuentas Directas (Imputación por Cuenta)" Style="color: rgba(255,255,255,0.6);" />
 
@@ -351,7 +408,17 @@
                 CodCuentaDebeCentro = Configuration.CodCuentaDebeCentro,
                 CodCuentaHaberCentro = Configuration.CodCuentaHaberCentro,
                 CodCuentaDebeContabilidad = Configuration.CodCuentaDebeContabilidad,
-                CodCuentaHaberContabilidad = Configuration.CodCuentaHaberContabilidad
+                CodCuentaHaberContabilidad = Configuration.CodCuentaHaberContabilidad,
+                // Copia: editar la grilla no tiene que tocar la lista hasta guardar.
+                Variants = Configuration.Variants
+                    .Select(v => new AccountConfigurationVariantDto
+                    {
+                        ErpActivityId = v.ErpActivityId,
+                        ErpActivityName = v.ErpActivityName,
+                        CodPerfilDebe = v.CodPerfilDebe,
+                        CodPerfilHaber = v.CodPerfilHaber
+                    })
+                    .ToList()
             };
 
             FilterCuentas();
@@ -631,7 +698,8 @@
                 ExecutionMode = EsInsumo ? null : _model.ExecutionMode,
                 AppliesTo = _model.AppliesTo,
                 SupplySubGroup = EsInsumo ? _model.SupplySubGroup : null,
-                CodListaDePrecios = _model.CodListaDePrecios
+                CodListaDePrecios = _model.CodListaDePrecios,
+                Variants = _model.Variants.Where(v => v.ErpActivityId != Guid.Empty).ToList()
             };
 
             var resp = await Http.PostAsJsonAsync("api/pases/account-configurations", dto);
@@ -655,6 +723,19 @@
             _saving = false;
         }
     }
+
+    /// <summary>Las actividades que la fila puede elegir: la suya y las que no tienen fila.</summary>
+    private List<ErpActivityDto> ActividadesLibres(AccountConfigurationVariantDto? fila) =>
+        _activities
+            .Where(a => (fila != null && a.Id == fila.ErpActivityId)
+                || _model.Variants.All(v => v.ErpActivityId != a.Id))
+            .ToList();
+
+    private void AgregarVariante() =>
+        _model.Variants.Add(new AccountConfigurationVariantDto
+        {
+            ErpActivityId = ActividadesLibres(null).FirstOrDefault()?.Id ?? Guid.Empty
+        });
 
     private async Task HandleClose()
     {
@@ -690,6 +771,8 @@
         public long? CodCuentaHaberCentro { get; set; }
         public long? CodCuentaDebeContabilidad { get; set; }
         public long? CodCuentaHaberContabilidad { get; set; }
+
+        public List<AccountConfigurationVariantDto> Variants { get; set; } = new();
 
         public int PuntoVuntoOrDefault() => PuntoVenta <= 0 ? 1 : PuntoVenta;
     }

@@ -43,8 +43,10 @@ public sealed class PaseBuilderService : IPaseBuilderService
             .Include(l => l.Type)
             .Include(l => l.WorkOrder).ThenInclude(w => w!.Campaign)
             .Include(l => l.Contact)
+            .Include(l => l.ErpActivity)
             .Include(l => l.Lot).ThenInclude(l => l!.Field)
             .Include(l => l.CampaignLot).ThenInclude(c => c!.Campaign)
+            .Include(l => l.CampaignLot).ThenInclude(c => c!.Rotations).ThenInclude(r => r.ErpActivity)
             .Include(l => l.Supplies).ThenInclude(s => s.Supply)
             .Where(l => l.TenantId == tenantId && l.WorkOrderId != null && workOrderIds.Contains(l.WorkOrderId.Value))
             .ToListAsync(ct);
@@ -53,8 +55,10 @@ public sealed class PaseBuilderService : IPaseBuilderService
             .Include(l => l.Type)
             .Include(l => l.WorkOrder).ThenInclude(w => w!.Campaign)
             .Include(l => l.Contact)
+            .Include(l => l.ErpActivity)
             .Include(l => l.Lot).ThenInclude(l => l!.Field)
             .Include(l => l.CampaignLot).ThenInclude(c => c!.Campaign)
+            .Include(l => l.CampaignLot).ThenInclude(c => c!.Rotations).ThenInclude(r => r.ErpActivity)
             .Include(l => l.Supplies).ThenInclude(s => s.Supply)
             .Where(l => l.TenantId == tenantId && laborIds.Contains(l.Id))
             .ToListAsync(ct);
@@ -108,6 +112,7 @@ public sealed class PaseBuilderService : IPaseBuilderService
         // Load account configurations
         var configs = await _context.AccountConfigurations
             .AsNoTracking()
+            .Include(c => c.Variants)
             .Where(c => c.TenantId == tenantId && c.IsActive)
             .ToListAsync(ct);
 
@@ -166,6 +171,16 @@ public sealed class PaseBuilderService : IPaseBuilderService
 
         foreach (var labor in allLabors)
         {
+            // La actividad sale de la rotacion del lote a la fecha de la labor (o la proxima, si
+            // es barbecho). Se completa aca para las que no la tienen y queda guardada en la
+            // labor: las reglas y los perfiles se resuelven por actividad.
+            if (labor.ErpActivityId is null
+                && labor.CampaignLot?.RotacionEn(DateOnly.FromDateTime(labor.ExecutionDate ?? labor.EstimatedDate ?? labor.CreatedAt)) is { } rotacion)
+            {
+                labor.ErpActivityId = rotacion.ErpActivityId;
+                labor.ErpActivity = rotacion.ErpActivity;
+            }
+
             // Cadena de precedencia, de lo mas especifico a lo mas general:
             //   1. la regla que la labor fija a mano
             //   2. la del tipo de labor acotada al modo (propia / contratista)
@@ -281,6 +296,8 @@ public sealed class PaseBuilderService : IPaseBuilderService
                 warnings.Add($"{EtiquetaLabor(labor)}: el concepto {codConcepto} no tiene precio vigente al {fechaImputacion:dd/MM/yyyy} en la lista {config.CodListaDePrecios?.ToString() ?? "(la regla no tiene lista)"}. Sale con la tarifa de la labor ({labor.Rate}).");
             }
 
+            var perfilesLabor = PerfilesPorActividad(config, labor, warnings);
+
             var paseLabor = new PaseImputacion
             {
                 Id = Guid.NewGuid(),
@@ -307,8 +324,8 @@ public sealed class PaseBuilderService : IPaseBuilderService
                 CantidadAuxiliar = labor.Hectares > 0 ? labor.Hectares : null,
                 Cantidad = labor.EffectiveArea > 0 ? labor.EffectiveArea : labor.Hectares,
                 Precio = precioLabor ?? labor.Rate,
-                CodPerfilImputacionDebe = config.CodPerfilDebe,
-                CodPerfilImputacionHaber = config.CodPerfilHaber,
+                CodPerfilImputacionDebe = perfilesLabor.Debe,
+                CodPerfilImputacionHaber = perfilesLabor.Haber,
                 CodCuentaDebeGestion = config.CodCuentaDebeGestion,
                 CodCuentaHaberGestion = config.CodCuentaHaberGestion,
                 CodCuentaDebeCentro = codCentroDebe,
@@ -395,6 +412,8 @@ public sealed class PaseBuilderService : IPaseBuilderService
                     hectareasSupply = labor.Hectares;
                 }
 
+                var perfilesInsumo = PerfilesPorActividad(sc, labor, warnings);
+
                 var paseSupply = new PaseImputacion
                 {
                     Id = Guid.NewGuid(),
@@ -425,8 +444,8 @@ public sealed class PaseBuilderService : IPaseBuilderService
                     CantidadAuxiliar = hectareasSupply > 0 ? hectareasSupply : null,
                     Cantidad = cantSupply,
                     Precio = precioInsumo ?? 0,
-                    CodPerfilImputacionDebe = sc.CodPerfilDebe,
-                    CodPerfilImputacionHaber = sc.CodPerfilHaber,
+                    CodPerfilImputacionDebe = perfilesInsumo.Debe,
+                    CodPerfilImputacionHaber = perfilesInsumo.Haber,
                     CodCuentaDebeGestion = sc.CodCuentaDebeGestion,
                     CodCuentaHaberGestion = sc.CodCuentaHaberGestion,
                     CodCuentaDebeCentro = centroDelLote ?? sc.CodCuentaDebeCentro,
@@ -657,6 +676,7 @@ public sealed class PaseBuilderService : IPaseBuilderService
             .AsNoTracking()
             .Include(c => c.LaborType)
             .Include(c => c.ErpActivity)
+            .Include(c => c.Variants).ThenInclude(v => v.ErpActivity)
             .Where(c => c.TenantId == tenantId)
             .ToListAsync(ct);
 
@@ -677,13 +697,24 @@ public sealed class PaseBuilderService : IPaseBuilderService
             ExecutionMode = c.ExecutionMode,
             AppliesTo = c.AppliesTo,
             SupplySubGroup = c.SupplySubGroup,
-            CodListaDePrecios = c.CodListaDePrecios
+            CodListaDePrecios = c.CodListaDePrecios,
+            Variants = c.Variants
+                .Select(v => new AccountConfigurationVariantDto
+                {
+                    ErpActivityId = v.ErpActivityId,
+                    ErpActivityName = v.ErpActivity?.Name,
+                    CodPerfilDebe = v.CodPerfilDebe,
+                    CodPerfilHaber = v.CodPerfilHaber
+                })
+                .OrderBy(v => v.ErpActivityName)
+                .ToList()
         }).ToList();
     }
 
     public async Task SaveAccountConfigurationAsync(Guid tenantId, AccountConfigurationDto dto, CancellationToken ct = default)
     {
         var entity = await _context.AccountConfigurations
+            .Include(c => c.Variants)
             .FirstOrDefaultAsync(c => c.TenantId == tenantId && c.Id == dto.Id, ct);
 
         if (entity == null)
@@ -730,6 +761,39 @@ public sealed class PaseBuilderService : IPaseBuilderService
         entity.CodCuentaHaberContabilidad = dto.CodCuentaHaberContabilidad;
         entity.CodCuentaDebeAuxiliar = dto.CodCuentaDebeAuxiliar;
         entity.CodCuentaHaberAuxiliar = dto.CodCuentaHaberAuxiliar;
+
+        // Las variantes se reemplazan enteras: la grilla del modal es la fuente. Una por
+        // actividad, y sin ningun perfil no pisa nada, asi que no se guarda.
+        var variantes = (dto.Variants ?? new())
+            .Where(v => v.ErpActivityId != Guid.Empty && (v.CodPerfilDebe.HasValue || v.CodPerfilHaber.HasValue))
+            .GroupBy(v => v.ErpActivityId)
+            .Select(g => g.Last())
+            .ToList();
+
+        foreach (var sobrante in entity.Variants.Where(e => variantes.All(v => v.ErpActivityId != e.ErpActivityId)).ToList())
+        {
+            entity.Variants.Remove(sobrante);
+            _context.AccountConfigurationVariants.Remove(sobrante);
+        }
+
+        foreach (var v in variantes)
+        {
+            var existente = entity.Variants.FirstOrDefault(e => e.ErpActivityId == v.ErpActivityId);
+            if (existente is null)
+            {
+                existente = new AccountConfigurationVariant
+                {
+                    Id = Guid.NewGuid(),
+                    AccountConfigurationId = entity.Id,
+                    ErpActivityId = v.ErpActivityId
+                };
+                entity.Variants.Add(existente);
+                _context.AccountConfigurationVariants.Add(existente);
+            }
+
+            existente.CodPerfilDebe = v.CodPerfilDebe;
+            existente.CodPerfilHaber = v.CodPerfilHaber;
+        }
 
         await _context.SaveChangesAsync(ct);
     }
@@ -797,6 +861,44 @@ public sealed class PaseBuilderService : IPaseBuilderService
         }
 
         return ganadoras[0];
+    }
+
+    /// <summary>
+    /// Perfiles de imputacion de la regla para la actividad de la labor. Por actividad rota
+    /// la imputacion (la misma aplicacion de fertilizante va a otro perfil en maiz que en
+    /// soja), asi que la variante de esa actividad pisa los perfiles de la regla; lo que deja
+    /// vacio, y las actividades sin variante, salen con los de la regla.
+    /// </summary>
+    private static (long? Debe, long? Haber) PerfilesPorActividad(
+        AccountConfiguration config,
+        Labor labor,
+        List<string> warnings)
+    {
+        if (config.Variants.Count == 0)
+        {
+            return (config.CodPerfilDebe, config.CodPerfilHaber);
+        }
+
+        var regla = string.IsNullOrWhiteSpace(config.Description) ? config.Id.ToString()[..8] : config.Description;
+        var variante = labor.ErpActivityId is Guid actividad
+            ? config.Variants.FirstOrDefault(v => v.ErpActivityId == actividad)
+            : null;
+
+        if (variante is null)
+        {
+            // Un aviso por labor y regla, no uno por cada insumo.
+            var aviso = labor.ErpActivityId is null
+                ? $"{EtiquetaLabor(labor)}: no tiene actividad y la regla '{regla}' imputa por actividad. Salió con los perfiles generales de la regla."
+                : $"{EtiquetaLabor(labor)}: la regla '{regla}' no tiene perfiles para la actividad {labor.ErpActivity?.Name ?? "de la labor"}. Salió con los perfiles generales de la regla.";
+            if (!warnings.Contains(aviso))
+            {
+                warnings.Add(aviso);
+            }
+
+            return (config.CodPerfilDebe, config.CodPerfilHaber);
+        }
+
+        return (variante.CodPerfilDebe ?? config.CodPerfilDebe, variante.CodPerfilHaber ?? config.CodPerfilHaber);
     }
 
     /// <summary>

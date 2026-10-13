@@ -141,6 +141,12 @@
                         {
                             <Tag Color="@("green")">Defecto Estándar</Tag>
                         }
+                        @if (context.Variants.Count > 0)
+                        {
+                            <Tooltip Title="@string.Join(", ", context.Variants.Select(v => v.ErpActivityName))">
+                                <Tag Color="@("purple")">@context.Variants.Count por actividad</Tag>
+                            </Tooltip>
+                        }
                     </Column>
                     <ActionColumn Title="Acciones">
                         <Button Size="@ButtonSize.Small" Icon="setting" OnClick="() => EditarConfiguracion(context)"

@@ -62,4 +62,7 @@ public class AccountConfiguration : TenantEntity
 
     public LaborType? LaborType { get; set; }
     public ErpActivity? ErpActivity { get; set; }
+
+    /// <summary>Perfiles de imputacion por actividad; pisan los de la regla.</summary>
+    public List<AccountConfigurationVariant> Variants { get; set; } = new();
 }

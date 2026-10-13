@@ -36,6 +36,7 @@ public interface IApplicationDbContext
     DbSet<PaseLote> PasesLote { get; }
     DbSet<PaseImputacion> PasesImputacion { get; }
     DbSet<AccountConfiguration> AccountConfigurations { get; }
+    DbSet<AccountConfigurationVariant> AccountConfigurationVariants { get; }
     DbSet<SupplyAlias> SupplyAliases { get; }
     DbSet<LaborTypeAlias> LaborTypeAliases { get; }
     DbSet<LaborImportBatch> LaborImportBatches { get; }

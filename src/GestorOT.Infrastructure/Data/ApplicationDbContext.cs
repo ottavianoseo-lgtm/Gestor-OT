@@ -50,6 +50,7 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
     public DbSet<PaseLote> PasesLote => Set<PaseLote>();
     public DbSet<PaseImputacion> PasesImputacion => Set<PaseImputacion>();
     public DbSet<AccountConfiguration> AccountConfigurations => Set<AccountConfiguration>();
+    public DbSet<AccountConfigurationVariant> AccountConfigurationVariants => Set<AccountConfigurationVariant>();
     public DbSet<SupplyAlias> SupplyAliases => Set<SupplyAlias>();
     public DbSet<LaborTypeAlias> LaborTypeAliases => Set<LaborTypeAlias>();
     public DbSet<LaborImportBatch> LaborImportBatches => Set<LaborImportBatch>();

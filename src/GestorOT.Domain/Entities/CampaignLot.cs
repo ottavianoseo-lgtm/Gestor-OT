@@ -19,4 +19,13 @@ public class CampaignLot : TenantEntity
     public Campaign? Campaign { get; set; }
     public Lot? Lot { get; set; }
     public ICollection<Rotation> Rotations { get; set; } = new List<Rotation>();
+
+    /// <summary>
+    /// La rotacion a la que se imputa una labor de esa fecha: la vigente, y si no hay, la
+    /// proxima del lote. Lo que se hace antes de que arranque el cultivo (barbecho: fumigadas,
+    /// rolo) es costo del cultivo que viene, no queda sin actividad.
+    /// </summary>
+    public Rotation? RotacionEn(DateOnly fecha) =>
+        Rotations.FirstOrDefault(r => r.StartDate <= fecha && r.EndDate >= fecha)
+        ?? Rotations.Where(r => r.StartDate > fecha).OrderBy(r => r.StartDate).FirstOrDefault();
 }
